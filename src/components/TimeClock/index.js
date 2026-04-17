@@ -101,10 +101,8 @@ const TimeClock = () => {
           <div className="tc-face tc-face-front">
             <div className="timeclock-content">
               <EmployeePanel phone={phone} employee={employee} loading={loading} />
-              <div className="tc-right-col">
-                <ClockWidget />
-                <Keypad onKeyPress={handleKey} />
-              </div>
+              <ClockWidget />
+              <Keypad onKeyPress={handleKey} />
             </div>
           </div>
 
