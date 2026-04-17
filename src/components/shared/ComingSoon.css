@@ -1,0 +1,47 @@
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 60px 32px;
+  text-align: center;
+}
+
+.coming-soon-icon {
+  font-size: 56px;
+  margin-bottom: 20px;
+}
+
+.coming-soon h2 {
+  font-size: 28px;
+  color: #1a365d;
+  margin-bottom: 12px;
+}
+
+.coming-soon p {
+  font-size: 16px;
+  color: #718096;
+  max-width: 420px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px;
+}
+
+.badge.planned {
+  background: #ebf8ff;
+  color: #2b6cb0;
+}
+
+.badge.restricted {
+  background: #fff5f5;
+  color: #c53030;
+}

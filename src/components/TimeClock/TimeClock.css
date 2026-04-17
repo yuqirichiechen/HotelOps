@@ -1,0 +1,188 @@
+.timeclock-page {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.timeclock-content {
+  display: flex;
+  flex: 1;
+  gap: 32px;
+  align-items: flex-start;
+  padding: 32px;
+}
+
+/* Employee panel */
+.employee-panel {
+  flex: 1;
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.employee-panel h2 {
+  font-size: 22px;
+  color: #1a365d;
+  margin-bottom: 24px;
+}
+
+.phone-display {
+  margin-bottom: 20px;
+}
+
+.phone-display label {
+  display: block;
+  font-size: 13px;
+  color: #718096;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.phone-number {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #2d3748;
+  font-family: 'Courier New', monospace;
+}
+
+.employee-name-area {
+  min-height: 40px;
+  margin-bottom: 28px;
+}
+
+.welcome-text {
+  font-size: 18px;
+  color: #2d3748;
+}
+
+.status-text {
+  font-size: 14px;
+  color: #a0aec0;
+}
+
+.clock-buttons {
+  display: flex;
+  gap: 16px;
+}
+
+.btn-clock-in,
+.btn-clock-out {
+  flex: 1;
+  padding: 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-clock-in {
+  background: #38a169;
+  color: white;
+}
+
+.btn-clock-in:hover:not(:disabled) {
+  background: #2f855a;
+  transform: translateY(-1px);
+}
+
+.btn-clock-out {
+  background: #e53e3e;
+  color: white;
+}
+
+.btn-clock-out:hover:not(:disabled) {
+  background: #c53030;
+  transform: translateY(-1px);
+}
+
+.btn-clock-in:disabled,
+.btn-clock-out:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Keypad */
+.keypad {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  width: 320px;
+  flex-shrink: 0;
+}
+
+.keypad-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.keypad-row:last-child {
+  margin-bottom: 0;
+}
+
+.keypad-btn {
+  flex: 1;
+  height: 72px;
+  border: none;
+  border-radius: 10px;
+  background: #f7fafc;
+  color: #2d3748;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+}
+
+.keypad-btn:hover {
+  background: #edf2f7;
+  transform: translateY(-1px);
+}
+
+.keypad-btn:active {
+  transform: translateY(1px);
+}
+
+.clear-btn { background: #fefcbf; color: #744210; }
+.clear-btn:hover { background: #faf089; }
+
+.back-btn { background: #e2e8f0; color: #4a5568; }
+.back-btn:hover { background: #cbd5e0; }
+
+/* Toast */
+.toast {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  animation: fadeIn 0.2s ease;
+}
+
+.toast-success { background: #38a169; color: white; }
+.toast-error   { background: #e53e3e; color: white; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .timeclock-content {
+    flex-direction: column;
+    padding: 16px;
+  }
+  .keypad { width: 100%; }
+}
