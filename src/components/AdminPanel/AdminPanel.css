@@ -1,0 +1,367 @@
+/* ── Shared ──────────────────────────────────────────────────────────────── */
+
+.admin-panel {
+  height: 100%;
+  background: #f0f4f8;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.admin-field input,
+.admin-field select {
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2d3748;
+  background: white;
+  transition: border-color 0.15s ease;
+  outline: none;
+}
+
+.admin-field input:focus,
+.admin-field select:focus {
+  border-color: #63b3ed;
+}
+
+.admin-error {
+  background: #fff5f5;
+  color: #c53030;
+  border: 1px solid #feb2b2;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+/* ── Login page ──────────────────────────────────────────────────────────── */
+
+.admin-login-page {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.admin-login-card {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+  animation: adminSlideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.admin-login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.admin-login-icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+
+.admin-login-header h2 {
+  font-size: 24px;
+  color: #1a365d;
+  margin-bottom: 6px;
+}
+
+.admin-login-header p {
+  font-size: 14px;
+  color: #a0aec0;
+}
+
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.admin-login-btn {
+  width: 100%;
+  padding: 14px;
+  background: #1a365d;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+  margin-top: 4px;
+}
+
+.admin-login-btn:hover:not(:disabled) {
+  background: #2a4a7f;
+  transform: translateY(-1px);
+}
+
+.admin-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Employee manager ────────────────────────────────────────────────────── */
+
+.emp-manager {
+  padding: 24px;
+  animation: adminSlideUp 0.3s ease;
+  min-height: 100%;
+}
+
+.emp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.emp-header-left h2 {
+  font-size: 22px;
+  color: #1a365d;
+}
+
+.emp-count {
+  font-size: 13px;
+  color: #a0aec0;
+  margin-left: 8px;
+}
+
+.emp-header-right {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-add {
+  padding: 10px 18px;
+  background: #1a365d;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-add:hover { background: #2a4a7f; }
+
+.btn-logout {
+  padding: 10px 18px;
+  background: transparent;
+  color: #718096;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-logout:hover {
+  border-color: #e53e3e;
+  color: #e53e3e;
+}
+
+/* Add form */
+.add-form {
+  background: white;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+  animation: slideDown 0.25s ease;
+}
+
+.add-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.add-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-save {
+  padding: 11px 28px;
+  background: #38a169;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-save:hover:not(:disabled) { background: #2f855a; }
+.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Employee cards */
+.emp-loading,
+.emp-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #a0aec0;
+  font-size: 15px;
+}
+
+.emp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.emp-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: box-shadow 0.15s ease;
+  gap: 12px;
+}
+
+.emp-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+
+.emp-inactive { opacity: 0.55; }
+
+.emp-card-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.emp-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1a365d;
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.emp-info { min-width: 0; }
+
+.emp-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2d3748;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emp-meta {
+  font-size: 12px;
+  color: #a0aec0;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+}
+
+.emp-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.emp-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-active   { background: #c6f6d5; color: #276749; }
+.badge-inactive { background: #fed7d7; color: #9b2c2c; }
+
+.btn-toggle {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-toggle:hover { opacity: 0.8; }
+
+.btn-deactivate { background: #fed7d7; color: #9b2c2c; }
+.btn-activate   { background: #c6f6d5; color: #276749; }
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+
+@keyframes adminSlideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .emp-manager { padding: 14px; }
+
+  .emp-header { margin-bottom: 16px; }
+
+  .emp-header-left h2 { font-size: 18px; }
+
+  .add-form { padding: 16px; }
+
+  .add-form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .emp-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .emp-card-main { width: 100%; }
+
+  .emp-card-actions { width: 100%; justify-content: space-between; }
+
+  .admin-login-card { padding: 28px 20px; }
+}

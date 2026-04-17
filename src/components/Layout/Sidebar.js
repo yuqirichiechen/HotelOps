@@ -4,10 +4,10 @@ import './Sidebar.css';
 
 const NAV = [
   { to: '/',            label: 'Time Clock',  icon: '⏱️', live: true  },
-  { to: '/admin',       label: 'Admin',       icon: '⚙️', live: false },
   { to: '/scheduling',  label: 'Scheduling',  icon: '📅', live: false },
   { to: '/forecasting', label: 'Forecasting', icon: '🏨', live: false },
   { to: '/shift-notes', label: 'Shift Notes', icon: '📋', live: false },
+  { to: '/admin',       label: 'Admin',       icon: '⚙️', live: false, admin: true },
 ];
 
 const Sidebar = () => (
@@ -19,8 +19,8 @@ const Sidebar = () => (
         <span className="brand-name">HotelOps</span>
       </div>
       <ul className="sidebar-nav">
-        {NAV.map(({ to, label, icon, live }) => (
-          <li key={to}>
+        {NAV.map(({ to, label, icon, live, admin }) => (
+          <li key={to} className={admin ? 'sidebar-admin-item' : ''}>
             <NavLink
               to={to}
               end={to === '/'}

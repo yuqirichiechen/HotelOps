@@ -29,6 +29,30 @@ pool.query('SELECT NOW()').then(() => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// ── Admin auth ────────────────────────────────────────────────────────────────
+
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  const validUser = process.env.ADMIN_USERNAME || 'admin';
+  const validPass = process.env.ADMIN_PASSWORD || 'admin';
+  if (username === validUser && password === validPass) {
+    return res.json({ success: true });
+  }
+  return res.status(401).json({ success: false, message: 'Invalid credentials' });
+});
+
+// ── Departments ───────────────────────────────────────────────────────────────
+
+app.get('/api/admin/departments', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM departments ORDER BY name');
+    return res.json({ success: true, departments: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ── Employee clock-in / out ───────────────────────────────────────────────────
 
 app.post('/api/authenticate', async (req, res) => {
