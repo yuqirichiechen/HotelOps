@@ -67,9 +67,12 @@
 }
 
 .employee-panel h2 {
-  font-size: 22px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
   color: #1a365d;
-  margin-bottom: 24px;
+  letter-spacing: -0.01em;
+  margin-bottom: 28px;
 }
 
 .phone-display {
@@ -78,11 +81,13 @@
 
 .phone-display label {
   display: block;
-  font-size: 13px;
-  color: #718096;
-  margin-bottom: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a0aec0;
+  margin-bottom: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
 }
 
 .phone-number {
@@ -98,13 +103,22 @@
 }
 
 .welcome-text {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 18px;
+  font-weight: 400;
   color: #2d3748;
 }
 
+.welcome-text strong {
+  font-weight: 600;
+}
+
 .status-text {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
+  font-weight: 400;
   color: #a0aec0;
+  font-style: italic;
 }
 
 .loading-pulse {
@@ -142,20 +156,33 @@
   border-radius: 10px;
   background: #f7fafc;
   color: #2d3748;
-  font-size: 22px;
-  font-weight: 700;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  letter-spacing: 0.01em;
 }
 
 .keypad-btn:hover  { background: #edf2f7; transform: translateY(-1px); }
 .keypad-btn:active { transform: translateY(1px); }
 
-.clear-btn { background: #fefcbf; color: #744210; }
+.clear-btn {
+  background: #fefcbf;
+  color: #744210;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 .clear-btn:hover { background: #faf089; }
 
-.back-btn { background: #e2e8f0; color: #4a5568; }
+.back-btn {
+  background: #e2e8f0;
+  color: #4a5568;
+  font-size: 20px;
+}
 .back-btn:hover { background: #cbd5e0; }
 
 /* ── Dashboard face ──────────────────────────────────────────────────────── */
@@ -193,6 +220,7 @@
   transition: all 0.15s ease;
   line-height: 1;
   padding: 0;
+  font-family: 'TiemposText', Georgia, serif;
 }
 
 .dash-back:hover {
@@ -212,6 +240,7 @@
   border-radius: 50%;
   background: #1a365d;
   color: white;
+  font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 17px;
   font-weight: 700;
   display: flex;
@@ -221,16 +250,21 @@
 }
 
 .dash-emp-name {
-  font-size: 16px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 17px;
   font-weight: 700;
   color: #1a365d;
+  letter-spacing: -0.01em;
   line-height: 1.2;
 }
 
 .dash-emp-role {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
+  font-weight: 400;
   color: #a0aec0;
   text-transform: capitalize;
+  font-style: italic;
 }
 
 /* Clock card */
@@ -241,7 +275,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.08);
 }
 
@@ -249,37 +283,39 @@
 .dash-idle   { border-top: 4px solid #e2e8f0; }
 
 .dash-timer {
-  font-size: 48px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 52px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
   color: #1a365d;
-  font-family: 'Courier New', monospace;
   line-height: 1;
 }
 
 .dash-timer-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 500;
   color: #a0aec0;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
 }
 
 .dash-status-icon {
   font-size: 42px;
   line-height: 1;
-  opacity: 0.3;
+  opacity: 0.25;
   margin-bottom: 4px;
 }
 
 .dash-action-btn {
   width: 100%;
-  padding: 14px;
+  padding: 15px;
   border: none;
   border-radius: 12px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   letter-spacing: 0.02em;
@@ -324,6 +360,7 @@
   transition: all 0.15s ease;
   padding: 0;
   line-height: 1;
+  font-family: 'TiemposText', Georgia, serif;
 }
 
 .week-nav-btn:hover:not(:disabled) {
@@ -344,16 +381,19 @@
 }
 
 .week-label {
-  font-size: 13px;
-  font-weight: 700;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
   color: #2d3748;
-  text-transform: capitalize;
+  letter-spacing: -0.01em;
 }
 
 .week-total {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
   color: #38a169;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 /* Day tiles */
@@ -396,16 +436,18 @@
 }
 
 .wday-letter {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   color: #a0aec0;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 .wday-num {
-  font-size: 15px;
-  font-weight: 700;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
   color: #2d3748;
   line-height: 1;
 }
@@ -426,10 +468,12 @@
 }
 
 .wday-hours {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 9px;
   font-weight: 700;
   color: #38a169;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 .week-day.day-today .wday-hours {
@@ -492,23 +536,28 @@
 }
 
 .daysheet-date {
-  font-size: 15px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
   font-weight: 700;
   color: #1a365d;
   flex: 1;
+  letter-spacing: -0.01em;
 }
 
 .daysheet-total {
-  font-size: 15px;
-  font-weight: 700;
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
   color: #38a169;
   flex-shrink: 0;
 }
 
 .daysheet-empty {
+  font-family: 'TiemposText', Georgia, serif;
   text-align: center;
   color: #a0aec0;
   font-size: 14px;
+  font-style: italic;
   padding: 20px 0;
 }
 
@@ -541,6 +590,7 @@
 }
 
 .entry-time {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 600;
   color: #2d3748;
@@ -548,12 +598,13 @@
 
 .entry-arrow {
   color: #a0aec0;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .entry-duration {
-  font-size: 13px;
-  font-weight: 700;
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 15px;
+  font-weight: 500;
   color: #718096;
   flex-shrink: 0;
 }
@@ -596,8 +647,9 @@
 }
 
 .notif-icon {
+  font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 52px;
-  font-weight: 700;
+  font-weight: 900;
   line-height: 1;
 }
 
@@ -605,9 +657,11 @@
 .notif-error   .notif-icon { color: #e53e3e; }
 
 .notif-message {
-  font-size: 20px;
-  font-weight: 600;
-  color: #2d3748;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a365d;
+  letter-spacing: -0.01em;
 }
 
 /* ── Animations ──────────────────────────────────────────────────────────── */
@@ -645,7 +699,7 @@
   }
 
   .employee-panel h2 {
-    font-size: 17px;
+    font-size: 20px;
     margin-bottom: 14px;
   }
 
@@ -684,7 +738,7 @@
   .keypad-btn {
     height: 100%;
     min-height: 0;
-    font-size: 20px;
+    font-size: 22px;
     border-radius: 10px;
   }
 
@@ -694,13 +748,13 @@
     gap: 12px;
   }
 
-  .dash-timer { font-size: 38px; }
+  .dash-timer { font-size: 42px; }
 
   .dash-clock-card { padding: 22px 16px 18px; }
 
   .week-strip { padding: 12px; }
 
-  .wday-num  { font-size: 13px; }
+  .wday-num  { font-size: 14px; }
   .wday-hours { font-size: 8px; }
 
   .notif-card {
@@ -710,5 +764,5 @@
   }
 
   .notif-icon    { font-size: 48px; }
-  .notif-message { font-size: 18px; }
+  .notif-message { font-size: 20px; }
 }

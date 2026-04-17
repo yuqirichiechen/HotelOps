@@ -12,19 +12,22 @@
 }
 
 .admin-field label {
-  font-size: 12px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
   font-weight: 600;
   color: #718096;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.09em;
 }
 
 .admin-field input,
 .admin-field select {
+  font-family: 'TiemposText', Georgia, serif;
   padding: 10px 12px;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
   font-size: 14px;
+  font-weight: 400;
   color: #2d3748;
   background: white;
   transition: border-color 0.15s ease;
@@ -37,6 +40,7 @@
 }
 
 .admin-error {
+  font-family: 'TiemposText', Georgia, serif;
   background: #fff5f5;
   color: #c53030;
   border: 1px solid #feb2b2;
@@ -72,18 +76,24 @@
 
 .admin-login-icon {
   font-size: 44px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .admin-login-header h2 {
-  font-size: 24px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
   color: #1a365d;
+  letter-spacing: -0.02em;
   margin-bottom: 6px;
 }
 
 .admin-login-header p {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
+  font-weight: 400;
   color: #a0aec0;
+  font-style: italic;
 }
 
 .admin-login-form {
@@ -99,8 +109,10 @@
   color: white;
   border: none;
   border-radius: 10px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease;
   margin-top: 4px;
@@ -145,14 +157,20 @@
 }
 
 .admin-home-title h2 {
-  font-size: 22px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 26px;
+  font-weight: 900;
   color: #1a365d;
+  letter-spacing: -0.02em;
   margin-bottom: 2px;
 }
 
 .admin-home-title p {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
+  font-weight: 400;
   color: #a0aec0;
+  font-style: italic;
 }
 
 .admin-modules-grid {
@@ -204,15 +222,20 @@
 }
 
 .module-label {
-  font-size: 15px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
   font-weight: 600;
-  color: #2d3748;
-  margin-bottom: 2px;
+  color: #1a365d;
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
 }
 
 .module-desc {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
+  font-weight: 400;
   color: #a0aec0;
+  font-style: italic;
 }
 
 .module-arrow {
@@ -222,14 +245,15 @@
 }
 
 .module-badge-soon {
-  font-size: 11px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
   font-weight: 700;
   color: #a0aec0;
   background: #f0f4f8;
   border-radius: 20px;
   padding: 3px 10px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   flex-shrink: 0;
 }
 
@@ -257,8 +281,11 @@
 }
 
 .emp-header-left h2 {
-  font-size: 22px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
   color: #1a365d;
+  letter-spacing: -0.02em;
 }
 
 .emp-header-right {
@@ -267,13 +294,14 @@
 }
 
 .btn-back {
-  padding: 8px 14px;
+  padding: 8px 16px;
   background: transparent;
   color: #718096;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -289,8 +317,10 @@
   color: white;
   border: none;
   border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -303,8 +333,9 @@
   color: #718096;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -333,22 +364,24 @@
 }
 
 .stat-num {
-  font-size: 24px;
-  font-weight: 700;
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 28px;
+  font-weight: 500;
   color: #1a365d;
   line-height: 1;
   margin-bottom: 4px;
 }
 
-.stat-active  { color: #276749; }
+.stat-active   { color: #276749; }
 .stat-inactive { color: #9b2c2c; }
 
 .stat-lbl {
-  font-size: 11px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
   font-weight: 600;
   color: #a0aec0;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 }
 
 /* Add form */
@@ -380,8 +413,10 @@
   color: white;
   border: none;
   border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -392,10 +427,12 @@
 /* Employee list */
 .emp-loading,
 .emp-empty {
+  font-family: 'TiemposText', Georgia, serif;
   text-align: center;
   padding: 60px 20px;
   color: #a0aec0;
   font-size: 15px;
+  font-style: italic;
 }
 
 .emp-list {
@@ -441,6 +478,7 @@
   border-radius: 50%;
   background: #1a365d;
   color: white;
+  font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 18px;
   font-weight: 700;
   display: flex;
@@ -452,17 +490,22 @@
 .emp-info { min-width: 0; }
 
 .emp-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
-  color: #2d3748;
+  color: #1a365d;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .emp-meta {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
+  font-weight: 400;
   color: #a0aec0;
+  font-style: italic;
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
@@ -478,12 +521,13 @@
 }
 
 .emp-badge {
-  font-size: 11px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 20px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 .badge-active   { background: #c6f6d5; color: #276749; }
@@ -516,8 +560,10 @@
   color: white;
   border: none;
   border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -543,6 +589,7 @@
   border-radius: 50%;
   background: #1a365d;
   color: white;
+  font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 30px;
   font-weight: 700;
   display: flex;
@@ -551,9 +598,11 @@
 }
 
 .emp-detail-name {
-  font-size: 20px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
   font-weight: 700;
   color: #1a365d;
+  letter-spacing: -0.02em;
 }
 
 .emp-detail-info-grid {
@@ -577,14 +626,19 @@
 .detail-info-row:last-child { border-bottom: none; }
 
 .detail-info-lbl {
-  font-size: 13px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
   font-weight: 600;
-  color: #718096;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   flex-shrink: 0;
 }
 
 .detail-info-val {
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
+  font-weight: 500;
   color: #2d3748;
   text-align: right;
 }
@@ -601,8 +655,10 @@
   padding: 14px;
   border: none;
   border-radius: 10px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
@@ -620,8 +676,10 @@
   color: #c53030;
   border: 1.5px solid #feb2b2;
   border-radius: 10px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -640,8 +698,10 @@
 }
 
 .delete-confirm > span {
+  font-family: 'TiemposText', Georgia, serif;
   display: block;
   font-size: 14px;
+  font-weight: 400;
   color: #c53030;
   margin-bottom: 14px;
 }
@@ -662,6 +722,7 @@
   color: white;
   border: none;
   border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -690,9 +751,9 @@
   .emp-manager  { padding: 14px; }
   .emp-detail   { padding: 14px; }
 
-  .admin-home-title h2 { font-size: 18px; }
+  .admin-home-title h2 { font-size: 22px; }
 
-  .emp-header-left h2 { font-size: 18px; }
+  .emp-header-left h2 { font-size: 20px; }
 
   .add-form { padding: 16px; }
 
@@ -713,7 +774,7 @@
 
   .emp-stats { gap: 8px; }
 
-  .stat-num { font-size: 20px; }
+  .stat-num { font-size: 24px; }
 
   .admin-login-card { padding: 28px 20px; }
 }
