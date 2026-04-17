@@ -141,7 +141,7 @@ app.get('/api/admin/employees', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.user_id, u.name, u.phone_number, u.role, u.hire_date,
-              u.base_hourly_rate, u.active, d.name AS department
+              u.base_hourly_rate, u.active, u.department_id, d.name AS department
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
        ORDER BY u.name`
@@ -181,6 +181,41 @@ app.patch('/api/admin/employees/:id/status', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     return res.json({ success: true, employee: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.put('/api/admin/employees/:id', async (req, res) => {
+  const { name, phoneNumber, role, hireDate, departmentId, baseHourlyRate } = req.body;
+  if (!name || !phoneNumber || !hireDate) {
+    return res.status(400).json({ success: false, message: 'name, phoneNumber, hireDate required' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET name=$1, phone_number=$2, role=$3, hire_date=$4,
+       department_id=$5, base_hourly_rate=$6 WHERE user_id=$7 RETURNING *`,
+      [name, phoneNumber, role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    return res.json({ success: true, employee: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ success: false, message: 'Phone number already exists' });
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.delete('/api/admin/employees/:id', async (req, res) => {
+  try {
+    const { rows: check } = await pool.query(
+      'SELECT active FROM users WHERE user_id = $1', [req.params.id]
+    );
+    if (!check.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    if (check[0].active) return res.status(400).json({ success: false, message: 'Deactivate employee before deleting' });
+    await pool.query('DELETE FROM users WHERE user_id = $1', [req.params.id]);
+    return res.json({ success: true });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });

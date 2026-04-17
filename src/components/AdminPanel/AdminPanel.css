@@ -116,6 +116,123 @@
   cursor: not-allowed;
 }
 
+/* ── Admin home dashboard ────────────────────────────────────────────────── */
+
+.admin-home {
+  padding: 24px;
+  animation: adminSlideUp 0.3s ease;
+  min-height: 100%;
+}
+
+.admin-home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-home-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-home-icon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.admin-home-title h2 {
+  font-size: 22px;
+  color: #1a365d;
+  margin-bottom: 2px;
+}
+
+.admin-home-title p {
+  font-size: 13px;
+  color: #a0aec0;
+}
+
+.admin-modules-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-module-card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.module-live {
+  cursor: pointer;
+}
+
+.module-live:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
+
+.module-soon {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.module-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f4f8;
+  border-radius: 10px;
+}
+
+.module-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.module-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 2px;
+}
+
+.module-desc {
+  font-size: 13px;
+  color: #a0aec0;
+}
+
+.module-arrow {
+  font-size: 22px;
+  color: #a0aec0;
+  flex-shrink: 0;
+}
+
+.module-badge-soon {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a0aec0;
+  background: #f0f4f8;
+  border-radius: 20px;
+  padding: 3px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
 /* ── Employee manager ────────────────────────────────────────────────────── */
 
 .emp-manager {
@@ -128,9 +245,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.emp-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .emp-header-left h2 {
@@ -138,15 +261,26 @@
   color: #1a365d;
 }
 
-.emp-count {
-  font-size: 13px;
-  color: #a0aec0;
-  margin-left: 8px;
-}
-
 .emp-header-right {
   display: flex;
   gap: 10px;
+}
+
+.btn-back {
+  padding: 8px 14px;
+  background: transparent;
+  color: #718096;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-back:hover {
+  border-color: #1a365d;
+  color: #1a365d;
 }
 
 .btn-add {
@@ -180,12 +314,49 @@
   color: #e53e3e;
 }
 
+/* Stats bar */
+.emp-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.emp-stat {
+  flex: 1;
+  background: white;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.stat-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a365d;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-active  { color: #276749; }
+.stat-inactive { color: #9b2c2c; }
+
+.stat-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* Add form */
 .add-form {
   background: white;
   border-radius: 14px;
   padding: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.07);
   animation: slideDown 0.25s ease;
 }
@@ -200,6 +371,7 @@
 .add-form-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .btn-save {
@@ -217,7 +389,7 @@
 .btn-save:hover:not(:disabled) { background: #2f855a; }
 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Employee cards */
+/* Employee list */
 .emp-loading,
 .emp-empty {
   text-align: center;
@@ -240,11 +412,18 @@
   align-items: center;
   justify-content: space-between;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  transition: box-shadow 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
   gap: 12px;
 }
 
-.emp-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+.emp-card-clickable {
+  cursor: pointer;
+}
+
+.emp-card-clickable:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
 
 .emp-inactive { opacity: 0.55; }
 
@@ -310,20 +489,187 @@
 .badge-active   { background: #c6f6d5; color: #276749; }
 .badge-inactive { background: #fed7d7; color: #9b2c2c; }
 
-.btn-toggle {
-  padding: 7px 14px;
+.emp-chevron {
+  font-size: 20px;
+  color: #cbd5e0;
+  font-weight: 300;
+}
+
+/* ── Employee detail ─────────────────────────────────────────────────────── */
+
+.emp-detail {
+  padding: 24px;
+  animation: adminSlideUp 0.3s ease;
+  min-height: 100%;
+}
+
+.emp-detail-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.btn-edit {
+  padding: 8px 20px;
+  background: #1a365d;
+  color: white;
   border: none;
-  border-radius: 7px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-edit:hover { background: #2a4a7f; }
+
+.emp-detail-profile {
+  background: white;
+  border-radius: 16px;
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  margin-bottom: 20px;
+  animation: adminSlideUp 0.3s ease;
+}
+
+.emp-detail-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: #1a365d;
+  color: white;
+  font-size: 30px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emp-detail-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a365d;
+}
+
+.emp-detail-info-grid {
+  background: white;
+  border-radius: 14px;
+  padding: 6px 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  margin-bottom: 20px;
+  animation: adminSlideUp 0.3s ease;
+}
+
+.detail-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f0f4f8;
+  gap: 12px;
+}
+
+.detail-info-row:last-child { border-bottom: none; }
+
+.detail-info-lbl {
+  font-size: 13px;
+  font-weight: 600;
+  color: #718096;
+  flex-shrink: 0;
+}
+
+.detail-info-val {
+  font-size: 14px;
+  color: #2d3748;
+  text-align: right;
+}
+
+/* Status & delete actions */
+.emp-detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-toggle-full {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
 
-.btn-toggle:hover { opacity: 0.8; }
+.btn-toggle-full:hover:not(:disabled) { opacity: 0.85; }
+.btn-toggle-full:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-deactivate { background: #fed7d7; color: #9b2c2c; }
 .btn-activate   { background: #c6f6d5; color: #276749; }
+
+.btn-delete {
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  color: #c53030;
+  border: 1.5px solid #feb2b2;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-delete:hover {
+  background: #fff5f5;
+  border-color: #c53030;
+}
+
+.delete-confirm {
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 12px;
+  padding: 16px 20px;
+  animation: slideDown 0.2s ease;
+}
+
+.delete-confirm > span {
+  display: block;
+  font-size: 14px;
+  color: #c53030;
+  margin-bottom: 14px;
+}
+
+.delete-confirm-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.delete-confirm-btns .btn-logout {
+  flex: 1;
+}
+
+.btn-delete-confirm {
+  flex: 1;
+  padding: 10px;
+  background: #c53030;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-delete-confirm:hover:not(:disabled) { background: #9b2c2c; }
+.btn-delete-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Animations ──────────────────────────────────────────────────────────── */
 
@@ -340,9 +686,11 @@
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  .emp-manager { padding: 14px; }
+  .admin-home   { padding: 14px; }
+  .emp-manager  { padding: 14px; }
+  .emp-detail   { padding: 14px; }
 
-  .emp-header { margin-bottom: 16px; }
+  .admin-home-title h2 { font-size: 18px; }
 
   .emp-header-left h2 { font-size: 18px; }
 
@@ -356,12 +704,16 @@
   .emp-card {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
   }
 
   .emp-card-main { width: 100%; }
 
   .emp-card-actions { width: 100%; justify-content: space-between; }
+
+  .emp-stats { gap: 8px; }
+
+  .stat-num { font-size: 20px; }
 
   .admin-login-card { padding: 28px 20px; }
 }

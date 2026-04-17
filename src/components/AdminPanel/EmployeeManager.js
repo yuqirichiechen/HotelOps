@@ -2,13 +2,9 @@ import React, { useState, useEffect } from 'react';
 
 const ROLES = ['employee', 'front_desk', 'admin'];
 const today = () => new Date().toISOString().split('T')[0];
+const emptyForm = () => ({ name: '', phone: '', role: 'employee', departmentId: '', hireDate: today(), baseHourlyRate: '' });
 
-const emptyForm = () => ({
-  name: '', phone: '', role: 'employee',
-  departmentId: '', hireDate: today(), baseHourlyRate: '',
-});
-
-const EmployeeManager = ({ onLogout }) => {
+const EmployeeManager = ({ onBack, onSelect, onLogout }) => {
   const [employees,   setEmployees]   = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -36,11 +32,8 @@ const EmployeeManager = ({ onLogout }) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name:           form.name,
-        phoneNumber:    form.phone,
-        role:           form.role,
-        hireDate:       form.hireDate,
-        departmentId:   form.departmentId   || null,
+        name: form.name, phoneNumber: form.phone, role: form.role,
+        hireDate: form.hireDate, departmentId: form.departmentId || null,
         baseHourlyRate: form.baseHourlyRate || null,
       }),
     });
@@ -55,97 +48,71 @@ const EmployeeManager = ({ onLogout }) => {
     }
   };
 
-  const toggleStatus = async (emp) => {
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !emp.active }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setEmployees(prev =>
-        prev.map(e => e.user_id === emp.user_id ? { ...e, active: !e.active } : e)
-      );
-    }
-  };
+  const deptName = (id) => departments.find(d => d.department_id === id)?.name || '—';
 
-  const deptName = (id) =>
-    departments.find(d => d.department_id === id)?.name || '—';
+  const active   = employees.filter(e => e.active).length;
+  const inactive = employees.length - active;
 
   return (
     <div className="emp-manager">
-      {/* Header */}
       <div className="emp-header">
         <div className="emp-header-left">
-          <h2>Employee Management</h2>
-          <span className="emp-count">{employees.length} employees</span>
+          <button className="btn-back" onClick={onBack}>‹ Back</button>
+          <h2>Employees</h2>
         </div>
         <div className="emp-header-right">
           <button className="btn-add" onClick={() => { setShowAdd(s => !s); setFormError(''); }}>
-            {showAdd ? '✕ Cancel' : '+ Add Employee'}
+            {showAdd ? '✕ Cancel' : '+ Add'}
           </button>
-          <button className="btn-logout" onClick={onLogout}>Sign Out</button>
         </div>
       </div>
 
-      {/* Add employee form */}
+      <div className="emp-stats">
+        <div className="emp-stat">
+          <span className="stat-num">{employees.length}</span>
+          <span className="stat-lbl">Total</span>
+        </div>
+        <div className="emp-stat">
+          <span className="stat-num stat-active">{active}</span>
+          <span className="stat-lbl">Active</span>
+        </div>
+        <div className="emp-stat">
+          <span className="stat-num stat-inactive">{inactive}</span>
+          <span className="stat-lbl">Inactive</span>
+        </div>
+      </div>
+
       {showAdd && (
         <form className="add-form" onSubmit={handleAdd}>
           <div className="add-form-grid">
             <div className="admin-field">
               <label>Full Name *</label>
-              <input
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Jane Smith"
-                required
-              />
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Smith" required />
             </div>
             <div className="admin-field">
               <label>Phone Number *</label>
-              <input
-                value={form.phone}
-                onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))}
-                placeholder="10 digits"
-                required
-              />
+              <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))} placeholder="10 digits" required />
             </div>
             <div className="admin-field">
               <label>Role *</label>
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                {ROLES.map(r => (
-                  <option key={r} value={r}>{r.replace('_',' ')}</option>
-                ))}
+                {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
               </select>
             </div>
             <div className="admin-field">
               <label>Department</label>
               <select value={form.departmentId} onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}>
                 <option value="">— None —</option>
-                {departments.map(d => (
-                  <option key={d.department_id} value={d.department_id}>{d.name}</option>
-                ))}
+                {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
               </select>
             </div>
             <div className="admin-field">
               <label>Hire Date *</label>
-              <input
-                type="date"
-                value={form.hireDate}
-                onChange={e => setForm(f => ({ ...f, hireDate: e.target.value }))}
-                required
-              />
+              <input type="date" value={form.hireDate} onChange={e => setForm(f => ({ ...f, hireDate: e.target.value }))} required />
             </div>
             <div className="admin-field">
               <label>Hourly Rate ($)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.baseHourlyRate}
-                onChange={e => setForm(f => ({ ...f, baseHourlyRate: e.target.value }))}
-                placeholder="0.00"
-              />
+              <input type="number" step="0.01" min="0" value={form.baseHourlyRate} onChange={e => setForm(f => ({ ...f, baseHourlyRate: e.target.value }))} placeholder="0.00" />
             </div>
           </div>
           {formError && <div className="admin-error">{formError}</div>}
@@ -157,7 +124,6 @@ const EmployeeManager = ({ onLogout }) => {
         </form>
       )}
 
-      {/* Employee list */}
       {loading ? (
         <div className="emp-loading">Loading employees…</div>
       ) : employees.length === 0 ? (
@@ -165,15 +131,17 @@ const EmployeeManager = ({ onLogout }) => {
       ) : (
         <div className="emp-list">
           {employees.map(emp => (
-            <div key={emp.user_id} className={`emp-card ${emp.active ? '' : 'emp-inactive'}`}>
+            <div
+              key={emp.user_id}
+              className={`emp-card emp-card-clickable ${emp.active ? '' : 'emp-inactive'}`}
+              onClick={() => onSelect(emp)}
+            >
               <div className="emp-card-main">
-                <div className="emp-avatar">
-                  {emp.name.charAt(0).toUpperCase()}
-                </div>
+                <div className="emp-avatar">{emp.name.charAt(0).toUpperCase()}</div>
                 <div className="emp-info">
                   <div className="emp-name">{emp.name}</div>
                   <div className="emp-meta">
-                    {emp.phone_number} · {emp.role.replace('_',' ')} · {emp.department || deptName(emp.department_id)}
+                    {emp.role.replace('_', ' ')} · {emp.department || deptName(emp.department_id)}
                   </div>
                 </div>
               </div>
@@ -181,12 +149,7 @@ const EmployeeManager = ({ onLogout }) => {
                 <span className={`emp-badge ${emp.active ? 'badge-active' : 'badge-inactive'}`}>
                   {emp.active ? 'Active' : 'Inactive'}
                 </span>
-                <button
-                  className={`btn-toggle ${emp.active ? 'btn-deactivate' : 'btn-activate'}`}
-                  onClick={() => toggleStatus(emp)}
-                >
-                  {emp.active ? 'Deactivate' : 'Activate'}
-                </button>
+                <span className="emp-chevron">›</span>
               </div>
             </div>
           ))}
