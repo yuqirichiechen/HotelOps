@@ -41,7 +41,7 @@ const TimeClock = () => {
 
   const handleClockIn = async () => {
     setLoading(true);
-    const res = await clockIn(employee.user_id);
+    const res = await clockIn(phone);
     setLoading(false);
     if (res.success) { showToast('success', 'Clocked in!'); setTimeout(reset, 2000); }
     else showToast('error', res.message);
@@ -49,7 +49,7 @@ const TimeClock = () => {
 
   const handleClockOut = async () => {
     setLoading(true);
-    const res = await clockOut(employee.user_id);
+    const res = await clockOut(phone);
     setLoading(false);
     if (res.success) { showToast('success', 'Clocked out!'); setTimeout(reset, 2000); }
     else showToast('error', res.message);

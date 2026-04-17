@@ -1,62 +1,43 @@
-import { supabase } from '../lib/supabase';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
+const post = async (path, body) => {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
 
 export const lookupEmployee = async (phoneNumber) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('user_id, name, phone_number, role, hire_date')
-    .eq('phone_number', phoneNumber)
-    .eq('active', true)
-    .single();
-
-  if (error || !data) {
-    return { success: false, message: 'Employee not found' };
+  try {
+    const data = await post('/authenticate', { phoneNumber });
+    return data.success
+      ? { success: true, employee: data.employee }
+      : { success: false, message: data.message };
+  } catch {
+    return { success: false, message: 'Cannot reach server' };
   }
-  return { success: true, employee: data };
 };
 
-export const clockIn = async (userId) => {
-  const { data: open } = await supabase
-    .from('time_entries')
-    .select('entry_id')
-    .eq('user_id', userId)
-    .is('clock_out_time', null)
-    .maybeSingle();
-
-  if (open) {
-    return { success: false, message: 'You are already clocked in' };
+export const clockIn = async (phoneNumber) => {
+  try {
+    const data = await post('/clock-in', { phoneNumber });
+    return data.success
+      ? { success: true, entry: data.entry }
+      : { success: false, message: data.message };
+  } catch {
+    return { success: false, message: 'Cannot reach server' };
   }
-
-  const { data, error } = await supabase
-    .from('time_entries')
-    .insert({ user_id: userId, clock_in_time: new Date().toISOString() })
-    .select()
-    .single();
-
-  if (error) return { success: false, message: 'Clock-in failed' };
-  return { success: true, entry: data };
 };
 
-export const clockOut = async (userId) => {
-  const { data: open } = await supabase
-    .from('time_entries')
-    .select('entry_id')
-    .eq('user_id', userId)
-    .is('clock_out_time', null)
-    .order('clock_in_time', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!open) {
-    return { success: false, message: 'You are not currently clocked in' };
+export const clockOut = async (phoneNumber) => {
+  try {
+    const data = await post('/clock-out', { phoneNumber });
+    return data.success
+      ? { success: true, entry: data.entry }
+      : { success: false, message: data.message };
+  } catch {
+    return { success: false, message: 'Cannot reach server' };
   }
-
-  const { data, error } = await supabase
-    .from('time_entries')
-    .update({ clock_out_time: new Date().toISOString() })
-    .eq('entry_id', open.entry_id)
-    .select()
-    .single();
-
-  if (error) return { success: false, message: 'Clock-out failed' };
-  return { success: true, entry: data };
 };
