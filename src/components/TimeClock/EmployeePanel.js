@@ -6,7 +6,7 @@ const formatPhone = (digits) => {
   return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6,10)}`;
 };
 
-const EmployeePanel = ({ phone, employee, loading, onClockIn, onClockOut }) => (
+const EmployeePanel = ({ phone, employee, loading }) => (
   <div className="employee-panel">
     <h2>Employee Clock In / Out</h2>
 
@@ -17,29 +17,12 @@ const EmployeePanel = ({ phone, employee, loading, onClockIn, onClockOut }) => (
 
     <div className="employee-name-area">
       {loading ? (
-        <span className="status-text">Looking up employee...</span>
+        <span className="status-text loading-pulse">Looking up…</span>
       ) : employee ? (
         <span className="welcome-text">Welcome, <strong>{employee.name}</strong></span>
       ) : (
         <span className="status-text">Enter your 10-digit phone number</span>
       )}
-    </div>
-
-    <div className="clock-buttons">
-      <button
-        className="btn-clock-in"
-        onClick={onClockIn}
-        disabled={!employee || loading}
-      >
-        Clock In
-      </button>
-      <button
-        className="btn-clock-out"
-        onClick={onClockOut}
-        disabled={!employee || loading}
-      >
-        Clock Out
-      </button>
     </div>
   </div>
 );

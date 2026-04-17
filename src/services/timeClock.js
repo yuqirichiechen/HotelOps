@@ -41,3 +41,15 @@ export const clockOut = async (phoneNumber) => {
     return { success: false, message: 'Cannot reach server' };
   }
 };
+
+export const fetchHistory = async (phoneNumber) => {
+  try {
+    const res  = await fetch(`${API}/user/${phoneNumber}/history`);
+    const data = await res.json();
+    return data.success
+      ? { success: true, entries: data.entries }
+      : { success: false, entries: [] };
+  } catch {
+    return { success: false, entries: [] };
+  }
+};

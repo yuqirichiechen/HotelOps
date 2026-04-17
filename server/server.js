@@ -9,7 +9,7 @@ const app = express();
 // CORS only needed for local dev (frontend and API are same-origin on Koyeb)
 app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:3001'],
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }));
 app.use(express.json());
 
@@ -66,7 +66,23 @@ app.post('/api/authenticate', async (req, res) => {
       [phoneNumber]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
-    return res.json({ success: true, employee: rows[0] });
+
+    const user = rows[0];
+    const { rows: open } = await pool.query(
+      `SELECT entry_id, clock_in_time FROM time_entries
+       WHERE user_id = $1 AND clock_out_time IS NULL
+       ORDER BY clock_in_time DESC LIMIT 1`,
+      [user.user_id]
+    );
+
+    return res.json({
+      success: true,
+      employee: {
+        ...user,
+        clocked_in:    open.length > 0,
+        clock_in_time: open.length > 0 ? open[0].clock_in_time : null,
+      }
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -129,6 +145,34 @@ app.post('/api/clock-out', async (req, res) => {
       [open[0].entry_id]
     );
     return res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── User: shift history (last 4 weeks) ───────────────────────────────────────
+
+app.get('/api/user/:phone/history', async (req, res) => {
+  try {
+    const { rows: users } = await pool.query(
+      'SELECT user_id FROM users WHERE phone_number = $1 AND active = true',
+      [req.params.phone]
+    );
+    if (!users.length) return res.status(404).json({ success: false, message: 'Not found' });
+
+    const { rows } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time,
+         CASE WHEN clock_out_time IS NOT NULL
+           THEN ROUND(EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 60)
+           ELSE NULL
+         END AS total_minutes
+       FROM time_entries
+       WHERE user_id = $1 AND clock_in_time >= NOW() - INTERVAL '4 weeks'
+       ORDER BY clock_in_time DESC`,
+      [users[0].user_id]
+    );
+    return res.json({ success: true, entries: rows });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });
