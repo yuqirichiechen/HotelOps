@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/hotelops/static/css/main.c6145b49.css",
+    "main.js": "/hotelops/static/js/main.10434286.js",
+    "index.html": "/hotelops/index.html",
+    "main.c6145b49.css.map": "/hotelops/static/css/main.c6145b49.css.map",
+    "main.10434286.js.map": "/hotelops/static/js/main.10434286.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.c6145b49.css",
+    "static/js/main.10434286.js"
+  ]
+}
