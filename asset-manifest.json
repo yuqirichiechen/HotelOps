@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/HotelOps/static/css/main.b5ddf82e.css",
-    "main.js": "/HotelOps/static/js/main.c7bf19c2.js",
+    "main.js": "/HotelOps/static/js/main.66868129.js",
     "index.html": "/HotelOps/index.html",
     "main.b5ddf82e.css.map": "/HotelOps/static/css/main.b5ddf82e.css.map",
-    "main.c7bf19c2.js.map": "/HotelOps/static/js/main.c7bf19c2.js.map"
+    "main.66868129.js.map": "/HotelOps/static/js/main.66868129.js.map"
   },
   "entrypoints": [
     "static/css/main.b5ddf82e.css",
-    "static/js/main.c7bf19c2.js"
+    "static/js/main.66868129.js"
   ]
 }
