@@ -11,7 +11,12 @@
 
 @media (max-width: 768px) {
   .app-main {
-    /* leave room for the fixed bottom tab bar */
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    /* Lock to screen — no scrolling on the time clock view */
+    height: 100vh;
+    height: 100dvh; /* accounts for mobile browser chrome */
+    overflow: hidden;
+    /* subtract bottom nav height */
+    padding-bottom: 64px;
+    box-sizing: border-box;
   }
 }

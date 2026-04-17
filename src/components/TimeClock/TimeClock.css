@@ -1,8 +1,11 @@
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+
 .timeclock-page {
-  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
 .timeclock-content {
@@ -11,15 +14,19 @@
   gap: 32px;
   align-items: flex-start;
   padding: 32px;
+  overflow: hidden;
 }
 
-/* Employee panel */
+/* ── Employee panel ──────────────────────────────────────────────────────── */
+
 .employee-panel {
   flex: 1;
   background: white;
   border-radius: 12px;
   padding: 32px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
 }
 
 .employee-panel h2 {
@@ -50,8 +57,8 @@
 }
 
 .employee-name-area {
-  min-height: 40px;
-  margin-bottom: 28px;
+  min-height: 32px;
+  margin-bottom: 24px;
 }
 
 .welcome-text {
@@ -81,25 +88,11 @@
   transition: all 0.2s ease;
 }
 
-.btn-clock-in {
-  background: #38a169;
-  color: white;
-}
+.btn-clock-in  { background: #38a169; color: white; }
+.btn-clock-out { background: #e53e3e; color: white; }
 
-.btn-clock-in:hover:not(:disabled) {
-  background: #2f855a;
-  transform: translateY(-1px);
-}
-
-.btn-clock-out {
-  background: #e53e3e;
-  color: white;
-}
-
-.btn-clock-out:hover:not(:disabled) {
-  background: #c53030;
-  transform: translateY(-1px);
-}
+.btn-clock-in:hover:not(:disabled)  { background: #2f855a; transform: translateY(-1px); }
+.btn-clock-out:hover:not(:disabled) { background: #c53030; transform: translateY(-1px); }
 
 .btn-clock-in:disabled,
 .btn-clock-out:disabled {
@@ -107,7 +100,8 @@
   cursor: not-allowed;
 }
 
-/* Keypad */
+/* ── Keypad ──────────────────────────────────────────────────────────────── */
+
 .keypad {
   background: white;
   border-radius: 12px;
@@ -123,9 +117,7 @@
   margin-bottom: 12px;
 }
 
-.keypad-row:last-child {
-  margin-bottom: 0;
-}
+.keypad-row:last-child { margin-bottom: 0; }
 
 .keypad-btn {
   flex: 1;
@@ -141,14 +133,8 @@
   box-shadow: 0 2px 6px rgba(0,0,0,0.07);
 }
 
-.keypad-btn:hover {
-  background: #edf2f7;
-  transform: translateY(-1px);
-}
-
-.keypad-btn:active {
-  transform: translateY(1px);
-}
+.keypad-btn:hover  { background: #edf2f7; transform: translateY(-1px); }
+.keypad-btn:active { transform: translateY(1px); }
 
 .clear-btn { background: #fefcbf; color: #744210; }
 .clear-btn:hover { background: #faf089; }
@@ -156,58 +142,135 @@
 .back-btn { background: #e2e8f0; color: #4a5568; }
 .back-btn:hover { background: #cbd5e0; }
 
-/* Toast */
-.toast {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 12px 28px;
-  border-radius: 8px;
-  font-size: 15px;
+/* ── Popup notification (app-style) ─────────────────────────────────────── */
+
+.notif-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  animation: notifFadeIn 0.15s ease;
+}
+
+.notif-card {
+  background: white;
+  border-radius: 24px;
+  padding: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+  animation: notifPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  min-width: 220px;
+  text-align: center;
+}
+
+.notif-icon {
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.notif-success .notif-icon { color: #38a169; }
+.notif-error   .notif-icon { color: #e53e3e; }
+
+.notif-message {
+  font-size: 20px;
   font-weight: 600;
-  z-index: 100;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  animation: fadeIn 0.2s ease;
+  color: #2d3748;
 }
 
-.toast-success { background: #38a169; color: white; }
-.toast-error   { background: #e53e3e; color: white; }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+@keyframes notifFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
+
+@keyframes notifPop {
+  from { transform: scale(0.75); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
   .timeclock-content {
     flex-direction: column;
-    padding: 16px;
-    gap: 16px;
+    padding: 12px;
+    gap: 10px;
+    height: 100%;
+    align-items: stretch;
   }
 
-  .keypad {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .keypad-btn {
-    height: 60px;
-    font-size: 20px;
-  }
-
+  /* Panel sits at natural height — no stretching, no gap */
   .employee-panel {
-    padding: 20px;
+    flex: none;
+    padding: 16px 16px 20px;
+    border-radius: 14px;
   }
+
+  .employee-panel h2 {
+    font-size: 17px;
+    margin-bottom: 14px;
+  }
+
+  .phone-display { margin-bottom: 10px; }
 
   .phone-number {
     font-size: 26px;
     letter-spacing: 3px;
   }
 
+  .employee-name-area {
+    min-height: 24px;
+    margin-bottom: 14px;
+  }
+
   .btn-clock-in,
   .btn-clock-out {
-    padding: 14px;
+    padding: 13px;
     font-size: 15px;
   }
+
+  /* Keypad fills all remaining vertical space */
+  .keypad {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 12px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .keypad-row {
+    flex: 1;
+    gap: 10px;
+    margin-bottom: 0;
+    padding-bottom: 10px;
+  }
+
+  .keypad-row:last-child { padding-bottom: 0; }
+
+  /* Buttons fill their row height dynamically */
+  .keypad-btn {
+    height: 100%;
+    min-height: 0;
+    font-size: 20px;
+    border-radius: 10px;
+  }
+
+  .notif-card {
+    padding: 32px 36px;
+    border-radius: 20px;
+    min-width: 200px;
+  }
+
+  .notif-icon   { font-size: 48px; }
+  .notif-message { font-size: 18px; }
 }

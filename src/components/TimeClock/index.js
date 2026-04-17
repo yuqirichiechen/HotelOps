@@ -8,11 +8,11 @@ const TimeClock = () => {
   const [phone, setPhone] = useState('');
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [notif, setNotif] = useState(null);
 
-  const showToast = (type, text) => {
-    setToast({ type, text });
-    setTimeout(() => setToast(null), 3000);
+  const showNotif = (type, text) => {
+    setNotif({ type, text });
+    setTimeout(() => setNotif(null), 2000);
   };
 
   const reset = () => {
@@ -22,7 +22,7 @@ const TimeClock = () => {
 
   const handleKey = (val) => {
     if (val === 'clear') { reset(); return; }
-    if (val === 'back') { setPhone(p => p.slice(0, -1)); return; }
+    if (val === 'back')  { setPhone(p => p.slice(0, -1)); return; }
     setPhone(p => p.length < 10 ? p + val : p);
   };
 
@@ -34,7 +34,7 @@ const TimeClock = () => {
       if (!active) return;
       setLoading(false);
       if (res.success) setEmployee(res.employee);
-      else showToast('error', res.message);
+      else showNotif('error', res.message);
     });
     return () => { active = false; };
   }, [phone]);
@@ -43,23 +43,32 @@ const TimeClock = () => {
     setLoading(true);
     const res = await clockIn(phone);
     setLoading(false);
-    if (res.success) { showToast('success', 'Clocked in!'); setTimeout(reset, 2000); }
-    else showToast('error', res.message);
+    if (res.success) { showNotif('success', 'Clocked In!'); setTimeout(reset, 2000); }
+    else showNotif('error', res.message);
   };
 
   const handleClockOut = async () => {
     setLoading(true);
     const res = await clockOut(phone);
     setLoading(false);
-    if (res.success) { showToast('success', 'Clocked out!'); setTimeout(reset, 2000); }
-    else showToast('error', res.message);
+    if (res.success) { showNotif('success', 'Clocked Out!'); setTimeout(reset, 2000); }
+    else showNotif('error', res.message);
   };
 
   return (
     <div className="timeclock-page">
-      {toast && (
-        <div className={`toast toast-${toast.type}`}>{toast.text}</div>
+
+      {notif && (
+        <div className="notif-overlay" onClick={() => setNotif(null)}>
+          <div className={`notif-card notif-${notif.type}`}>
+            <div className="notif-icon">
+              {notif.type === 'success' ? '✓' : '✕'}
+            </div>
+            <div className="notif-message">{notif.text}</div>
+          </div>
+        </div>
       )}
+
       <div className="timeclock-content">
         <EmployeePanel
           phone={phone}
