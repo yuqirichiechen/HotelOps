@@ -48,10 +48,55 @@
 .timeclock-content {
   display: flex;
   height: 100%;
-  gap: 32px;
-  align-items: flex-start;
-  padding: 32px;
+  gap: 24px;
+  align-items: stretch;
+  padding: 28px;
   overflow: hidden;
+}
+
+/* Right column — clock widget stacked above keypad */
+.tc-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 300px;
+  flex-shrink: 0;
+}
+
+/* ── Analog clock widget ─────────────────────────────────────────────────── */
+
+.clock-widget {
+  background: white;
+  border-radius: 16px;
+  padding: 20px 20px 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.analog-clock {
+  width: 130px;
+  height: 130px;
+}
+
+.clock-digital {
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+  color: #1a365d;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.clock-date {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #a0aec0;
+  letter-spacing: 0.02em;
 }
 
 /* ── Employee panel ──────────────────────────────────────────────────────── */
@@ -59,20 +104,34 @@
 .employee-panel {
   flex: 1;
   background: white;
-  border-radius: 12px;
-  padding: 32px;
+  border-radius: 16px;
+  padding: 36px 32px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
+  justify-content: center;
 }
 
-.employee-panel h2 {
+.panel-greeting {
+  margin-bottom: 36px;
+}
+
+.panel-greeting h2 {
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 24px;
+  font-size: 36px;
   font-weight: 700;
   color: #1a365d;
-  letter-spacing: -0.01em;
-  margin-bottom: 28px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.panel-subtitle {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: #a0aec0;
+  font-style: italic;
 }
 
 .phone-display {
@@ -91,15 +150,16 @@
 }
 
 .phone-number {
-  font-size: 32px;
+  font-size: 34px;
   font-weight: 700;
-  letter-spacing: 4px;
+  letter-spacing: 6px;
   color: #2d3748;
   font-family: 'Courier New', monospace;
+  line-height: 1;
 }
 
 .employee-name-area {
-  min-height: 32px;
+  min-height: 28px;
 }
 
 .welcome-text {
@@ -133,35 +193,39 @@
 /* ── Keypad ──────────────────────────────────────────────────────────────── */
 
 .keypad {
+  flex: 1;
+  min-height: 0;
   background: white;
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 16px;
+  padding: 20px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-  width: 320px;
-  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .keypad-row {
+  flex: 1;
   display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .keypad-row:last-child { margin-bottom: 0; }
 
 .keypad-btn {
   flex: 1;
-  height: 72px;
+  height: 100%;
+  min-height: 0;
   border: none;
   border-radius: 10px;
   background: #f7fafc;
   color: #2d3748;
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.06);
   letter-spacing: 0.01em;
 }
 
@@ -692,42 +756,58 @@
     align-items: stretch;
   }
 
-  .employee-panel {
-    flex: none;
-    padding: 16px 16px 20px;
-    border-radius: 14px;
+  /* Right column becomes normal flow on mobile — clock hidden */
+  .tc-right-col {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    gap: 0;
   }
 
-  .employee-panel h2 {
-    font-size: 20px;
-    margin-bottom: 14px;
+  .clock-widget {
+    display: none;
+  }
+
+  .employee-panel {
+    flex: none;
+    padding: 16px 18px 18px;
+    border-radius: 14px;
+    justify-content: flex-start;
+  }
+
+  .panel-greeting {
+    margin-bottom: 16px;
+  }
+
+  .panel-greeting h2 {
+    font-size: 24px;
+  }
+
+  .panel-subtitle {
+    font-size: 13px;
   }
 
   .phone-display { margin-bottom: 10px; }
 
   .phone-number {
     font-size: 26px;
-    letter-spacing: 3px;
+    letter-spacing: 4px;
   }
 
   .employee-name-area {
-    min-height: 24px;
+    min-height: 22px;
   }
 
   .keypad {
     flex: 1;
     min-height: 0;
     width: 100%;
-    max-width: 100%;
     padding: 12px;
     border-radius: 14px;
-    display: flex;
-    flex-direction: column;
     gap: 0;
   }
 
   .keypad-row {
-    flex: 1;
     gap: 10px;
     margin-bottom: 0;
     padding-bottom: 10px;
@@ -736,8 +816,6 @@
   .keypad-row:last-child { padding-bottom: 0; }
 
   .keypad-btn {
-    height: 100%;
-    min-height: 0;
     font-size: 22px;
     border-radius: 10px;
   }

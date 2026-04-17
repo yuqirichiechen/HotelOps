@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Keypad from './Keypad';
 import EmployeePanel from './EmployeePanel';
+import ClockWidget from './ClockWidget';
 import DashboardFace from './DashboardFace';
 import { lookupEmployee, clockIn, clockOut, fetchHistory } from '../../services/timeClock';
 import './TimeClock.css';
@@ -100,7 +101,10 @@ const TimeClock = () => {
           <div className="tc-face tc-face-front">
             <div className="timeclock-content">
               <EmployeePanel phone={phone} employee={employee} loading={loading} />
-              <Keypad onKeyPress={handleKey} />
+              <div className="tc-right-col">
+                <ClockWidget />
+                <Keypad onKeyPress={handleKey} />
+              </div>
             </div>
           </div>
 

@@ -1,14 +1,24 @@
 import React from 'react';
 
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return  'Good evening';
+};
+
 const formatPhone = (digits) => {
-  if (!digits) return '___-___-____';
+  if (!digits) return '___  ___  ____';
   const d = digits.padEnd(10, '_');
-  return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6,10)}`;
+  return `${d.slice(0,3)}  ${d.slice(3,6)}  ${d.slice(6,10)}`;
 };
 
 const EmployeePanel = ({ phone, employee, loading }) => (
   <div className="employee-panel">
-    <h2>Employee Clock In / Out</h2>
+    <div className="panel-greeting">
+      <h2>{greeting()}</h2>
+      <p className="panel-subtitle">Enter your phone number to continue</p>
+    </div>
 
     <div className="phone-display">
       <label>Phone Number</label>
@@ -21,7 +31,9 @@ const EmployeePanel = ({ phone, employee, loading }) => (
       ) : employee ? (
         <span className="welcome-text">Welcome, <strong>{employee.name}</strong></span>
       ) : (
-        <span className="status-text">Enter your 10-digit phone number</span>
+        <span className="status-text">
+          {phone.length > 0 ? `${phone.length} / 10 digits` : 'Use the keypad on the right'}
+        </span>
       )}
     </div>
   </div>
