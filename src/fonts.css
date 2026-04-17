@@ -2,7 +2,7 @@
 
 @font-face {
   font-family: 'TiemposFine';
-  src: url('/fonts/TestTiemposFine-Regular-BF66457a50e8bc9.otf') format('opentype');
+  src: url('./fonts/TestTiemposFine-Regular-BF66457a50e8bc9.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -10,7 +10,7 @@
 
 @font-face {
   font-family: 'TiemposFine';
-  src: url('/fonts/TestTiemposFine-Medium-BF66457a50e62cd.otf') format('opentype');
+  src: url('./fonts/TestTiemposFine-Medium-BF66457a50e62cd.otf') format('opentype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -18,7 +18,7 @@
 
 @font-face {
   font-family: 'TiemposFine';
-  src: url('/fonts/TestTiemposFine-Bold-BF66457a510211b.otf') format('opentype');
+  src: url('./fonts/TestTiemposFine-Bold-BF66457a510211b.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -28,7 +28,7 @@
 
 @font-face {
   font-family: 'TiemposHeadline';
-  src: url('/fonts/TestTiemposHeadline-Regular-BF66457a508e31a.otf') format('opentype');
+  src: url('./fonts/TestTiemposHeadline-Regular-BF66457a508e31a.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -36,7 +36,7 @@
 
 @font-face {
   font-family: 'TiemposHeadline';
-  src: url('/fonts/TestTiemposHeadline-Medium-BF66457a509b4ec.otf') format('opentype');
+  src: url('./fonts/TestTiemposHeadline-Medium-BF66457a509b4ec.otf') format('opentype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -44,7 +44,7 @@
 
 @font-face {
   font-family: 'TiemposHeadline';
-  src: url('/fonts/TestTiemposHeadline-Semibold-BF66457a509040b.otf') format('opentype');
+  src: url('./fonts/TestTiemposHeadline-Semibold-BF66457a509040b.otf') format('opentype');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
@@ -52,7 +52,7 @@
 
 @font-face {
   font-family: 'TiemposHeadline';
-  src: url('/fonts/TestTiemposHeadline-Bold-BF66457a5113d17.otf') format('opentype');
+  src: url('./fonts/TestTiemposHeadline-Bold-BF66457a5113d17.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -60,7 +60,7 @@
 
 @font-face {
   font-family: 'TiemposHeadline';
-  src: url('/fonts/TestTiemposHeadline-Black-BF66457a50e385b.otf') format('opentype');
+  src: url('./fonts/TestTiemposHeadline-Black-BF66457a50e385b.otf') format('opentype');
   font-weight: 900;
   font-style: normal;
   font-display: swap;
@@ -70,7 +70,7 @@
 
 @font-face {
   font-family: 'TiemposText';
-  src: url('/fonts/TestTiemposText-Regular-BF66457a50cd521.otf') format('opentype');
+  src: url('./fonts/TestTiemposText-Regular-BF66457a50cd521.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -78,7 +78,7 @@
 
 @font-face {
   font-family: 'TiemposText';
-  src: url('/fonts/TestTiemposText-Medium-BF66457a508489a.otf') format('opentype');
+  src: url('./fonts/TestTiemposText-Medium-BF66457a508489a.otf') format('opentype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -86,7 +86,7 @@
 
 @font-face {
   font-family: 'TiemposText';
-  src: url('/fonts/TestTiemposText-Semibold-BF66457a4fed201.otf') format('opentype');
+  src: url('./fonts/TestTiemposText-Semibold-BF66457a4fed201.otf') format('opentype');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
@@ -94,7 +94,7 @@
 
 @font-face {
   font-family: 'TiemposText';
-  src: url('/fonts/TestTiemposText-Bold-BF66457a4f03c40.otf') format('opentype');
+  src: url('./fonts/TestTiemposText-Bold-BF66457a4f03c40.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
