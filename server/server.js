@@ -33,9 +33,10 @@ pool.query('SELECT NOW()').then(() => {
   console.error('Database connection error:', err.message);
 });
 
-// ── Health ────────────────────────────────────────────────────────────────────
+// ── Health / root ─────────────────────────────────────────────────────────────
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+app.get('/',          (req, res) => res.json({ status: 'HotelOps API running' }));
+app.get('/api/health',(req, res) => res.json({ ok: true }));
 
 // ── Employee clock-in / out ───────────────────────────────────────────────────
 

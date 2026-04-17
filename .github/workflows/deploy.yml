@@ -22,7 +22,7 @@ jobs:
 
       - name: Build
         env:
-          REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
+          REACT_APP_API_URL: https://distinguished-sheba-testing-only-438302ff.koyeb.app/api
         run: npm run build
 
       - name: Deploy
