@@ -1,4 +1,4 @@
-const API = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API = process.env.REACT_APP_API_URL || '/api';
 
 const post = async (path, body) => {
   const res = await fetch(`${API}${path}`, {

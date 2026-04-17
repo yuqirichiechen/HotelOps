@@ -1,23 +1,14 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
 
-// Always allow localhost for local dev; add FRONTEND_URL (GitHub Pages) for production
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-];
-if (process.env.FRONTEND_URL) allowedOrigins.push(process.env.FRONTEND_URL);
-
+// CORS only needed for local dev (frontend and API are same-origin on Koyeb)
 app.use(cors({
-  origin: (origin, callback) => {
-    // allow requests with no origin (curl, Postman, same-origin)
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS blocked: ${origin}`));
-  },
+  origin: ['http://localhost:3000', 'http://localhost:3001'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
 }));
 app.use(express.json());
@@ -30,7 +21,8 @@ const pool = new Pool({
 pool.query('SELECT NOW()').then(() => {
   console.log('Database connected');
 }).catch(err => {
-  console.error('Database connection error:', err.message);
+  console.error('Database connection error:', err);
+  if (!process.env.DATABASE_URL) console.error('DATABASE_URL env var is not set');
 });
 
 // ── Health / root ─────────────────────────────────────────────────────────────
@@ -186,6 +178,12 @@ app.get('/api/admin/employees/:id/time-entries', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
+// ── Serve React frontend ──────────────────────────────────────────────────────
+
+const buildPath = path.join(__dirname, 'build');
+app.use(express.static(buildPath));
+app.get('*', (req, res) => res.sendFile(path.join(buildPath, 'index.html')));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
