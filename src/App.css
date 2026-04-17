@@ -8,3 +8,10 @@
   overflow-y: auto;
   background: #f0f4f8;
 }
+
+@media (max-width: 768px) {
+  .app-main {
+    /* leave room for the fixed bottom tab bar */
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}

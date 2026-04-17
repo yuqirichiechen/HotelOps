@@ -183,6 +183,31 @@
   .timeclock-content {
     flex-direction: column;
     padding: 16px;
+    gap: 16px;
   }
-  .keypad { width: 100%; }
+
+  .keypad {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .keypad-btn {
+    height: 60px;
+    font-size: 20px;
+  }
+
+  .employee-panel {
+    padding: 20px;
+  }
+
+  .phone-number {
+    font-size: 26px;
+    letter-spacing: 3px;
+  }
+
+  .btn-clock-in,
+  .btn-clock-out {
+    padding: 14px;
+    font-size: 15px;
+  }
 }
