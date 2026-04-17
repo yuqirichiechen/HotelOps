@@ -25,10 +25,9 @@ pool.query('SELECT NOW()').then(() => {
   if (!process.env.DATABASE_URL) console.error('DATABASE_URL env var is not set');
 });
 
-// ── Health / root ─────────────────────────────────────────────────────────────
+// ── Health ────────────────────────────────────────────────────────────────────
 
-app.get('/',          (req, res) => res.json({ status: 'HotelOps API running' }));
-app.get('/api/health',(req, res) => res.json({ ok: true }));
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // ── Employee clock-in / out ───────────────────────────────────────────────────
 
