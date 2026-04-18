@@ -539,6 +539,144 @@
   font-weight: 300;
 }
 
+/* ── Department accordion ────────────────────────────────────────────────── */
+
+.dept-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dept-group {
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+
+.dept-group.dept-open {
+  box-shadow: 0 4px 18px rgba(0,0,0,0.1);
+}
+
+/* Full-width tappable header — 60px min height for thumb comfort */
+.dept-header {
+  width: 100%;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.dept-header:hover {
+  background: #f7fafc;
+}
+
+.dept-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #1a365d;
+  color: white;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dept-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dept-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a365d;
+  letter-spacing: -0.01em;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.dept-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dept-badge {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Chevron — rotates 90° when open */
+.dept-chevron {
+  font-size: 20px;
+  color: #a0aec0;
+  flex-shrink: 0;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  padding-bottom: 2px;
+  line-height: 1;
+}
+
+.dept-chevron.chevron-open {
+  transform: rotate(90deg);
+}
+
+/* CSS Grid row animation — smoother than max-height */
+.dept-employees {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dept-employees.dept-employees-open {
+  grid-template-rows: 1fr;
+}
+
+.dept-employees-inner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Employee cards inside accordion — flush edges, separator lines */
+.dept-employees-inner .emp-card {
+  border-radius: 0;
+  box-shadow: none;
+  border-top: 1px solid #f0f4f8;
+  padding: 13px 18px;
+}
+
+.dept-employees-inner .emp-card:hover {
+  background: #f7fafc;
+  box-shadow: none;
+  transform: none;
+}
+
+.dept-employees-inner .emp-card:last-child {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
 /* ── Employee detail ─────────────────────────────────────────────────────── */
 
 .emp-detail {
