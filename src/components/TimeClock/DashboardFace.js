@@ -84,7 +84,7 @@ const DaySheet = ({ day, entries, clockedIn, clockInTime, onClose }) => {
         <div className="daysheet-handle" onClick={onClose} />
         <div className="daysheet-header">
           <div className="daysheet-date">
-            {day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            {day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </div>
           <div className="daysheet-total">
             {fmtDuration(totalMins) || '—'}
@@ -134,11 +134,17 @@ const WeekStrip = ({ entries, loading, weekOffset, onWeekChange, onSelectDay, cl
     return mins;
   };
 
-  const weekLabel = weekOffset === 0
-    ? 'This week'
-    : weekOffset === -1
-    ? 'Last week'
-    : `${Math.abs(weekOffset)} weeks ago`;
+  const weekLabel = (() => {
+    if (weekOffset === 0)  return 'This week';
+    if (weekOffset === -1) return 'Last week';
+    const mon = days[0];
+    const sun = days[6];
+    const mMon = mon.toLocaleDateString('en-US', { month: 'short' });
+    const mSun = sun.toLocaleDateString('en-US', { month: 'short' });
+    return mMon === mSun
+      ? `${mMon} ${mon.getDate()} – ${sun.getDate()}`
+      : `${mMon} ${mon.getDate()} – ${mSun} ${sun.getDate()}`;
+  })();
 
   const weekTotal = days.reduce((sum, d) => sum + getDayMins(d), 0);
 
