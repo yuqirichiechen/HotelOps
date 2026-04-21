@@ -1,0 +1,927 @@
+/* ── Scheduling Manager ──────────────────────────────────────────────────────── */
+
+.sched-manager {
+  padding: 24px;
+  animation: adminSlideUp 0.3s ease;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sched-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sched-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sched-header-left h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a365d;
+  letter-spacing: -0.02em;
+}
+
+.sched-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* View toggle pill */
+.sched-view-toggle {
+  display: flex;
+  background: #f0f4f8;
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-btn {
+  padding: 7px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #718096;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.view-btn.active {
+  background: white;
+  color: #1a365d;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Navigation bar */
+.sched-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-arrow {
+  width: 36px;
+  height: 36px;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 22px;
+  color: #4a5568;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding-bottom: 1px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.nav-arrow:hover {
+  border-color: #1a365d;
+  color: #1a365d;
+}
+
+.nav-today {
+  padding: 8px 16px;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a5568;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.nav-today:hover {
+  border-color: #1a365d;
+  color: #1a365d;
+}
+
+.nav-label {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a365d;
+  letter-spacing: -0.01em;
+}
+
+.sched-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.sched-loading,
+.sched-empty {
+  font-family: 'TiemposText', Georgia, serif;
+  text-align: center;
+  padding: 60px 20px;
+  color: #a0aec0;
+  font-size: 15px;
+  font-style: italic;
+}
+
+/* ── Desktop Week Grid (Gantt) ───────────────────────────────────────────────── */
+
+.week-desktop-wrapper {
+  overflow: auto;
+  border-radius: 14px;
+  border: 1.5px solid #e2e8f0;
+  background: white;
+  max-height: calc(100vh - 240px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: 160px repeat(7, minmax(90px, 1fr));
+  min-width: 800px;
+}
+
+/* Top-left corner */
+.week-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  background: #f7fafc;
+  border-right: 1.5px solid #e2e8f0;
+  border-bottom: 1.5px solid #e2e8f0;
+  min-height: 60px;
+}
+
+/* Day column headers */
+.week-day-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f7fafc;
+  border-right: 1px solid #f0f4f8;
+  border-bottom: 1.5px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 6px;
+  gap: 3px;
+  min-height: 60px;
+  user-select: none;
+}
+
+.week-day-today {
+  background: #ebf8ff;
+  border-bottom-color: #3182ce;
+}
+
+.week-day-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #718096;
+}
+
+.week-day-today .week-day-name {
+  color: #3182ce;
+}
+
+.week-day-num {
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+  color: #2d3748;
+  line-height: 1;
+}
+
+.week-day-num-today {
+  color: #3182ce;
+  font-weight: 700;
+}
+
+.week-day-month {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 400;
+  color: #a0aec0;
+  letter-spacing: 0.04em;
+}
+
+/* Department separator rows */
+.week-dept-row {
+  grid-column: 1 / -1;
+  background: #f7fafc;
+  border-top: 1.5px solid #e2e8f0;
+  border-bottom: 1px solid #e8edf3;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #718096;
+  position: sticky;
+  left: 0;
+}
+
+.week-dept-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Employee name cell */
+.week-emp-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: white;
+  border-right: 1.5px solid #e2e8f0;
+  border-bottom: 1px solid #f0f4f8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 56px;
+}
+
+.week-emp-initial {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #edf2f7;
+  color: #4a5568;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.week-emp-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2d3748;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Shift cells */
+.week-shift-cell {
+  border-right: 1px solid #f0f4f8;
+  border-bottom: 1px solid #f0f4f8;
+  padding: 5px;
+  cursor: pointer;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  transition: background 0.12s ease;
+}
+
+.week-shift-cell:hover .week-cell-empty {
+  opacity: 1;
+  border-color: #cbd5e0;
+}
+
+.week-cell-empty {
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #cbd5e0;
+  opacity: 0;
+  border-radius: 7px;
+  border: 1.5px dashed transparent;
+  transition: opacity 0.12s ease, border-color 0.12s ease;
+}
+
+.drag-over {
+  background: #ebf8ff !important;
+}
+
+.drag-over .week-cell-empty {
+  opacity: 1;
+  border-color: #3182ce;
+  color: #3182ce;
+}
+
+/* Shift block */
+.week-shift-block {
+  width: 100%;
+  border-radius: 7px;
+  border: 1.5px solid;
+  padding: 6px 8px;
+  cursor: grab;
+  transition: box-shadow 0.12s ease, transform 0.12s ease, opacity 0.12s ease;
+}
+
+.week-shift-block:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.week-shift-block:active {
+  cursor: grabbing;
+}
+
+.week-shift-block.dragging {
+  opacity: 0.35;
+}
+
+.shift-time {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  display: block;
+}
+
+.week-empty-state {
+  grid-column: 1 / -1;
+  padding: 48px 24px;
+  text-align: center;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  color: #a0aec0;
+  font-style: italic;
+}
+
+/* ── Mobile Week View ────────────────────────────────────────────────────────── */
+
+.week-mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+}
+
+.mobile-day-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: x mandatory;
+}
+
+.mobile-day-tabs::-webkit-scrollbar { display: none; }
+
+.mobile-day-tab {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 14px;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  min-width: 50px;
+  scroll-snap-align: start;
+}
+
+.mobile-day-tab-active {
+  background: #1a365d;
+  border-color: #1a365d;
+  box-shadow: 0 4px 12px rgba(26, 54, 93, 0.25);
+}
+
+.mobile-day-tab-today:not(.mobile-day-tab-active) {
+  border-color: #3182ce;
+}
+
+.mobile-day-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #718096;
+}
+
+.mobile-day-tab-active .mobile-day-name { color: rgba(255, 255, 255, 0.75); }
+
+.mobile-day-num {
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+  color: #2d3748;
+  line-height: 1;
+}
+
+.mobile-day-tab-active .mobile-day-num { color: white; }
+
+.mobile-day-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3182ce;
+}
+
+.mobile-day-tab-active .mobile-day-dot { background: rgba(255, 255, 255, 0.7); }
+
+.mobile-active-date {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a365d;
+  letter-spacing: -0.01em;
+  padding: 2px 0 14px;
+  border-bottom: 1.5px solid #e2e8f0;
+  margin-bottom: 4px;
+}
+
+.mobile-emp-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mobile-dept-header {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a0aec0;
+  padding: 14px 2px 6px;
+}
+
+.mobile-emp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 2px;
+  border-bottom: 1px solid #f0f4f8;
+  min-height: 54px;
+}
+
+.mobile-emp-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #2d3748;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-shift-pill {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  background: transparent;
+}
+
+.mobile-shift-pill:hover { opacity: 0.8; }
+
+.mobile-assign-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: transparent;
+  color: #a0aec0;
+  border: 1.5px dashed #cbd5e0;
+  border-radius: 20px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mobile-assign-btn:hover {
+  border-color: #1a365d;
+  color: #1a365d;
+}
+
+/* ── Month View ──────────────────────────────────────────────────────────────── */
+
+.month-view {
+  padding-bottom: 16px;
+}
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.month-day-header {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a0aec0;
+  text-align: center;
+  padding: 8px 4px 10px;
+}
+
+.month-day-cell {
+  background: white;
+  border-radius: 10px;
+  min-height: 80px;
+  padding: 8px 8px 6px;
+  cursor: pointer;
+  border: 1.5px solid #f0f4f8;
+  transition: box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
+}
+
+.month-day-cell:hover {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+  border-color: #e2e8f0;
+}
+
+.month-day-other {
+  opacity: 0.3;
+  cursor: default;
+  background: #f7fafc;
+}
+
+.month-day-other:hover {
+  box-shadow: none;
+  transform: none;
+  border-color: #f0f4f8;
+}
+
+.month-day-today {
+  border-color: #3182ce;
+  background: #ebf8ff;
+}
+
+.month-day-num {
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: #2d3748;
+  display: block;
+  margin-bottom: 5px;
+  line-height: 1;
+}
+
+.month-day-num-today {
+  color: #3182ce;
+  font-weight: 700;
+}
+
+.month-day-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.month-shift-count {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.month-dept-dots {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.month-dept-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Legend */
+.month-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 16px 4px 0;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 16px;
+}
+
+.month-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: #4a5568;
+}
+
+.month-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Assign / Edit Modal ─────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+  animation: schedFadeIn 0.18s ease;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 24px;
+  }
+}
+
+.modal-card {
+  background: white;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 460px;
+  padding: 28px 24px 32px;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.15);
+  animation: schedSlideUp 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .modal-card {
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    animation: schedScaleIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+@keyframes schedFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes schedSlideUp {
+  from { transform: translateY(60%); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+@keyframes schedScaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.modal-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a365d;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+
+.modal-subtitle {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: #a0aec0;
+  font-style: italic;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f0f4f8;
+  border: none;
+  font-size: 20px;
+  color: #718096;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+  padding-bottom: 1px;
+}
+
+.modal-close:hover { background: #e2e8f0; }
+
+/* Templates */
+.modal-templates {
+  background: #f7fafc;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+}
+
+.modal-section-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a0aec0;
+  margin-bottom: 8px;
+}
+
+.modal-template-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.template-pill {
+  padding: 6px 14px;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 20px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2d3748;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.template-pill:hover {
+  border-color: #1a365d;
+  color: #1a365d;
+  background: #f0f4f8;
+}
+
+/* Body */
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.modal-notes {
+  font-family: 'TiemposText', Georgia, serif;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2d3748;
+  resize: vertical;
+  min-height: 64px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.modal-notes:focus { border-color: #63b3ed; }
+
+/* Footer */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f4f8;
+  flex-wrap: wrap;
+}
+
+.btn-remove-shift {
+  padding: 10px 16px;
+  background: transparent;
+  color: #c53030;
+  border: 1.5px solid #feb2b2;
+  border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-remove-shift:hover {
+  background: #fff5f5;
+  border-color: #c53030;
+}
+
+.delete-confirm-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.delete-confirm-inline > span {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: #c53030;
+  flex: 1;
+  min-width: 120px;
+}
+
+.btn-cancel-small {
+  padding: 8px 14px;
+  background: transparent;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #718096;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.btn-cancel-small:hover { border-color: #718096; }
+
+.btn-confirm-delete {
+  padding: 8px 14px;
+  background: #c53030;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-confirm-delete:hover:not(:disabled) { background: #9b2c2c; }
+.btn-confirm-delete:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sched-manager { padding: 14px; gap: 12px; }
+  .sched-header-left h2 { font-size: 20px; }
+  .nav-label { font-size: 14px; }
+  .month-day-cell { min-height: 64px; padding: 6px; }
+  .month-day-num { font-size: 14px; }
+  .month-shift-count { font-size: 10px; }
+}
+
+@media (max-width: 420px) {
+  .month-grid { gap: 3px; }
+  .month-day-header { font-size: 9px; padding: 6px 2px 8px; }
+  .month-day-cell { min-height: 56px; padding: 5px 4px; }
+  .modal-time-row { grid-template-columns: 1fr; }
+}

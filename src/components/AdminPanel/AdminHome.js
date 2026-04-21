@@ -2,7 +2,7 @@ import React from 'react';
 
 const MODULES = [
   { key: 'employees',    label: 'Employee Management', icon: '👥', desc: 'Add, edit and manage staff',          live: true  },
-  { key: 'scheduling',   label: 'Scheduling',          icon: '📅', desc: 'Shift scheduling & coverage',         live: false },
+  { key: 'scheduling',   label: 'Scheduling',          icon: '📅', desc: 'Assign shifts, view weekly & monthly calendar', live: true  },
   { key: 'forecasting',  label: 'Forecasting',         icon: '🏨', desc: 'Occupancy & demand forecasting',      live: false },
   { key: 'shift-notes',  label: 'Shift Notes',         icon: '📋', desc: 'Team communication & logs',          live: false },
   { key: 'reports',      label: 'Reports',             icon: '📊', desc: 'Payroll & performance reports',       live: false },

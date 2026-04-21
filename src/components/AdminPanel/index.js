@@ -3,6 +3,7 @@ import AdminLogin from './AdminLogin';
 import AdminHome from './AdminHome';
 import EmployeeManager from './EmployeeManager';
 import EmployeeDetail from './EmployeeDetail';
+import SchedulingManager from './Scheduling/index';
 import './AdminPanel.css';
 
 const AdminPanel = () => {
@@ -43,6 +44,12 @@ const AdminPanel = () => {
         <EmployeeManager
           onBack={() => setScreen('home')}
           onSelect={handleSelectEmp}
+          onLogout={handleLogout}
+        />
+      )}
+      {screen === 'scheduling' && (
+        <SchedulingManager
+          onBack={() => setScreen('home')}
           onLogout={handleLogout}
         />
       )}

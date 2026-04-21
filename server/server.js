@@ -281,6 +281,125 @@ app.get('/api/admin/employees/:id/time-entries', async (req, res) => {
   }
 });
 
+// ── Admin: scheduling ─────────────────────────────────────────────────────────
+
+app.get('/api/admin/shift-templates', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, d.name AS department_name
+       FROM shifts s
+       JOIN departments d ON s.department_id = d.department_id
+       ORDER BY d.name, s.start_time`
+    );
+    return res.json({ success: true, templates: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.get('/api/admin/schedule', async (req, res) => {
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ success: false, message: 'start and end dates required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         sc.schedule_id,
+         sc.user_id,
+         sc.scheduled_date::text,
+         sc.notes,
+         sc.shift_id,
+         COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+         COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time,
+         CASE WHEN sc.shift_id IS NOT NULL THEN sh.name ELSE 'Custom' END AS shift_name,
+         u.name           AS employee_name,
+         u.department_id,
+         d.name           AS department_name
+       FROM schedules sc
+       JOIN users u        ON sc.user_id        = u.user_id
+       JOIN departments d  ON u.department_id   = d.department_id
+       LEFT JOIN shifts sh ON sc.shift_id       = sh.shift_id
+       WHERE sc.scheduled_date BETWEEN $1 AND $2
+         AND u.active = true
+       ORDER BY d.name, u.name, sc.scheduled_date`,
+      [start, end]
+    );
+    return res.json({ success: true, schedules: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/admin/schedule', async (req, res) => {
+  const { user_id, scheduled_date, start_time, end_time, shift_id, notes } = req.body;
+  if (!user_id || !scheduled_date) {
+    return res.status(400).json({ success: false, message: 'user_id and scheduled_date required' });
+  }
+  if (!shift_id && (!start_time || !end_time)) {
+    return res.status(400).json({ success: false, message: 'Either shift_id or start_time + end_time required' });
+  }
+  try {
+    const { rows: dup } = await pool.query(
+      'SELECT schedule_id FROM schedules WHERE user_id = $1 AND scheduled_date = $2',
+      [user_id, scheduled_date]
+    );
+    if (dup.length) {
+      return res.status(409).json({ success: false, message: 'Employee already has a shift on this date' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO schedules (user_id, shift_id, custom_start_time, custom_end_time, scheduled_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING schedule_id`,
+      [user_id, shift_id || null, shift_id ? null : start_time, shift_id ? null : end_time, scheduled_date, notes || null]
+    );
+    return res.json({ success: true, schedule_id: rows[0].schedule_id });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.put('/api/admin/schedule/:id', async (req, res) => {
+  const { user_id, scheduled_date, start_time, end_time, shift_id, notes } = req.body;
+  if (!user_id || !scheduled_date || (!shift_id && (!start_time || !end_time))) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE schedules
+       SET user_id           = $1,
+           scheduled_date    = $2,
+           shift_id          = $3,
+           custom_start_time = $4,
+           custom_end_time   = $5,
+           notes             = $6
+       WHERE schedule_id = $7
+       RETURNING schedule_id`,
+      [user_id, scheduled_date, shift_id || null, shift_id ? null : start_time, shift_id ? null : end_time, notes || null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Schedule not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.delete('/api/admin/schedule/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM schedules WHERE schedule_id = $1',
+      [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ success: false, message: 'Schedule not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ── Serve React frontend ──────────────────────────────────────────────────────
 
 const buildPath = path.join(__dirname, 'build');
