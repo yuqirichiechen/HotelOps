@@ -400,6 +400,90 @@ app.delete('/api/admin/schedule/:id', async (req, res) => {
   }
 });
 
+// ── Shifts board (employee-facing) ───────────────────────────────────────────
+
+app.get('/api/shifts/daily', async (req, res) => {
+  const { date, userId } = req.query;
+  if (!date) return res.status(400).json({ success: false, message: 'date required' });
+  try {
+    const { rows: sv } = await pool.query(
+      "SELECT value FROM app_settings WHERE key = 'schedule_visibility'"
+    );
+    const visibility = sv[0]?.value || 'all';
+
+    if (visibility === 'none') {
+      return res.json({ success: true, schedules: [], visibility });
+    }
+
+    let query = `
+      SELECT
+        sc.schedule_id,
+        sc.user_id,
+        sc.scheduled_date::text,
+        COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+        COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time,
+        u.name           AS employee_name,
+        u.department_id,
+        d.name           AS department_name
+      FROM schedules sc
+      JOIN users u        ON sc.user_id       = u.user_id
+      JOIN departments d  ON u.department_id  = d.department_id
+      LEFT JOIN shifts sh ON sc.shift_id      = sh.shift_id
+      WHERE sc.scheduled_date = $1 AND u.active = true`;
+    const params = [date];
+
+    if (visibility === 'department' && userId) {
+      const { rows: ur } = await pool.query(
+        'SELECT department_id FROM users WHERE user_id = $1', [userId]
+      );
+      if (ur.length && ur[0].department_id) {
+        query += ' AND u.department_id = $2';
+        params.push(ur[0].department_id);
+      }
+    }
+
+    query += ' ORDER BY d.name, start_time';
+    const { rows } = await pool.query(query, params);
+    return res.json({ success: true, schedules: rows, visibility });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── App settings ──────────────────────────────────────────────────────────────
+
+app.get('/api/admin/settings', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT key, value FROM app_settings ORDER BY key');
+    const settings = {};
+    rows.forEach(r => { settings[r.key] = r.value; });
+    return res.json({ success: true, settings });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.put('/api/admin/settings', async (req, res) => {
+  const { schedule_visibility } = req.body;
+  if (!['all', 'department', 'none'].includes(schedule_visibility)) {
+    return res.status(400).json({ success: false, message: 'Invalid visibility value' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO app_settings (key, value)
+       VALUES ('schedule_visibility', $1)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [schedule_visibility]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ── Serve React frontend ──────────────────────────────────────────────────────
 
 const buildPath = path.join(__dirname, 'build');

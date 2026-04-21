@@ -4,10 +4,10 @@ import './Sidebar.css';
 
 const NAV = [
   { to: '/',            label: 'Time Clock',  icon: '⏱️', live: true  },
-  { to: '/scheduling',  label: 'Scheduling',  icon: '📅', live: false },
+  { to: '/shifts',      label: 'Shifts',      icon: '📋', live: true  },
   { to: '/forecasting', label: 'Forecasting', icon: '🏨', live: false },
-  { to: '/shift-notes', label: 'Shift Notes', icon: '📋', live: false },
-  { to: '/admin',       label: 'Admin',       icon: '⚙️', live: false, admin: true },
+  { to: '/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
+  { to: '/admin',       label: 'Admin',       icon: '⚙️', live: true,  admin: true },
 ];
 
 const Sidebar = () => (

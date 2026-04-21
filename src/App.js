@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Layout/Sidebar';
 import TimeClock from './components/TimeClock';
 import AdminPanel from './components/AdminPanel';
-import Scheduling from './components/Scheduling';
+import ShiftsView from './components/ShiftsView';
 import Forecasting from './components/Forecasting';
 import ShiftNotes from './components/ShiftNotes';
 import './App.css';
@@ -15,8 +15,8 @@ const App = () => (
       <main className="app-main">
         <Routes>
           <Route path="/"            element={<TimeClock />} />
+          <Route path="/shifts"      element={<ShiftsView />} />
           <Route path="/admin"       element={<AdminPanel />} />
-          <Route path="/scheduling"  element={<Scheduling />} />
           <Route path="/forecasting" element={<Forecasting />} />
           <Route path="/shift-notes" element={<ShiftNotes />} />
           <Route path="*"            element={<Navigate to="/" />} />
