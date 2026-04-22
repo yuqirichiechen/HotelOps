@@ -183,8 +183,8 @@
 }
 
 .sv-timeline-inner {
-  min-width: 720px;
-  padding: 0 20px;
+  min-width: 900px;
+  padding: 0 24px;
 }
 
 /* ── Time axis row ───────────────────────────────────────────────────────────── */
@@ -197,7 +197,7 @@
 }
 
 .sv-dept-label-spacer {
-  width: 130px;
+  width: 140px;
   flex-shrink: 0;
 }
 
@@ -205,12 +205,13 @@
   flex: 1;
   position: relative;
   height: 100%;
+  overflow: visible;
 }
 
 .sv-hour-label {
   position: absolute;
   bottom: 0;
-  transform: translateX(-50%);
+  /* transform is set inline per-label (first=left-align, last=right-align, rest=center) */
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 600;
@@ -261,7 +262,7 @@
 }
 
 .sv-dept-label {
-  width: 130px;
+  width: 140px;
   flex-shrink: 0;
   padding: 12px 14px;
   display: flex;
@@ -535,17 +536,135 @@
   letter-spacing: 0.07em;
 }
 
+/* ── Overnight-capped block indicator ────────────────────────────────────────── */
+
+.sv-block-continues {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.7;
+  letter-spacing: 0.04em;
+  align-self: flex-end;
+  margin-top: auto;
+}
+
+/* ── Mobile vertical timeline ────────────────────────────────────────────────── */
+
+.sv-mobile-view {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+}
+
+.sv-mobile-header-row {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: white;
+  border-bottom: 1.5px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.sv-mobile-gutter-spacer {
+  width: 44px;
+  flex-shrink: 0;
+}
+
+.sv-mobile-col-header {
+  flex: 1;
+  min-width: 72px;
+  padding: 7px 4px 6px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: #2d3748;
+  text-align: center;
+  border-top: 3px solid;
+  word-break: break-word;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sv-mobile-body {
+  display: flex;
+  flex-shrink: 0;
+  padding-bottom: 32px;
+}
+
+.sv-mobile-gutter {
+  width: 44px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sv-mobile-tick {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 9px;
+  font-weight: 600;
+  color: #a0aec0;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.sv-mobile-col {
+  flex: 1;
+  min-width: 72px;
+  position: relative;
+  border-left: 1px solid #e2e8f0;
+  background: white;
+}
+
+.sv-mobile-grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #f0f4f8;
+  pointer-events: none;
+}
+
+.sv-mobile-midnight-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #e53e3e;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.sv-mobile-block {
+  position: absolute;
+  border-radius: 6px;
+  border: 1.5px solid;
+  padding: 3px 5px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: 'TiemposText', Georgia, serif;
+  transition: box-shadow 0.12s ease;
+  min-height: 28px;
+}
+
+.sv-mobile-block:active {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
 /* ── Responsive ───────────────────────────────────────────────────────────────�� */
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .sv-cal-header { padding: 14px 16px 10px; }
   .sv-cal-greeting { font-size: 15px; }
   .sv-week-tabs { padding: 10px 12px; gap: 4px; }
   .sv-day-tab { min-width: 38px; padding: 8px 4px; }
   .sv-day-num { font-size: 17px; }
-  .sv-timeline-scroll { padding: 12px 0 24px; }
-  .sv-timeline-inner { padding: 0 12px; }
-  .sv-dept-label { width: 90px; font-size: 11px; padding: 10px 8px; }
-  .sv-dept-label-spacer { width: 90px; }
   .sv-popup-cards-2 { flex-direction: column; }
 }

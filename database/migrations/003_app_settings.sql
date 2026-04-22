@@ -9,8 +9,4 @@ CREATE TABLE app_settings (
 
 -- Default: all staff see all departments on the Shifts board
 INSERT INTO app_settings (key, value) VALUES ('schedule_visibility', 'all');
-
--- Auto-update updated_at
-CREATE TRIGGER trg_app_settings_updated_at
-  BEFORE UPDATE ON app_settings
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- updated_at is set manually via ON CONFLICT ... updated_at = NOW() in the API
