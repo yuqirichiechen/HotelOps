@@ -523,7 +523,7 @@
   flex-shrink: 0;
 }
 
-.sv-chip-own .sv-chip-initial { color: white; }
+.sv-chip-own .sv-chip-initial { background: var(--brand-bg); color: white; }
 
 .sv-popup-overlap-note {
   margin-top: 14px;
