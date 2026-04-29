@@ -106,7 +106,19 @@ export const AuthProvider = ({ children }) => {
     return { success: false, message: data?.message || 'Could not set PIN' };
   };
 
-  const value = { user, loading, loginStaff, loginAdmin, logout, setPin, refresh };
+  const changePin = async (currentPin, newPin) => {
+    const { ok, data } = await apiFetch('/auth/staff/change-pin', {
+      method: 'POST',
+      body:   JSON.stringify({ currentPin, newPin }),
+    });
+    if (ok && data?.success) {
+      await refresh();
+      return { success: true };
+    }
+    return { success: false, message: data?.message || 'Could not change PIN' };
+  };
+
+  const value = { user, loading, loginStaff, loginAdmin, logout, setPin, changePin, refresh };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 

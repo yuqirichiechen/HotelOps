@@ -1,23 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import TimeClock from './components/TimeClock';
 import AdminPanel from './components/AdminPanel';
 import ShiftsView from './components/ShiftsView';
-import Forecasting from './components/Forecasting';
 import ShiftNotes from './components/ShiftNotes';
 import StaffLogin from './pages/Login/StaffLogin';
 import AdminLogin from './pages/Login/AdminLogin';
+import Home from './pages/Home';
+import Settings from './pages/Settings';
+import SetPin from './pages/SetPin';
 import './App.css';
 
 const getInitialTheme = () => {
   const stored = localStorage.getItem('hotelops-theme');
   if (stored === 'dark' || stored === 'light') return stored;
-  return null; // null = follow OS
+  return null;
 };
 
-// Layout wrapper used by every route that should show the sidebar.
 const AppShell = ({ theme, onToggleTheme }) => (
   <div className="app-shell">
     <Sidebar theme={theme} onToggleTheme={onToggleTheme} />
@@ -47,7 +48,7 @@ const App = () => {
   };
 
   return (
-    <HashRouter>
+    <BrowserRouter>
       <AuthProvider>
         <Routes>
           {/* ── Public login routes ─────────────────────────────────────── */}
@@ -56,6 +57,11 @@ const App = () => {
           } />
           <Route path="/login/admin" element={
             <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>
+          } />
+
+          {/* ── Set-PIN interstitial (auth required, no sidebar) ────────── */}
+          <Route path="/set-pin" element={
+            <RequireRole role="staff"><SetPin theme={theme} onToggleTheme={toggleTheme} /></RequireRole>
           } />
 
           {/* ── Admin (role: admin) ─────────────────────────────────────── */}
@@ -73,17 +79,20 @@ const App = () => {
               <AppShell theme={theme} onToggleTheme={toggleTheme} />
             </RequireRole>
           }>
-            <Route path="/"            element={<TimeClock />} />
-            <Route path="/shifts"      element={<ShiftsView />} />
-            <Route path="/forecasting" element={<Forecasting />} />
+            <Route path="/"            element={<Home />} />
+            <Route path="/timeclock"   element={<TimeClock />} />
+            <Route path="/calendar"    element={<ShiftsView />} />
             <Route path="/shift-notes" element={<ShiftNotes />} />
+            <Route path="/settings"    element={<Settings theme={theme} onToggleTheme={toggleTheme} />} />
+            {/* Legacy /shifts → /calendar */}
+            <Route path="/shifts" element={<Navigate to="/calendar" replace />} />
           </Route>
 
           {/* ── Catch-all ───────────────────────────────────────────────── */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
-    </HashRouter>
+    </BrowserRouter>
   );
 };
 

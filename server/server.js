@@ -149,9 +149,13 @@ app.get('/api/me', requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT user_id, name, phone_number, role, department_id,
-              pin_required, pin_must_set
-       FROM users WHERE user_id = $1 AND active = true`,
+      `SELECT u.user_id, u.name, u.phone_number, u.role, u.department_id,
+              u.pin_required, u.pin_must_set,
+              (u.pin_hash IS NOT NULL) AS has_pin,
+              d.name AS department
+       FROM users u
+       LEFT JOIN departments d ON u.department_id = d.department_id
+       WHERE u.user_id = $1 AND u.active = true`,
       [req.auth.sub]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'User not found' });
@@ -162,22 +166,47 @@ app.get('/api/me', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/auth/staff/change-pin', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  const { currentPin, newPin } = req.body || {};
+  if (!newPin || !/^\d{4}$/.test(String(newPin))) {
+    return res.status(400).json({ success: false, message: 'New PIN must be 4 digits' });
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT pin_hash FROM users WHERE user_id = $1 AND active = true',
+      [req.auth.sub]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'User not found' });
+    const u = rows[0];
+
+    // If they already have a PIN, require the current one to change it.
+    if (u.pin_hash) {
+      if (!currentPin) {
+        return res.status(400).json({ success: false, message: 'Current PIN required' });
+      }
+      const ok = await verifyPin(currentPin, u.pin_hash);
+      if (!ok) return res.status(401).json({ success: false, message: 'Current PIN is incorrect' });
+    }
+
+    const hash = await hashPin(newPin);
+    await pool.query(
+      'UPDATE users SET pin_hash = $1, pin_must_set = false WHERE user_id = $2',
+      [hash, req.auth.sub]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.post('/api/auth/logout', requireAuth, (req, res) => {
   // Stateless JWT — client just discards token. Endpoint exists for symmetry
   // and a future server-side denylist if we add one.
   return res.json({ success: true });
-});
-
-// ── Admin auth (legacy — kept until AdminPanel/AdminLogin is removed) ────────
-
-app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body;
-  const validUser = process.env.ADMIN_USERNAME || 'admin';
-  const validPass = process.env.ADMIN_PASSWORD || 'admin';
-  if (username === validUser && password === validPass) {
-    return res.json({ success: true });
-  }
-  return res.status(401).json({ success: false, message: 'Invalid credentials' });
 });
 
 // ── Departments ───────────────────────────────────────────────────────────────
@@ -290,7 +319,183 @@ app.post('/api/clock-out', async (req, res) => {
   }
 });
 
-// ── User: shift history (last 4 weeks) ───────────────────────────────────────
+// ── Me (auth-based clock + dashboard data) ──────────────────────────────────
+
+app.post('/api/clock-in-self', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  try {
+    const userId = req.auth.sub;
+    const { rows: open } = await pool.query(
+      'SELECT entry_id FROM time_entries WHERE user_id = $1 AND clock_out_time IS NULL',
+      [userId]
+    );
+    if (open.length) return res.status(400).json({ success: false, message: 'Already clocked in' });
+
+    const { rows } = await pool.query(
+      'INSERT INTO time_entries (user_id, clock_in_time) VALUES ($1, NOW()) RETURNING *',
+      [userId]
+    );
+    return res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/clock-out-self', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  try {
+    const userId = req.auth.sub;
+    const { rows: open } = await pool.query(
+      `SELECT entry_id FROM time_entries
+       WHERE user_id = $1 AND clock_out_time IS NULL
+       ORDER BY clock_in_time DESC LIMIT 1`,
+      [userId]
+    );
+    if (!open.length) return res.status(400).json({ success: false, message: 'Not currently clocked in' });
+
+    const { rows } = await pool.query(
+      'UPDATE time_entries SET clock_out_time = NOW() WHERE entry_id = $1 RETURNING *',
+      [open[0].entry_id]
+    );
+    return res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Dashboard data for the authed staff user. weekStart=YYYY-MM-DD (Monday).
+app.get('/api/me/hours', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  const userId    = req.auth.sub;
+  const weekStart = req.query.weekStart;
+  if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    return res.status(400).json({ success: false, message: 'weekStart=YYYY-MM-DD required' });
+  }
+
+  try {
+    // Time entries this week (clock_in within the 7-day window)
+    const { rows: entries } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time,
+              EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
+       FROM time_entries
+       WHERE user_id = $1
+         AND clock_in_time >= $2::date
+         AND clock_in_time <  ($2::date + INTERVAL '7 days')
+       ORDER BY clock_in_time DESC`,
+      [userId, weekStart]
+    );
+
+    // Aggregate by day (Mon → Sun)
+    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const start    = new Date(weekStart + 'T00:00:00');
+    const days     = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const isoDate = d.toISOString().split('T')[0];
+      let hours = 0;
+      for (const e of entries) {
+        const eDate = new Date(e.clock_in_time).toISOString().split('T')[0];
+        if (eDate === isoDate) hours += parseFloat(e.hours);
+      }
+      days.push({ date: isoDate, dayName: dayNames[i], hours: Math.round(hours * 10) / 10 });
+    }
+    const totalHours = Math.round(days.reduce((s, d) => s + d.hours, 0) * 10) / 10;
+
+    // Scheduled hours this week (handles overnight shifts in JS)
+    const { rows: scheds } = await pool.query(
+      `SELECT
+         COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+         COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time
+       FROM schedules sc
+       LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id
+       WHERE sc.user_id = $1
+         AND sc.scheduled_date >= $2::date
+         AND sc.scheduled_date <  ($2::date + INTERVAL '7 days')`,
+      [userId, weekStart]
+    );
+    const minsBetween = (start, end) => {
+      if (!start || !end) return 0;
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      let mins = (eh * 60 + em) - (sh * 60 + sm);
+      if (mins < 0) mins += 24 * 60;
+      return mins;
+    };
+    const scheduledHours = Math.round(
+      scheds.reduce((s, r) => s + minsBetween(r.start_time, r.end_time), 0) / 60 * 10
+    ) / 10;
+
+    // Last 5 entries (any time)
+    const { rows: recent } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time,
+              EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
+       FROM time_entries
+       WHERE user_id = $1
+       ORDER BY clock_in_time DESC
+       LIMIT 5`,
+      [userId]
+    );
+    const recentShifts = recent.map(r => ({
+      entry_id:       r.entry_id,
+      clock_in_time:  r.clock_in_time,
+      clock_out_time: r.clock_out_time,
+      hours:          Math.round(parseFloat(r.hours) * 10) / 10,
+    }));
+
+    // Current open entry (still clocked in)?
+    const open = entries.find(e => !e.clock_out_time)
+              || recent.find(e => !e.clock_out_time);
+
+    return res.json({
+      success:             true,
+      weekStart,
+      days,
+      totalHours,
+      scheduledHours,
+      recentShifts,
+      currentlyClockedIn:  !!open,
+      openClockInTime:     open ? open.clock_in_time : null,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// History for the authed user (last 4 weeks). Used by TimeClock week strip.
+app.get('/api/me/history', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time,
+         CASE WHEN clock_out_time IS NOT NULL
+           THEN ROUND(EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 60)
+           ELSE NULL
+         END AS total_minutes
+       FROM time_entries
+       WHERE user_id = $1 AND clock_in_time >= NOW() - INTERVAL '4 weeks'
+       ORDER BY clock_in_time DESC`,
+      [req.auth.sub]
+    );
+    return res.json({ success: true, entries: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── User: shift history (legacy — phone-based, kept for old clients) ────────
 
 app.get('/api/user/:phone/history', async (req, res) => {
   try {
@@ -324,7 +529,9 @@ app.get('/api/admin/employees', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.user_id, u.name, u.phone_number, u.role, u.hire_date,
-              u.base_hourly_rate, u.active, u.department_id, d.name AS department
+              u.base_hourly_rate, u.active, u.department_id, d.name AS department,
+              u.pin_required, u.pin_must_set,
+              (u.pin_hash IS NOT NULL) AS has_pin
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
        ORDER BY u.name`
@@ -399,6 +606,47 @@ app.delete('/api/admin/employees/:id', async (req, res) => {
     if (check[0].active) return res.status(400).json({ success: false, message: 'Deactivate employee before deleting' });
     await pool.query('DELETE FROM users WHERE user_id = $1', [req.params.id]);
     return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── Admin: PIN management ────────────────────────────────────────────────────
+
+// Toggle whether an employee must enter a PIN at login.
+app.patch('/api/admin/employees/:id/pin', requireAuth, requireRole('admin'), async (req, res) => {
+  const { pin_required } = req.body || {};
+  if (typeof pin_required !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'pin_required (boolean) required' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET pin_required = $1
+       WHERE user_id = $2
+       RETURNING user_id, pin_required, pin_must_set, (pin_hash IS NOT NULL) AS has_pin`,
+      [pin_required, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    return res.json({ success: true, employee: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Reset an employee's PIN — clears pin_hash, sets pin_must_set=true.
+// Admin never sees the PIN; employee picks a new one on next login.
+app.post('/api/admin/employees/:id/pin/reset', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET pin_hash = NULL, pin_must_set = true
+       WHERE user_id = $1
+       RETURNING user_id, pin_required, pin_must_set, (pin_hash IS NOT NULL) AS has_pin`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    return res.json({ success: true, employee: rows[0] });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });

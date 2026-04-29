@@ -1,0 +1,352 @@
+/* Home — staff landing dashboard. */
+
+.home-page {
+  padding: 32px 36px 64px;
+  max-width: 1100px;
+  margin: 0 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  animation: home-fade-in 0.4s ease both;
+}
+
+@keyframes home-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Greeting ────────────────────────────────────────────────────────────── */
+
+.home-greeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.home-greeting-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.home-greeting-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.home-greeting-sub {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.home-greeting-sub .clocked-in-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live-dot);
+  margin-right: 6px;
+  animation: home-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes home-pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%     { opacity: 0.5; transform: scale(0.85); }
+}
+
+.home-clock-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 13px 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--brand-shadow);
+  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+}
+
+.home-clock-btn:hover  { background: var(--brand-hover); }
+.home-clock-btn:active { transform: translateY(1px); }
+
+/* ── Hero card ───────────────────────────────────────────────────────────── */
+
+.home-hero-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 18px;
+}
+
+.home-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.home-hero-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 2px;
+}
+
+.home-hero-week {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.home-hero-nav {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.home-hero-nav-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  min-width: 36px;
+}
+
+.home-hero-nav-btn:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+
+.home-hero-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.home-hero-stats {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.home-hero-total-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-hero-total-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.home-status-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.home-status-pill.tone-good    { background: var(--success-bg); color: var(--success-text); }
+.home-status-pill.tone-warn    { background: var(--warn-bg);    color: var(--warn-text); }
+.home-status-pill.tone-low,
+.home-status-pill.tone-neutral { background: var(--bg-raised);  color: var(--text-secondary); }
+
+.home-progress {
+  height: 6px;
+  width: 100%;
+  background: var(--bg-raised);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.home-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ── Bar chart ───────────────────────────────────────────────────────────── */
+
+.home-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  height: 140px;
+  align-items: end;
+}
+
+.home-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 6px;
+}
+
+.home-chart-bar-track {
+  flex: 1;
+  width: 70%;
+  max-width: 38px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.home-chart-bar {
+  width: 100%;
+  min-height: 3px;
+  background: var(--accent);
+  border-radius: 6px 6px 0 0;
+  animation: home-bar-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes home-bar-grow {
+  from { transform: scaleY(0); transform-origin: bottom; }
+  to   { transform: scaleY(1); transform-origin: bottom; }
+}
+
+.home-chart-col.is-today .home-chart-bar {
+  background: var(--accent-alt);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.home-chart-hours {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  height: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-chart-day {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.home-chart-col.is-today .home-chart-day {
+  color: var(--accent-alt);
+}
+
+/* ── Recent shifts ───────────────────────────────────────────────────────── */
+
+.home-recent-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.home-card-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 14px;
+}
+
+.home-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-recent-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.6fr 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.home-recent-row:first-child { border-top: none; }
+
+.home-recent-date {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.home-recent-times {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-recent-open {
+  color: var(--success-text);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.home-recent-hours {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-empty {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 20px 0;
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .home-page { padding: 22px 18px 48px; }
+  .home-greeting {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .home-greeting-title { font-size: 28px; }
+  .home-clock-btn { width: 100%; }
+  .home-hero-card { padding: 22px 20px; }
+  .home-hero-total-num { font-size: 48px; }
+  .home-recent-row { grid-template-columns: 1fr 1.2fr 60px; gap: 8px; }
+  .home-chart { height: 110px; gap: 6px; }
+  .home-chart-bar-track { width: 80%; }
+}

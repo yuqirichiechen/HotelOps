@@ -1,86 +1,70 @@
-import React, { useState, useEffect } from 'react';
-import Keypad from './Keypad';
-import EmployeePanel from './EmployeePanel';
-import ClockWidget from './ClockWidget';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth, apiFetch } from '../../auth';
 import DashboardFace from './DashboardFace';
-import { lookupEmployee, clockIn, clockOut, fetchHistory } from '../../services/timeClock';
 import './TimeClock.css';
 
+// Post-auth TimeClock: no keypad. The user is already known via the auth
+// context; we render DashboardFace directly with their data and use the
+// auth-based clock-in/out endpoints.
+
 const TimeClock = () => {
-  const [phone,      setPhone]      = useState('');
-  const [employee,   setEmployee]   = useState(null);
-  const [history,    setHistory]    = useState([]);
-  const [histLoad,   setHistLoad]   = useState(false);
-  const [loading,    setLoading]    = useState(false);
-  const [flipped,    setFlipped]    = useState(false);
-  const [notif,      setNotif]      = useState(null);
+  const { user } = useAuth();
+  const nav      = useNavigate();
+
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy,    setBusy]    = useState(false);
+  const [notif,   setNotif]   = useState(null);
 
   const showNotif = (type, text) => {
     setNotif({ type, text });
     setTimeout(() => setNotif(null), 2200);
   };
 
-  const reset = () => {
-    setFlipped(false);
-    setTimeout(() => {
-      setPhone('');
-      setEmployee(null);
-      setHistory([]);
-    }, 480);
-  };
-
-  const handleKey = (val) => {
-    if (flipped) return;
-    if (val === 'clear') { setPhone(''); setEmployee(null); return; }
-    if (val === 'back')  { setPhone(p => p.slice(0, -1)); return; }
-    setPhone(p => p.length < 10 ? p + val : p);
-  };
-
-  useEffect(() => {
-    if (phone.length !== 10) { if (!flipped) setEmployee(null); return; }
-    let active = true;
+  const refresh = useCallback(async () => {
     setLoading(true);
-    lookupEmployee(phone).then(res => {
-      if (!active) return;
-      setLoading(false);
-      if (res.success) {
-        setEmployee(res.employee);
-        setFlipped(true);
-        setHistLoad(true);
-        fetchHistory(phone).then(data => {
-          if (!active) return;
-          setHistory(data.entries || []);
-          setHistLoad(false);
-        });
-      } else {
-        showNotif('error', res.message);
-      }
-    });
-    return () => { active = false; };
-  }, [phone]); // eslint-disable-line react-hooks/exhaustive-deps
+    const { data } = await apiFetch('/me/history');
+    if (data?.success) setEntries(data.entries || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const openEntry   = entries.find(e => !e.clock_out_time);
+  const clockedIn   = !!openEntry;
+  const clockInTime = openEntry?.clock_in_time;
 
   const handleClockIn = async () => {
-    setLoading(true);
-    const res = await clockIn(phone);
-    setLoading(false);
-    if (res.success) {
+    setBusy(true);
+    const { ok, data } = await apiFetch('/clock-in-self', { method: 'POST' });
+    setBusy(false);
+    if (ok && data?.success) {
       showNotif('success', 'Clocked In!');
-      setTimeout(reset, 2200);
+      refresh();
     } else {
-      showNotif('error', res.message);
+      showNotif('error', data?.message || 'Clock in failed');
     }
   };
 
   const handleClockOut = async () => {
-    setLoading(true);
-    const res = await clockOut(phone);
-    setLoading(false);
-    if (res.success) {
+    setBusy(true);
+    const { ok, data } = await apiFetch('/clock-out-self', { method: 'POST' });
+    setBusy(false);
+    if (ok && data?.success) {
       showNotif('success', 'Clocked Out!');
-      setTimeout(reset, 2200);
+      refresh();
     } else {
-      showNotif('error', res.message);
+      showNotif('error', data?.message || 'Clock out failed');
     }
+  };
+
+  // DashboardFace expects an `employee` shape — adapt the authed user into it.
+  const employee = {
+    name:          user?.name || '',
+    role:          user?.role || 'employee',
+    clocked_in:    clockedIn,
+    clock_in_time: clockInTime,
   };
 
   return (
@@ -94,35 +78,15 @@ const TimeClock = () => {
         </div>
       )}
 
-      <div className="tc-flip-container">
-        <div className={`tc-flip-card ${flipped ? 'flipped' : ''}`}>
-
-          {/* Front — keypad */}
-          <div className="tc-face tc-face-front">
-            <div className="timeclock-content">
-              <EmployeePanel phone={phone} employee={employee} loading={loading} />
-              <ClockWidget />
-              <Keypad onKeyPress={handleKey} />
-            </div>
-          </div>
-
-          {/* Back — personal dashboard */}
-          <div className="tc-face tc-face-back">
-            {employee && (
-              <DashboardFace
-                employee={employee}
-                entries={history}
-                histLoading={histLoad}
-                loading={loading}
-                onClockIn={handleClockIn}
-                onClockOut={handleClockOut}
-                onBack={reset}
-              />
-            )}
-          </div>
-
-        </div>
-      </div>
+      <DashboardFace
+        employee={employee}
+        entries={entries}
+        histLoading={loading}
+        loading={busy}
+        onClockIn={handleClockIn}
+        onClockOut={handleClockOut}
+        onBack={() => nav('/')}
+      />
     </div>
   );
 };

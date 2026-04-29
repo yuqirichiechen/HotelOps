@@ -6,11 +6,11 @@ import EmployeeManager from './EmployeeManager';
 import EmployeeDetail from './EmployeeDetail';
 import SchedulingManager from './Scheduling/index';
 import AdminSettings from './AdminSettings';
+import Forecasting from '../Forecasting';
 import './AdminPanel.css';
 
-// AdminPanel is now route-gated by <RequireRole role="admin"> in App.js.
-// The internal AdminLogin component (still on disk for reference) is no longer
-// rendered. Logout goes through the AuthProvider.
+// AdminPanel is route-gated by <RequireRole role="admin"> in App.js.
+// Logout goes through the AuthProvider.
 const AdminPanel = () => {
   const { logout } = useAuth();
   const nav        = useNavigate();
@@ -55,6 +55,14 @@ const AdminPanel = () => {
           onBack={() => setScreen('home')}
           onLogout={handleLogout}
         />
+      )}
+      {screen === 'forecasting' && (
+        <div style={{ padding: '24px 24px 60px' }}>
+          <div className="emp-detail-topbar">
+            <button className="btn-back" onClick={() => setScreen('home')}>‹ Back</button>
+          </div>
+          <Forecasting />
+        </div>
       )}
       {screen === 'home' && (
         <AdminHome onNavigate={setScreen} onLogout={handleLogout} />

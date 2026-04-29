@@ -55,20 +55,21 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
   Stored in `localStorage` on the client; sent as `Authorization: Bearer <jwt>`.
 - **Routes guarded by `RequireRole`** wrapper using `useAuth()` context.
 
-### Routing
+### Routing (Sprint 2 — current)
 
-- `/` (Home) — staff dashboard: greeting + hours breakdown (Mon–Sun week).
-- `/timeclock` — clock in/out (no more phone entry; uses logged-in user).
-- `/calendar` — was `/shifts`; renamed UI label, route migrated.
+- `/` (Home) — staff dashboard: greeting + hours + bar chart + recent shifts.
+- `/timeclock` — clock in/out screen (uses authed user; no keypad).
+- `/calendar` — was `/shifts`; route renamed, ShiftsView component unchanged.
+  `/shifts` now redirects to `/calendar` for back-compat.
 - `/shift-notes` — placeholder.
 - `/settings` — theme toggle, profile (read-only), Change PIN, Sign Out.
-- `/admin/*` — existing AdminPanel internals, role-gated.
-- `/login/staff`, `/login/admin` — entry points.
-- **Forecasting is moving under Admin** (drops from staff sidebar).
-- **Multi-tenant strategy**: path prefix (`/<tenant>/...`). Architect routes
-  with this in mind; param can be added later in a single config change.
-- **Router type**: `BrowserRouter` (migrating from `HashRouter`). Requires SPA
-  404 fallback when deployed to a static host.
+- `/set-pin` — interstitial when `pin_must_set === true`.
+- `/admin/*` — AdminPanel internals (Forecasting accessible from here, role-gated).
+- `/login/staff`, `/login/admin` — public entry points.
+- **Multi-tenant strategy**: path prefix (`/<tenant>/...`). Param can be added later in a single config change.
+- **Router**: `BrowserRouter`. The Express server's `app.get('*')` SPA
+  fallback handles deep-link refreshes in production. CRA dev server handles
+  this automatically.
 
 ### Sidebar (final order)
 
@@ -88,66 +89,78 @@ Admin tab only when `user.role === 'admin'`.
 hotelops/
 ├── claude-instructions.md          ← THIS FILE. Maintain on every iteration.
 ├── timeline.md                     ← capstone milestones (separate doc).
-├── package.json                    ← frontend (CRA).
+├── package.json                    ← frontend (CRA + react-router-dom).
 ├── server/
-│   ├── package.json                ← backend deps (express, pg, cors, dotenv).
+│   ├── package.json                ← express, pg, cors, dotenv, jsonwebtoken, bcryptjs.
 │   ├── server.js                   ← all API routes (single file).
-│   ├── auth.js                     ← (NEW Sprint 1) JWT + middleware.
+│   ├── auth.js                     ← JWT + middleware (signToken, requireAuth, requireRole).
 │   ├── config/
-│   │   └── admins.json             ← (NEW Sprint 1) admin credentials.
+│   │   └── admins.json             ← admin credentials (plaintext, private repo).
 │   └── .env.example
 ├── database/
-│   ├── schema.sql                  ← full canonical schema (PostgreSQL 16).
+│   ├── schema.sql                  ← canonical PostgreSQL 16 schema.
 │   ├── teardown.sql                ← drops everything.
 │   └── migrations/
 │       ├── 002_schedule_custom_times.sql
 │       ├── 003_app_settings.sql
-│       └── 004_auth_columns.sql    ← (NEW Sprint 1) PIN columns on users.
+│       └── 004_auth_columns.sql    ← PIN columns on users.
 ├── src/
 │   ├── index.js                    ← React entry. Renders <App />.
-│   ├── App.js                      ← Router + theme management.
-│   ├── App.css
+│   ├── App.js                      ← BrowserRouter, AuthProvider, route guards, theme management.
+│   ├── App.css                     ← .app-shell / .app-main layout.
 │   ├── index.css                   ← global resets + body font.
-│   ├── theme.css                   ← CSS custom properties (light + dark).
+│   ├── theme.css                   ← CSS custom properties (light + dark themes).
 │   ├── fonts.css                   ← @font-face for Tiempos family.
-│   ├── auth/                       ← (NEW Sprint 1) AuthProvider, RequireRole, useAuth.
+│   ├── auth/
+│   │   └── index.js                ← AuthProvider, useAuth, RequireRole, RedirectIfAuthed, apiFetch.
+│   ├── config/
+│   │   └── tenant.js               ← single tenant config { slug, name }; multi-tenant-ready.
 │   ├── pages/
-│   │   ├── Login/                  ← (NEW Sprint 1) staff + admin login pages.
-│   │   ├── Home/                   ← (NEW Sprint 2) dashboard.
-│   │   └── Settings/               ← (NEW Sprint 2) settings page.
+│   │   ├── Login/
+│   │   │   ├── StaffLogin.js       ← /login/staff (phone + optional PIN).
+│   │   │   ├── AdminLogin.js       ← /login/admin (username + password).
+│   │   │   └── Login.css           ← shared login styling.
+│   │   ├── Home/                   ← / dashboard (greeting + hours + chart + recent shifts).
+│   │   │   ├── index.js
+│   │   │   └── Home.css
+│   │   ├── Settings/               ← /settings (theme, profile, change PIN, sign out).
+│   │   │   ├── index.js
+│   │   │   └── Settings.css
+│   │   └── SetPin/                 ← /set-pin interstitial (post admin reset).
+│   │       └── index.js            ← reuses Login.css.
 │   ├── components/
 │   │   ├── Layout/
-│   │   │   ├── Sidebar.js          ← desktop sidebar + mobile bottom nav.
+│   │   │   ├── Sidebar.js          ← desktop sidebar + mobile bottom nav (theme toggle only).
 │   │   │   └── Sidebar.css
-│   │   ├── TimeClock/              ← clock in/out screen (will lose phone-entry step).
-│   │   │   ├── index.js            ← container; flip card UI.
-│   │   │   ├── ClockWidget.js, DashboardFace.js, EmployeePanel.js, Keypad.js
-│   │   │   └── TimeClock.css       ← .tc-flip-container / .tc-flip-card primitive.
-│   │   ├── ShiftsView/             ← will be relabelled "Calendar" in sidebar.
+│   │   ├── TimeClock/              ← /timeclock — uses authed user, no keypad.
+│   │   │   ├── index.js            ← thin container around DashboardFace.
+│   │   │   ├── DashboardFace.js    ← clock card + week strip + day sheet.
+│   │   │   ├── ClockWidget.js, EmployeePanel.js, Keypad.js  ← legacy, no longer rendered (kept for now).
+│   │   │   └── TimeClock.css
+│   │   ├── ShiftsView/             ← /calendar (sidebar label; component name unchanged).
 │   │   │   ├── index.js, ShiftsCalendar.js, ShiftsView.css
 │   │   ├── ShiftNotes/index.js     ← placeholder.
-│   │   ├── Forecasting/index.js    ← will move under AdminPanel.
+│   │   ├── Forecasting/index.js    ← now reachable from /admin → Forecasting (ComingSoon placeholder).
 │   │   ├── AdminPanel/
-│   │   │   ├── index.js            ← top-level admin shell. Currently gates with internal AdminLogin (see "removing" below).
-│   │   │   ├── AdminLogin.js       ← OLD admin login form. Will be replaced by /login/admin route + RequireRole.
-│   │   │   ├── AdminHome.js        ← admin landing (module grid).
-│   │   │   ├── AdminSettings.js    ← admin settings.
-│   │   │   ├── EmployeeManager.js  ← employee list. Will gain PIN toggle + reset buttons (Sprint 2).
-│   │   │   ├── EmployeeDetail.js
-│   │   │   ├── AdminPanel.css
+│   │   │   ├── index.js            ← top-level admin shell, route-gated by RequireRole.
+│   │   │   ├── AdminHome.js        ← admin module grid. Forecasting now `live: true`.
+│   │   │   ├── AdminSettings.js    ← admin app settings (visibility, etc.).
+│   │   │   ├── EmployeeManager.js  ← employee list (groups by department).
+│   │   │   ├── EmployeeDetail.js   ← per-employee detail; PIN toggle + Reset PIN here.
+│   │   │   ├── AdminPanel.css      ← appended .emp-pin-* and .btn-pin-reset rules.
 │   │   │   └── Scheduling/         ← admin scheduling (calendar views).
 │   │   │       ├── index.js, AssignModal.js, MonthView.js, WeekView.js, Scheduling.css
 │   │   ├── AdminDashboard/index.js ← appears unused; verify before touching.
-│   │   ├── Scheduling/index.js     ← appears unused (separate from AdminPanel/Scheduling); verify.
+│   │   ├── Scheduling/index.js     ← appears unused (different from AdminPanel/Scheduling).
 │   │   └── shared/
 │   │       ├── ComingSoon.js, ComingSoon.css
 │   ├── services/
-│   │   └── timeClock.js            ← fetch wrappers for /api/authenticate, /api/clock-in, /api/clock-out, /api/user/:phone/history.
+│   │   └── timeClock.js            ← LEGACY fetch wrappers (phone-based); not used post-Sprint 2.
 │   └── lib/
 │       └── supabase.js             ← appears unused (server uses pg); verify.
 ├── public/index.html
 ├── build/                          ← gitignored; CRA output.
-├── tiempos-font-family/            ← font assets (also in src/fonts/).
+├── tiempos-font-family/            ← font assets.
 ├── Procfile                        ← Heroku-style start command.
 ├── Dockerfile, .dockerignore
 └── .github/                        ← CI workflows.
@@ -169,33 +182,44 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 
 ## 6. API surface
 
-**Existing** (in `server/server.js`):
+### Auth (JWT, HS256, 8h expiry)
+
+- `POST /api/auth/staff/login`           body: `{ phone, pin? }` → `{ token, user }`
+- `POST /api/auth/admin/login`           body: `{ username, password }` → `{ token, user }`
+- `POST /api/auth/staff/set-pin`         body: `{ pin }` (auth) → `{ ok }`
+- `POST /api/auth/staff/change-pin`      body: `{ currentPin, newPin }` (auth)
+- `POST /api/auth/logout`                auth → `{ ok }` (stateless; client discards token)
+- `GET  /api/me`                         auth → current user (with department, has_pin, etc.)
+
+### Me (authed staff dashboard / clock)
+
+- `POST /api/clock-in-self`              auth (staff) → start a time entry for the authed user
+- `POST /api/clock-out-self`             auth (staff) → close the open entry for the authed user
+- `GET  /api/me/hours?weekStart=YYYY-MM-DD`  auth (staff) → days, totalHours, scheduledHours, recentShifts, currentlyClockedIn
+- `GET  /api/me/history`                 auth (staff) → time_entries from the last 4 weeks
+
+### Admin (most are unprotected for now; pin endpoints are protected)
 
 - `GET  /api/health`
-- `POST /api/admin/login` ← OLD plain login. Will be replaced by `/api/auth/admin/login`.
-- `POST /api/authenticate` ← phone-only employee lookup (legacy clock-in flow).
-- `POST /api/clock-in`, `POST /api/clock-out`
-- `GET  /api/user/:phone/history`
 - `GET  /api/admin/departments`
-- `GET  /api/admin/employees`, `POST /api/admin/employees`, `PUT /api/admin/employees/:id`, `PATCH /api/admin/employees/:id/status`, `DELETE /api/admin/employees/:id`
+- `GET  /api/admin/employees`            (returns pin_required, pin_must_set, has_pin)
+- `POST /api/admin/employees`
+- `PUT  /api/admin/employees/:id`
+- `PATCH /api/admin/employees/:id/status`
+- `DELETE /api/admin/employees/:id`
+- `PATCH /api/admin/employees/:id/pin`        auth (admin) — body: `{ pin_required }`
+- `POST  /api/admin/employees/:id/pin/reset`  auth (admin) — clears hash, sets `pin_must_set = true`
 - `GET  /api/admin/employees/:id/time-entries`
 - `GET  /api/admin/shift-templates`
 - `GET  /api/admin/schedule`, `POST /api/admin/schedule`, `PUT /api/admin/schedule/:id`, `DELETE /api/admin/schedule/:id`
 - `GET  /api/shifts/daily`
 - `GET  /api/admin/settings`, `PUT /api/admin/settings`
 
-**Planned (Sprint 1)**:
+### Legacy (kept for backward compat; phone-based clock-in flow)
 
-- `POST /api/auth/staff/login`        body: `{ phone, pin? }` → `{ token, user }`
-- `POST /api/auth/admin/login`        body: `{ username, password }` → `{ token, user }`
-- `POST /api/auth/staff/set-pin`      body: `{ pin }` (auth required) → `{ ok }`
-- `GET  /api/me`                      auth required → `{ user }`
-- `POST /api/auth/logout`             auth required → `{ ok }` (stateless; client just discards token)
-
-**Planned (Sprint 2)**:
-
-- `POST /api/admin/employees/:id/pin/toggle` body: `{ pin_required }`
-- `POST /api/admin/employees/:id/pin/reset`  → clears `pin_hash`, sets `pin_must_set = true`
+- `POST /api/authenticate`               phone-only employee lookup
+- `POST /api/clock-in`, `POST /api/clock-out`     (phone-based)
+- `GET  /api/user/:phone/history`        phone-based history
 
 ## 7. Conventions & gotchas
 
@@ -219,10 +243,21 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 - **Clock-in API is currently phone-based**. After Sprint 1, the clock-in
   buttons will pass user_id from the authed session, not phone. Keep the
   legacy `/api/authenticate` route alive until Sprint 2 cutover.
-- **`adminAuth` localStorage flag** (set by old AdminLogin) is going away.
-  Replaced by `hotelops-token` (JWT) + `useAuth()`.
-- **Theme key in localStorage**: `hotelops-theme` (`'light' | 'dark' | null`).
-  `null` = follow OS.
+- **localStorage keys**:
+  - `hotelops-token` — JWT, set by AuthProvider, cleared on logout.
+  - `hotelops-theme` — `'light' | 'dark' | null` (null = follow OS).
+  - The old `adminAuth` flag is gone.
+- **`apiFetch`** in `src/auth/index.js` is the canonical fetch wrapper —
+  always use it for new client API calls. It auto-attaches the
+  `Authorization: Bearer` header and returns `{ ok, status, data }`.
+- **Existing AdminPanel sub-components still use raw `fetch()`** (no token
+  attached). Their endpoints (`/api/admin/employees` CRUD, scheduling,
+  settings) are currently unprotected. **The new admin PIN endpoints are
+  protected** with `requireRole('admin')` and use `apiFetch`. Sprint 3
+  cleanup migrates the rest.
+- **Auth-required endpoints** (Sprint 1+2): all `/api/auth/*` (except the
+  two login routes), `/api/me*`, `/api/clock-in-self`, `/api/clock-out-self`,
+  and `/api/admin/employees/:id/pin*`.
 
 ## 8. Files Claude should leave alone
 
@@ -311,14 +346,82 @@ existing route tree.
 2. Set `JWT_SECRET` in `server/.env` (any long random string for dev).
 3. Have at least one row in `users` with a real `phone_number` to test staff login.
 
-**Sprint 2 backlog:**
-- Migrate `HashRouter` → `BrowserRouter` + SPA 404 fallback.
-- New Home (`/`) dashboard: greeting + hours breakdown.
-- Rename Shifts → Calendar in sidebar; reshape sidebar to final order.
-- Settings page: theme toggle, profile (read-only), Change PIN, Sign Out.
-  Move sign-out out of sidebar footer.
-- TimeClock: drop phone-keypad; clock-in becomes a single button using
-  the authed user.
-- AdminPanel: PIN toggle + reset buttons in EmployeeManager.
-- Remove dead code: `AdminPanel/AdminLogin.js`, legacy `/api/admin/login`,
-  `localStorage.adminAuth`.
+### 2026-04-28 — Sprint 2 complete: routes, dashboard, settings, PIN management
+
+Built the staff-side experience end-to-end: new Home dashboard, simplified
+TimeClock, Settings with self-service PIN change, admin PIN management, and
+moved Forecasting under /admin. Migrated to BrowserRouter. All compile-clean.
+
+**Files added:**
+- `src/pages/Home/{index.js, Home.css}` — greeting, hero stat, day bar chart,
+  recent shifts, status pill.
+- `src/pages/Settings/{index.js, Settings.css}` — theme toggle, profile,
+  Change PIN, Sign out.
+- `src/pages/SetPin/index.js` — forced "set your PIN" interstitial (uses
+  Login.css).
+
+**Files modified:**
+- `database/schema.sql`: no further changes (migration 004 still authoritative).
+- `server/server.js`:
+  - Added `POST /api/clock-in-self`, `POST /api/clock-out-self`,
+    `GET /api/me/hours`, `GET /api/me/history`,
+    `POST /api/auth/staff/change-pin`,
+    `PATCH /api/admin/employees/:id/pin`,
+    `POST /api/admin/employees/:id/pin/reset`.
+  - `GET /api/admin/employees` and `GET /api/me` now return `pin_required`,
+    `pin_must_set`, `has_pin` (and `department` name on `/api/me`).
+  - **Removed** legacy `POST /api/admin/login`.
+- `src/auth/index.js` — added `changePin` to AuthContext.
+- `src/App.js` — `HashRouter` → `BrowserRouter`. New routes: `/timeclock`,
+  `/calendar`, `/settings`, `/set-pin`. `/shifts` → 301 redirect to `/calendar`.
+  Forecasting dropped from staff route tree.
+- `src/components/Layout/Sidebar.js` — final order: Home → Time Clock →
+  Calendar → Shift Notes → Settings (+ Admin tab if admin). Sign-out button
+  removed (Settings owns it).
+- `src/components/TimeClock/index.js` — rewrite: no keypad, uses authed user
+  + `apiFetch('/me/history')` + `/clock-in-self` / `/clock-out-self`. The
+  `Keypad.js`, `EmployeePanel.js`, `ClockWidget.js` still on disk but unused.
+- `src/components/AdminPanel/index.js` — renders `<Forecasting />` when
+  `screen === 'forecasting'`.
+- `src/components/AdminPanel/AdminHome.js` — Forecasting module now `live: true`.
+- `src/components/AdminPanel/EmployeeDetail.js` — added PIN section
+  (toggle "PIN required", "Reset PIN" button) using `apiFetch`.
+- `src/components/AdminPanel/AdminPanel.css` — appended `.emp-pin-*` and
+  `.btn-pin-reset` styles.
+
+**Files deleted:**
+- `src/components/AdminPanel/AdminLogin.js` — dead since Sprint 1.
+
+**Conventions reinforced:**
+- New client API calls go through `apiFetch` (auto-Authorization header).
+  Existing AdminPanel CRUD still uses raw `fetch()` and is unprotected;
+  Sprint 3 cleanup will migrate the rest.
+- Status pill thresholds: `< 0.7 worked/scheduled` → "Below schedule";
+  `< 1.0` → "On track"; `< 1.2` → "Right on schedule"; `>= 1.2` → "Approaching overtime".
+- TimeClock now adapts the auth user into the legacy DashboardFace shape
+  (`employee = { name, role, clocked_in, clock_in_time }`).
+
+**Notes for next iteration:**
+- TimeClock's legacy components (`Keypad.js`, `EmployeePanel.js`,
+  `ClockWidget.js`) and `services/timeClock.js` are dead. Safe to remove
+  in Sprint 3.
+- `/api/authenticate`, `/api/clock-in`, `/api/clock-out`, and
+  `/api/user/:phone/history` are also dead client-side. Safe to remove
+  server-side too once any external clients are confirmed gone.
+- Existing admin CRUD endpoints are still unprotected. Pre-deploy step:
+  add `requireAuth, requireRole('admin')` to all `/api/admin/*` routes
+  and migrate AdminPanel sub-components to `apiFetch`.
+
+**Sprint 3 backlog (debug + polish):**
+- End-to-end testing pass (run migration, log in as admin, log in as staff,
+  clock in/out, view dashboard, change PIN, sign out, admin reset PIN flow).
+- Protect remaining `/api/admin/*` endpoints with `requireRole('admin')`.
+  Migrate AdminPanel sub-components to `apiFetch`.
+- Remove legacy clock-in route + related components / `services/timeClock.js`.
+- Polish: login page flip animation reusing `.tc-flip-card`; nicer empty
+  states; loading skeletons on Home dashboard.
+- Tenant-aware copy already abstracted; multi-tenant routing (path prefix)
+  is a future sprint.
+- Confirm `AdminDashboard/` and `lib/supabase.js` are dead; remove if so.
+
+**Sprint 2 — completed (see iteration log).**

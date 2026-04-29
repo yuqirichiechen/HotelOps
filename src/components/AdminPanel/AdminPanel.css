@@ -1083,3 +1083,108 @@
 
   .admin-login-card { padding: 28px 20px; }
 }
+
+/* ── PIN management section (EmployeeDetail) ─────────────────────────────── */
+
+.emp-pin-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin: 16px 0 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.emp-pin-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 14px;
+}
+
+.emp-pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.emp-pin-row:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.emp-pin-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.emp-pin-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.emp-pin-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.emp-pin-toggle {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--border);
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.emp-pin-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: transform 0.2s ease;
+}
+
+.emp-pin-toggle.is-on        { background: var(--accent-alt); }
+.emp-pin-toggle.is-on::after { transform: translateX(22px); }
+
+.emp-pin-toggle:disabled     { opacity: 0.5; cursor: not-allowed; }
+
+.btn-pin-reset {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--danger);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-pin-reset:hover:not(:disabled) {
+  background: var(--danger-subtle);
+  color: var(--danger-hover);
+}
+
+.btn-pin-reset:disabled { opacity: 0.5; cursor: not-allowed; }

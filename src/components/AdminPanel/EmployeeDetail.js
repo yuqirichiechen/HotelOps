@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../auth';
 
 const ROLES = ['employee', 'front_desk', 'admin'];
 
@@ -16,6 +17,8 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
   const [deleting,      setDeleting]      = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error,         setError]         = useState('');
+  const [pinBusy,       setPinBusy]       = useState(false);
+  const [pinErr,        setPinErr]        = useState('');
 
   useEffect(() => {
     fetch('/api/admin/departments').then(r => r.json()).then(data => {
@@ -92,6 +95,36 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
     }
   };
 
+  const togglePinRequired = async () => {
+    setPinBusy(true);
+    setPinErr('');
+    const { ok, data } = await apiFetch(`/admin/employees/${emp.user_id}/pin`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ pin_required: !emp.pin_required }),
+    });
+    setPinBusy(false);
+    if (ok && data?.success) {
+      setEmp(prev => ({ ...prev, ...data.employee }));
+    } else {
+      setPinErr(data?.message || 'Could not update PIN setting');
+    }
+  };
+
+  const resetPin = async () => {
+    if (!window.confirm(`Reset PIN for ${emp.name}? They'll be prompted to set a new one on their next login.`)) return;
+    setPinBusy(true);
+    setPinErr('');
+    const { ok, data } = await apiFetch(`/admin/employees/${emp.user_id}/pin/reset`, {
+      method: 'POST',
+    });
+    setPinBusy(false);
+    if (ok && data?.success) {
+      setEmp(prev => ({ ...prev, ...data.employee }));
+    } else {
+      setPinErr(data?.message || 'Could not reset PIN');
+    }
+  };
+
   const deptName = () =>
     departments.find(d => d.department_id === emp.department_id)?.name || emp.department || '—';
 
@@ -162,6 +195,52 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
           <div className="detail-info-row"><span className="detail-info-lbl">Department</span><span className="detail-info-val">{deptName()}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Hire Date</span><span className="detail-info-val">{fmtDate(emp.hire_date)}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Hourly Rate</span><span className="detail-info-val">{fmtRate(emp.base_hourly_rate)}</span></div>
+        </div>
+      )}
+
+      {/* PIN management */}
+      {!editing && (
+        <div className="emp-pin-section">
+          <h3 className="emp-pin-title">PIN Access</h3>
+
+          <div className="emp-pin-row">
+            <div className="emp-pin-info">
+              <div className="emp-pin-label">Require PIN at sign-in</div>
+              <div className="emp-pin-meta">
+                {emp.pin_required
+                  ? 'Employee must enter their PIN to log in.'
+                  : 'Employee can log in with their phone number alone.'}
+              </div>
+            </div>
+            <button
+              className={`emp-pin-toggle ${emp.pin_required ? 'is-on' : ''}`}
+              onClick={togglePinRequired}
+              disabled={pinBusy}
+              aria-label="Toggle PIN required"
+            />
+          </div>
+
+          <div className="emp-pin-row">
+            <div className="emp-pin-info">
+              <div className="emp-pin-label">PIN status</div>
+              <div className="emp-pin-meta">
+                {emp.pin_must_set
+                  ? 'Reset pending — employee will set a new PIN at next login.'
+                  : emp.has_pin
+                    ? 'PIN is set. You can reset it but cannot view it.'
+                    : 'No PIN set yet.'}
+              </div>
+            </div>
+            <button
+              className="btn-pin-reset"
+              onClick={resetPin}
+              disabled={pinBusy}
+            >
+              {pinBusy ? '…' : 'Reset PIN'}
+            </button>
+          </div>
+
+          {pinErr && <div className="admin-error" style={{ marginTop: 8 }}>{pinErr}</div>}
         </div>
       )}
 
