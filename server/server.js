@@ -455,6 +455,15 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
     const open = entries.find(e => !e.clock_out_time)
               || recent.find(e => !e.clock_out_time);
 
+    // Raw entries for this week — Timesheet groups these by day for the
+    // breakdown view. Home doesn't read this, so the cost is just payload.
+    const weekEntries = entries.map(e => ({
+      entry_id:       e.entry_id,
+      clock_in_time:  e.clock_in_time,
+      clock_out_time: e.clock_out_time,
+      hours:          Math.round(parseFloat(e.hours) * 10) / 10,
+    }));
+
     return res.json({
       success:             true,
       weekStart,
@@ -462,6 +471,7 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       totalHours,
       scheduledHours,
       recentShifts,
+      entries:             weekEntries,
       currentlyClockedIn:  !!open,
       openClockInTime:     open ? open.clock_in_time : null,
     });

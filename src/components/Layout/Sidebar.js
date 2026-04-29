@@ -12,7 +12,7 @@ import './Sidebar.css';
 
 const STAFF_NAV = [
   { to: '/',            label: 'Home',        icon: '🏠', live: true,  end: true },
-  { to: '/timesheet',   label: 'Timesheet',   icon: '⏱️', live: false },
+  { to: '/timesheet',   label: 'Timesheet',   icon: '⏱️', live: true  },
   { to: '/calendar',    label: 'Calendar',    icon: '📅', live: true  },
   { to: '/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
   { to: '/settings',    label: 'Settings',    icon: '⚙️', live: false },

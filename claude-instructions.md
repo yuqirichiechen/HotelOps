@@ -59,7 +59,7 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 
 - `/` (Home) — at-a-glance: compact greeting → **Clock In/Out flip card** (front = analog `ClockWidget` + Clock In; back = live elapsed timer + Clock Out) → "This week" hours stat → 3 recent shifts.
 - `/timeclock` — **redirects to /** (clock-in/out is integrated into Home as a flip card section).
-- `/timesheet` — placeholder; Sprint 4 will fill it with the rich hours dashboard.
+- `/timesheet` — full timesheet: week selector, total + scheduled hero stat with progress bar and status pill, 7-day bar chart (clickable), expandable daily breakdown, CSV export.
 - `/calendar` — was `/shifts`; route renamed, ShiftsView component unchanged.
   `/shifts` now redirects to `/calendar` for back-compat.
 - `/shift-notes` — placeholder.
@@ -197,7 +197,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 
 - `POST /api/clock-in-self`              auth (staff) → start a time entry for the authed user
 - `POST /api/clock-out-self`             auth (staff) → close the open entry for the authed user
-- `GET  /api/me/hours?weekStart=YYYY-MM-DD`  auth (staff) → days, totalHours, scheduledHours, recentShifts, currentlyClockedIn
+- `GET  /api/me/hours?weekStart=YYYY-MM-DD`  auth (staff) → days, totalHours, scheduledHours, recentShifts, currentlyClockedIn, openClockInTime, **entries** (raw time_entries this week)
 - `GET  /api/me/history`                 auth (staff) → time_entries from the last 4 weeks
 
 ### Admin (most are unprotected for now; pin endpoints are protected)
@@ -521,9 +521,59 @@ global App.css rule.
 
 **Files modified:** `src/App.css`.
 
-**Sprint 3.x backlog (continuing user-driven bug fixes):**
-- *Open: tell me what's next.* Sprint 3.x runs until all bugs are fixed;
-  Sprint 4 (Timesheet build-out) follows.
+### 2026-04-28 — Sprint 4: Timesheet build-out
+
+The Timesheet page is now live. `/timesheet` is no longer a placeholder.
+
+**Files added/promoted:**
+- `src/pages/Timesheet/index.js` — rewrote from placeholder to the full
+  page. Pulls `/api/me/hours?weekStart=...` and groups the returned
+  `entries` by day for the breakdown view. Layout (top to bottom):
+  - Header: "Timesheet" eyebrow + week label + nav buttons (‹ This week ›)
+    + "↓ Export CSV".
+  - Hero card: total worked / scheduled meta on the left, status pill +
+    progress bar + percentage on the right.
+  - Daily totals chart: 7 bars (Mon–Sun), today gets the accent ring,
+    clicking a bar selects+expands its day in the breakdown below.
+  - Daily breakdown: each day is a row with chevron, label, "n entries"
+    meta, today badge, and bold hours. Clicking expands to show every
+    `clock-in → clock-out` pair with per-entry hours.
+- `src/pages/Timesheet/Timesheet.css` — full stylesheet (new, replaces
+  the placeholder). Mobile breakpoints tighten the header layout, drop
+  the entry-count meta, and shrink hero numbers.
+
+**Files modified:**
+- `server/server.js` — `GET /api/me/hours` now also returns `entries`
+  (raw `time_entries` for the week). Already fetched in the same query;
+  it's now in the JSON payload too. Home doesn't read it; Timesheet does.
+- `src/components/Layout/Sidebar.js` — `Timesheet` flipped to `live: true`.
+
+**Conventions added:**
+- CSV export pattern: build rows in JS, `Blob` → object URL → click a
+  hidden `<a>`, then `URL.revokeObjectURL`. No deps. See `exportCSV` in
+  `Timesheet/index.js` for the canonical implementation.
+- Click-driven cross-component state: the bar chart and the daily
+  breakdown share `openDay` state in the parent so clicking either
+  surface highlights both.
+
+**Sprint 4.x backlog (open — debug + extras):**
+- Up to user. Likely candidates: per-day notes, monthly view, payroll
+  period totals (needs a pay-period anchor), approval-request integration
+  (the `approval_requests` table is unused on the staff side), or
+  performance polish on the chart/breakdown.
+
+**Long-running backlog (post-4.x):**
+- Protect remaining `/api/admin/*` endpoints with `requireRole('admin')`;
+  migrate AdminPanel sub-components to `apiFetch`.
+- Remove legacy phone-based clock-in routes (`/api/authenticate`,
+  `/api/clock-in`, `/api/clock-out`, `/api/user/:phone/history`) and
+  `src/services/timeClock.js` once no callers remain.
+- Cleanup orphans: `src/components/TimeClock/{index.js, Keypad.js,
+  EmployeePanel.js, DashboardFace.js}` are not rendered anywhere.
+  ClockWidget stays.
+- Polish: login flip animation; loading skeletons; tenant-name copy audit.
+- Investigate dead code: `src/components/AdminDashboard/`,
+  `src/components/Scheduling/`, `src/lib/supabase.js`.
 
 **Sprint 4 backlog (post-debug):**
 - **Timesheet page** at `/timesheet`: port the rich layout from the old

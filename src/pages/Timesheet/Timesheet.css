@@ -1,32 +1,452 @@
-.timesheet-page {
-  padding: 60px 36px;
-  max-width: 720px;
+/* Timesheet — detailed hours view: week nav, hero stat, bar chart, daily breakdown, CSV export. */
+
+.ts-page {
+  padding: 28px 32px 64px;
+  max-width: 960px;
   margin: 0 auto;
   font-family: 'TiemposText', Georgia, serif;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: ts-fade-in 0.4s ease both;
 }
 
-.timesheet-eyebrow {
+@keyframes ts-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.ts-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.ts-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-eyebrow {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  margin-bottom: 8px;
 }
 
-.timesheet-title {
+.ts-title {
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
-  margin: 0 0 10px;
+  margin: 0;
 }
 
-.timesheet-sub {
-  font-size: 15px;
+.ts-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ts-nav-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
   color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  min-width: 36px;
+}
+
+.ts-nav-btn:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+
+.ts-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ts-csv-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border: 1px solid var(--brand-bg);
+  border-radius: 8px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.ts-csv-btn:hover     { background: var(--brand-hover); border-color: var(--brand-hover); }
+.ts-csv-btn:disabled  { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Hero stat ───────────────────────────────────────────────────────────── */
+
+.ts-hero {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 24px;
+  align-items: center;
+}
+
+.ts-hero-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-hero-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.ts-hero-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-hero-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.ts-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.ts-status-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ts-status-pill.tone-good    { background: var(--success-bg); color: var(--success-text); }
+.ts-status-pill.tone-warn    { background: var(--warn-bg);    color: var(--warn-text); }
+.ts-status-pill.tone-low,
+.ts-status-pill.tone-neutral { background: var(--bg-raised);  color: var(--text-secondary); }
+
+.ts-progress {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-raised);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ts-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ts-hero-pct {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Bar chart card ──────────────────────────────────────────────────────── */
+
+.ts-chart-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ts-card-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 14px;
+}
+
+.ts-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 14px;
+  height: 150px;
+  align-items: end;
+}
+
+.ts-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.ts-chart-col:hover { transform: translateY(-2px); }
+
+.ts-chart-bar-track {
+  flex: 1;
+  width: 60%;
+  max-width: 36px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.ts-chart-bar {
+  width: 100%;
+  min-height: 3px;
+  background: var(--accent);
+  border-radius: 6px 6px 0 0;
+  animation: ts-bar-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: background 0.15s ease;
+}
+
+@keyframes ts-bar-grow {
+  from { transform: scaleY(0); transform-origin: bottom; }
+  to   { transform: scaleY(1); transform-origin: bottom; }
+}
+
+.ts-chart-col.is-today .ts-chart-bar {
+  background: var(--accent-alt);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.ts-chart-col.is-selected .ts-chart-bar {
+  background: var(--brand-bg);
+}
+
+.ts-chart-hours {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  height: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-chart-day {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ts-chart-col.is-today .ts-chart-day    { color: var(--accent-alt); }
+.ts-chart-col.is-selected .ts-chart-day { color: var(--brand-text); }
+
+/* ── Daily breakdown ─────────────────────────────────────────────────────── */
+
+.ts-daily-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 4px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ts-daily-card .ts-card-title {
+  padding: 0 24px;
+}
+
+.ts-daily-list {
+  list-style: none;
   margin: 0;
-  line-height: 1.5;
+  padding: 0;
+}
+
+.ts-day {
+  border-top: 1px solid var(--border-light);
+}
+
+.ts-day:first-child { border-top: none; }
+
+.ts-day-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 24px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+
+.ts-day-header:hover:not(:disabled) { background: var(--bg-raised); }
+
+.ts-day-header:disabled { cursor: default; opacity: 0.55; }
+
+.ts-day-chevron {
+  width: 18px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+
+.ts-day.is-open .ts-day-chevron { transform: rotate(90deg); }
+
+.ts-day-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ts-day-name-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.ts-day-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ts-day-badge.is-today { background: var(--accent-bg); color: var(--accent-alt); }
+
+.ts-day-hours {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  min-width: 60px;
+  text-align: right;
+}
+
+.ts-day-empty-hours {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.ts-day-entries {
+  padding: 4px 24px 14px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-surface-alt);
+  border-top: 1px solid var(--border-light);
+  animation: ts-day-open 0.2s ease both;
+}
+
+@keyframes ts-day-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ts-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.ts-entry-times {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-entry-open {
+  color: var(--success-text);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.ts-entry-hours {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-no-entries {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ── Loading + empty ─────────────────────────────────────────────────────── */
+
+.ts-loading {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 28px;
+  text-align: center;
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .ts-page          { padding: 20px 18px 40px; gap: 14px; }
+  .ts-title         { font-size: 24px; }
+  .ts-header        { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .ts-actions       { width: 100%; justify-content: space-between; }
+  .ts-hero          { grid-template-columns: 1fr; gap: 16px; padding: 20px 22px; }
+  .ts-hero-side     { align-items: flex-start; }
+  .ts-hero-num      { font-size: 44px; }
+  .ts-chart-card    { padding: 18px 18px; }
+  .ts-chart         { gap: 8px; height: 120px; }
+  .ts-chart-bar-track { width: 80%; }
+  .ts-day-header    { padding: 12px 18px; }
+  .ts-day-entries   { padding: 4px 18px 12px 42px; }
+  .ts-card-title,
+  .ts-daily-card .ts-card-title { padding: 0 18px; }
+}
+
+@media (max-width: 420px) {
+  .ts-hero-num      { font-size: 38px; }
+  .ts-day-name-meta { display: none; }
+  .ts-day-hours     { font-size: 14px; min-width: 50px; }
 }
