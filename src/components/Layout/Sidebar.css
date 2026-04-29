@@ -78,6 +78,46 @@
   flex-shrink: 0;
 }
 
+/* ── Sidebar footer (theme toggle) ──────────────────────────────────────── */
+
+.sidebar-footer {
+  padding: 12px 8px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.theme-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.85);
+}
+
+.theme-toggle-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.theme-toggle-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
 /* ── Mobile bottom tab bar ───────────────────────────────────────────────── */
 
 .bottom-nav {
