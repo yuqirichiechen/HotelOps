@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import WeekView from './WeekView';
 import MonthView from './MonthView';
 import AssignModal from './AssignModal';
@@ -19,7 +20,8 @@ const fmtDate = (d) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const SchedulingManager = ({ onBack, onLogout }) => {
+const SchedulingManager = () => {
+  const nav = useNavigate();
   const [view,      setView]      = useState('week');
   const [weekStart, setWeekStart] = useState(() => getWeekStart());
   const [month,     setMonth]     = useState(() => ({ year: new Date().getFullYear(), month: new Date().getMonth() }));
@@ -150,7 +152,7 @@ const SchedulingManager = ({ onBack, onLogout }) => {
     <div className="sched-manager">
       <div className="sched-header">
         <div className="sched-header-left">
-          <button className="btn-back" onClick={onBack}>← Back</button>
+          <button className="btn-back" onClick={() => nav('/admin')}>← Home</button>
           <h2>Scheduling</h2>
         </div>
         <div className="sched-header-right">
@@ -158,7 +160,6 @@ const SchedulingManager = ({ onBack, onLogout }) => {
             <button className={`view-btn${view === 'week'  ? ' active' : ''}`} onClick={() => setView('week')}>Week</button>
             <button className={`view-btn${view === 'month' ? ' active' : ''}`} onClick={() => setView('month')}>Month</button>
           </div>
-          <button className="btn-logout" onClick={onLogout}>Sign Out</button>
         </div>
       </div>
 

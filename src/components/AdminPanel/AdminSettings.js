@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth';
 
 const VISIBILITY_OPTIONS = [
   {
@@ -21,7 +23,10 @@ const VISIBILITY_OPTIONS = [
   },
 ];
 
-const AdminSettings = ({ onBack, onLogout }) => {
+const AdminSettings = () => {
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
+
   const [visibility, setVisibility] = useState('all');
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
@@ -56,14 +61,18 @@ const AdminSettings = ({ onBack, onLogout }) => {
     }
   };
 
+  const handleSignOut = async () => {
+    await logout();
+    nav('/login/admin', { replace: true });
+  };
+
   return (
     <div className="admin-settings-page">
       <div className="settings-topbar">
         <div className="settings-topbar-left">
-          <button className="btn-back" onClick={onBack}>← Back</button>
+          <button className="btn-back" onClick={() => nav('/admin')}>← Home</button>
           <h2>Settings</h2>
         </div>
-        <button className="btn-logout" onClick={onLogout}>Sign Out</button>
       </div>
 
       {loading ? (
@@ -118,10 +127,22 @@ const AdminSettings = ({ onBack, onLogout }) => {
             </button>
           </div>
 
-          {/* Placeholder for future sections */}
-          <div className="settings-future-note">
-            Additional settings categories will appear here as new features are added.
+          {/* Account / Sign out section */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">🔐</div>
+              <div>
+                <div className="settings-section-title">Account</div>
+                <div className="settings-section-desc">
+                  Signed in as <strong>{user?.username || user?.name || 'admin'}</strong>.
+                </div>
+              </div>
+            </div>
+            <button className="settings-signout-btn" onClick={handleSignOut}>
+              Sign Out
+            </button>
           </div>
+
         </div>
       )}
     </div>

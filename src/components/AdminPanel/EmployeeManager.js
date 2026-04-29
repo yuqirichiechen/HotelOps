@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const ROLES       = ['employee', 'front_desk', 'admin'];
 const UNASSIGNED  = { department_id: '__none__', name: 'Unassigned' };
 const today       = () => new Date().toISOString().split('T')[0];
 const emptyForm   = () => ({ name: '', phone: '', role: 'employee', departmentId: '', hireDate: today(), baseHourlyRate: '' });
 
-const EmployeeManager = ({ onBack, onSelect, onLogout }) => {
+const EmployeeManager = () => {
+  const nav = useNavigate();
   const [employees,   setEmployees]   = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -81,7 +83,7 @@ const EmployeeManager = ({ onBack, onSelect, onLogout }) => {
       {/* Header */}
       <div className="emp-header">
         <div className="emp-header-left">
-          <button className="btn-back" onClick={onBack}>‹ Back</button>
+          <button className="btn-back" onClick={() => nav('/admin')}>‹ Home</button>
           <h2>Employees</h2>
         </div>
         <div className="emp-header-right">
@@ -191,7 +193,7 @@ const EmployeeManager = ({ onBack, onSelect, onLogout }) => {
                       <div
                         key={emp.user_id}
                         className={`emp-card emp-card-clickable ${emp.active ? '' : 'emp-inactive'}`}
-                        onClick={() => onSelect(emp)}
+                        onClick={() => nav(`/admin/employees/${emp.user_id}`)}
                       >
                         <div className="emp-card-main">
                           <div className="emp-avatar">{emp.name.charAt(0).toUpperCase()}</div>

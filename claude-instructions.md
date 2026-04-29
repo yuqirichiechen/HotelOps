@@ -55,28 +55,39 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
   Stored in `localStorage` on the client; sent as `Authorization: Bearer <jwt>`.
 - **Routes guarded by `RequireRole`** wrapper using `useAuth()` context.
 
-### Routing (Sprint 2 — current)
+### Routing (Sprint 5 — current)
 
-- `/` (Home) — at-a-glance: compact greeting → **Clock In/Out flip card** (front = analog `ClockWidget` + Clock In; back = live elapsed timer + Clock Out) → "This week" hours stat → 3 recent shifts.
-- `/timeclock` — **redirects to /** (clock-in/out is integrated into Home as a flip card section).
-- `/timesheet` — full timesheet: week selector, total + scheduled hero stat with progress bar and status pill, 7-day bar chart (clickable), expandable daily breakdown, CSV export.
-- `/calendar` — was `/shifts`; route renamed, ShiftsView component unchanged.
-  `/shifts` now redirects to `/calendar` for back-compat.
+**Staff** (sidebar shows STAFF_NAV when `user.role !== 'admin'`):
+- `/` (Home) — at-a-glance: greeting → **Clock In/Out flip card** (analog `ClockWidget` + Clock In on front; live timer + Clock Out on back) → This-week hours stat → 3 recent shifts.
+- `/timesheet` — full timesheet: week selector, hero stat, status pill, 7-day chart, expandable daily breakdown, CSV export (week/month/year).
+- `/calendar` — `ShiftsView`. (`/shifts` redirects.)
 - `/shift-notes` — placeholder.
-- `/settings` — theme toggle, profile (read-only), Change PIN, Sign Out.
-- `/set-pin` — interstitial when `pin_must_set === true`.
-- `/admin/*` — AdminPanel internals (Forecasting accessible from here, role-gated).
-- `/login/staff`, `/login/admin` — public entry points.
-- **Multi-tenant strategy**: path prefix (`/<tenant>/...`). Param can be added later in a single config change.
-- **Router**: `BrowserRouter`. The Express server's `app.get('*')` SPA
-  fallback handles deep-link refreshes in production. CRA dev server handles
-  this automatically.
+- `/settings` — theme toggle, profile, Change PIN, Sign Out.
+- `/set-pin` — forced when `pin_must_set === true`.
+- `/timeclock` — redirects to `/`.
 
-### Sidebar (final order)
+**Admin** (sidebar shows ADMIN_NAV when `user.role === 'admin'`):
+- `/admin` — `AdminHome` dashboard: greeting, stats banner (active staff / on the clock / hours this week / pending approvals), Currently Working card (dept-grouped, click to detail), Today's Schedule with status pills, Pending Approvals list.
+- `/admin/employees` — `EmployeeManager` (list, grouped by dept; click row → detail).
+- `/admin/employees/:userId` — `EmployeeDetail` (profile, PIN management, Time Entries with admin override modal, deactivate/delete).
+- `/admin/scheduling` — `SchedulingManager` (week/month views).
+- `/admin/shift-notes` — `AdminShiftNotes` placeholder.
+- `/admin/reports` — `AdminReports` placeholder.
+- `/admin/settings` — `AdminSettings` (visibility config + Sign Out card).
 
-Home → Timesheet → Calendar → Shift Notes → Settings.
-Admin tab appended for admins. The old "Time Clock" item was removed in
-Sprint 3.1 because clocking in/out is now a section on Home itself.
+`/login/staff`, `/login/admin` — public entry points.
+
+**Router**: `BrowserRouter`. **Multi-tenant strategy**: path prefix (`/<tenant>/...`). Param can be added later in a single config change.
+
+### Sidebars (role-driven)
+
+- **Staff**: Home → Timesheet → Calendar → Shift Notes → Settings.
+- **Admin**: Home → Employees → Scheduling → Shift Notes → Reports → Settings.
+
+The Sidebar component picks the right NAV based on `user.role`. There is no
+shared sidebar between staff and admin — admins are not in the `users` table
+and don't clock in/out, so staff items don't apply to them. Sign-out lives
+in `/settings` (staff) and `/admin/settings` (admin), never in the sidebar.
 
 ### Hours / Home dashboard
 
@@ -201,17 +212,20 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 - `GET  /api/me/entries?from=YYYY-MM-DD&to=YYYY-MM-DD`  auth (staff) → entries in arbitrary date range. Used by Timesheet's month/year CSV export.
 - `GET  /api/me/history`                 auth (staff) → time_entries from the last 4 weeks
 
-### Admin (most are unprotected for now; pin endpoints are protected)
+### Admin (mix of protected and legacy unprotected)
 
 - `GET  /api/health`
+- `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data
+- `PATCH /api/admin/time-entries/:id`          auth (admin) — Sprint 5 — hour override (writes audit_logs)
 - `GET  /api/admin/departments`
-- `GET  /api/admin/employees`            (returns pin_required, pin_must_set, has_pin)
+- `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin)
+- `GET  /api/admin/employees/:id`              Sprint 5 — single employee fetch (powers EmployeeDetail)
 - `POST /api/admin/employees`
 - `PUT  /api/admin/employees/:id`
 - `PATCH /api/admin/employees/:id/status`
 - `DELETE /api/admin/employees/:id`
-- `PATCH /api/admin/employees/:id/pin`        auth (admin) — body: `{ pin_required }`
-- `POST  /api/admin/employees/:id/pin/reset`  auth (admin) — clears hash, sets `pin_must_set = true`
+- `PATCH /api/admin/employees/:id/pin`         auth (admin) — body: `{ pin_required }`
+- `POST  /api/admin/employees/:id/pin/reset`   auth (admin) — clears hash, sets `pin_must_set = true`
 - `GET  /api/admin/employees/:id/time-entries`
 - `GET  /api/admin/shift-templates`
 - `GET  /api/admin/schedule`, `POST /api/admin/schedule`, `PUT /api/admin/schedule/:id`, `DELETE /api/admin/schedule/:id`
@@ -630,11 +644,92 @@ Five fixes from user feedback. No DB changes.
   silently dropped by reducers — always compute the elapsed time and
   use a separate flag (`isLive`) to label it.
 
-**Sprint 4.x backlog (open — debug + extras):**
-- Up to user. Likely candidates: per-day notes, monthly view, payroll
-  period totals (needs a pay-period anchor), approval-request integration
-  (the `approval_requests` table is unused on the staff side), or
-  performance polish on the chart/breakdown.
+### 2026-04-29 — Sprint 5: admin panel revamp
+
+Big sprint. Replaced AdminPanel's internal screen-state navigation with
+proper nested routes; rebuilt AdminHome as a manager dashboard; added
+hour override + audit logging; moved sign-out to Settings on both sides.
+
+**Files added:**
+- `src/pages/AdminHome/{index.js, AdminHome.css}` — manager dashboard:
+  greeting, 4-up stats banner, "On the floor" card (dept-grouped, live
+  pulse, 60s auto-refresh), "Today's schedule" card with status pills
+  (clocked-in / late / yet-to-start / finished), pending-approvals card.
+- `src/pages/AdminReports/{index.js, AdminPlaceholder.css}` — placeholder.
+- `src/pages/AdminShiftNotes/index.js` — placeholder (reuses
+  AdminPlaceholder.css).
+
+**Files modified:**
+- `server/server.js`:
+  - `GET /api/admin/dashboard` — single endpoint for the dashboard
+    (Promise.all of 6 queries, status derivation in JS).
+  - `PATCH /api/admin/time-entries/:id` — admin override; writes to
+    `audit_logs` (actor_id NULL since admins aren't users; admin
+    username goes in `new_data`); flips `manual_entry = true`.
+  - `GET /api/admin/employees/:id` — single-employee fetch for
+    EmployeeDetail when reached via deep-link.
+- `src/components/Layout/Sidebar.js` — split into STAFF_NAV / ADMIN_NAV.
+  Sidebar picks based on `user.role`. Sign-out button removed from footer.
+- `src/components/AdminPanel/EmployeeManager.js` — `useNavigate` instead
+  of `onBack`/`onSelect`/`onLogout` props. Click row → `nav('/admin/employees/:id')`.
+- `src/components/AdminPanel/EmployeeDetail.js` — fetches by `useParams` userId.
+  **Adds Time Entries section** with edit modal (datetime-local pickers).
+  Save calls `PATCH /admin/time-entries/:id` via `apiFetch`.
+- `src/components/AdminPanel/Scheduling/index.js` — `useNavigate` instead
+  of `onBack`/`onLogout`.
+- `src/components/AdminPanel/AdminSettings.js` — same refactor + adds
+  Account/Sign Out card.
+- `src/components/AdminPanel/AdminPanel.css` — new rules: `.emp-entries-list`,
+  `.emp-entry-row`, `.entry-edit-overlay`, `.entry-edit-modal`,
+  `.settings-signout-btn`.
+- `src/App.js` — new admin route table:
+  `/admin` → AdminHome
+  `/admin/employees` → EmployeeManager
+  `/admin/employees/:userId` → EmployeeDetail
+  `/admin/scheduling` → SchedulingManager
+  `/admin/shift-notes` → AdminShiftNotes
+  `/admin/reports` → AdminReports
+  `/admin/settings` → AdminSettings
+  Imports `AdminPanel.css` once at the top so `.emp-*`, `.sched-*`, etc.
+  are loaded for every admin route.
+
+**Files orphaned (kept on disk):**
+- `src/components/AdminPanel/index.js` — was the screen-state shell.
+  No longer rendered. Sprint 5.x can delete.
+- `src/components/AdminDashboard/`, `src/components/Scheduling/` (the
+  non-admin one), `src/components/TimeClock/{index.js, Keypad.js,
+  EmployeePanel.js, DashboardFace.js}`, `src/services/timeClock.js` —
+  still orphan.
+
+**Conventions reinforced/added:**
+- **Admin sub-components use `useNavigate` + `useParams` directly.** No
+  more `onBack`/`onLogout` prop drilling. Settings owns sign-out.
+- **Audit log pattern for admin writes:** insert into `audit_logs` with
+  `actor_id = NULL`, action string descriptive of the change, `old_data`
+  and `new_data` as JSONB snapshots. Admin username goes in `new_data`.
+  See `PATCH /api/admin/time-entries/:id` for the canonical pattern.
+- **Single-fetch dashboards.** Manager Home does one round-trip
+  (`/api/admin/dashboard`) that covers stats + 3 lists. Refresh on a
+  60s interval for "currently working" liveness.
+
+**Notes for next iteration:**
+- Hour override doesn't yet send a notification or create an
+  approval_request copy — it's a direct edit. If the Snoqualmie workflow
+  needs dual-admin review, switch to creating an `approval_request` row
+  with status='approved' and `approved_by` set, instead of writing to
+  `time_entries` directly.
+- Today's schedule status logic uses local server time. If admins are in
+  multiple timezones, might need a tenant-level timezone config.
+- AdminHome auto-refreshes every 60s; could be smarter (only when tab is
+  visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+**Sprint 5.x backlog (open — debug + extras):**
+- User-driven bug fixes after this sprint settles.
+- Approval-request review screen (clicking pending approvals on
+  AdminHome should go somewhere actionable).
+- Force clock-out from "On the floor" card.
+- Per-employee weekly-hours summary on EmployeeDetail.
+- Delete `src/components/AdminPanel/index.js` once confirmed unreachable.
 
 **Long-running backlog (post-4.x):**
 - Protect remaining `/api/admin/*` endpoints with `requireRole('admin')`;

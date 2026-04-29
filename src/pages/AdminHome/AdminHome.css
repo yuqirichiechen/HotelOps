@@ -1,0 +1,386 @@
+/* Admin home dashboard — at-a-glance for managers. */
+
+.adm-page {
+  padding: 28px 32px 64px;
+  max-width: 1100px;
+  margin: 0 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: adm-fade-in 0.4s ease both;
+}
+
+@keyframes adm-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Greeting ────────────────────────────────────────────────────────────── */
+
+.adm-greeting {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adm-greeting-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.adm-greeting-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ── Stats banner ────────────────────────────────────────────────────────── */
+
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.adm-stat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.adm-stat-card.is-live   { border-color: var(--success); }
+.adm-stat-card.is-action { border-color: var(--warn-text); }
+
+.adm-stat-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.adm-stat-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.adm-stat-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.adm-stat-meta.is-live { color: var(--success-text); font-weight: 600; }
+
+/* ── Card layout ─────────────────────────────────────────────────────────── */
+
+.adm-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 18px;
+}
+
+.adm-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 26px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.adm-card-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.adm-card-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}
+
+.adm-card-count.is-live {
+  background: var(--success-bg);
+  color: var(--success-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adm-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live-dot);
+  animation: adm-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes adm-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
+
+.adm-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 18px 0;
+  text-align: center;
+}
+
+/* ── Currently working list ──────────────────────────────────────────────── */
+
+.adm-working-group {
+  margin-bottom: 12px;
+}
+
+.adm-working-group:last-child { margin-bottom: 0; }
+
+.adm-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 6px;
+  padding-left: 4px;
+}
+
+.adm-working-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adm-working-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  margin-bottom: 2px;
+}
+
+.adm-working-row:hover { background: var(--bg-raised); }
+
+.adm-working-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.adm-working-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.adm-working-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adm-working-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adm-working-since {
+  font-size: 12px;
+  color: var(--success-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Today's schedule list ───────────────────────────────────────────────── */
+
+.adm-sched-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adm-sched-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-radius: 6px;
+}
+
+.adm-sched-row:last-child { border-bottom: none; }
+.adm-sched-row:hover      { background: var(--bg-raised); }
+
+.adm-sched-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-clocked-in   { background: var(--success); animation: adm-pulse 1.6s ease-in-out infinite; }
+.status-late         { background: var(--danger); }
+.status-yet-to-start { background: var(--text-lightest); }
+.status-finished     { background: var(--success-faint); }
+
+.adm-sched-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.adm-sched-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adm-sched-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.adm-sched-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pill-clocked-in   { background: var(--success-bg); color: var(--success-text); }
+.pill-late         { background: var(--danger-bg);  color: var(--danger-text); }
+.pill-yet-to-start { background: var(--bg-raised);  color: var(--text-secondary); }
+.pill-finished     { background: var(--success-subtle); color: var(--success-text); }
+
+/* ── Approvals list ──────────────────────────────────────────────────────── */
+
+.adm-appr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adm-appr-row {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.adm-appr-row:last-child { border-bottom: none; }
+
+.adm-appr-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.adm-appr-reason {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.adm-appr-date {
+  font-size: 11px;
+  color: var(--text-lightest);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Skeleton state ──────────────────────────────────────────────────────── */
+
+.adm-skel {
+  height: 14px;
+  background: var(--bg-raised);
+  border-radius: 4px;
+  animation: adm-skel-pulse 1.4s ease-in-out infinite;
+  margin: 6px 0;
+}
+
+@keyframes adm-skel-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1;   }
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 880px) {
+  .adm-grid  { grid-template-columns: 1fr; }
+  .adm-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .adm-page             { padding: 20px 18px 48px; gap: 14px; }
+  .adm-greeting-title   { font-size: 24px; }
+  .adm-stats            { gap: 8px; }
+  .adm-stat-card        { padding: 14px 16px; }
+  .adm-stat-num         { font-size: 26px; }
+  .adm-card             { padding: 18px 20px; }
+}

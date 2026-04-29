@@ -1,14 +1,11 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import './Sidebar.css';
 
-// Final order: Home → Time Clock → Calendar → Shift Notes → Settings.
-// Forecasting moved under /admin. Sign out lives in /settings now, not the
-// sidebar footer. Admin tab is appended for admin users only.
-
-// Clock-in/out lives on Home (flip card section). The Timesheet item is a
-// placeholder — Sprint 4 will fill it in with detailed hours / breakdowns.
+// Two NAV sets: admins get an admin-focused sidebar (Home → Employees → ...)
+// when their role is 'admin'. Staff get the worker sidebar otherwise.
+// Sign-out lives in /settings (staff) and /admin/settings (admin) — not here.
 
 const STAFF_NAV = [
   { to: '/',            label: 'Home',        icon: '🏠', live: true,  end: true },
@@ -18,22 +15,21 @@ const STAFF_NAV = [
   { to: '/settings',    label: 'Settings',    icon: '⚙️', live: false },
 ];
 
-const ADMIN_ITEM = {
-  to: '/admin', label: 'Admin', icon: '🛠️', live: true, admin: true,
-};
+const ADMIN_NAV = [
+  { to: '/admin',             label: 'Home',        icon: '🏠', live: true,  end: true },
+  { to: '/admin/employees',   label: 'Employees',   icon: '👥', live: true  },
+  { to: '/admin/scheduling',  label: 'Scheduling',  icon: '📅', live: true  },
+  { to: '/admin/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
+  { to: '/admin/reports',     label: 'Reports',     icon: '📊', live: false },
+  { to: '/admin/settings',    label: 'Settings',    icon: '⚙️', live: true  },
+];
 
 const Sidebar = ({ theme, onToggleTheme }) => {
   const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const isDark = theme === 'dark' || (theme === null && osDark);
-  const { user, logout } = useAuth();
-  const nav = useNavigate();
+  const { user } = useAuth();
 
-  const NAV = user?.role === 'admin' ? [...STAFF_NAV, ADMIN_ITEM] : STAFF_NAV;
-
-  const handleSignOut = async () => {
-    await logout();
-    nav(user?.role === 'admin' ? '/login/admin' : '/login/staff', { replace: true });
-  };
+  const NAV = user?.role === 'admin' ? ADMIN_NAV : STAFF_NAV;
 
   return (
     <>
@@ -44,8 +40,8 @@ const Sidebar = ({ theme, onToggleTheme }) => {
           <span className="brand-name">HotelOps</span>
         </div>
         <ul className="sidebar-nav">
-          {NAV.map(({ to, label, icon, live, admin, end }) => (
-            <li key={to} className={admin ? 'sidebar-admin-item' : ''}>
+          {NAV.map(({ to, label, icon, live, end }) => (
+            <li key={to}>
               <NavLink
                 to={to}
                 end={end || to === '/'}
@@ -62,10 +58,6 @@ const Sidebar = ({ theme, onToggleTheme }) => {
           <button className="theme-toggle" onClick={onToggleTheme} title="Toggle theme">
             <span className="theme-toggle-icon">{isDark ? '☀️' : '🌙'}</span>
             <span className="theme-toggle-label">{isDark ? 'Light mode' : 'Dark mode'}</span>
-          </button>
-          <button className="theme-toggle sidebar-signout" onClick={handleSignOut} title="Sign out">
-            <span className="theme-toggle-icon">↩</span>
-            <span className="theme-toggle-label">Sign out</span>
           </button>
         </div>
       </nav>

@@ -593,6 +593,26 @@ app.get('/api/admin/employees', async (req, res) => {
   }
 });
 
+app.get('/api/admin/employees/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.user_id, u.name, u.phone_number, u.role, u.hire_date,
+              u.base_hourly_rate, u.active, u.department_id, d.name AS department,
+              u.pin_required, u.pin_must_set,
+              (u.pin_hash IS NOT NULL) AS has_pin
+       FROM users u
+       LEFT JOIN departments d ON u.department_id = d.department_id
+       WHERE u.user_id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    return res.json({ success: true, employee: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.post('/api/admin/employees', async (req, res) => {
   const { name, phoneNumber, role, hireDate, departmentId, baseHourlyRate } = req.body;
   if (!name || !phoneNumber || !hireDate) {
@@ -656,6 +676,163 @@ app.delete('/api/admin/employees/:id', async (req, res) => {
     if (check[0].active) return res.status(400).json({ success: false, message: 'Deactivate employee before deleting' });
     await pool.query('DELETE FROM users WHERE user_id = $1', [req.params.id]);
     return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── Admin: dashboard (home page aggregation) ─────────────────────────────────
+//
+// Single endpoint that powers the admin home: who's currently working, who's
+// scheduled today (with derived status), pending approval queue, and a few
+// counters. Called once on AdminHome mount; refreshes can re-call as needed.
+
+app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const [activeStaff, currentlyWorking, todaySchedule, todayEntries, pendingApprovals, weekHours] =
+      await Promise.all([
+        pool.query('SELECT COUNT(*)::int AS n FROM users WHERE active = true'),
+        pool.query(`
+          SELECT u.user_id, u.name, u.phone_number, u.role, u.department_id,
+                 d.name AS department, te.entry_id, te.clock_in_time
+          FROM time_entries te
+          JOIN users u        ON te.user_id        = u.user_id
+          LEFT JOIN departments d ON u.department_id = d.department_id
+          WHERE te.clock_out_time IS NULL
+          ORDER BY u.name
+        `),
+        pool.query(`
+          SELECT sc.schedule_id, sc.user_id,
+                 COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+                 COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time,
+                 u.name, u.role, d.name AS department
+          FROM schedules sc
+          LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id
+          JOIN users u        ON sc.user_id  = u.user_id
+          LEFT JOIN departments d ON u.department_id = d.department_id
+          WHERE sc.scheduled_date = CURRENT_DATE
+            AND u.active = true
+          ORDER BY start_time, u.name
+        `),
+        pool.query(`
+          SELECT user_id, clock_in_time, clock_out_time
+          FROM time_entries
+          WHERE clock_in_time >= CURRENT_DATE - INTERVAL '1 day'
+        `),
+        pool.query(`
+          SELECT ar.request_id, ar.entry_id, ar.requested_by, ar.reason,
+                 ar.created_at, u.name AS requested_by_name
+          FROM approval_requests ar
+          JOIN users u ON ar.requested_by = u.user_id
+          WHERE ar.status = 'pending'
+          ORDER BY ar.created_at DESC
+          LIMIT 10
+        `),
+        pool.query(`
+          SELECT COALESCE(SUM(
+            EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0
+          ), 0)::float AS hours
+          FROM time_entries
+          WHERE clock_in_time >= date_trunc('week', CURRENT_DATE)
+        `),
+      ]);
+
+    // Derive per-schedule status. We map each scheduled employee onto their
+    // time entries today and decide:
+    //   clocked-in     → has an open entry now
+    //   late           → schedule started already, no entry yet
+    //   yet-to-start   → schedule starts later today
+    //   finished       → has only a closed entry today
+    const now      = new Date();
+    const userMap  = {};
+    todayEntries.rows.forEach(e => {
+      (userMap[e.user_id] = userMap[e.user_id] || []).push(e);
+    });
+
+    const scheduleWithStatus = todaySchedule.rows.map(s => {
+      const entries     = userMap[s.user_id] || [];
+      const openEntry   = entries.find(e => !e.clock_out_time);
+      const finished    = entries.find(e => e.clock_out_time);
+
+      const [sh, sm] = s.start_time.split(':').map(Number);
+      const start    = new Date(now);
+      start.setHours(sh, sm, 0, 0);
+
+      let status;
+      if (openEntry)        status = 'clocked-in';
+      else if (finished)    status = 'finished';
+      else if (now > start) status = 'late';
+      else                  status = 'yet-to-start';
+
+      return { ...s, status, open_clock_in_time: openEntry?.clock_in_time || null };
+    });
+
+    return res.json({
+      success:               true,
+      activeStaffCount:      activeStaff.rows[0].n,
+      currentlyWorking:      currentlyWorking.rows,
+      todaySchedule:         scheduleWithStatus,
+      pendingApprovals:      pendingApprovals.rows,
+      pendingApprovalsCount: pendingApprovals.rows.length,
+      weekHoursTotal:        Math.round(weekHours.rows[0].hours * 10) / 10,
+      onTheClockCount:       currentlyWorking.rows.length,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── Admin: time entry override ───────────────────────────────────────────────
+//
+// Direct write to time_entries. Admins are approvers, not requesters, so we
+// don't go through the approval_requests table. Old/new values are captured
+// in audit_logs for traceability.
+
+app.patch('/api/admin/time-entries/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { clock_in_time, clock_out_time } = req.body || {};
+  if (!clock_in_time) {
+    return res.status(400).json({ success: false, message: 'clock_in_time required' });
+  }
+  if (isNaN(new Date(clock_in_time).getTime())) {
+    return res.status(400).json({ success: false, message: 'Invalid clock_in_time' });
+  }
+  const cleanOut = (clock_out_time === '' || clock_out_time == null) ? null : clock_out_time;
+  if (cleanOut && isNaN(new Date(cleanOut).getTime())) {
+    return res.status(400).json({ success: false, message: 'Invalid clock_out_time' });
+  }
+  if (cleanOut && new Date(cleanOut) <= new Date(clock_in_time)) {
+    return res.status(400).json({ success: false, message: 'clock_out_time must be after clock_in_time' });
+  }
+
+  try {
+    const { rows: orig } = await pool.query(
+      'SELECT entry_id, user_id, clock_in_time, clock_out_time, manual_entry FROM time_entries WHERE entry_id = $1',
+      [req.params.id]
+    );
+    if (!orig.length) return res.status(404).json({ success: false, message: 'Entry not found' });
+
+    const { rows } = await pool.query(
+      `UPDATE time_entries
+       SET clock_in_time = $1, clock_out_time = $2, manual_entry = true
+       WHERE entry_id = $3
+       RETURNING *`,
+      [clock_in_time, cleanOut, req.params.id]
+    );
+
+    // Audit (actor_id NULL because admins aren't users; admin username goes in new_data).
+    await pool.query(
+      `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data)
+       VALUES (NULL, 'admin_time_entry_edit', 'time_entries', $1, $2, $3)`,
+      [
+        req.params.id,
+        JSON.stringify(orig[0]),
+        JSON.stringify({ ...rows[0], admin_username: req.auth.sub }),
+      ]
+    );
+
+    return res.json({ success: true, entry: rows[0] });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });

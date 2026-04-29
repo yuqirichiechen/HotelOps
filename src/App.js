@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
-import AdminPanel from './components/AdminPanel';
 import ShiftsView from './components/ShiftsView';
 import ShiftNotes from './components/ShiftNotes';
 import StaffLogin from './pages/Login/StaffLogin';
@@ -11,7 +10,15 @@ import Home from './pages/Home';
 import Timesheet from './pages/Timesheet';
 import Settings from './pages/Settings';
 import SetPin from './pages/SetPin';
+import AdminHome from './pages/AdminHome';
+import AdminReports from './pages/AdminReports';
+import AdminShiftNotes from './pages/AdminShiftNotes';
+import EmployeeManager from './components/AdminPanel/EmployeeManager';
+import EmployeeDetail from './components/AdminPanel/EmployeeDetail';
+import SchedulingManager from './components/AdminPanel/Scheduling';
+import AdminSettings from './components/AdminPanel/AdminSettings';
 import './App.css';
+import './components/AdminPanel/AdminPanel.css';
 
 const getInitialTheme = () => {
   const stored = localStorage.getItem('hotelops-theme');
@@ -70,7 +77,13 @@ const App = () => {
               <AppShell theme={theme} onToggleTheme={toggleTheme} />
             </RequireRole>
           }>
-            <Route path="/admin/*" element={<AdminPanel />} />
+            <Route path="/admin"                   element={<AdminHome />} />
+            <Route path="/admin/employees"         element={<EmployeeManager />} />
+            <Route path="/admin/employees/:userId" element={<EmployeeDetail />} />
+            <Route path="/admin/scheduling"        element={<SchedulingManager />} />
+            <Route path="/admin/shift-notes"       element={<AdminShiftNotes />} />
+            <Route path="/admin/reports"           element={<AdminReports />} />
+            <Route path="/admin/settings"          element={<AdminSettings />} />
           </Route>
 
           {/* ── Staff (any non-admin authed) ────────────────────────────── */}

@@ -1,14 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../../auth';
 
 const ROLES = ['employee', 'front_desk', 'admin'];
 
-const fmt = (val) => val ?? '—';
+const fmt     = (v) => v ?? '—';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—';
 const fmtRate = (r) => r ? `$${parseFloat(r).toFixed(2)}/hr` : '—';
 
-const EmployeeDetail = ({ employee, onBack, onLogout }) => {
-  const [emp,           setEmp]           = useState(employee);
+const fmtTime = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+
+const fmtEntryDate = (iso) =>
+  new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+
+const hoursOf = (iso1, iso2) => {
+  const start = new Date(iso1);
+  const end   = iso2 ? new Date(iso2) : new Date();
+  return (end - start) / 3600000;
+};
+
+const fmtHrs = (h) => {
+  if (!h || isNaN(h)) return '—';
+  const hours = Math.floor(h);
+  const mins  = Math.round((h - hours) * 60);
+  if (hours && mins) return `${hours}h ${mins}m`;
+  if (hours)         return `${hours}h`;
+  return `${mins}m`;
+};
+
+// Convert ISO timestamp to value usable by datetime-local input (YYYY-MM-DDTHH:MM)
+// in the user's local timezone.
+const toLocalInput = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const EmployeeDetail = () => {
+  const { userId } = useParams();
+  const nav = useNavigate();
+
+  const [emp,           setEmp]           = useState(null);
+  const [loading,       setLoading]       = useState(true);
   const [departments,   setDepartments]   = useState([]);
   const [editing,       setEditing]       = useState(false);
   const [form,          setForm]          = useState(null);
@@ -20,19 +55,45 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
   const [pinBusy,       setPinBusy]       = useState(false);
   const [pinErr,        setPinErr]        = useState('');
 
-  useEffect(() => {
-    fetch('/api/admin/departments').then(r => r.json()).then(data => {
-      if (data.success) setDepartments(data.departments);
-    });
-  }, []);
+  // Time entries (Sprint 5D)
+  const [entries,    setEntries]    = useState([]);
+  const [entryLoad,  setEntryLoad]  = useState(true);
+  const [editEntry,  setEditEntry]  = useState(null);   // entry object being edited
+  const [entryForm,  setEntryForm]  = useState({ in: '', out: '' });
+  const [entrySave,  setEntrySave]  = useState(false);
+  const [entryErr,   setEntryErr]   = useState('');
 
+  const reloadEmployee = useCallback(async () => {
+    setLoading(true);
+    const { ok, data } = await apiFetch(`/admin/employees/${userId}`);
+    if (ok && data?.success) setEmp(data.employee);
+    setLoading(false);
+  }, [userId]);
+
+  const reloadEntries = useCallback(async () => {
+    setEntryLoad(true);
+    const res  = await fetch(`/api/admin/employees/${userId}/time-entries`);
+    const data = await res.json();
+    if (data.success) setEntries(data.timeEntries);
+    setEntryLoad(false);
+  }, [userId]);
+
+  useEffect(() => {
+    reloadEmployee();
+    reloadEntries();
+    fetch('/api/admin/departments').then(r => r.json()).then(d => {
+      if (d.success) setDepartments(d.departments);
+    });
+  }, [reloadEmployee, reloadEntries]);
+
+  // ── profile edit ──────────────────────────────────────────────────────────
   const startEdit = () => {
     setForm({
-      name:          emp.name,
-      phone:         emp.phone_number,
-      role:          emp.role,
-      departmentId:  emp.department_id || '',
-      hireDate:      emp.hire_date ? emp.hire_date.split('T')[0] : '',
+      name:           emp.name,
+      phone:          emp.phone_number,
+      role:           emp.role,
+      departmentId:   emp.department_id || '',
+      hireDate:       emp.hire_date ? emp.hire_date.split('T')[0] : '',
       baseHourlyRate: emp.base_hourly_rate || '',
     });
     setError('');
@@ -46,7 +107,7 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
     setSaving(true);
     setError('');
     const res  = await fetch(`/api/admin/employees/${emp.user_id}`, {
-      method: 'PUT',
+      method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: form.name, phoneNumber: form.phone, role: form.role,
@@ -68,7 +129,7 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
     setToggling(true);
     setError('');
     const res  = await fetch(`/api/admin/employees/${emp.user_id}/status`, {
-      method: 'PATCH',
+      method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !emp.active }),
     });
@@ -88,13 +149,11 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
     const res  = await fetch(`/api/admin/employees/${emp.user_id}`, { method: 'DELETE' });
     const data = await res.json();
     setDeleting(false);
-    if (data.success) {
-      onBack();
-    } else {
-      setError(data.message);
-    }
+    if (data.success) nav('/admin/employees');
+    else              setError(data.message);
   };
 
+  // ── PIN ───────────────────────────────────────────────────────────────────
   const togglePinRequired = async () => {
     setPinBusy(true);
     setPinErr('');
@@ -103,11 +162,8 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
       body:   JSON.stringify({ pin_required: !emp.pin_required }),
     });
     setPinBusy(false);
-    if (ok && data?.success) {
-      setEmp(prev => ({ ...prev, ...data.employee }));
-    } else {
-      setPinErr(data?.message || 'Could not update PIN setting');
-    }
+    if (ok && data?.success) setEmp(prev => ({ ...prev, ...data.employee }));
+    else                     setPinErr(data?.message || 'Could not update PIN setting');
   };
 
   const resetPin = async () => {
@@ -118,24 +174,83 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
       method: 'POST',
     });
     setPinBusy(false);
+    if (ok && data?.success) setEmp(prev => ({ ...prev, ...data.employee }));
+    else                     setPinErr(data?.message || 'Could not reset PIN');
+  };
+
+  // ── Hour override ─────────────────────────────────────────────────────────
+  const openEntryEdit = (entry) => {
+    setEditEntry(entry);
+    setEntryForm({
+      in:  toLocalInput(entry.clock_in_time),
+      out: toLocalInput(entry.clock_out_time),
+    });
+    setEntryErr('');
+  };
+
+  const closeEntryEdit = () => {
+    setEditEntry(null);
+    setEntryErr('');
+  };
+
+  const saveEntryEdit = async (e) => {
+    e.preventDefault();
+    setEntrySave(true);
+    setEntryErr('');
+    // datetime-local gives a string like "2026-04-29T08:30" interpreted as
+    // local time. Build a Date from it and send ISO (UTC) to the server.
+    const inDate  = entryForm.in ? new Date(entryForm.in) : null;
+    const outDate = entryForm.out ? new Date(entryForm.out) : null;
+    if (!inDate || isNaN(inDate)) {
+      setEntrySave(false);
+      setEntryErr('Clock-in is required');
+      return;
+    }
+    if (outDate && outDate <= inDate) {
+      setEntrySave(false);
+      setEntryErr('Clock-out must be after clock-in');
+      return;
+    }
+
+    const { ok, data } = await apiFetch(`/admin/time-entries/${editEntry.entry_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        clock_in_time:  inDate.toISOString(),
+        clock_out_time: outDate ? outDate.toISOString() : null,
+      }),
+    });
+    setEntrySave(false);
     if (ok && data?.success) {
-      setEmp(prev => ({ ...prev, ...data.employee }));
+      closeEntryEdit();
+      reloadEntries();
     } else {
-      setPinErr(data?.message || 'Could not reset PIN');
+      setEntryErr(data?.message || 'Could not save');
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
+  if (loading) return <div className="emp-detail"><div className="emp-loading">Loading…</div></div>;
+  if (!emp)    return (
+    <div className="emp-detail">
+      <div className="emp-detail-topbar">
+        <button className="btn-back" onClick={() => nav('/admin/employees')}>‹ Employees</button>
+      </div>
+      <div className="emp-empty">Employee not found.</div>
+    </div>
+  );
+
   const deptName = () =>
     departments.find(d => d.department_id === emp.department_id)?.name || emp.department || '—';
+
+  // Recent entries (last 30, latest first)
+  const recentEntries = entries.slice(0, 30);
 
   return (
     <div className="emp-detail">
       {/* Header */}
       <div className="emp-detail-topbar">
-        <button className="btn-back" onClick={onBack}>‹ Employees</button>
-        {!editing && (
-          <button className="btn-edit" onClick={startEdit}>Edit</button>
-        )}
+        <button className="btn-back" onClick={() => nav('/admin/employees')}>‹ Employees</button>
+        {!editing && <button className="btn-edit" onClick={startEdit}>Edit</button>}
       </div>
 
       {/* Profile card */}
@@ -231,16 +346,52 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
                     : 'No PIN set yet.'}
               </div>
             </div>
-            <button
-              className="btn-pin-reset"
-              onClick={resetPin}
-              disabled={pinBusy}
-            >
+            <button className="btn-pin-reset" onClick={resetPin} disabled={pinBusy}>
               {pinBusy ? '…' : 'Reset PIN'}
             </button>
           </div>
 
           {pinErr && <div className="admin-error" style={{ marginTop: 8 }}>{pinErr}</div>}
+        </div>
+      )}
+
+      {/* Time entries — Sprint 5D */}
+      {!editing && (
+        <div className="emp-pin-section">
+          <h3 className="emp-pin-title">Time Entries</h3>
+
+          {entryLoad && <div className="emp-pin-meta">Loading…</div>}
+          {!entryLoad && recentEntries.length === 0 && (
+            <div className="emp-pin-meta">No time entries yet.</div>
+          )}
+
+          {!entryLoad && recentEntries.length > 0 && (
+            <ul className="emp-entries-list">
+              {recentEntries.map(e => {
+                const hrs = e.clock_out_time ? hoursOf(e.clock_in_time, e.clock_out_time) : null;
+                return (
+                  <li key={e.entry_id} className="emp-entry-row">
+                    <div className="emp-entry-main">
+                      <div className="emp-entry-date">{fmtEntryDate(e.clock_in_time)}</div>
+                      <div className="emp-entry-times">
+                        {fmtTime(e.clock_in_time)} → {e.clock_out_time
+                          ? fmtTime(e.clock_out_time)
+                          : <span className="emp-entry-open">in progress</span>}
+                      </div>
+                    </div>
+                    <div className="emp-entry-hours">{e.clock_out_time ? fmtHrs(hrs) : '—'}</div>
+                    <button
+                      className="emp-entry-edit"
+                      onClick={() => openEntryEdit(e)}
+                      title="Override hours"
+                    >
+                      Edit
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
@@ -272,6 +423,48 @@ const EmployeeDetail = ({ employee, onBack, onLogout }) => {
               </button>
             )
           )}
+        </div>
+      )}
+
+      {/* Entry edit modal */}
+      {editEntry && (
+        <div className="entry-edit-overlay" onClick={closeEntryEdit}>
+          <form className="entry-edit-modal" onClick={e => e.stopPropagation()} onSubmit={saveEntryEdit}>
+            <div className="entry-edit-header">
+              <h3>Override Hours</h3>
+              <button type="button" className="entry-edit-close" onClick={closeEntryEdit}>✕</button>
+            </div>
+            <p className="entry-edit-sub">
+              Edit clock-in / clock-out for this shift. The change is logged to the audit trail.
+            </p>
+            <div className="entry-edit-fields">
+              <label>
+                <span>Clock In</span>
+                <input
+                  type="datetime-local"
+                  value={entryForm.in}
+                  onChange={e => setEntryForm(f => ({ ...f, in: e.target.value }))}
+                  required
+                />
+              </label>
+              <label>
+                <span>Clock Out</span>
+                <input
+                  type="datetime-local"
+                  value={entryForm.out}
+                  onChange={e => setEntryForm(f => ({ ...f, out: e.target.value }))}
+                />
+                <small>Leave blank to keep "in progress"</small>
+              </label>
+            </div>
+            {entryErr && <div className="admin-error">{entryErr}</div>}
+            <div className="entry-edit-actions">
+              <button type="button" className="btn-logout" onClick={closeEntryEdit}>Cancel</button>
+              <button type="submit" className="btn-save" disabled={entrySave}>
+                {entrySave ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
