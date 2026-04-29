@@ -481,6 +481,43 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
   }
 });
 
+// Entries for the authed user in an arbitrary date range. Used by Timesheet
+// CSV export (month/year range options). `from` is inclusive, `to` is inclusive.
+app.get('/api/me/entries', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  const { from, to } = req.query;
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ success: false, message: 'from and to dates required (YYYY-MM-DD)' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time,
+              EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
+       FROM time_entries
+       WHERE user_id = $1
+         AND clock_in_time >= $2::date
+         AND clock_in_time <  ($3::date + INTERVAL '1 day')
+       ORDER BY clock_in_time DESC`,
+      [req.auth.sub, from, to]
+    );
+    return res.json({
+      success: true,
+      from, to,
+      entries: rows.map(e => ({
+        entry_id:       e.entry_id,
+        clock_in_time:  e.clock_in_time,
+        clock_out_time: e.clock_out_time,
+        hours:          Math.round(parseFloat(e.hours) * 10) / 10,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // History for the authed user (last 4 weeks). Used by TimeClock week strip.
 app.get('/api/me/history', requireAuth, async (req, res) => {
   if (req.auth.type !== 'staff') {

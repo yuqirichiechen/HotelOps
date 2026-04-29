@@ -198,6 +198,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 - `POST /api/clock-in-self`              auth (staff) → start a time entry for the authed user
 - `POST /api/clock-out-self`             auth (staff) → close the open entry for the authed user
 - `GET  /api/me/hours?weekStart=YYYY-MM-DD`  auth (staff) → days, totalHours, scheduledHours, recentShifts, currentlyClockedIn, openClockInTime, **entries** (raw time_entries this week)
+- `GET  /api/me/entries?from=YYYY-MM-DD&to=YYYY-MM-DD`  auth (staff) → entries in arbitrary date range. Used by Timesheet's month/year CSV export.
 - `GET  /api/me/history`                 auth (staff) → time_entries from the last 4 weeks
 
 ### Admin (most are unprotected for now; pin endpoints are protected)
@@ -555,6 +556,42 @@ The Timesheet page is now live. `/timesheet` is no longer a placeholder.
 - Click-driven cross-component state: the bar chart and the daily
   breakdown share `openDay` state in the parent so clicking either
   surface highlights both.
+
+### 2026-04-28 — Sprint 4.1: Timesheet bug-bash
+
+Five fixes from user feedback. No DB changes.
+
+**Files modified:**
+- `server/server.js` — added `GET /api/me/entries?from=&to=` for arbitrary
+  date-range entry fetch. Powers month/year CSV exports.
+- `src/pages/Timesheet/Timesheet.css` — header rewritten to a calendar-style
+  control row: chevrons (`‹` / `›` at 24px, 38×38 buttons) flank the week
+  title, "This week" sits next to them, then a flex spacer pushes Export to
+  the right. Added `.ts-csv-wrap` / `.ts-csv-menu` for the dropdown. Mobile
+  rule no longer over-pads `.ts-card-title` on the chart card (was causing
+  "Daily totals" to drift right of "Total worked" / "Daily breakdown").
+- `src/pages/Timesheet/index.js` — three behavioral changes:
+  - Chevrons + title in a tight `.ts-week-nav` cluster.
+  - "↓ Export CSV ▾" opens a menu with **This week** / **This month** /
+    **This year**. Click-outside closes it. Each option pulls the right
+    range (week from already-loaded data; month/year via `/api/me/entries`).
+  - **Overnight shifts split client-side** at midnight. `splitEntryByDay`
+    walks an entry day-by-day and emits one segment per calendar day with
+    its own start/end and per-day hours. Per-day totals + the chart bars
+    + the daily breakdown all use these segment hours, so a 10pm→6am shift
+    correctly shows 2h on Mon and 6h on Tue. CSV export uses the same
+    splitter so exports reflect actual per-day hours. In-progress overnight
+    shifts: live segment shown only on its current day.
+
+**Conventions added:**
+- Click-outside dismiss for menu/popover: `useEffect` adds a `mousedown`
+  listener while the menu is open, ignores clicks inside the wrapper ref.
+- Day boundary helper: `localDayKey(d)` returns `YYYY-MM-DD` in local time
+  (avoid `toISOString().split('T')[0]` for day grouping — it can shift days
+  near midnight in non-UTC zones).
+- Per-day client recomputation pattern: server's `days[].hours` is fine for
+  Home (totals only) but Timesheet recomputes from raw entries to handle
+  splits. Don't trust server aggregations when entries can cross days.
 
 **Sprint 4.x backlog (open — debug + extras):**
 - Up to user. Likely candidates: per-day notes, monthly view, payroll
