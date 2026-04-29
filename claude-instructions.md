@@ -593,6 +593,43 @@ Five fixes from user feedback. No DB changes.
   Home (totals only) but Timesheet recomputes from raw entries to handle
   splits. Don't trust server aggregations when entries can cross days.
 
+### 2026-04-28 — Sprint 4.2: Timesheet bug-bash round 2
+
+**Files modified:**
+- `server/server.js` — `/api/me/hours` query now uses **overlap-intersect**:
+  `clock_in_time < weekEnd AND COALESCE(clock_out_time, NOW()) >= weekStart`.
+  Fixes shifts that started before the displayed week vanishing when you
+  navigate forward.
+- `src/pages/Timesheet/index.js`:
+  - **Live segment hours fix.** `splitEntryByDay` now always returns
+    `segHours` for every segment, even the live one (elapsed hours up to
+    `now`). `isLive` stays a flag for the UI to label "in progress".
+    Previously the live segment had `segHours = null`, which the day-total
+    reducer dropped — that's why a still-running shift showed `0h 0m` on
+    its current day. Symptom matched the user's screenshot perfectly.
+  - **In-week segment filter.** After splitting, segments outside the
+    displayed week's day keys are dropped before populating
+    `entriesByDay` / `dayTotals`. Cross-week shifts now contribute only
+    their in-week portion to "Total worked"; the rest is visible when
+    you navigate to the corresponding week.
+  - Header restructured: eyebrow + date title on a top row, then
+    `‹ + This week + › + Export CSV` clustered tight on the next row.
+    No flex spacer — Export sits right after the next-chevron and just
+    wraps to the next line on phones if needed.
+- `src/pages/Timesheet/Timesheet.css` — header rules updated, all four
+  controls share `height: 38px` (34px on mobile) so the row is visually
+  level. Chevrons stayed at 24px.
+
+**Conventions added:**
+- **Server query for week views: overlap-intersect, not start-in-week.**
+  An entry counts for a week if any portion overlaps it.
+- **Client-side aggregation for cross-day data should be in-window
+  filtered.** When showing a week, drop segments that fall outside; only
+  sum segments that actually belong to the displayed days.
+- **Live segments still contribute hours.** A null `segHours` will get
+  silently dropped by reducers — always compute the elapsed time and
+  use a separate flag (`isLive`) to label it.
+
 **Sprint 4.x backlog (open — debug + extras):**
 - Up to user. Likely candidates: per-day notes, monthly view, payroll
   period totals (needs a pay-period anchor), approval-request integration

@@ -381,14 +381,17 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
   }
 
   try {
-    // Time entries this week (clock_in within the 7-day window)
+    // Entries that INTERSECT the week. An entry counts if any portion of it
+    // falls inside [weekStart, weekStart + 7 days). This catches shifts that
+    // started before this week but extend into it, and shifts that start in
+    // this week but extend into next week.
     const { rows: entries } = await pool.query(
       `SELECT entry_id, clock_in_time, clock_out_time,
               EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
        FROM time_entries
        WHERE user_id = $1
-         AND clock_in_time >= $2::date
          AND clock_in_time <  ($2::date + INTERVAL '7 days')
+         AND COALESCE(clock_out_time, NOW()) >= $2::date
        ORDER BY clock_in_time DESC`,
       [userId, weekStart]
     );

@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../../auth';
 import './Timesheet.css';
 
-// Detailed hours view. Pulls /api/me/hours which returns the week summary,
-// the per-day aggregates, and raw entries for the week. Daily breakdown
-// groups entries client-side; overnight shifts are split at midnight so
-// each calendar day reflects the hours actually worked on it.
+// Detailed hours view. Pulls /api/me/hours which returns the week summary
+// plus raw entries that INTERSECT the requested week (so cross-week shifts
+// remain visible). Daily breakdown groups entries client-side; entries that
+// cross midnight are split per calendar day; live segments contribute their
+// elapsed hours to the day total even before clock-out.
 
 const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -38,30 +39,16 @@ const getMondayISO = (d = new Date()) => {
   return localDayKey(date);
 };
 
-// Split an entry that crosses midnight into per-day segments. A same-day
-// entry returns a single segment. Each segment carries its day key, its
-// own start/end times (clamped at day boundaries), and its own hours.
+// Walk an entry day-by-day in local time and emit one segment per calendar
+// day. Each segment carries its own start/end (clamped to midnight) and its
+// own hours (always computed — live segments get elapsed time too, so day
+// totals reflect the work that actually happened).
 const splitEntryByDay = (entry) => {
   const start    = new Date(entry.clock_in_time);
   const realEnd  = entry.clock_out_time ? new Date(entry.clock_out_time) : new Date();
   const isLive   = !entry.clock_out_time;
-  const startKey = localDayKey(start);
-  const endKey   = localDayKey(realEnd);
+  if (realEnd <= start) return [];
 
-  if (startKey === endKey) {
-    return [{
-      key:        `${entry.entry_id}-${startKey}`,
-      entry_id:   entry.entry_id,
-      day:        startKey,
-      segStart:   entry.clock_in_time,
-      segEnd:     entry.clock_out_time,
-      segHours:   isLive ? null : (entry.hours ?? Math.round(((realEnd - start) / 3600000) * 10) / 10),
-      isPart:     false,
-      isLive,
-    }];
-  }
-
-  // Crosses midnight → walk day by day
   const segs = [];
   let cursor  = new Date(start);
   while (cursor < realEnd) {
@@ -71,14 +58,18 @@ const splitEntryByDay = (entry) => {
     const isLastSeg    = segEndDate.getTime() === realEnd.getTime();
     const liveSeg      = isLive && isLastSeg;
     const hrs          = (segEndDate - cursor) / 3600000;
+
     segs.push({
       key:      `${entry.entry_id}-${dayKey}`,
       entry_id: entry.entry_id,
       day:      dayKey,
       segStart: cursor.toISOString(),
+      // For live segments we still want a representable end time for the
+      // breakdown row ("8:00 PM → in progress"), so we don't blank it out.
       segEnd:   liveSeg ? null : segEndDate.toISOString(),
-      segHours: liveSeg ? null : Math.round(hrs * 10) / 10,
-      isPart:   true,                              // every segment is part of a multi-day entry
+      segHours: Math.round(hrs * 10) / 10,
+      // isPart is true if the entry crosses at least one day boundary.
+      isPart:   start.toDateString() !== realEnd.toDateString(),
       isLive:   liveSeg,
     });
     cursor = nextMidnight;
@@ -110,7 +101,6 @@ const Timesheet = () => {
   const [csvBusy,   setCsvBusy]   = useState(false);
   const csvWrapRef = useRef(null);
 
-  // Fetch this-week data
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -122,7 +112,6 @@ const Timesheet = () => {
     return () => { active = false; };
   }, [weekStart]);
 
-  // Click-outside closes the CSV menu
   useEffect(() => {
     if (!csvOpen) return;
     const onClick = (e) => {
@@ -143,23 +132,30 @@ const Timesheet = () => {
     ? `${monday.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${sunday.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
     : '—';
 
-  // Group entries → segments by day. Recompute per-day totals from segments
-  // so overnight shifts contribute their actual per-day hours.
+  // Group entries → segments, but only keep segments inside the displayed
+  // week. weekTotal/dayTotals are computed from in-week segments only, so a
+  // 200h shift crossing weeks contributes only its in-week hours here.
   const { entriesByDay, dayTotals, weekTotal } = useMemo(() => {
-    const map      = {};
-    const totals   = {};
-    (data?.entries || []).forEach(e => {
+    const map    = {};
+    const totals = {};
+    if (!data) return { entriesByDay: map, dayTotals: totals, weekTotal: 0 };
+
+    const inWeekKeys = new Set((data.days || []).map(d => d.date));
+
+    (data.entries || []).forEach(e => {
       splitEntryByDay(e).forEach(seg => {
+        if (!inWeekKeys.has(seg.day)) return;       // out-of-week segment
         (map[seg.day] = map[seg.day] || []).push(seg);
-        if (seg.segHours != null) totals[seg.day] = (totals[seg.day] || 0) + seg.segHours;
+        totals[seg.day] = (totals[seg.day] || 0) + seg.segHours;
       });
     });
+
     Object.values(map).forEach(arr => arr.sort(
       (a, b) => new Date(a.segStart) - new Date(b.segStart)
     ));
     Object.keys(totals).forEach(k => { totals[k] = Math.round(totals[k] * 10) / 10; });
-    const week = Object.values(totals).reduce((s, n) => s + n, 0);
-    return { entriesByDay: map, dayTotals: totals, weekTotal: Math.round(week * 10) / 10 };
+    const week = Math.round(Object.values(totals).reduce((s, n) => s + n, 0) * 10) / 10;
+    return { entriesByDay: map, dayTotals: totals, weekTotal: week };
   }, [data]);
 
   const total     = weekTotal || 0;
@@ -207,7 +203,6 @@ const Timesheet = () => {
       .slice()
       .sort((a, b) => new Date(a.clock_in_time) - new Date(b.clock_in_time))
       .forEach(e => {
-        // Split overnights into per-day rows for export too
         splitEntryByDay(e).forEach(seg => {
           const date = new Date(seg.segStart);
           rows.push([
@@ -217,7 +212,7 @@ const Timesheet = () => {
             seg.isLive
               ? 'In progress'
               : new Date(seg.segEnd).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-            seg.segHours != null ? seg.segHours.toFixed(2) : '',
+            seg.segHours.toFixed(2),
           ]);
         });
       });
@@ -238,12 +233,12 @@ const Timesheet = () => {
         if (scheduled > 0) rows.push(['', '', '', 'Total scheduled', scheduled.toFixed(2)]);
         filename = `timesheet-week-${weekStart}.csv`;
       } else if (range === 'month') {
-        const now = new Date();
-        const y   = now.getFullYear();
-        const m   = now.getMonth();
-        const from = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+        const now     = new Date();
+        const y       = now.getFullYear();
+        const m       = now.getMonth();
+        const from    = `${y}-${String(m + 1).padStart(2, '0')}-01`;
         const lastDay = new Date(y, m + 1, 0).getDate();
-        const to   = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        const to      = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
         const { ok, data: r } = await apiFetch(`/me/entries?from=${from}&to=${to}`);
         if (!ok || !r?.success) throw new Error(r?.message || 'Could not fetch month');
         rows = buildRowsFromEntries(r.entries);
@@ -279,15 +274,12 @@ const Timesheet = () => {
   return (
     <div className="ts-page">
 
-      {/* Header */}
+      {/* Header — eyebrow + date on one row, controls on a second row */}
       <header className="ts-header">
         <div className="ts-eyebrow">Timesheet</div>
+        <h1 className="ts-title">{weekLabel}</h1>
         <div className="ts-controls">
-          <div className="ts-week-nav">
-            <button className="ts-chev-btn" onClick={goPrev} title="Previous week" aria-label="Previous week">‹</button>
-            <h1 className="ts-title">{weekLabel}</h1>
-            <button className="ts-chev-btn" onClick={goNext} disabled={isThisWeek} title="Next week" aria-label="Next week">›</button>
-          </div>
+          <button className="ts-chev-btn" onClick={goPrev} title="Previous week" aria-label="Previous week">‹</button>
           <button
             className="ts-this-week-btn"
             onClick={goThis}
@@ -295,7 +287,7 @@ const Timesheet = () => {
           >
             This week
           </button>
-          <div className="ts-controls-spacer" />
+          <button className="ts-chev-btn" onClick={goNext} disabled={isThisWeek} title="Next week" aria-label="Next week">›</button>
           <div className={`ts-csv-wrap ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
             <button
               className="ts-csv-btn"
@@ -422,7 +414,7 @@ const Timesheet = () => {
                             {seg.isPart && <span className="ts-entry-cont">spans days</span>}
                           </div>
                           <div className="ts-entry-hours">
-                            {seg.isLive ? '—' : fmtHoursMinutes(seg.segHours)}
+                            {fmtHoursMinutes(seg.segHours)}
                           </div>
                         </div>
                       ))}

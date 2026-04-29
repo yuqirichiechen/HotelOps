@@ -16,12 +16,12 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Header (eyebrow + control row) ──────────────────────────────────────── */
+/* ── Header (eyebrow + date on top row, controls on second row) ─────────── */
 
 .ts-header {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 4px;
 }
 
@@ -33,17 +33,24 @@
   letter-spacing: 0.12em;
 }
 
+.ts-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tight cluster: ‹ + This week + › + Export, all on one row with small gap.
+   Wraps onto a second line on phones if needed. */
 .ts-controls {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   flex-wrap: wrap;
-}
-
-.ts-week-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  margin-top: 2px;
 }
 
 .ts-chev-btn {
@@ -71,37 +78,21 @@
   border-color: var(--text-muted);
 }
 
-.ts-chev-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.ts-title {
-  font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-  margin: 0;
-  padding: 0 8px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.ts-controls-spacer { flex: 1; }
+.ts-chev-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .ts-this-week-btn {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 500;
-  padding: 8px 14px;
+  padding: 9px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.15s ease;
   white-space: nowrap;
+  height: 38px;
 }
 
 .ts-this-week-btn:hover:not(:disabled) { background: var(--bg-raised); color: var(--text-primary); }
@@ -119,7 +110,7 @@
   font-weight: 600;
   padding: 9px 14px;
   border: 1px solid var(--brand-bg);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--brand-bg);
   color: white;
   cursor: pointer;
@@ -128,6 +119,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 38px;
 }
 
 .ts-csv-btn:hover    { background: var(--brand-hover); border-color: var(--brand-hover); }
@@ -520,11 +512,11 @@
 
 @media (max-width: 768px) {
   .ts-page          { padding: 20px 18px 40px; gap: 14px; }
-  .ts-title         { font-size: 20px; }
-  .ts-controls      { gap: 8px; }
-  .ts-controls-spacer { display: none; }
-  .ts-this-week-btn { padding: 7px 11px; font-size: 12px; }
+  .ts-title         { font-size: 22px; }
+  .ts-controls      { gap: 6px; }
+  .ts-this-week-btn { padding: 7px 11px; font-size: 12px; height: 34px; }
   .ts-chev-btn      { width: 34px; height: 34px; font-size: 22px; }
+  .ts-csv-btn       { padding: 7px 12px; font-size: 12px; height: 34px; }
 
   .ts-hero          { grid-template-columns: 1fr; gap: 16px; padding: 20px 22px; }
   .ts-hero-side     { align-items: flex-start; }
