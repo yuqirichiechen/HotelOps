@@ -11,11 +11,9 @@
 
 @media (max-width: 768px) {
   .app-main {
-    /* Lock to screen — no scrolling on the time clock view */
-    height: 100vh;
-    height: 100dvh; /* accounts for mobile browser chrome */
-    overflow: hidden;
-    /* subtract bottom nav height */
+    /* Clearance for the fixed bottom nav. Pages otherwise scroll naturally;
+       any future page that wants to lock to the viewport should opt in
+       on its own root element rather than relying on a global rule here. */
     padding-bottom: 64px;
     box-sizing: border-box;
   }

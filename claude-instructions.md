@@ -503,9 +503,27 @@ sidebar slot to "Timesheet" (placeholder) — Sprint 4 will fill it.
   pre-rotated `rotateY(180deg)`, and a `.flipped` class on the child that
   applies `rotateY(180deg)`. Same primitive as `.tc-flip-card`.
 
+### 2026-04-28 — Sprint 3.2: unblock mobile scrolling
+
+**Bug:** On mobile (≤768px), pages with content taller than the viewport
+(notably Settings — its Sign-out button sits near the bottom) couldn't be
+reached. The button only appeared when the user zoomed in.
+
+**Cause:** `src/App.css` had a global mobile `@media` rule on `.app-main`
+that locked `height: 100vh; overflow: hidden;`. It was added back when
+`/timeclock` was the home and we wanted no scroll. Now with longer pages
+(Settings, Timesheet, Calendar) it clips everything.
+
+**Fix:** Trimmed that rule to just `padding-bottom: 64px` for bottom-nav
+clearance. Pages now scroll naturally on mobile. Any page that genuinely
+wants viewport-locked behavior should opt in on its own root, not via a
+global App.css rule.
+
+**Files modified:** `src/App.css`.
+
 **Sprint 3.x backlog (continuing user-driven bug fixes):**
-- *Open: tell me what's next.* User said Sprint 3.x runs until all bugs
-  are fixed; Sprint 4 (Timesheet build-out) follows.
+- *Open: tell me what's next.* Sprint 3.x runs until all bugs are fixed;
+  Sprint 4 (Timesheet build-out) follows.
 
 **Sprint 4 backlog (post-debug):**
 - **Timesheet page** at `/timesheet`: port the rich layout from the old
