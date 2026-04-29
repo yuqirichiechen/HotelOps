@@ -1,14 +1,14 @@
-/* ── Page shell override ───────────────────���─────────────────────────────────── */
+/* ── Page shell override ─────────────────────────────────────────────────── */
 
-.sv-page { background: #f0f4f8; }
+.sv-page { background: var(--bg-base); }
 
 .sv-back-face {
-  background: #f0f4f8;
+  background: var(--bg-base);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* ── Calendar container ──────────────────────────────────────────────────────── */
+/* ── Calendar container ──────────────────────────────────────────────────── */
 
 .sv-calendar {
   display: flex;
@@ -23,8 +23,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 18px 20px 12px;
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 12px;
 }
@@ -32,18 +32,18 @@
 .sv-back-btn {
   padding: 8px 14px;
   background: transparent;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 600;
-  color: #718096;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
 }
 
-.sv-back-btn:hover { border-color: #1a365d; color: #1a365d; }
+.sv-back-btn:hover { border-color: var(--brand-text); color: var(--brand-text); }
 
 .sv-cal-title {
   display: flex;
@@ -56,7 +56,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 17px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
 }
 
@@ -64,7 +64,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -73,18 +73,18 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 600;
-  color: #4a5568;
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
-/* ── Week day tabs ──────────────────────────────────────────────────────────���── */
+/* ── Week day tabs ───────────────────────────────────────────────────────── */
 
 .sv-week-tabs {
   display: flex;
   gap: 6px;
   padding: 12px 16px;
-  background: white;
-  border-bottom: 1.5px solid #e2e8f0;
+  background: var(--bg-surface);
+  border-bottom: 1.5px solid var(--border);
   overflow-x: auto;
   flex-shrink: 0;
   scrollbar-width: none;
@@ -110,14 +110,14 @@
   scroll-snap-align: start;
 }
 
-.sv-day-tab:hover { background: #f7fafc; }
+.sv-day-tab:hover { background: var(--bg-surface-alt); }
 
-.sv-day-tab-today { border-color: #3182ce; }
+.sv-day-tab-today { border-color: var(--accent-alt); }
 
 .sv-day-tab-active {
-  background: #1a365d;
-  border-color: #1a365d;
-  box-shadow: 0 3px 10px rgba(26, 54, 93, 0.25);
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  box-shadow: 0 3px 10px var(--brand-shadow);
 }
 
 .sv-day-name {
@@ -126,24 +126,24 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #a0aec0;
+  color: var(--text-faint);
 }
 
 .sv-day-tab-active .sv-day-name { color: rgba(255, 255, 255, 0.7); }
-.sv-day-tab-today:not(.sv-day-tab-active) .sv-day-name { color: #3182ce; }
+.sv-day-tab-today:not(.sv-day-tab-active) .sv-day-name { color: var(--accent-alt); }
 
 .sv-day-num {
   font-family: 'TiemposFine', Georgia, serif;
   font-size: 20px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .sv-day-tab-active .sv-day-num { color: white; }
-.sv-day-tab-today:not(.sv-day-tab-active) .sv-day-num { color: #3182ce; font-weight: 700; }
+.sv-day-tab-today:not(.sv-day-tab-active) .sv-day-num { color: var(--accent-alt); font-weight: 700; }
 
-/* ── States ─────────────────────────────────────────────────���────────────────── */
+/* ── States ──────────────────────────────────────────────────────────────── */
 
 .sv-loading,
 .sv-empty {
@@ -153,7 +153,7 @@
   justify-content: center;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
   padding: 48px 20px;
 }
@@ -167,14 +167,14 @@
   gap: 12px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
   padding: 48px 20px;
 }
 
 .sv-hidden-icon { font-size: 36px; }
 
-/* ── Timeline scroll area ────────────────────────────────────────────────────── */
+/* ── Timeline scroll area ────────────────────────────────────────────────── */
 
 .sv-timeline-scroll {
   flex: 1;
@@ -187,7 +187,7 @@
   padding: 0 24px;
 }
 
-/* ── Time axis row ───────────────────────────────────────────────────────────── */
+/* ── Time axis row ───────────────────────────────────────────────────────── */
 
 .sv-time-axis {
   display: flex;
@@ -215,7 +215,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 600;
-  color: #a0aec0;
+  color: var(--text-faint);
   letter-spacing: 0.03em;
   white-space: nowrap;
   user-select: none;
@@ -234,7 +234,7 @@
 .sv-midnight-line {
   width: 1.5px;
   height: 16px;
-  background: #e53e3e;
+  background: var(--midnight);
   opacity: 0.4;
 }
 
@@ -242,14 +242,14 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 9px;
   font-weight: 700;
-  color: #e53e3e;
+  color: var(--midnight);
   opacity: 0.6;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
 
-/* ── Department lane ─────────────────────────────────────────────────────────── */
+/* ── Department lane ─────────────────────────────────────────────────────── */
 
 .sv-dept-lane {
   display: flex;
@@ -257,8 +257,8 @@
   margin-bottom: 10px;
   border-radius: 12px;
   overflow: hidden;
-  background: white;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .sv-dept-label {
@@ -270,9 +270,9 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 700;
-  color: #2d3748;
+  color: var(--text-primary);
   border-left: 3.5px solid;
-  background: #f7fafc;
+  background: var(--bg-surface-alt);
   word-break: break-word;
   line-height: 1.3;
 }
@@ -281,8 +281,8 @@
   flex: 1;
   position: relative;
   min-height: 64px;
-  background: white;
-  border-left: 1px solid #e2e8f0;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
 }
 
 /* Grid lines inside the track */
@@ -291,7 +291,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #f0f4f8;
+  background: var(--border-light);
   pointer-events: none;
 }
 
@@ -301,12 +301,12 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #e53e3e;
+  background: var(--midnight);
   opacity: 0.2;
   pointer-events: none;
 }
 
-/* ── Shift blocks ────────────────────────────────────────────────────────────── */
+/* ── Shift blocks ────────────────────────────────────────────────────────── */
 
 .sv-shift-block {
   position: absolute;
@@ -352,7 +352,7 @@
   opacity: 0.85;
 }
 
-/* ── Popup overlay ───────────────────────────────────────────────────────────── */
+/* ── Popup overlay ───────────────────────────────────────────────────────── */
 
 .sv-popup-overlay {
   position: fixed;
@@ -370,7 +370,7 @@
 }
 
 .sv-popup-sheet {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 520px;
@@ -387,9 +387,9 @@
   }
 }
 
-@keyframes svFadeIn  { from { opacity: 0; }                       to { opacity: 1; } }
-@keyframes svSlideUp { from { transform: translateY(50%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes svScaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes svFadeIn  { from { opacity: 0; }                                      to { opacity: 1; } }
+@keyframes svSlideUp { from { transform: translateY(50%); opacity: 0; }          to { transform: translateY(0); opacity: 1; } }
+@keyframes svScaleIn { from { opacity: 0; transform: scale(0.92); }              to { opacity: 1; transform: scale(1); } }
 
 .sv-popup-header {
   display: flex;
@@ -403,7 +403,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 18px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
   margin-bottom: 2px;
 }
@@ -411,7 +411,7 @@
 .sv-popup-date {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
 }
 
@@ -419,10 +419,10 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #f0f4f8;
+  background: var(--bg-base);
   border: none;
   font-size: 20px;
-  color: #718096;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -432,7 +432,7 @@
   transition: background 0.15s ease;
 }
 
-.sv-popup-close:hover { background: #e2e8f0; }
+.sv-popup-close:hover { background: var(--border); }
 
 /* Cards container: 1 or 2 side by side */
 .sv-popup-cards {
@@ -444,10 +444,10 @@
 .sv-popup-cards-2 .sv-popup-card { flex: 1; }
 
 .sv-popup-card {
-  background: #f7fafc;
+  background: var(--bg-surface-alt);
   border-radius: 14px;
   padding: 14px;
-  border-top: 3.5px solid #e2e8f0;
+  border-top: 3.5px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -465,7 +465,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 15px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
 }
 
@@ -473,7 +473,7 @@
   font-family: 'TiemposFine', Georgia, serif;
   font-size: 18px;
   font-weight: 500;
-  color: #4a5568;
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
@@ -481,7 +481,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
   font-weight: 700;
-  color: #e53e3e;
+  color: var(--danger);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   opacity: 0.75;
@@ -500,20 +500,20 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
 }
 
 .sv-chip-own {
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
 }
 
 .sv-chip-initial {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #edf2f7;
-  color: #4a5568;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 11px;
   font-weight: 700;
@@ -530,13 +530,13 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
   font-weight: 600;
-  color: #a0aec0;
+  color: var(--text-faint);
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
 
-/* ── Overnight-capped block indicator ────────────────────────────────────────── */
+/* ── Overnight-capped block indicator ────────────────────────────────────── */
 
 .sv-block-continues {
   font-size: 9px;
@@ -547,7 +547,7 @@
   margin-top: auto;
 }
 
-/* ── Mobile vertical timeline ────────────────────────────────────────────────── */
+/* ── Mobile vertical timeline ────────────────────────────────────────────── */
 
 .sv-mobile-view {
   flex: 1;
@@ -562,8 +562,8 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: white;
-  border-bottom: 1.5px solid #e2e8f0;
+  background: var(--bg-surface);
+  border-bottom: 1.5px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -579,7 +579,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 700;
-  color: #2d3748;
+  color: var(--text-primary);
   text-align: center;
   border-top: 3px solid;
   word-break: break-word;
@@ -607,7 +607,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 9px;
   font-weight: 600;
-  color: #a0aec0;
+  color: var(--text-faint);
   white-space: nowrap;
   user-select: none;
 }
@@ -616,8 +616,8 @@
   flex: 1;
   min-width: 72px;
   position: relative;
-  border-left: 1px solid #e2e8f0;
-  background: white;
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface);
 }
 
 .sv-mobile-grid-line {
@@ -625,7 +625,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: #f0f4f8;
+  background: var(--border-light);
   pointer-events: none;
 }
 
@@ -634,7 +634,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #e53e3e;
+  background: var(--midnight);
   opacity: 0.25;
   pointer-events: none;
 }
@@ -658,7 +658,7 @@
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
 }
 
-/* ── Responsive ───────────────────────────────────────────────────────────────�� */
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 767px) {
   .sv-cal-header { padding: 14px 16px 10px; }

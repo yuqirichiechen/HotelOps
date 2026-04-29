@@ -38,7 +38,9 @@ const ClockWidget = () => {
       <svg viewBox="0 0 200 200" className="analog-clock" aria-label={digitalTime}>
 
         {/* Face */}
-        <circle cx="100" cy="100" r="96" fill="white" stroke="#e2e8f0" strokeWidth="1.5" />
+        <circle cx="100" cy="100" r="96"
+          style={{ fill: 'var(--bg-surface)', stroke: 'var(--border)' }}
+          strokeWidth="1.5" />
 
         {/* Hour marks */}
         {Array.from({ length: 12 }, (_, i) => {
@@ -53,7 +55,7 @@ const ClockWidget = () => {
               key={i}
               x1={p1.x} y1={p1.y}
               x2={p2.x} y2={p2.y}
-              stroke="#1a365d"
+              style={{ stroke: 'var(--brand-text)' }}
               strokeWidth={big ? 2.5 : 1}
               strokeLinecap="round"
             />
@@ -71,7 +73,7 @@ const ClockWidget = () => {
               key={i}
               x1={p1.x} y1={p1.y}
               x2={p2.x} y2={p2.y}
-              stroke="#cbd5e0"
+              style={{ stroke: 'var(--text-lightest)' }}
               strokeWidth="0.8"
               strokeLinecap="round"
             />
@@ -80,22 +82,25 @@ const ClockWidget = () => {
 
         {/* Hour hand */}
         <line x1="100" y1="100" x2={hr.x} y2={hr.y}
-          stroke="#1a365d" strokeWidth="5.5" strokeLinecap="round" />
+          style={{ stroke: 'var(--brand-text)' }}
+          strokeWidth="5.5" strokeLinecap="round" />
 
         {/* Minute hand */}
         <line x1="100" y1="100" x2={mn.x} y2={mn.y}
-          stroke="#2d3748" strokeWidth="3" strokeLinecap="round" />
+          style={{ stroke: 'var(--text-primary)' }}
+          strokeWidth="3" strokeLinecap="round" />
 
         {/* Second hand — tail + needle */}
         <line
           x1={hand(secDeg + 180, 18).x} y1={hand(secDeg + 180, 18).y}
           x2={sc.x} y2={sc.y}
-          stroke="#e53e3e" strokeWidth="1.5" strokeLinecap="round"
+          style={{ stroke: 'var(--danger)' }}
+          strokeWidth="1.5" strokeLinecap="round"
         />
 
         {/* Centre cap */}
-        <circle cx="100" cy="100" r="5"   fill="#1a365d" />
-        <circle cx="100" cy="100" r="2.5" fill="white"   />
+        <circle cx="100" cy="100" r="5"   style={{ fill: 'var(--brand-bg)' }} />
+        <circle cx="100" cy="100" r="2.5" fill="white" />
       </svg>
 
       <div className="clock-digital">{digitalTime}</div>

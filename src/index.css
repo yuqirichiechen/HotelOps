@@ -1,3 +1,4 @@
+@import './theme.css';
 @import './fonts.css';
 
 * {
@@ -9,7 +10,7 @@
 body {
   font-family: 'TiemposText', Georgia, serif;
   font-weight: 400;
-  background: #f0f4f8;
+  background: var(--bg-base);
   height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

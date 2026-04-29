@@ -2,7 +2,7 @@
 
 .admin-panel {
   height: 100%;
-  background: #f0f4f8;
+  background: var(--bg-base);
 }
 
 .admin-field {
@@ -15,7 +15,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
   font-weight: 600;
-  color: #718096;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.09em;
 }
@@ -24,26 +24,26 @@
 .admin-field select {
   font-family: 'TiemposText', Georgia, serif;
   padding: 10px 12px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
   font-weight: 400;
-  color: #2d3748;
-  background: white;
+  color: var(--text-primary);
+  background: var(--bg-surface);
   transition: border-color 0.15s ease;
   outline: none;
 }
 
 .admin-field input:focus,
 .admin-field select:focus {
-  border-color: #63b3ed;
+  border-color: var(--accent);
 }
 
 .admin-error {
   font-family: 'TiemposText', Georgia, serif;
-  background: #fff5f5;
-  color: #c53030;
-  border: 1px solid #feb2b2;
+  background: var(--danger-subtle);
+  color: var(--danger-hover);
+  border: 1px solid var(--danger-border);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
@@ -60,12 +60,12 @@
 }
 
 .admin-login-card {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 20px;
   padding: 40px;
   width: 100%;
   max-width: 400px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-lg);
   animation: adminSlideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -83,7 +83,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 28px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
   margin-bottom: 6px;
 }
@@ -92,7 +92,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
 }
 
@@ -105,7 +105,7 @@
 .admin-login-btn {
   width: 100%;
   padding: 14px;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   border: none;
   border-radius: 10px;
@@ -119,7 +119,7 @@
 }
 
 .admin-login-btn:hover:not(:disabled) {
-  background: #2a4a7f;
+  background: var(--brand-hover);
   transform: translateY(-1px);
 }
 
@@ -160,7 +160,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 26px;
   font-weight: 900;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
   margin-bottom: 2px;
 }
@@ -169,7 +169,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
 }
 
@@ -180,13 +180,13 @@
 }
 
 .admin-module-card {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 14px;
   padding: 18px 20px;
   display: flex;
   align-items: center;
   gap: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
@@ -195,7 +195,7 @@
 }
 
 .module-live:hover {
-  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 
@@ -212,7 +212,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f4f8;
+  background: var(--bg-base);
   border-radius: 10px;
 }
 
@@ -225,7 +225,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 16px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
   margin-bottom: 3px;
 }
@@ -234,13 +234,13 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
 }
 
 .module-arrow {
   font-size: 22px;
-  color: #a0aec0;
+  color: var(--text-faint);
   flex-shrink: 0;
 }
 
@@ -248,8 +248,8 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 700;
-  color: #a0aec0;
-  background: #f0f4f8;
+  color: var(--text-faint);
+  background: var(--bg-base);
   border-radius: 20px;
   padding: 3px 10px;
   text-transform: uppercase;
@@ -284,7 +284,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 24px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
 }
 
@@ -296,8 +296,8 @@
 .btn-back {
   padding: 9px 16px 7px;
   background: transparent;
-  color: #718096;
-  border: 1.5px solid #e2e8f0;
+  color: var(--text-muted);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
@@ -307,13 +307,13 @@
 }
 
 .btn-back:hover {
-  border-color: #1a365d;
-  color: #1a365d;
+  border-color: var(--brand-text);
+  color: var(--brand-text);
 }
 
 .btn-add {
   padding: 10px 18px;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   border: none;
   border-radius: 8px;
@@ -325,13 +325,13 @@
   transition: background 0.15s ease;
 }
 
-.btn-add:hover { background: #2a4a7f; }
+.btn-add:hover { background: var(--brand-hover); }
 
 .btn-logout {
   padding: 10px 18px;
   background: transparent;
-  color: #718096;
-  border: 1.5px solid #e2e8f0;
+  color: var(--text-muted);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
@@ -341,8 +341,8 @@
 }
 
 .btn-logout:hover {
-  border-color: #e53e3e;
-  color: #e53e3e;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 /* Stats bar */
@@ -354,43 +354,43 @@
 
 .emp-stat {
   flex: 1;
-  background: white;
+  background: var(--bg-surface);
   border-radius: 12px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-num {
   font-family: 'TiemposFine', Georgia, serif;
   font-size: 28px;
   font-weight: 500;
-  color: #1a365d;
+  color: var(--brand-text);
   line-height: 1;
   margin-bottom: 4px;
 }
 
-.stat-active   { color: #276749; }
-.stat-inactive { color: #9b2c2c; }
+.stat-active   { color: var(--success-text); }
+.stat-inactive { color: var(--danger-dark); }
 
 .stat-lbl {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 600;
-  color: #a0aec0;
+  color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 /* Add form */
 .add-form {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 14px;
   padding: 24px;
   margin-bottom: 20px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+  box-shadow: var(--shadow-card);
   animation: slideDown 0.25s ease;
 }
 
@@ -409,7 +409,7 @@
 
 .btn-save {
   padding: 11px 28px;
-  background: #38a169;
+  background: var(--success);
   color: white;
   border: none;
   border-radius: 8px;
@@ -421,7 +421,7 @@
   transition: background 0.15s ease;
 }
 
-.btn-save:hover:not(:disabled) { background: #2f855a; }
+.btn-save:hover:not(:disabled) { background: var(--success-hover); }
 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Employee list */
@@ -430,7 +430,7 @@
   font-family: 'TiemposText', Georgia, serif;
   text-align: center;
   padding: 60px 20px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-size: 15px;
   font-style: italic;
 }
@@ -442,13 +442,13 @@
 }
 
 .emp-card {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 12px;
   padding: 16px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
   gap: 12px;
 }
@@ -458,7 +458,7 @@
 }
 
 .emp-card-clickable:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 
@@ -476,7 +476,7 @@
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 18px;
@@ -493,7 +493,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -504,7 +504,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
   margin-top: 2px;
   white-space: nowrap;
@@ -530,12 +530,12 @@
   letter-spacing: 0.06em;
 }
 
-.badge-active   { background: #c6f6d5; color: #276749; }
-.badge-inactive { background: #fed7d7; color: #9b2c2c; }
+.badge-active   { background: var(--success-bg);  color: var(--success-text); }
+.badge-inactive { background: var(--danger-bg);   color: var(--danger-text); }
 
 .emp-chevron {
   font-size: 20px;
-  color: #cbd5e0;
+  color: var(--text-lightest);
   font-weight: 300;
 }
 
@@ -548,15 +548,15 @@
 }
 
 .dept-group {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition: box-shadow 0.15s ease;
 }
 
 .dept-group.dept-open {
-  box-shadow: 0 4px 18px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md);
 }
 
 /* Full-width tappable header — 60px min height for thumb comfort */
@@ -575,14 +575,14 @@
 }
 
 .dept-header:hover {
-  background: #f7fafc;
+  background: var(--bg-surface-alt);
 }
 
 .dept-avatar {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 17px;
@@ -602,7 +602,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
   display: block;
   margin-bottom: 4px;
@@ -627,7 +627,7 @@
 /* Chevron — rotates 90° when open */
 .dept-chevron {
   font-size: 20px;
-  color: #a0aec0;
+  color: var(--text-faint);
   flex-shrink: 0;
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
@@ -662,12 +662,12 @@
 .dept-employees-inner .emp-card {
   border-radius: 0;
   box-shadow: none;
-  border-top: 1px solid #f0f4f8;
+  border-top: 1px solid var(--border-light);
   padding: 13px 18px;
 }
 
 .dept-employees-inner .emp-card:hover {
-  background: #f7fafc;
+  background: var(--bg-surface-alt);
   box-shadow: none;
   transform: none;
 }
@@ -694,7 +694,7 @@
 
 .btn-edit {
   padding: 8px 20px;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   border: none;
   border-radius: 8px;
@@ -706,17 +706,17 @@
   transition: background 0.15s ease;
 }
 
-.btn-edit:hover { background: #2a4a7f; }
+.btn-edit:hover { background: var(--brand-hover); }
 
 .emp-detail-profile {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 16px;
   padding: 28px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  box-shadow: var(--shadow-card);
   margin-bottom: 20px;
   animation: adminSlideUp 0.3s ease;
 }
@@ -725,7 +725,7 @@
   width: 70px;
   height: 70px;
   border-radius: 50%;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 30px;
@@ -739,15 +739,15 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 22px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
 }
 
 .emp-detail-info-grid {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 14px;
   padding: 6px 0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-sm);
   margin-bottom: 20px;
   animation: adminSlideUp 0.3s ease;
 }
@@ -757,7 +757,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #f0f4f8;
+  border-bottom: 1px solid var(--border-light);
   gap: 12px;
 }
 
@@ -767,7 +767,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 600;
-  color: #a0aec0;
+  color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   flex-shrink: 0;
@@ -777,7 +777,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   text-align: right;
 }
 
@@ -804,15 +804,15 @@
 .btn-toggle-full:hover:not(:disabled) { opacity: 0.85; }
 .btn-toggle-full:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-deactivate { background: #fed7d7; color: #9b2c2c; }
-.btn-activate   { background: #c6f6d5; color: #276749; }
+.btn-deactivate { background: var(--danger-bg);  color: var(--danger-text); }
+.btn-activate   { background: var(--success-bg); color: var(--success-text); }
 
 .btn-delete {
   width: 100%;
   padding: 14px;
   background: transparent;
-  color: #c53030;
-  border: 1.5px solid #feb2b2;
+  color: var(--danger-hover);
+  border: 1.5px solid var(--danger-border);
   border-radius: 10px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
@@ -823,13 +823,13 @@
 }
 
 .btn-delete:hover {
-  background: #fff5f5;
-  border-color: #c53030;
+  background: var(--danger-subtle);
+  border-color: var(--danger-hover);
 }
 
 .delete-confirm {
-  background: #fff5f5;
-  border: 1px solid #feb2b2;
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
   border-radius: 12px;
   padding: 16px 20px;
   animation: slideDown 0.2s ease;
@@ -840,7 +840,7 @@
   display: block;
   font-size: 14px;
   font-weight: 400;
-  color: #c53030;
+  color: var(--danger-hover);
   margin-bottom: 14px;
 }
 
@@ -856,7 +856,7 @@
 .btn-delete-confirm {
   flex: 1;
   padding: 10px;
-  background: #c53030;
+  background: var(--danger-hover);
   color: white;
   border: none;
   border-radius: 8px;
@@ -867,7 +867,7 @@
   transition: background 0.15s ease;
 }
 
-.btn-delete-confirm:hover:not(:disabled) { background: #9b2c2c; }
+.btn-delete-confirm:hover:not(:disabled) { background: var(--danger-dark); }
 .btn-delete-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Admin Settings ──────────────────────────────────────────────────────── */
@@ -897,13 +897,13 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 24px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
 }
 
 .settings-loading {
   font-family: 'TiemposText', Georgia, serif;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
   padding: 48px 20px;
   text-align: center;
@@ -916,10 +916,10 @@
 }
 
 .settings-section {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 16px;
   padding: 22px 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 
 .settings-section-header {
@@ -933,7 +933,7 @@
   font-size: 28px;
   width: 44px;
   height: 44px;
-  background: #f0f4f8;
+  background: var(--bg-base);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -945,7 +945,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 17px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
   margin-bottom: 4px;
 }
@@ -953,7 +953,7 @@
 .settings-section-desc {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
   line-height: 1.4;
 }
@@ -970,15 +970,15 @@
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.settings-option:hover { border-color: #1a365d; background: #f7fafc; }
+.settings-option:hover { border-color: var(--brand-text); background: var(--bg-surface-alt); }
 
-.settings-option-active { border-color: #1a365d; background: #f0f4f8; }
+.settings-option-active { border-color: var(--brand-text); background: var(--bg-base); }
 
 .settings-radio { display: none; }
 
@@ -990,7 +990,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 15px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
   margin-bottom: 3px;
 }
@@ -998,16 +998,16 @@
 .settings-opt-desc {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
-  color: #718096;
+  color: var(--text-muted);
   line-height: 1.4;
 }
 
-.settings-check { font-size: 16px; color: #38a169; font-weight: 700; flex-shrink: 0; }
+.settings-check { font-size: 16px; color: var(--success); font-weight: 700; flex-shrink: 0; }
 
 .settings-save-btn {
   width: 100%;
   padding: 13px;
-  background: #1a365d;
+  background: var(--brand-bg);
   color: white;
   border: none;
   border-radius: 10px;
@@ -1018,15 +1018,15 @@
   transition: background 0.2s ease;
 }
 
-.settings-save-btn:hover:not(:disabled) { background: #2a4a7f; }
+.settings-save-btn:hover:not(:disabled) { background: var(--brand-hover); }
 .settings-save-btn:disabled             { opacity: 0.5; cursor: not-allowed; }
-.settings-save-btn-saved                { background: #38a169; }
-.settings-save-btn-saved:hover:not(:disabled) { background: #2f855a; }
+.settings-save-btn-saved                { background: var(--success); }
+.settings-save-btn-saved:hover:not(:disabled) { background: var(--success-hover); }
 
 .settings-future-note {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
-  color: #cbd5e0;
+  color: var(--text-lightest);
   font-style: italic;
   text-align: center;
   padding: 8px;

@@ -1,4 +1,4 @@
-/* ── Scheduling Manager ──────────────────────────────────────────────────────── */
+/* ── Scheduling Manager ──────────────────────────────────────────────────── */
 
 .sched-manager {
   padding: 24px;
@@ -27,7 +27,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 24px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
 }
 
@@ -41,7 +41,7 @@
 /* View toggle pill */
 .sched-view-toggle {
   display: flex;
-  background: #f0f4f8;
+  background: var(--bg-base);
   border-radius: 9px;
   padding: 3px;
   gap: 2px;
@@ -55,16 +55,16 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 500;
-  color: #718096;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .view-btn.active {
-  background: white;
-  color: #1a365d;
+  background: var(--bg-surface);
+  color: var(--brand-text);
   font-weight: 700;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Navigation bar */
@@ -77,11 +77,11 @@
 .nav-arrow {
   width: 36px;
   height: 36px;
-  background: white;
-  border: 1.5px solid #e2e8f0;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-size: 22px;
-  color: #4a5568;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -93,33 +93,33 @@
 }
 
 .nav-arrow:hover {
-  border-color: #1a365d;
-  color: #1a365d;
+  border-color: var(--brand-text);
+  color: var(--brand-text);
 }
 
 .nav-today {
   padding: 8px 16px;
-  background: white;
-  border: 1.5px solid #e2e8f0;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 600;
-  color: #4a5568;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .nav-today:hover {
-  border-color: #1a365d;
-  color: #1a365d;
+  border-color: var(--brand-text);
+  color: var(--brand-text);
 }
 
 .nav-label {
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 16px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
 }
 
@@ -133,20 +133,20 @@
   font-family: 'TiemposText', Georgia, serif;
   text-align: center;
   padding: 60px 20px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-size: 15px;
   font-style: italic;
 }
 
-/* ── Desktop Week Grid (Gantt) ───────────────────────────────────────────────── */
+/* ── Desktop Week Grid (Gantt) ───────────────────────────────────────────── */
 
 .week-desktop-wrapper {
   overflow: auto;
   border-radius: 14px;
-  border: 1.5px solid #e2e8f0;
-  background: white;
+  border: 1.5px solid var(--border);
+  background: var(--bg-surface);
   max-height: calc(100vh - 240px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-card);
 }
 
 .week-grid {
@@ -161,9 +161,9 @@
   left: 0;
   top: 0;
   z-index: 4;
-  background: #f7fafc;
-  border-right: 1.5px solid #e2e8f0;
-  border-bottom: 1.5px solid #e2e8f0;
+  background: var(--bg-surface-alt);
+  border-right: 1.5px solid var(--border);
+  border-bottom: 1.5px solid var(--border);
   min-height: 60px;
 }
 
@@ -172,9 +172,9 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f7fafc;
-  border-right: 1px solid #f0f4f8;
-  border-bottom: 1.5px solid #e2e8f0;
+  background: var(--bg-surface-alt);
+  border-right: 1px solid var(--border-light);
+  border-bottom: 1.5px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -186,8 +186,8 @@
 }
 
 .week-day-today {
-  background: #ebf8ff;
-  border-bottom-color: #3182ce;
+  background: var(--accent-bg);
+  border-bottom-color: var(--accent-alt);
 }
 
 .week-day-name {
@@ -196,23 +196,23 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #718096;
+  color: var(--text-muted);
 }
 
 .week-day-today .week-day-name {
-  color: #3182ce;
+  color: var(--accent-alt);
 }
 
 .week-day-num {
   font-family: 'TiemposFine', Georgia, serif;
   font-size: 20px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .week-day-num-today {
-  color: #3182ce;
+  color: var(--accent-alt);
   font-weight: 700;
 }
 
@@ -220,16 +220,16 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   letter-spacing: 0.04em;
 }
 
 /* Department separator rows */
 .week-dept-row {
   grid-column: 1 / -1;
-  background: #f7fafc;
-  border-top: 1.5px solid #e2e8f0;
-  border-bottom: 1px solid #e8edf3;
+  background: var(--bg-surface-alt);
+  border-top: 1.5px solid var(--border);
+  border-bottom: 1px solid var(--border-mid);
   padding: 6px 16px;
   display: flex;
   align-items: center;
@@ -239,7 +239,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #718096;
+  color: var(--text-muted);
   position: sticky;
   left: 0;
 }
@@ -256,9 +256,9 @@
   position: sticky;
   left: 0;
   z-index: 1;
-  background: white;
-  border-right: 1.5px solid #e2e8f0;
-  border-bottom: 1px solid #f0f4f8;
+  background: var(--bg-surface);
+  border-right: 1.5px solid var(--border);
+  border-bottom: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -270,8 +270,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #edf2f7;
-  color: #4a5568;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 12px;
   font-weight: 700;
@@ -285,7 +285,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -293,8 +293,8 @@
 
 /* Shift cells */
 .week-shift-cell {
-  border-right: 1px solid #f0f4f8;
-  border-bottom: 1px solid #f0f4f8;
+  border-right: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
   padding: 5px;
   cursor: pointer;
   min-height: 56px;
@@ -305,7 +305,7 @@
 
 .week-shift-cell:hover .week-cell-empty {
   opacity: 1;
-  border-color: #cbd5e0;
+  border-color: var(--text-lightest);
 }
 
 .week-cell-empty {
@@ -316,7 +316,7 @@
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  color: #cbd5e0;
+  color: var(--text-lightest);
   opacity: 0;
   border-radius: 7px;
   border: 1.5px dashed transparent;
@@ -324,13 +324,13 @@
 }
 
 .drag-over {
-  background: #ebf8ff !important;
+  background: var(--accent-bg) !important;
 }
 
 .drag-over .week-cell-empty {
   opacity: 1;
-  border-color: #3182ce;
-  color: #3182ce;
+  border-color: var(--accent-alt);
+  color: var(--accent-alt);
 }
 
 /* Shift block */
@@ -370,11 +370,11 @@
   text-align: center;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
 }
 
-/* ── Mobile Week View ────────────────────────────────────────────────────────── */
+/* ── Mobile Week View ────────────────────────────────────────────────────── */
 
 .week-mobile {
   display: flex;
@@ -402,8 +402,8 @@
   align-items: center;
   gap: 3px;
   padding: 10px 14px;
-  background: white;
-  border: 1.5px solid #e2e8f0;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -413,13 +413,13 @@
 }
 
 .mobile-day-tab-active {
-  background: #1a365d;
-  border-color: #1a365d;
-  box-shadow: 0 4px 12px rgba(26, 54, 93, 0.25);
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  box-shadow: 0 4px 12px var(--brand-shadow);
 }
 
 .mobile-day-tab-today:not(.mobile-day-tab-active) {
-  border-color: #3182ce;
+  border-color: var(--accent-alt);
 }
 
 .mobile-day-name {
@@ -428,7 +428,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #718096;
+  color: var(--text-muted);
 }
 
 .mobile-day-tab-active .mobile-day-name { color: rgba(255, 255, 255, 0.75); }
@@ -437,7 +437,7 @@
   font-family: 'TiemposFine', Georgia, serif;
   font-size: 20px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   line-height: 1;
 }
 
@@ -447,7 +447,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #3182ce;
+  background: var(--accent-alt);
 }
 
 .mobile-day-tab-active .mobile-day-dot { background: rgba(255, 255, 255, 0.7); }
@@ -456,10 +456,10 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 16px;
   font-weight: 600;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.01em;
   padding: 2px 0 14px;
-  border-bottom: 1.5px solid #e2e8f0;
+  border-bottom: 1.5px solid var(--border);
   margin-bottom: 4px;
 }
 
@@ -474,7 +474,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #a0aec0;
+  color: var(--text-faint);
   padding: 14px 2px 6px;
 }
 
@@ -484,7 +484,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 11px 2px;
-  border-bottom: 1px solid #f0f4f8;
+  border-bottom: 1px solid var(--border-light);
   min-height: 54px;
 }
 
@@ -492,7 +492,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -519,8 +519,8 @@
   flex-shrink: 0;
   padding: 8px 14px;
   background: transparent;
-  color: #a0aec0;
-  border: 1.5px dashed #cbd5e0;
+  color: var(--text-faint);
+  border: 1.5px dashed var(--text-lightest);
   border-radius: 20px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
@@ -530,11 +530,11 @@
 }
 
 .mobile-assign-btn:hover {
-  border-color: #1a365d;
-  color: #1a365d;
+  border-color: var(--brand-text);
+  color: var(--brand-text);
 }
 
-/* ── Month View ──────────────────────────────────────────────────────────────── */
+/* ── Month View ──────────────────────────────────────────────────────────── */
 
 .month-view {
   padding-bottom: 16px;
@@ -552,56 +552,56 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #a0aec0;
+  color: var(--text-faint);
   text-align: center;
   padding: 8px 4px 10px;
 }
 
 .month-day-cell {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 10px;
   min-height: 80px;
   padding: 8px 8px 6px;
   cursor: pointer;
-  border: 1.5px solid #f0f4f8;
+  border: 1.5px solid var(--border-light);
   transition: box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
 }
 
 .month-day-cell:hover {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
-  border-color: #e2e8f0;
+  border-color: var(--border);
 }
 
 .month-day-other {
   opacity: 0.3;
   cursor: default;
-  background: #f7fafc;
+  background: var(--bg-surface-alt);
 }
 
 .month-day-other:hover {
   box-shadow: none;
   transform: none;
-  border-color: #f0f4f8;
+  border-color: var(--border-light);
 }
 
 .month-day-today {
-  border-color: #3182ce;
-  background: #ebf8ff;
+  border-color: var(--accent-alt);
+  background: var(--accent-bg);
 }
 
 .month-day-num {
   font-family: 'TiemposFine', Georgia, serif;
   font-size: 16px;
   font-weight: 500;
-  color: #2d3748;
+  color: var(--text-primary);
   display: block;
   margin-bottom: 5px;
   line-height: 1;
 }
 
 .month-day-num-today {
-  color: #3182ce;
+  color: var(--accent-alt);
   font-weight: 700;
 }
 
@@ -615,7 +615,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
   font-weight: 600;
-  color: #4a5568;
+  color: var(--text-secondary);
 }
 
 .month-dept-dots {
@@ -637,7 +637,7 @@
   flex-wrap: wrap;
   gap: 10px 20px;
   padding: 16px 4px 0;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
   margin-top: 16px;
 }
 
@@ -648,7 +648,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 400;
-  color: #4a5568;
+  color: var(--text-secondary);
 }
 
 .month-legend-dot {
@@ -658,7 +658,7 @@
   flex-shrink: 0;
 }
 
-/* ── Assign / Edit Modal ─────────────────────────────────────────────────────── */
+/* ── Assign / Edit Modal ─────────────────────────────────────────────────── */
 
 .modal-overlay {
   position: fixed;
@@ -679,12 +679,12 @@
 }
 
 .modal-card {
-  background: white;
+  background: var(--bg-surface);
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 460px;
   padding: 28px 24px 32px;
-  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-xl);
   animation: schedSlideUp 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
   max-height: 90vh;
   overflow-y: auto;
@@ -693,7 +693,7 @@
 @media (min-width: 640px) {
   .modal-card {
     border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-xl);
     animation: schedScaleIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 }
@@ -725,7 +725,7 @@
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 20px;
   font-weight: 700;
-  color: #1a365d;
+  color: var(--brand-text);
   letter-spacing: -0.02em;
   margin-bottom: 4px;
 }
@@ -734,7 +734,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 400;
-  color: #a0aec0;
+  color: var(--text-faint);
   font-style: italic;
 }
 
@@ -742,10 +742,10 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #f0f4f8;
+  background: var(--bg-base);
   border: none;
   font-size: 20px;
-  color: #718096;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -756,11 +756,11 @@
   padding-bottom: 1px;
 }
 
-.modal-close:hover { background: #e2e8f0; }
+.modal-close:hover { background: var(--border); }
 
 /* Templates */
 .modal-templates {
-  background: #f7fafc;
+  background: var(--bg-surface-alt);
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 18px;
@@ -772,7 +772,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #a0aec0;
+  color: var(--text-faint);
   margin-bottom: 8px;
 }
 
@@ -784,21 +784,21 @@
 
 .template-pill {
   padding: 6px 14px;
-  background: white;
-  border: 1.5px solid #e2e8f0;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border);
   border-radius: 20px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .template-pill:hover {
-  border-color: #1a365d;
-  color: #1a365d;
-  background: #f0f4f8;
+  border-color: var(--brand-text);
+  color: var(--brand-text);
+  background: var(--bg-base);
 }
 
 /* Body */
@@ -817,10 +817,11 @@
 .modal-notes {
   font-family: 'TiemposText', Georgia, serif;
   padding: 10px 12px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
-  color: #2d3748;
+  color: var(--text-primary);
+  background: var(--bg-surface);
   resize: vertical;
   min-height: 64px;
   outline: none;
@@ -829,7 +830,7 @@
   transition: border-color 0.15s ease;
 }
 
-.modal-notes:focus { border-color: #63b3ed; }
+.modal-notes:focus { border-color: var(--accent); }
 
 /* Footer */
 .modal-footer {
@@ -839,15 +840,15 @@
   gap: 10px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #f0f4f8;
+  border-top: 1px solid var(--border-light);
   flex-wrap: wrap;
 }
 
 .btn-remove-shift {
   padding: 10px 16px;
   background: transparent;
-  color: #c53030;
-  border: 1.5px solid #feb2b2;
+  color: var(--danger-hover);
+  border: 1.5px solid var(--danger-border);
   border-radius: 8px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
@@ -857,8 +858,8 @@
 }
 
 .btn-remove-shift:hover {
-  background: #fff5f5;
-  border-color: #c53030;
+  background: var(--danger-subtle);
+  border-color: var(--danger-hover);
 }
 
 .delete-confirm-inline {
@@ -872,7 +873,7 @@
 .delete-confirm-inline > span {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
-  color: #c53030;
+  color: var(--danger-hover);
   flex: 1;
   min-width: 120px;
 }
@@ -880,21 +881,21 @@
 .btn-cancel-small {
   padding: 8px 14px;
   background: transparent;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 500;
-  color: #718096;
+  color: var(--text-muted);
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
 
-.btn-cancel-small:hover { border-color: #718096; }
+.btn-cancel-small:hover { border-color: var(--text-muted); }
 
 .btn-confirm-delete {
   padding: 8px 14px;
-  background: #c53030;
+  background: var(--danger-hover);
   color: white;
   border: none;
   border-radius: 8px;
@@ -905,10 +906,10 @@
   transition: background 0.15s ease;
 }
 
-.btn-confirm-delete:hover:not(:disabled) { background: #9b2c2c; }
+.btn-confirm-delete:hover:not(:disabled) { background: var(--danger-dark); }
 .btn-confirm-delete:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── Responsive ──────────────────────────────────────────────────────────────── */
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
   .sched-manager { padding: 14px; gap: 12px; }
