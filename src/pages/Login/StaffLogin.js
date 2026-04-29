@@ -1,19 +1,54 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { TENANT } from '../../config/tenant';
 import './Login.css';
+
+// Compact numeric keypad — staff sign-in is digits only (phone + optional PIN),
+// so a keypad is faster than the system keyboard. Falls back to system input
+// if the user types directly.
+
+const KeypadButtons = ({ onKey }) => (
+  <div className="login-keypad">
+    {['1','2','3','4','5','6','7','8','9'].map(n => (
+      <button key={n} type="button" className="lk-btn" onClick={() => onKey(n)}>
+        {n}
+      </button>
+    ))}
+    <button type="button" className="lk-btn lk-aux" onClick={() => onKey('clear')}>Clear</button>
+    <button type="button" className="lk-btn"        onClick={() => onKey('0')}>0</button>
+    <button type="button" className="lk-btn lk-aux" onClick={() => onKey('back')}>⌫</button>
+  </div>
+);
 
 const StaffLogin = () => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
 
-  const [phone, setPhone]         = useState('');
-  const [pin, setPin]             = useState('');
-  const [needsPin, setNeedsPin]   = useState(false);
-  const [err, setErr]             = useState('');
-  const [loading, setLoading]     = useState(false);
+  const [phone,        setPhone]    = useState('');
+  const [pin,          setPin]      = useState('');
+  const [needsPin,     setNeedsPin] = useState(false);
+  const [activeField,  setActive]   = useState('phone');
+  const [err,          setErr]      = useState('');
+  const [loading,      setLoading]  = useState(false);
+
+  // Auto-advance phone → pin once phone is full and PIN is required.
+  useEffect(() => {
+    if (phone.length === 10 && needsPin && activeField === 'phone') {
+      setActive('pin');
+    }
+  }, [phone, needsPin, activeField]);
+
+  const onKey = (val) => {
+    const target = activeField;
+    const max    = target === 'pin' ? 4 : 10;
+    const setter = target === 'pin' ? setPin : setPhone;
+
+    if (val === 'clear') return setter('');
+    if (val === 'back')  return setter(p => p.slice(0, -1));
+    setter(p => p.length < max ? p + val : p);
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -29,9 +64,14 @@ const StaffLogin = () => {
       nav(next, { replace: true });
       return;
     }
-    if (res.pin_required) setNeedsPin(true);
+    if (res.pin_required) {
+      setNeedsPin(true);
+      setActive('pin');
+    }
     setErr(res.message || 'Sign-in failed');
   };
+
+  const canSubmit = phone.length === 10 && (!needsPin || pin.length === 4);
 
   return (
     <div className="login-page">
@@ -48,40 +88,43 @@ const StaffLogin = () => {
         </p>
 
         <form onSubmit={submit} className="login-form">
-          <div className="login-field">
+          <div className={`login-field ${activeField === 'phone' ? 'is-active' : ''}`}>
             <label htmlFor="phone">Phone number</label>
             <input
               id="phone"
+              className="is-keypad"
               inputMode="numeric"
               maxLength={10}
               value={phone}
               onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              placeholder="10 digits"
+              onFocus={() => setActive('phone')}
+              placeholder="• • • • • • • • • •"
               autoFocus
-              required
             />
           </div>
 
           {needsPin && (
-            <div className="login-field">
+            <div className={`login-field ${activeField === 'pin' ? 'is-active' : ''}`}>
               <label htmlFor="pin">PIN</label>
               <input
                 id="pin"
+                className="is-keypad"
                 type="password"
                 inputMode="numeric"
                 maxLength={4}
                 value={pin}
                 onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                placeholder="4 digits"
-                autoFocus
-                required
+                onFocus={() => setActive('pin')}
+                placeholder="• • • •"
               />
             </div>
           )}
 
           {err && <div className="login-error">{err}</div>}
 
-          <button type="submit" className="login-submit" disabled={loading || phone.length !== 10}>
+          <KeypadButtons onKey={onKey} />
+
+          <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>

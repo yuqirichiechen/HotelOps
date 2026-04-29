@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import './Sidebar.css';
 
@@ -22,9 +22,15 @@ const ADMIN_ITEM = {
 const Sidebar = ({ theme, onToggleTheme }) => {
   const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const isDark = theme === 'dark' || (theme === null && osDark);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
 
   const NAV = user?.role === 'admin' ? [...STAFF_NAV, ADMIN_ITEM] : STAFF_NAV;
+
+  const handleSignOut = async () => {
+    await logout();
+    nav(user?.role === 'admin' ? '/login/admin' : '/login/staff', { replace: true });
+  };
 
   return (
     <>
@@ -53,6 +59,10 @@ const Sidebar = ({ theme, onToggleTheme }) => {
           <button className="theme-toggle" onClick={onToggleTheme} title="Toggle theme">
             <span className="theme-toggle-icon">{isDark ? '☀️' : '🌙'}</span>
             <span className="theme-toggle-label">{isDark ? 'Light mode' : 'Dark mode'}</span>
+          </button>
+          <button className="theme-toggle sidebar-signout" onClick={handleSignOut} title="Sign out">
+            <span className="theme-toggle-icon">↩</span>
+            <span className="theme-toggle-label">Sign out</span>
           </button>
         </div>
       </nav>

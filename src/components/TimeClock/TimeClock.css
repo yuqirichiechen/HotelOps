@@ -854,3 +854,137 @@
   .notif-icon    { font-size: 48px; }
   .notif-message { font-size: 20px; }
 }
+
+/* ── Sprint 3: simple two-face clock-in/out ──────────────────────────────── */
+
+.tc-simple {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px 24px;
+  text-align: center;
+  background: var(--bg-base);
+  animation: tc-face-fade 0.4s ease both;
+}
+
+@keyframes tc-face-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tc-eyebrow {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+}
+
+.tc-eyebrow.tc-live {
+  color: var(--success-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.tc-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live-dot);
+  animation: tc-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tc-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
+
+.tc-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.tc-sub {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0 0 32px;
+}
+
+.tc-clock-display {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 36px;
+  line-height: 1;
+}
+
+.tc-elapsed {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 84px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 36px;
+  line-height: 1;
+}
+
+.tc-action {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+  padding: 18px 56px;
+  border: none;
+  border-radius: 14px;
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+  min-width: 260px;
+  letter-spacing: 0.02em;
+}
+
+.tc-action:active   { transform: translateY(1px); }
+.tc-action:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.tc-action-in       { background: var(--success); box-shadow: 0 6px 22px rgba(56, 161, 105, 0.35); }
+.tc-action-in:hover { background: var(--success-hover); }
+
+.tc-action-out       { background: var(--danger); box-shadow: 0 6px 22px rgba(229, 62, 62, 0.35); }
+.tc-action-out:hover { background: var(--danger-hover); }
+
+.tc-back-link {
+  margin-top: 26px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tc-back-link:hover { color: var(--text-primary); background: var(--bg-raised); }
+
+@media (max-width: 768px) {
+  .tc-simple         { padding: 24px 18px; }
+  .tc-title          { font-size: 28px; }
+  .tc-clock-display  { font-size: 56px; margin-bottom: 26px; }
+  .tc-elapsed        { font-size: 60px; margin-bottom: 26px; }
+  .tc-action         { font-size: 17px; padding: 16px 40px; min-width: 220px; }
+}

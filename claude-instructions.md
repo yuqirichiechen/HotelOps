@@ -57,8 +57,8 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 
 ### Routing (Sprint 2 — current)
 
-- `/` (Home) — staff dashboard: greeting + hours + bar chart + recent shifts.
-- `/timeclock` — clock in/out screen (uses authed user; no keypad).
+- `/` (Home) — at-a-glance: compact greeting, this-week hours stat, clocked-in indicator, 3 recent shifts, Clock In/Out CTA. Designed to fit a phone screen without scrolling.
+- `/timeclock` — two-faced flip card. Front = "Clock In" with wall clock; back = active timer + "Clock Out". No history/week strip here (that's Sprint 4 Hours page).
 - `/calendar` — was `/shifts`; route renamed, ShiftsView component unchanged.
   `/shifts` now redirects to `/calendar` for back-compat.
 - `/shift-notes` — placeholder.
@@ -412,16 +412,66 @@ moved Forecasting under /admin. Migrated to BrowserRouter. All compile-clean.
   add `requireAuth, requireRole('admin')` to all `/api/admin/*` routes
   and migrate AdminPanel sub-components to `apiFetch`.
 
-**Sprint 3 backlog (debug + polish):**
-- End-to-end testing pass (run migration, log in as admin, log in as staff,
-  clock in/out, view dashboard, change PIN, sign out, admin reset PIN flow).
-- Protect remaining `/api/admin/*` endpoints with `requireRole('admin')`.
-  Migrate AdminPanel sub-components to `apiFetch`.
-- Remove legacy clock-in route + related components / `services/timeClock.js`.
-- Polish: login page flip animation reusing `.tc-flip-card`; nicer empty
-  states; loading skeletons on Home dashboard.
-- Tenant-aware copy already abstracted; multi-tenant routing (path prefix)
-  is a future sprint.
-- Confirm `AdminDashboard/` and `lib/supabase.js` are dead; remove if so.
+**Sprint 3 — completed (see iteration log).**
+
+### 2026-04-28 — Sprint 3 complete: UX refinements
+
+User feedback drove four targeted changes. No DB or API changes.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js` — added a compact 3×4 numeric keypad
+  (digits + Clear + ⌫) below the form. Auto-jumps focus from phone → PIN
+  when phone fills and a PIN is required. System keyboard input still works
+  in parallel. The active field gets a focus ring. `KeypadButtons` is a
+  small inline component in the same file.
+- `src/pages/Login/Login.css` — appended `.login-keypad` / `.lk-btn` styles
+  and `.login-field.is-active` highlight state.
+- `src/components/Layout/Sidebar.js` — re-added the Sign-out button next to
+  the theme toggle. Settings still has its own Sign-out; sidebar gives
+  always-visible quick exit.
+- `src/components/TimeClock/index.js` — rewritten as a two-faced flip card:
+  - Front: greeting + wall clock + big "Clock In" button.
+  - Back: "On the clock" indicator + live elapsed timer + "Clock Out".
+  - Card flips on each transition (`tc-flip-card.flipped`).
+  - Removed week strip, day sheet, history view (those move to Hours page).
+  - Uses `/me/history` only to derive the open clock-in entry.
+- `src/components/TimeClock/TimeClock.css` — appended `.tc-simple`,
+  `.tc-eyebrow`, `.tc-title`, `.tc-clock-display`, `.tc-elapsed`,
+  `.tc-action`, `.tc-back-link`, plus pulse + face-fade keyframes.
+- `src/pages/Home/index.js` — compact at-a-glance home: compact greeting,
+  hero card (this-week hours + clocked-in indicator), 3 recent shifts,
+  and a Clock In/Out CTA. Removed bar chart, week navigation, status pill,
+  progress bar — those go to the Hours page in Sprint 4.
+- `src/pages/Home/Home.css` — full rewrite. New shorter layout, mobile
+  breakpoints tightened so phone screens fit without scrolling.
+
+**Conventions reinforced:**
+- For digit-only forms (phone, PIN), prefer the inline keypad pattern over
+  the system keyboard. Cleaner UX on touch and at the front desk station.
+- `.tc-flip-container` / `.tc-flip-card.flipped` is the canonical flip
+  primitive — reuse for any "before/after" toggle.
+- The Hours page (Sprint 4) inherits the rich dashboard concept from the
+  earlier Home version. Don't rebuild — port that layout when it lands.
+
+**Sprint 4 backlog:**
+- **Hours page** (replaces sidebar item "Time Clock" with "Hours" or
+  similar; route stays at `/timeclock` for the simple page, OR rename
+  route too — TBD with user). Port the previous rich Home layout: bar
+  chart, week nav, status pill, progress bar, full recent shifts list,
+  scheduled-vs-worked. Add: payroll-period total, daily breakdown sheet,
+  CSV export.
+- Decide naming: "Hours", "Timesheet", "My Hours", "Time" — pick what
+  fits hospitality and is short. Carry the rename through Sidebar.js,
+  routes, and copy.
+- Protect remaining `/api/admin/*` endpoints with `requireRole('admin')`;
+  migrate AdminPanel sub-components to `apiFetch`.
+- Remove legacy phone-based clock-in routes + `services/timeClock.js` once
+  no callers remain.
+- Polish: login flip animation when login → dashboard transitions;
+  loading skeletons; nicer empty states; tenant-name copy abstraction
+  audit.
+- Investigate dead code: `src/components/AdminDashboard/`,
+  `src/components/Scheduling/`, `src/lib/supabase.js`,
+  `src/components/TimeClock/{Keypad,EmployeePanel,ClockWidget}.js`.
 
 **Sprint 2 — completed (see iteration log).**

@@ -149,3 +149,54 @@
 }
 
 .login-switch a:hover { text-decoration: underline; }
+
+/* ── Compact keypad (staff login) ─────────────────────────────────────────── */
+
+.login-field.is-active input {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.login-field input.is-keypad {
+  text-align: center;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+  caret-color: transparent;
+}
+
+.login-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.lk-btn {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
+  font-weight: 600;
+  padding: 14px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s ease, border-color 0.1s ease, transform 0.04s ease;
+}
+
+.lk-btn:hover  { background: var(--bg-raised); border-color: var(--text-muted); }
+.lk-btn:active { transform: scale(0.96); background: var(--accent-bg); border-color: var(--accent); }
+
+.lk-btn.lk-aux {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 480px) {
+  .lk-btn { padding: 12px 0; font-size: 20px; }
+  .login-keypad { gap: 6px; margin-top: 14px; }
+}
