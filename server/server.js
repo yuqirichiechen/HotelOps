@@ -4,12 +4,18 @@ const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
+const {
+  signToken, hashPin, verifyPin, findAdmin,
+  requireAuth, requireRole,
+} = require('./auth');
+
 const app = express();
 
 // CORS only needed for local dev (frontend and API are same-origin on Koyeb)
 app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:3001'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
 
@@ -29,7 +35,140 @@ pool.query('SELECT NOW()').then(() => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// ── Admin auth ────────────────────────────────────────────────────────────────
+// ── Auth (new — JWT-based) ───────────────────────────────────────────────────
+
+app.post('/api/auth/staff/login', async (req, res) => {
+  const { phone, pin } = req.body || {};
+  if (!phone) return res.status(400).json({ success: false, message: 'Phone required' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT user_id, name, phone_number, role, department_id,
+              pin_hash, pin_required, pin_must_set
+       FROM users WHERE phone_number = $1 AND active = true`,
+      [phone]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    const user = rows[0];
+
+    // PIN required: must verify. Skip during the post-reset window (pin_must_set).
+    if (user.pin_required && !user.pin_must_set && user.pin_hash) {
+      if (!pin) return res.status(400).json({ success: false, message: 'PIN required', pin_required: true });
+      const ok = await verifyPin(pin, user.pin_hash);
+      if (!ok) return res.status(401).json({ success: false, message: 'Invalid PIN' });
+    }
+
+    const token = signToken({
+      sub:  user.user_id,
+      role: user.role,
+      name: user.name,
+      type: 'staff',
+    });
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        user_id:       user.user_id,
+        name:          user.name,
+        phone_number:  user.phone_number,
+        role:          user.role,
+        department_id: user.department_id,
+        pin_required:  user.pin_required,
+        pin_must_set:  user.pin_must_set,
+        type:          'staff',
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/auth/admin/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'Username and password required' });
+  }
+  const admin = findAdmin(username, password);
+  if (!admin) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+
+  const token = signToken({
+    sub:  admin.username,
+    role: 'admin',
+    name: admin.name || admin.username,
+    type: 'admin',
+  });
+
+  return res.json({
+    success: true,
+    token,
+    user: {
+      username: admin.username,
+      name:     admin.name || admin.username,
+      role:     'admin',
+      type:     'admin',
+    },
+  });
+});
+
+app.post('/api/auth/staff/set-pin', requireAuth, async (req, res) => {
+  if (req.auth.type !== 'staff') {
+    return res.status(403).json({ success: false, message: 'Staff only' });
+  }
+  const { pin } = req.body || {};
+  if (!pin || !/^\d{4}$/.test(String(pin))) {
+    return res.status(400).json({ success: false, message: 'PIN must be 4 digits' });
+  }
+  try {
+    const hash = await hashPin(pin);
+    const { rows } = await pool.query(
+      `UPDATE users SET pin_hash = $1, pin_must_set = false
+       WHERE user_id = $2 RETURNING user_id`,
+      [hash, req.auth.sub]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.get('/api/me', requireAuth, async (req, res) => {
+  if (req.auth.type === 'admin') {
+    return res.json({
+      success: true,
+      user: {
+        username: req.auth.sub,
+        name:     req.auth.name,
+        role:     'admin',
+        type:     'admin',
+      },
+    });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT user_id, name, phone_number, role, department_id,
+              pin_required, pin_must_set
+       FROM users WHERE user_id = $1 AND active = true`,
+      [req.auth.sub]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true, user: { ...rows[0], type: 'staff' } });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  // Stateless JWT — client just discards token. Endpoint exists for symmetry
+  // and a future server-side denylist if we add one.
+  return res.json({ success: true });
+});
+
+// ── Admin auth (legacy — kept until AdminPanel/AdminLogin is removed) ────────
 
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;

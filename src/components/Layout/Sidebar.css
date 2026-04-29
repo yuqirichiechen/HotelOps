@@ -40,7 +40,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 20px;
-  color: rgba(255,255,255,0.65);
+  color: rgba(255,255,255, 1);
   text-decoration: none;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
@@ -50,7 +50,7 @@
 }
 
 .sidebar-link:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.12);
   color: white;
 }
 
@@ -62,7 +62,7 @@
 }
 
 .nav-icon { font-size: 18px; }
-.nav-label { flex: 1; }
+.sidebar-nav-label { flex: 1; }
 
 .sidebar-admin-item {
   margin-top: auto;
@@ -94,15 +94,15 @@
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.85);
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
 }
 
 .theme-toggle:hover {
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.12);
+  color: white;
 }
 
 .theme-toggle-icon {
@@ -148,7 +148,7 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.85);
     text-decoration: none;
     font-family: 'TiemposText', Georgia, serif;
     font-size: 10px;

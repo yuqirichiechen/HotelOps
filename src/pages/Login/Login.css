@@ -1,0 +1,151 @@
+/* Login pages — staff + admin share this stylesheet. */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  padding: 36px 32px 28px;
+  border: 1px solid var(--border);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.login-brand-icon { font-size: 22px; }
+
+.login-brand-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--brand-text);
+  letter-spacing: -0.01em;
+}
+
+.login-tenant {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 22px;
+}
+
+.login-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+}
+
+.login-sub {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 22px;
+  line-height: 1.5;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-field label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.login-field input {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.login-error {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--danger-text);
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.login-submit {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 13px;
+  border: none;
+  border-radius: 10px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 8px var(--brand-shadow);
+}
+
+.login-submit:hover  { background: var(--brand-hover); }
+.login-submit:active { transform: translateY(1px); }
+.login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-switch {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+  text-align: center;
+}
+
+.login-switch a {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--accent-alt);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.login-switch a:hover { text-decoration: underline; }

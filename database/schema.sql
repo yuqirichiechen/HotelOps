@@ -59,6 +59,9 @@ CREATE TABLE users (
   hire_date        DATE         NOT NULL DEFAULT CURRENT_DATE,
   base_hourly_rate NUMERIC(6,2),
   active           BOOLEAN      NOT NULL DEFAULT TRUE,
+  pin_hash         TEXT,                            -- bcrypt; NULL = no PIN set
+  pin_required     BOOLEAN      NOT NULL DEFAULT FALSE,  -- admin-controlled
+  pin_must_set     BOOLEAN      NOT NULL DEFAULT FALSE,  -- forces set-PIN interstitial after admin reset
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

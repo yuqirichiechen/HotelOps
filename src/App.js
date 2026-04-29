@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import TimeClock from './components/TimeClock';
 import AdminPanel from './components/AdminPanel';
 import ShiftsView from './components/ShiftsView';
 import Forecasting from './components/Forecasting';
 import ShiftNotes from './components/ShiftNotes';
+import StaffLogin from './pages/Login/StaffLogin';
+import AdminLogin from './pages/Login/AdminLogin';
 import './App.css';
 
 const getInitialTheme = () => {
@@ -14,24 +17,30 @@ const getInitialTheme = () => {
   return null; // null = follow OS
 };
 
+// Layout wrapper used by every route that should show the sidebar.
+const AppShell = ({ theme, onToggleTheme }) => (
+  <div className="app-shell">
+    <Sidebar theme={theme} onToggleTheme={onToggleTheme} />
+    <main className="app-main">
+      <Outlet />
+    </main>
+  </div>
+);
+
 const App = () => {
   const [theme, setTheme] = useState(getInitialTheme);
 
   useEffect(() => {
     const html = document.documentElement;
-    if (theme) {
-      html.setAttribute('data-theme', theme);
-    } else {
-      html.removeAttribute('data-theme');
-    }
+    if (theme) html.setAttribute('data-theme', theme);
+    else       html.removeAttribute('data-theme');
   }, [theme]);
 
   const toggleTheme = () => {
     setTheme(prev => {
-      // If no explicit preference, detect OS to know what we're toggling away from
-      const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const osDark        = window.matchMedia('(prefers-color-scheme: dark)').matches;
       const currentlyDark = prev === 'dark' || (prev === null && osDark);
-      const next = currentlyDark ? 'light' : 'dark';
+      const next          = currentlyDark ? 'light' : 'dark';
       localStorage.setItem('hotelops-theme', next);
       return next;
     });
@@ -39,19 +48,41 @@ const App = () => {
 
   return (
     <HashRouter>
-      <div className="app-shell">
-        <Sidebar theme={theme} onToggleTheme={toggleTheme} />
-        <main className="app-main">
-          <Routes>
+      <AuthProvider>
+        <Routes>
+          {/* ── Public login routes ─────────────────────────────────────── */}
+          <Route path="/login/staff" element={
+            <RedirectIfAuthed><StaffLogin /></RedirectIfAuthed>
+          } />
+          <Route path="/login/admin" element={
+            <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>
+          } />
+
+          {/* ── Admin (role: admin) ─────────────────────────────────────── */}
+          <Route element={
+            <RequireRole role="admin">
+              <AppShell theme={theme} onToggleTheme={toggleTheme} />
+            </RequireRole>
+          }>
+            <Route path="/admin/*" element={<AdminPanel />} />
+          </Route>
+
+          {/* ── Staff (any non-admin authed) ────────────────────────────── */}
+          <Route element={
+            <RequireRole role="staff">
+              <AppShell theme={theme} onToggleTheme={toggleTheme} />
+            </RequireRole>
+          }>
             <Route path="/"            element={<TimeClock />} />
             <Route path="/shifts"      element={<ShiftsView />} />
-            <Route path="/admin"       element={<AdminPanel />} />
             <Route path="/forecasting" element={<Forecasting />} />
             <Route path="/shift-notes" element={<ShiftNotes />} />
-            <Route path="*"            element={<Navigate to="/" />} />
-          </Routes>
-        </main>
-      </div>
+          </Route>
+
+          {/* ── Catch-all ───────────────────────────────────────────────── */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
     </HashRouter>
   );
 };

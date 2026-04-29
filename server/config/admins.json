@@ -1,0 +1,10 @@
+{
+  "_comment": "Admin credentials. Plaintext on purpose — file lives in a private repo. Edit + redeploy to add/remove admins. NEVER expose this directory via static hosting.",
+  "admins": [
+    {
+      "username": "admin",
+      "password": "admin",
+      "name": "Default Admin"
+    }
+  ]
+}

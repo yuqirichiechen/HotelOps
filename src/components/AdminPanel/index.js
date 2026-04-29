@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import AdminLogin from './AdminLogin';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth';
 import AdminHome from './AdminHome';
 import EmployeeManager from './EmployeeManager';
 import EmployeeDetail from './EmployeeDetail';
@@ -7,29 +8,24 @@ import SchedulingManager from './Scheduling/index';
 import AdminSettings from './AdminSettings';
 import './AdminPanel.css';
 
+// AdminPanel is now route-gated by <RequireRole role="admin"> in App.js.
+// The internal AdminLogin component (still on disk for reference) is no longer
+// rendered. Logout goes through the AuthProvider.
 const AdminPanel = () => {
-  const [authed, setAuthed] = useState(!!localStorage.getItem('adminAuth'));
-  const [screen, setScreen] = useState('home');
+  const { logout } = useAuth();
+  const nav        = useNavigate();
+  const [screen, setScreen]           = useState('home');
   const [selectedEmp, setSelectedEmp] = useState(null);
 
-  const handleLogout = () => {
-    localStorage.removeItem('adminAuth');
-    setAuthed(false);
-    setScreen('home');
+  const handleLogout = async () => {
+    await logout();
+    nav('/login/admin', { replace: true });
   };
 
   const handleSelectEmp = (emp) => {
     setSelectedEmp(emp);
     setScreen('employee-detail');
   };
-
-  if (!authed) {
-    return (
-      <div className="admin-panel">
-        <AdminLogin onSuccess={() => { localStorage.setItem('adminAuth', '1'); setAuthed(true); }} />
-      </div>
-    );
-  }
 
   return (
     <div className="admin-panel">
