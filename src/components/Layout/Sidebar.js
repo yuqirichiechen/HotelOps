@@ -7,9 +7,12 @@ import './Sidebar.css';
 // Forecasting moved under /admin. Sign out lives in /settings now, not the
 // sidebar footer. Admin tab is appended for admin users only.
 
+// Clock-in/out lives on Home (flip card section). The Timesheet item is a
+// placeholder — Sprint 4 will fill it in with detailed hours / breakdowns.
+
 const STAFF_NAV = [
   { to: '/',            label: 'Home',        icon: '🏠', live: true,  end: true },
-  { to: '/timeclock',   label: 'Time Clock',  icon: '⏱️', live: true  },
+  { to: '/timesheet',   label: 'Timesheet',   icon: '⏱️', live: false },
   { to: '/calendar',    label: 'Calendar',    icon: '📅', live: true  },
   { to: '/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
   { to: '/settings',    label: 'Settings',    icon: '⚙️', live: false },

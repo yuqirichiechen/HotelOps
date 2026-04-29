@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
-import TimeClock from './components/TimeClock';
 import AdminPanel from './components/AdminPanel';
 import ShiftsView from './components/ShiftsView';
 import ShiftNotes from './components/ShiftNotes';
 import StaffLogin from './pages/Login/StaffLogin';
 import AdminLogin from './pages/Login/AdminLogin';
 import Home from './pages/Home';
+import Timesheet from './pages/Timesheet';
 import Settings from './pages/Settings';
 import SetPin from './pages/SetPin';
 import './App.css';
@@ -80,12 +80,13 @@ const App = () => {
             </RequireRole>
           }>
             <Route path="/"            element={<Home />} />
-            <Route path="/timeclock"   element={<TimeClock />} />
+            <Route path="/timesheet"   element={<Timesheet />} />
             <Route path="/calendar"    element={<ShiftsView />} />
             <Route path="/shift-notes" element={<ShiftNotes />} />
             <Route path="/settings"    element={<Settings theme={theme} onToggleTheme={toggleTheme} />} />
-            {/* Legacy /shifts → /calendar */}
-            <Route path="/shifts" element={<Navigate to="/calendar" replace />} />
+            {/* Legacy redirects */}
+            <Route path="/shifts"    element={<Navigate to="/calendar" replace />} />
+            <Route path="/timeclock" element={<Navigate to="/" replace />} />
           </Route>
 
           {/* ── Catch-all ───────────────────────────────────────────────── */}

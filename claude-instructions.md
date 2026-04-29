@@ -57,8 +57,9 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 
 ### Routing (Sprint 2 — current)
 
-- `/` (Home) — at-a-glance: compact greeting, this-week hours stat, clocked-in indicator, 3 recent shifts, Clock In/Out CTA. Designed to fit a phone screen without scrolling.
-- `/timeclock` — two-faced flip card. Front = "Clock In" with wall clock; back = active timer + "Clock Out". No history/week strip here (that's Sprint 4 Hours page).
+- `/` (Home) — at-a-glance: compact greeting → **Clock In/Out flip card** (front = analog `ClockWidget` + Clock In; back = live elapsed timer + Clock Out) → "This week" hours stat → 3 recent shifts.
+- `/timeclock` — **redirects to /** (clock-in/out is integrated into Home as a flip card section).
+- `/timesheet` — placeholder; Sprint 4 will fill it with the rich hours dashboard.
 - `/calendar` — was `/shifts`; route renamed, ShiftsView component unchanged.
   `/shifts` now redirects to `/calendar` for back-compat.
 - `/shift-notes` — placeholder.
@@ -73,8 +74,9 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 
 ### Sidebar (final order)
 
-Home → Time Clock → Calendar → Shift Notes → Settings.
-Admin tab only when `user.role === 'admin'`.
+Home → Timesheet → Calendar → Shift Notes → Settings.
+Admin tab appended for admins. The old "Time Clock" item was removed in
+Sprint 3.1 because clocking in/out is now a section on Home itself.
 
 ### Hours / Home dashboard
 
@@ -453,25 +455,73 @@ User feedback drove four targeted changes. No DB or API changes.
 - The Hours page (Sprint 4) inherits the rich dashboard concept from the
   earlier Home version. Don't rebuild — port that layout when it lands.
 
-**Sprint 4 backlog:**
-- **Hours page** (replaces sidebar item "Time Clock" with "Hours" or
-  similar; route stays at `/timeclock` for the simple page, OR rename
-  route too — TBD with user). Port the previous rich Home layout: bar
-  chart, week nav, status pill, progress bar, full recent shifts list,
-  scheduled-vs-worked. Add: payroll-period total, daily breakdown sheet,
-  CSV export.
-- Decide naming: "Hours", "Timesheet", "My Hours", "Time" — pick what
-  fits hospitality and is short. Carry the rename through Sidebar.js,
-  routes, and copy.
+**Sprint 3 — completed (see iteration log).**
+
+### 2026-04-28 — Sprint 3.1: clock card on Home, Timesheet placeholder
+
+User feedback after Sprint 3: clock-in/out should live on Home (not its own
+page), and the flip should be card-level not page-level. Renamed "Time Clock"
+sidebar slot to "Timesheet" (placeholder) — Sprint 4 will fill it.
+
+**Files added:**
+- `src/pages/Timesheet/{index.js, Timesheet.css}` — blank "Coming soon"
+  placeholder.
+
+**Files modified:**
+- `src/components/Layout/Sidebar.js` — `STAFF_NAV` reshuffled. Old
+  `/timeclock` → "Time Clock" replaced by `/timesheet` → "Timesheet"
+  (live: false). Sign-out button (added back in Sprint 3) stays.
+- `src/App.js` — added `/timesheet` route (Timesheet placeholder).
+  `/timeclock` now `<Navigate to="/" replace />` (preserves any old links).
+- `src/pages/Home/index.js` — full rewrite. Adds integrated clock-in/out
+  flip card section between the greeting and "This week" hero. Reuses
+  `<ClockWidget />` from `components/TimeClock/`. State:
+  `currentlyClockedIn` from `/api/me/hours` drives the card flip;
+  `openClockInTime` drives the live elapsed timer on the back face.
+  Calls `/clock-in-self` and `/clock-out-self`. Notification toast on
+  success/error.
+- `src/pages/Home/Home.css` — added `.home-clock-flip-container`,
+  `.home-clock-flip-card.flipped`, `.home-clock-face`,
+  `.home-clock-face-back`, `.home-active-elapsed`, `.home-clock-action`,
+  `.home-notif`. Overrides nested `.clock-widget` chrome (transparent
+  background, no shadow) so it doesn't double-card.
+
+**Files left in place but now orphan-ish:**
+- `src/components/TimeClock/index.js` — the standalone `/timeclock` page
+  is no longer reachable (route redirects). Component file stays as
+  scaffolding; Sprint 4 may delete or repurpose.
+- `src/components/TimeClock/{Keypad,EmployeePanel,DashboardFace}.js` —
+  unused. ClockWidget is the only one we still render (now from Home).
+
+**Conventions added:**
+- Reuse `<ClockWidget />` for any place that needs the analog+digital
+  clock display. When nesting it inside another card, override its outer
+  `.clock-widget` styles to `background: transparent; box-shadow: none;
+  padding: 0; border: none`.
+- Card-level flip pattern: container with `perspective`, child with
+  `transform-style: preserve-3d`, two absolute-positioned faces, the back
+  pre-rotated `rotateY(180deg)`, and a `.flipped` class on the child that
+  applies `rotateY(180deg)`. Same primitive as `.tc-flip-card`.
+
+**Sprint 3.x backlog (continuing user-driven bug fixes):**
+- *Open: tell me what's next.* User said Sprint 3.x runs until all bugs
+  are fixed; Sprint 4 (Timesheet build-out) follows.
+
+**Sprint 4 backlog (post-debug):**
+- **Timesheet page** at `/timesheet`: port the rich layout from the old
+  Home draft — bar chart, week nav, scheduled-vs-worked progress bar,
+  status pill, full recent shifts list. Add payroll-period totals, CSV
+  export, and a daily breakdown sheet.
 - Protect remaining `/api/admin/*` endpoints with `requireRole('admin')`;
   migrate AdminPanel sub-components to `apiFetch`.
-- Remove legacy phone-based clock-in routes + `services/timeClock.js` once
-  no callers remain.
-- Polish: login flip animation when login → dashboard transitions;
-  loading skeletons; nicer empty states; tenant-name copy abstraction
-  audit.
+- Remove legacy phone-based clock-in routes (`/api/authenticate`,
+  `/api/clock-in`, `/api/clock-out`, `/api/user/:phone/history`) and
+  `src/services/timeClock.js` once no callers remain.
+- Cleanup orphans: `src/components/TimeClock/{index.js, Keypad.js,
+  EmployeePanel.js, DashboardFace.js}` are not rendered anywhere.
+  ClockWidget stays.
+- Polish: login flip animation; loading skeletons; tenant-name copy audit.
 - Investigate dead code: `src/components/AdminDashboard/`,
-  `src/components/Scheduling/`, `src/lib/supabase.js`,
-  `src/components/TimeClock/{Keypad,EmployeePanel,ClockWidget}.js`.
+  `src/components/Scheduling/`, `src/lib/supabase.js`.
 
 **Sprint 2 — completed (see iteration log).**

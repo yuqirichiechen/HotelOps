@@ -1,7 +1,7 @@
-/* Home — at-a-glance staff dashboard. Fits a phone screen without scrolling. */
+/* Home — at-a-glance staff dashboard with integrated clock-in/out flip card. */
 
 .home-page {
-  padding: 22px 24px 24px;
+  padding: 22px 24px 28px;
   max-width: 720px;
   margin: 0 auto;
   font-family: 'TiemposText', Georgia, serif;
@@ -41,47 +41,108 @@
   margin: 0;
 }
 
-/* ── Hero card (this week + status) ──────────────────────────────────────── */
+/* ── Section title (above each card) ─────────────────────────────────────── */
 
-.home-hero {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 22px 24px;
-  box-shadow: var(--shadow-sm);
-}
-
-.home-hero-eyebrow {
+.home-section-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: 4px;
+  margin: 0 0 6px;
+  padding-left: 4px;
 }
 
-.home-hero-num {
-  font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 56px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
+/* ── Clock card (flips between front + back) ─────────────────────────────── */
+
+.home-clock-section {
+  display: flex;
+  flex-direction: column;
 }
 
-.home-hero-meta {
-  margin-top: 10px;
+.home-clock-flip-container {
+  perspective: 1400px;
+  position: relative;
+}
+
+.home-clock-flip-card {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.home-clock-flip-card.flipped {
+  transform: rotateY(180deg);
+}
+
+.home-clock-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  padding: 18px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.home-clock-face-back {
+  transform: rotateY(180deg);
+  background: linear-gradient(180deg, var(--bg-surface), var(--accent-bg));
+}
+
+/* Strip the inner ClockWidget's own card chrome — it's nested in the face. */
+.home-clock-face .clock-widget {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  border: none;
+  gap: 4px;
+}
+
+.home-clock-face .analog-clock {
+  width: 130px;
+  height: 130px;
+}
+
+.home-clock-face .clock-digital {
+  font-size: 18px;
+}
+
+.home-clock-face .clock-date {
+  font-size: 11px;
+}
+
+/* Back face content */
+
+.home-active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.home-active-eyebrow {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.home-hero-meta.is-live {
-  color: var(--success-text);
+  font-size: 11px;
   font-weight: 600;
+  color: var(--success-text);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
 .home-live-dot {
@@ -98,13 +159,89 @@
   50%      { opacity: 0.5; transform: scale(0.85); }
 }
 
-/* ── Recent shifts (compact list) ────────────────────────────────────────── */
+.home-active-elapsed {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.home-active-since {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Clock action buttons (inside the card) */
+
+.home-clock-action {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+  letter-spacing: 0.02em;
+  width: 100%;
+  max-width: 320px;
+}
+
+.home-clock-action:active   { transform: translateY(1px); }
+.home-clock-action:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.home-clock-action.in       { background: var(--success); box-shadow: 0 4px 18px rgba(56, 161, 105, 0.30); }
+.home-clock-action.in:hover { background: var(--success-hover); }
+
+.home-clock-action.out       { background: var(--danger); box-shadow: 0 4px 18px rgba(229, 62, 62, 0.30); }
+.home-clock-action.out:hover { background: var(--danger-hover); }
+
+/* ── Hero card (this week) ───────────────────────────────────────────────── */
+
+.home-hero {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.home-hero-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+}
+
+.home-hero-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-hero-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Recent shifts ───────────────────────────────────────────────────────── */
 
 .home-recent {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 18px 22px;
+  padding: 16px 22px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -169,38 +306,65 @@
   padding: 8px 0;
 }
 
-/* ── CTA button ──────────────────────────────────────────────────────────── */
+/* ── Notification overlay ────────────────────────────────────────────────── */
 
-.home-cta {
+.home-notif {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 20px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1000;
+  animation: home-notif-in 0.25s ease both;
   font-family: 'TiemposText', Georgia, serif;
-  font-size: 16px;
-  font-weight: 600;
-  padding: 16px;
-  border: none;
-  border-radius: 14px;
-  color: white;
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.2s ease;
-  letter-spacing: 0.02em;
 }
 
-.home-cta:active   { transform: translateY(1px); }
-.home-cta:disabled { opacity: 0.6; cursor: not-allowed; }
+@keyframes home-notif-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
 
-.home-cta.in       { background: var(--success); box-shadow: 0 4px 18px rgba(56, 161, 105, 0.30); }
-.home-cta.in:hover { background: var(--success-hover); }
+.home-notif-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: white;
+}
 
-.home-cta.out       { background: var(--danger); box-shadow: 0 4px 18px rgba(229, 62, 62, 0.30); }
-.home-cta.out:hover { background: var(--danger-hover); }
+.home-notif.success .home-notif-icon { background: var(--success); }
+.home-notif.error   .home-notif-icon { background: var(--danger);  }
+
+.home-notif-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
 /* ── Mobile tightening ───────────────────────────────────────────────────── */
 
 @media (max-width: 480px) {
-  .home-page         { padding: 16px 16px 20px; gap: 12px; }
-  .home-greeting-title { font-size: 22px; }
-  .home-hero         { padding: 18px 20px; }
-  .home-hero-num     { font-size: 48px; }
-  .home-recent       { padding: 16px 18px; }
-  .home-recent-row   { padding: 8px 0; grid-template-columns: 1fr 1.2fr 50px; gap: 8px; }
-  .home-cta          { padding: 14px; font-size: 15px; }
+  .home-page                    { padding: 16px 16px 24px; gap: 12px; }
+  .home-greeting-title          { font-size: 22px; }
+  .home-clock-flip-card         { height: 290px; }
+  .home-clock-face              { padding: 14px 16px; }
+  .home-clock-face .analog-clock { width: 110px; height: 110px; }
+  .home-clock-face .clock-digital { font-size: 16px; }
+  .home-active-elapsed          { font-size: 46px; }
+  .home-clock-action            { padding: 12px 28px; font-size: 15px; }
+  .home-hero                    { padding: 14px 18px; }
+  .home-hero-num                { font-size: 40px; }
+  .home-recent                  { padding: 14px 18px; }
+  .home-recent-row              { grid-template-columns: 1fr 1.2fr 50px; gap: 8px; padding: 8px 0; }
 }
