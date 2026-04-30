@@ -1,7 +1,6 @@
 import React from 'react';
 
 const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const DEPT_DOTS = {
   'Front Desk':      '#3182ce',

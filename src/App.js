@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
-
-// Tiny helper component: redirect /admin/employees/:userId → /admin/staff/:userId.
-const NavStaff = () => {
-  const { userId } = useParams();
-  return <Navigate to={`/admin/staff/${userId}`} replace />;
-};
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import ShiftsView from './components/ShiftsView';
@@ -25,6 +19,13 @@ import SchedulingManager from './components/AdminPanel/Scheduling';
 import AdminSettings from './components/AdminPanel/AdminSettings';
 import './App.css';
 import './components/AdminPanel/AdminPanel.css';
+
+// Tiny helper component: redirect /admin/employees/:userId → /admin/staff/:userId
+// while preserving the userId param.
+const NavStaff = () => {
+  const { userId } = useParams();
+  return <Navigate to={`/admin/staff/${userId}`} replace />;
+};
 
 const getInitialTheme = () => {
   const stored = localStorage.getItem('hotelops-theme');

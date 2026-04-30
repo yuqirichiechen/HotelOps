@@ -724,6 +724,30 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 6 hotfix: production build cleanup
+
+**Bug:** Koyeb Docker build failed at `npm run build`. Two errors:
+1. `App.js:9-27 — Import in body of module; reorder to top  import/first`.
+   The `NavStaff` redirect helper had been placed *between* the
+   imports in App.js. Local `npm start` (no `CI=true`) only flags this
+   as a warning; Koyeb's Dockerfile sets `CI=true`, which makes any
+   ESLint warning fail the build.
+2. `MonthView.js:4 — 'MONTH_NAMES' is assigned a value but never used`.
+   Long-standing unused constant; same `CI=true` mechanism turned it
+   from warning to error.
+
+**Fix:**
+- App.js: moved `NavStaff` declaration **after** all imports.
+- MonthView.js: deleted the unused `MONTH_NAMES` constant.
+
+**Convention added:**
+- **Local + production builds.** `npm start` lets warnings through;
+  Koyeb's `CI=true` does not. Anything ESLint reports — unused vars,
+  out-of-order imports, react-hooks/exhaustive-deps — is a build error
+  in production. Run `CI=true npm run build` before relying on a green
+  local dev server. Any helper component, utility, or hook that
+  follows the imports must come *after* every `import` line.
+
 ### 2026-04-29 — Sprint 6: staff performance dashboard
 
 Major rework. Employees → Staff everywhere. New per-staff performance
