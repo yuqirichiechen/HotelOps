@@ -216,7 +216,8 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 
 - `GET  /api/health`
 - `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data (now also `staffHoursThisWeek`)
-- `GET  /api/admin/staff/:userId/performance?period=week|month|year`  auth (admin) — Sprint 6 — per-staff metrics (hours, OT, on-time, shifts, 8-week trend, prev-period comparison)
+- `GET  /api/admin/staff/:userId/performance?period=week|month|year`  auth (admin) — Sprint 6 — per-staff metrics (hours, OT split into approved/pending, on-time, shifts, 8-week trend, prev-period comparison)
+- `POST /api/admin/staff/:userId/approve-ot?period=week|month|year`  auth (admin) — Sprint 6.2 — flips ot_approved=true on every unapproved entry in range; single audit_logs row per bulk action
 - `PATCH /api/admin/time-entries/:id`          auth (admin) — Sprint 5 — hour override (writes audit_logs)
 - `GET  /api/admin/departments`
 - `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin)
@@ -723,6 +724,50 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-04-29 — Sprint 6.2: OT approval
+
+**What:** Admin can sign off on overtime hours per staff. Performance card
+splits OT total into approved + pending; one click bulk-approves the
+displayed period.
+
+**DB — Migration 007 (`007_ot_approved.sql`):**
+- `ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS ot_approved BOOLEAN NOT NULL DEFAULT FALSE`.
+- Mirrored in `schema.sql`.
+- Run on production: `psql "$DATABASE_URL?sslmode=require" -f database/migrations/007_ot_approved.sql`.
+
+**Server:**
+- Extracted `periodRange(period)` helper near the perf endpoint — both
+  the perf computation and the new OT approve endpoint use it so they
+  agree on what "this week / month / year" means.
+- `GET /api/admin/staff/:userId/performance` — entries query now selects
+  `ot_approved`. Per-week OT is split into `hoursOvertimeApproved`
+  (every entry in that week is `ot_approved`) and `hoursOvertimePending`
+  (otherwise). Both fields shipped on the response in addition to the
+  existing `hoursOvertime`.
+- `POST /api/admin/staff/:userId/approve-ot?period=week|month|year` —
+  bulk update `ot_approved = true` on unapproved entries in range,
+  audit_logs row with the entry IDs + admin username + count.
+
+**Client (StaffDetail performance dashboard):**
+- OT card num turns warn-orange only when `hoursOvertimePending > 0`
+  (was: any OT). When OT exists, a small "Xh pending · Yh approved" row
+  appears under the threshold meta.
+- "Approve OT" button shows when pending > 0. Click → POST the bulk
+  endpoint → success toast inside the card → reload perf data so the
+  approved/pending split refreshes.
+- Refactored the perf fetch into a `reloadPerf` `useCallback` so both
+  the period-change effect and the post-approve refresh share one path.
+
+**Conventions added:**
+- **Weekly OT bucket = atomic approval unit.** A week's OT is
+  "approved" only when *every* entry in that week is approved. Mixed
+  status → pending. Keeps the rule simple and matches how labor laws
+  treat the week as the OT calculation period.
+- **Period helper colocated with consumers.** When two routes need to
+  agree on a date range, a tiny `function periodRange(period)` near
+  them beats duplicating the if/else chain. Don't lift to a separate
+  file unless a third caller appears.
 
 ### 2026-04-29 — Sprint 6 hotfix: API URL collateral damage from rename
 

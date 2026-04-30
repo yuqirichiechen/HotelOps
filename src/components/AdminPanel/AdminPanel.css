@@ -1704,3 +1704,55 @@
 }
 
 .settings-perf-radio input { cursor: pointer; }
+
+/* ── Staff perf: OT pending/approved split + Approve button (Sprint 6.2) ── */
+
+.staff-perf-ot-split {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-perf-ot-pending  { color: var(--warn-text);   }
+.staff-perf-ot-approved { color: var(--success-text); }
+.staff-perf-ot-dot      { color: var(--text-lightest); }
+
+.staff-perf-ot-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--success);
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+  align-self: flex-start;
+}
+
+.staff-perf-ot-btn:hover:not(:disabled) {
+  background: var(--success);
+  color: white;
+}
+
+.staff-perf-ot-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.staff-perf-ot-msg {
+  font-size: 11px;
+  color: var(--success-text);
+  margin-top: 6px;
+  font-style: italic;
+  animation: staff-perf-ot-msg-in 0.2s ease both;
+}
+
+@keyframes staff-perf-ot-msg-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

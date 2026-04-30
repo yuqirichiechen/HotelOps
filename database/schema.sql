@@ -82,6 +82,7 @@ CREATE TABLE time_entries (
   regular_hours  NUMERIC(5,2),
   overtime_hours NUMERIC(5,2) DEFAULT 0,
   manual_entry   BOOLEAN     NOT NULL DEFAULT FALSE,
+  ot_approved    BOOLEAN     NOT NULL DEFAULT FALSE,   -- migration 007 — admin sign-off on this entry's OT bucket
   notes          TEXT,
   created_by     UUID        REFERENCES users(user_id),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

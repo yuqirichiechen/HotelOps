@@ -69,6 +69,10 @@ const StaffDetail = () => {
   const [perfErr,    setPerfErr]    = useState('');
   const [period,     setPeriod]     = useState('week'); // 'week' | 'month' | 'year'
 
+  // OT bulk approve (Sprint 6.2D)
+  const [otBusy,     setOtBusy]     = useState(false);
+  const [otMsg,      setOtMsg]      = useState('');
+
   const reloadEmployee = useCallback(async () => {
     setLoading(true);
     const { ok, data } = await apiFetch(`/admin/employees/${userId}`);
@@ -93,21 +97,40 @@ const StaffDetail = () => {
   }, [reloadEmployee, reloadEntries]);
 
   // Performance fetch (re-runs when period changes)
-  useEffect(() => {
-    let active = true;
+  const reloadPerf = useCallback(async () => {
     setPerfLoad(true);
     setPerfErr('');
-    apiFetch(`/admin/staff/${userId}/performance?period=${period}`).then(({ ok, status, data }) => {
-      if (!active) return;
-      if (ok && data?.success) {
-        setPerf(data);
-      } else {
-        setPerfErr(data?.message || `Could not load performance${status ? ` (HTTP ${status})` : ''}.`);
-      }
-      setPerfLoad(false);
-    });
-    return () => { active = false; };
+    const { ok, status, data } = await apiFetch(`/admin/staff/${userId}/performance?period=${period}`);
+    if (ok && data?.success) {
+      setPerf(data);
+    } else {
+      setPerfErr(data?.message || `Could not load performance${status ? ` (HTTP ${status})` : ''}.`);
+    }
+    setPerfLoad(false);
   }, [userId, period]);
+
+  useEffect(() => {
+    let active = true;
+    reloadPerf().then(() => { if (!active) return; });
+    return () => { active = false; };
+  }, [reloadPerf]);
+
+  // Bulk-approve all OT in the displayed period.
+  const approveOT = async () => {
+    setOtBusy(true);
+    setOtMsg('');
+    const { ok, data } = await apiFetch(`/admin/staff/${userId}/approve-ot?period=${period}`, {
+      method: 'POST',
+    });
+    setOtBusy(false);
+    if (ok && data?.success) {
+      setOtMsg(`Approved ${data.approvedCount} ${data.approvedCount === 1 ? 'entry' : 'entries'}.`);
+      setTimeout(() => setOtMsg(''), 3000);
+      reloadPerf();
+    } else {
+      setOtMsg(data?.message || 'Could not approve');
+    }
+  };
 
   // ── profile edit ──────────────────────────────────────────────────────────
   const startEdit = () => {
@@ -345,12 +368,34 @@ const StaffDetail = () => {
             {/* Overtime */}
             <div className="staff-perf-card">
               <div className="staff-perf-eyebrow">Overtime</div>
-              <div className={`staff-perf-num ${(perf?.hoursOvertime || 0) > 0 ? 'is-warn' : ''}`}>
+              <div className={`staff-perf-num ${(perf?.hoursOvertimePending || 0) > 0 ? 'is-warn' : ''}`}>
                 {perfLoad ? '—' : `${perf?.hoursOvertime ?? 0}h`}
               </div>
               <div className="staff-perf-meta">
                 past {perf?.config?.overtime_threshold_hours ?? 40}h/wk
               </div>
+              {(perf?.hoursOvertime ?? 0) > 0 && (
+                <div className="staff-perf-ot-split">
+                  <span className="staff-perf-ot-pending">
+                    {perf.hoursOvertimePending}h pending
+                  </span>
+                  <span className="staff-perf-ot-dot">·</span>
+                  <span className="staff-perf-ot-approved">
+                    {perf.hoursOvertimeApproved}h approved
+                  </span>
+                </div>
+              )}
+              {(perf?.hoursOvertimePending ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="staff-perf-ot-btn"
+                  onClick={approveOT}
+                  disabled={otBusy}
+                >
+                  {otBusy ? 'Approving…' : 'Approve OT'}
+                </button>
+              )}
+              {otMsg && <div className="staff-perf-ot-msg">{otMsg}</div>}
             </div>
 
             {/* Shifts */}

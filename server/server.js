@@ -827,6 +827,39 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   });
 });
 
+// Period range helper used by both the performance endpoint and the bulk-OT
+// approval endpoint so they always agree on what "this week / month / year"
+// means.
+function periodRange(period) {
+  const now = new Date();
+  let from, to, prevFrom, prevTo, label;
+
+  if (period === 'week') {
+    const dow    = now.getDay() || 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dow - 1));
+    monday.setHours(0, 0, 0, 0);
+    from     = monday;
+    to       = new Date(monday); to.setDate(to.getDate() + 7);
+    prevFrom = new Date(from);   prevFrom.setDate(prevFrom.getDate() - 7);
+    prevTo   = new Date(to);     prevTo.setDate(prevTo.getDate() - 7);
+    label    = 'vs last week';
+  } else if (period === 'month') {
+    from     = new Date(now.getFullYear(), now.getMonth(),     1);
+    to       = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    prevFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    prevTo   = new Date(now.getFullYear(), now.getMonth(),     1);
+    label    = 'vs last month';
+  } else {
+    from     = new Date(now.getFullYear(),     0, 1);
+    to       = new Date(now.getFullYear() + 1, 0, 1);
+    prevFrom = new Date(now.getFullYear() - 1, 0, 1);
+    prevTo   = new Date(now.getFullYear(),     0, 1);
+    label    = 'vs last year';
+  }
+  return { from, to, prevFrom, prevTo, label };
+}
+
 // ── Admin: per-staff performance ─────────────────────────────────────────────
 //
 // One round-trip computes every metric the StaffDetail performance dashboard
@@ -839,33 +872,8 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
   const period = ['week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'week';
 
   try {
-    // ── Period ranges (server local time) ─────────────────────────────────
     const now = new Date();
-    let from, to, prevFrom, prevTo, label;
-
-    if (period === 'week') {
-      const dow    = now.getDay() || 7;             // 1..7 (Mon..Sun)
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (dow - 1));
-      monday.setHours(0, 0, 0, 0);
-      from     = monday;
-      to       = new Date(monday); to.setDate(to.getDate() + 7);
-      prevFrom = new Date(from);   prevFrom.setDate(prevFrom.getDate() - 7);
-      prevTo   = new Date(to);     prevTo.setDate(prevTo.getDate() - 7);
-      label    = 'vs last week';
-    } else if (period === 'month') {
-      from     = new Date(now.getFullYear(), now.getMonth(),     1);
-      to       = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      prevFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      prevTo   = new Date(now.getFullYear(), now.getMonth(),     1);
-      label    = 'vs last month';
-    } else {
-      from     = new Date(now.getFullYear(),     0, 1);
-      to       = new Date(now.getFullYear() + 1, 0, 1);
-      prevFrom = new Date(now.getFullYear() - 1, 0, 1);
-      prevTo   = new Date(now.getFullYear(),     0, 1);
-      label    = 'vs last year';
-    }
+    const { from, to, prevFrom, prevTo, label } = periodRange(period);
 
     // 8 weeks back (this Monday) for the trend chart
     const trendStart = new Date(now);
@@ -889,7 +897,7 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
          WHERE key IN ('overtime_threshold_hours','on_time_tolerance_minutes','compare_baseline')`
       ),
       pool.query(
-        `SELECT entry_id, clock_in_time, clock_out_time, manual_entry,
+        `SELECT entry_id, clock_in_time, clock_out_time, manual_entry, ot_approved,
                 EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
          FROM time_entries
          WHERE user_id = $1 AND clock_in_time >= $2
@@ -937,15 +945,28 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
     const hoursWorked = entries.reduce((s, e) => s + hoursIn(e, from, to), 0);
     const prevHours   = entries.reduce((s, e) => s + hoursIn(e, prevFrom, prevTo), 0);
 
-    // Weekly-bucketed overtime within the period
+    // Weekly-bucketed overtime within the period. A week's OT counts as
+    // "approved" only when EVERY entry that falls in that week has
+    // ot_approved=true (admin sign-off). Otherwise it's pending.
     const weekMs = 7 * 24 * 3600 * 1000;
-    let hoursOvertime = 0;
+    let hoursOvertime = 0, hoursOvertimeApproved = 0, hoursOvertimePending = 0;
     let cursor = new Date(from);
     while (cursor < to) {
       const wEnd  = new Date(cursor.getTime() + weekMs);
       const clip  = wEnd < to ? wEnd : to;
       const wHrs  = entries.reduce((s, e) => s + hoursIn(e, cursor, clip), 0);
-      if (wHrs > config.overtime_threshold_hours) hoursOvertime += wHrs - config.overtime_threshold_hours;
+      if (wHrs > config.overtime_threshold_hours) {
+        const ot = wHrs - config.overtime_threshold_hours;
+        hoursOvertime += ot;
+        // Entries whose clock-in falls in this week range
+        const inWeek = entries.filter(e => {
+          const start = new Date(e.clock_in_time);
+          return start >= cursor && start < clip;
+        });
+        const allApproved = inWeek.length > 0 && inWeek.every(e => e.ot_approved);
+        if (allApproved) hoursOvertimeApproved += ot;
+        else             hoursOvertimePending  += ot;
+      }
       cursor = wEnd;
     }
 
@@ -1022,7 +1043,9 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
         to:   new Date(to.getTime() - 86400000).toISOString().split('T')[0],   // inclusive end
       },
       hoursWorked:     Math.round(hoursWorked * 10) / 10,
-      hoursOvertime:   Math.round(hoursOvertime * 10) / 10,
+      hoursOvertime:         Math.round(hoursOvertime * 10) / 10,
+      hoursOvertimeApproved: Math.round(hoursOvertimeApproved * 10) / 10,
+      hoursOvertimePending:  Math.round(hoursOvertimePending  * 10) / 10,
       shiftsScheduled: schedules.length,
       shiftsWorked,
       shiftsMissed,
@@ -1035,6 +1058,56 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
     });
   } catch (err) {
     console.error('[performance]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// ── Admin: bulk OT approve ───────────────────────────────────────────────────
+//
+// Sets ot_approved=true on every unapproved time_entry for the given staff
+// within the requested period. Audit-logged (single row per bulk action).
+
+app.post('/api/admin/staff/:userId/approve-ot', requireAuth, requireRole('admin'), async (req, res) => {
+  const { userId } = req.params;
+  const period = ['week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'week';
+  const { from, to } = periodRange(period);
+
+  try {
+    const { rows: before } = await pool.query(
+      `SELECT entry_id, ot_approved
+       FROM time_entries
+       WHERE user_id = $1 AND clock_in_time >= $2 AND clock_in_time < $3 AND ot_approved = false`,
+      [userId, from, to]
+    );
+    if (before.length === 0) {
+      return res.json({ success: true, approvedCount: 0 });
+    }
+
+    const { rowCount } = await pool.query(
+      `UPDATE time_entries SET ot_approved = true
+       WHERE user_id = $1 AND clock_in_time >= $2 AND clock_in_time < $3 AND ot_approved = false`,
+      [userId, from, to]
+    );
+
+    await pool.query(
+      `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data)
+       VALUES (NULL, 'admin_bulk_ot_approve', 'time_entries', NULL, $1, $2)`,
+      [
+        JSON.stringify({ entry_ids: before.map(b => b.entry_id) }),
+        JSON.stringify({
+          user_id: userId,
+          period,
+          from: from.toISOString(),
+          to:   to.toISOString(),
+          approved_count: rowCount,
+          admin_username: req.auth.sub,
+        }),
+      ]
+    );
+
+    return res.json({ success: true, approvedCount: rowCount });
+  } catch (err) {
+    console.error('[approve-ot]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
 });
