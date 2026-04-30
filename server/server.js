@@ -577,16 +577,53 @@ app.get('/api/user/:phone/history', async (req, res) => {
 
 app.get('/api/admin/employees', async (req, res) => {
   try {
+    // Read OT threshold so per-row pending_ot_hours stays consistent with the
+    // performance dashboard's definition. Falls back to 40h if missing.
+    const { rows: cfg } = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'overtime_threshold_hours'`
+    );
+    const threshold = cfg[0]?.value ? parseFloat(cfg[0].value) : 40;
+
+    // CTE: per-user week aggregates. is_on_clock = any open entry; all_approved
+    // = every entry's ot_approved is true (NULL if no entries → COALESCE later).
     const { rows } = await pool.query(
-      `SELECT u.user_id, u.name, u.phone_number, u.role, u.hire_date,
-              u.base_hourly_rate, u.active, u.department_id, d.name AS department,
-              u.pin_required, u.pin_must_set,
-              (u.pin_hash IS NOT NULL) AS has_pin
+      `WITH week_agg AS (
+         SELECT
+           user_id,
+           SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0)::float AS hours,
+           BOOL_OR(clock_out_time IS NULL) AS is_on_clock,
+           BOOL_AND(ot_approved)            AS all_approved
+         FROM time_entries
+         WHERE clock_in_time >= date_trunc('week', CURRENT_DATE)
+         GROUP BY user_id
+       )
+       SELECT
+         u.user_id, u.name, u.phone_number, u.role, u.hire_date,
+         u.base_hourly_rate, u.active, u.department_id, d.name AS department,
+         u.pin_required, u.pin_must_set,
+         (u.pin_hash IS NOT NULL) AS has_pin,
+         COALESCE(wa.hours, 0)::float                AS hours_this_week,
+         COALESCE(wa.is_on_clock, false)             AS is_on_clock,
+         CASE
+           WHEN COALESCE(wa.hours, 0) > $1 AND NOT COALESCE(wa.all_approved, true)
+           THEN COALESCE(wa.hours, 0) - $1
+           ELSE 0
+         END::float                                  AS pending_ot_hours
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
-       ORDER BY u.name`
+       LEFT JOIN week_agg wa   ON wa.user_id      = u.user_id
+       ORDER BY u.name`,
+      [threshold]
     );
-    return res.json({ success: true, employees: rows });
+
+    return res.json({
+      success:   true,
+      employees: rows.map(r => ({
+        ...r,
+        hours_this_week:  Math.round(r.hours_this_week  * 10) / 10,
+        pending_ot_hours: Math.round(r.pending_ot_hours * 10) / 10,
+      })),
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });

@@ -220,7 +220,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 - `POST /api/admin/staff/:userId/approve-ot?period=week|month|year`  auth (admin) — Sprint 6.2 — flips ot_approved=true on every unapproved entry in range; single audit_logs row per bulk action
 - `PATCH /api/admin/time-entries/:id`          auth (admin) — Sprint 5 — hour override (writes audit_logs)
 - `GET  /api/admin/departments`
-- `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin)
+- `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin, plus Sprint 6.3: hours_this_week, is_on_clock, pending_ot_hours)
 - `GET  /api/admin/employees/:id`              Sprint 5 — single employee fetch (powers EmployeeDetail)
 - `POST /api/admin/employees`
 - `PUT  /api/admin/employees/:id`
@@ -724,6 +724,77 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-04-30 — Sprint 6.3: StaffManager rebuild — list-as-dashboard
+
+**What:** The Staff list page (`/admin/staff`) used to be a basic CRUD
+shell with an "+ Add" header button and a department-grouped accordion.
+Replaced with a dashboard-style layout that mirrors AdminHome's stat-card
+grammar.
+
+**Server (`GET /api/admin/employees`):**
+- Per-row enrichment via a CTE on `time_entries` (current Mon
+  date_trunc): `hours_this_week`, `is_on_clock` (any open entry this
+  week), `pending_ot_hours` (week_hours − threshold when weekly is over
+  the configured threshold AND any entry is unapproved).
+- Reads `overtime_threshold_hours` from `app_settings` so this stays in
+  lockstep with the performance dashboard's definition. Falls back to
+  40 if missing.
+- Same response shape as before plus three new fields. Existing callers
+  (StaffManager from earlier sprints, AdminHome flows) ignore them
+  harmlessly.
+
+**Client (`src/components/AdminPanel/StaffManager.js`):** full rewrite.
+
+- **Header**: simple back-to-Home button + "Staff" title (the old
+  prominent "+ Add" button is gone — adding moved to the bottom).
+- **Stats banner** — 4 clickable cards driving the list filter:
+  - **Active staff** (resets filter)
+  - **On the clock** (filters to staff with an open entry; live-tone
+    meta + pulse dot inside the row pill below)
+  - **Hours this week** (informational, not clickable)
+  - **Pending OT** (filters to staff with `pending_ot_hours > 0`;
+    warn-tone meta and disabled when zero)
+  - Selected card: blue ring + downward arrow → identical grammar to
+    AdminHome.
+- **Filter row** — search input (instant client-side, ~200-staff scale
+  fine), department chips (All / each dept / Unassigned), inactive
+  toggle (default off).
+- **Rich rows**:
+  - Avatar (first initial), name + role · department · hire date
+  - This-week hours number + horizontal mini-bar scaled to the visible
+    list's max
+  - Status pills: "On the clock" (live pulse), "Xh OT pending" (warn),
+    "Inactive" (muted)
+  - Click anywhere → `/admin/staff/:userId` performance page
+  - Mobile: pills wrap below name; hours bar hidden (rows stay tight)
+- **Add staff = bottom tile**, dashed-border, opens the existing form
+  inline. After save, full reload so the new row picks up its
+  enrichment fields.
+
+**Files modified:**
+- `server/server.js` — `/api/admin/employees` query rewritten.
+- `src/components/AdminPanel/StaffManager.js` — full rewrite.
+- `src/components/AdminPanel/AdminPanel.css` — appended `.staff-mgr-*`
+  rules (~250 lines): stats card, search/chips, list rows, add tile.
+
+**Conventions reinforced:**
+- **List-as-dashboard.** When a list page also surfaces aggregate
+  metrics, the stats banner doubles as the filter — selecting a stat
+  scopes the list. Same grammar as AdminHome (blue ring, downward
+  arrow). Don't have two competing primary actions on the same screen.
+- **De-emphasize occasional actions.** "+ Add" was the most prominent
+  button on the page even though it's a once-a-week action vs.
+  "click an existing staff" which happens hundreds of times. The bottom
+  dashed tile is visible without dominating.
+- **Server pre-computes enrichment on list endpoints.** Avoid asking
+  the client to reduce N entries × M queries. One CTE reads time_entries
+  once and emits the per-user numbers.
+
+**Sprint 6.4 backlog (next planned slot):** Bulk CSV export on the staff
+list — `↓ Export ▾` button next to the search input, menu of week /
+month / year × all-staff / department / single staff. Same CSV shape
+as the Timesheet page.
 
 ### 2026-04-29 — Sprint 6.2: OT approval
 
