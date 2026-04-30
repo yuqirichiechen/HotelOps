@@ -723,6 +723,54 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 5.2: dashboard rework + admin auth cleanup
+
+**Sprint 5.2A — Admin auth single-sourced:**
+- Removed the legacy `POST /api/admin/login` route + ADMIN_USERNAME /
+  ADMIN_PASSWORD env-var fallback. **`server/config/admins.json` is the
+  only source of admin credentials.**
+- admins.json supports multiple admins out of the box. Updated the
+  comment block to spell that out and added an `_example_entries` block
+  showing the schema (`{ username, password, name }`) so future-you
+  doesn't have to read the loader to figure out the shape.
+
+**Sprint 5.2B — Stats banner is now a click-through:**
+- Dropped "Active staff" (≥50 employees → not actionable).
+- New stat: **Coming up today** = today's schedule rows where status is
+  `late` or `yet-to-start` (people scheduled today who haven't started).
+  The meta line shows how many are running late.
+- Reordered stats: **On the clock** is first; then Coming up today,
+  Hours this week, Pending approvals.
+- 3 of 4 stat cards are clickable (`is-clickable`). The selected card
+  gets a colored ring, a downward triangle pointing to the detail card,
+  and tone-aware highlight (success / warn / accent depending on the
+  metric).
+- Removed the standalone "Today's schedule" card and the bottom-of-page
+  pending-approvals card. Their content now lives inside a single
+  detail card whose contents swap based on the selected stat:
+  - **on-clock** → "On the floor", currently working list (dept-grouped).
+  - **coming-up** → "Coming up today", late + yet-to-start with status pills.
+  - **approvals** → "Pending approvals", request queue.
+- Detail card uses `key={view}` so React remounts on swap → the existing
+  fade-in keyframe re-fires for a clean transition.
+
+**Files modified:**
+- `server/server.js` — legacy login route gone.
+- `server/config/admins.json` — clearer multi-admin schema.
+- `src/pages/AdminHome/index.js` — full rewrite around the click-through pattern.
+- `src/pages/AdminHome/AdminHome.css` — `<button>` reset on stat cards,
+  `is-clickable` / `is-selected` / `.adm-stat-arrow` styles, detail-card
+  fade-in keyframe.
+
+**Conventions added:**
+- **Stats banner as nav.** When a dashboard has multiple "what's
+  happening" lists, group them under one detail panel and use the stats
+  banner cards as the picker. Saves vertical space, keeps the dashboard
+  one screen, makes the count → list relationship explicit.
+- **Card-as-button pattern.** When a card is clickable, render it as a
+  `<button>` (with `appearance: none`, `text-align: left`) rather than
+  a `<div onClick>`. Free keyboard support, focus ring, semantics.
+
 ### 2026-04-29 — Sprint 5.1.3: production schema backfill
 
 **Diagnosis (from Koyeb logs):**

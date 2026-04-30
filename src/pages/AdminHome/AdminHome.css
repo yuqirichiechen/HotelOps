@@ -516,3 +516,84 @@
   background: var(--warn-text);
   color: white;
 }
+
+/* ── Clickable + selected stat cards ─────────────────────────────────────── */
+
+.adm-stat-card {
+  /* Reset for <button> usage */
+  font-family: 'TiemposText', Georgia, serif;
+  text-align: left;
+  appearance: none;
+  outline: none;
+  position: relative;
+  width: 100%;
+}
+
+.adm-stat-card:disabled {
+  cursor: default;
+  opacity: 1;  /* keep "Hours this week" looking normal even though it's disabled */
+}
+
+.adm-stat-card.is-clickable {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.adm-stat-card.is-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.adm-stat-card.is-clickable:active {
+  transform: translateY(0);
+}
+
+/* Selected stat card — highlighted to signal the detail card matches it */
+.adm-stat-card.is-selected {
+  border-color: var(--accent-alt);
+  box-shadow: 0 0 0 3px var(--accent-bg), var(--shadow-sm);
+}
+
+.adm-stat-card.is-selected.is-live   { border-color: var(--success); box-shadow: 0 0 0 3px var(--success-bg), var(--shadow-sm); }
+.adm-stat-card.is-selected.is-warn   { border-color: var(--warn-text); box-shadow: 0 0 0 3px var(--warn-bg), var(--shadow-sm); }
+.adm-stat-card.is-selected.is-action { border-color: var(--warn-text); box-shadow: 0 0 0 3px var(--warn-bg), var(--shadow-sm); }
+
+.adm-stat-card.is-warn { border-color: var(--warn-text); }
+.adm-stat-card .adm-stat-meta {
+  /* meta text is already styled; keep base color unless tone overrides below */
+}
+.adm-stat-card.is-warn .adm-stat-meta { color: var(--warn-text); font-weight: 600; }
+
+/* Down-arrow indicator that points from the selected stat to the detail card */
+.adm-stat-arrow {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 10px solid var(--accent-alt);
+}
+
+.adm-stat-card.is-selected.is-live   .adm-stat-arrow { border-top-color: var(--success); }
+.adm-stat-card.is-selected.is-warn   .adm-stat-arrow,
+.adm-stat-card.is-selected.is-action .adm-stat-arrow { border-top-color: var(--warn-text); }
+
+/* ── Detail card — animates on view swap ─────────────────────────────────── */
+
+.adm-detail-card {
+  animation: adm-detail-fade 0.25s ease both;
+}
+
+@keyframes adm-detail-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* On mobile, stat-card down-arrows look weird when the cards wrap.
+   Hide them when wrapping happens. */
+@media (max-width: 880px) {
+  .adm-stat-arrow { display: none; }
+}

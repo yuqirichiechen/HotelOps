@@ -1,5 +1,9 @@
 {
-  "_comment": "Admin credentials. Plaintext on purpose — file lives in a private repo. Edit + redeploy to add/remove admins. NEVER expose this directory via static hosting.",
+  "_comment": "Admin credentials — the single source of truth for /api/auth/admin/login. Plaintext on purpose: this file lives in a private repo. Edit + redeploy to add or remove admins. Each entry needs `username` + `password`; `name` is shown in the greeting on the admin dashboard. NEVER expose this directory via static hosting.",
+  "_example_entries": [
+    { "username": "alex",  "password": "<plaintext>", "name": "Alex Morgan" },
+    { "username": "sarah", "password": "<plaintext>", "name": "Sarah Chen" }
+  ],
   "admins": [
     {
       "username": "admin",

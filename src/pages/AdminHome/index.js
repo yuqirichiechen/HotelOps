@@ -1,16 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../../auth';
 import './AdminHome.css';
 
-// Manager dashboard. Single fetch to /api/admin/dashboard fills:
-//   - stats banner (active staff / on clock / hours / pending approvals)
-//   - On the floor now (currently clocked in, grouped by department)
-//   - Today's schedule with derived status (clocked-in / late / yet / done)
-//   - Pending approvals queue
+// Manager dashboard. Stats banner cards are clickable and drive a single
+// detail panel below — clicking "On the clock" shows currently working,
+// "Coming up today" shows scheduled-not-yet-started, "Pending approvals"
+// shows the queue. "Hours this week" stays informational.
 //
-// Errors are surfaced as a banner with a Retry button — silently empty
-// dashboards mask auth failures and server errors.
+// Active-staff count was dropped (50+ employees → not actionable). Today's
+// schedule card is gone too — that view belongs on the calendar.
 
 const fmtSince = (iso) => {
   const ms = Date.now() - new Date(iso).getTime();
@@ -40,11 +39,11 @@ const fmtUpdated = (date) => {
 };
 
 const STATUS_LABEL = {
-  'clocked-in':   'On the clock',
   'late':         'Late',
   'yet-to-start': 'Yet to start',
-  'finished':     'Finished',
 };
+
+const VIEWS = ['on-clock', 'coming-up', 'approvals'];
 
 const AdminHome = () => {
   const { user, logout } = useAuth();
@@ -55,15 +54,13 @@ const AdminHome = () => {
   const [error,       setError]       = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing,  setRefreshing]  = useState(false);
+  const [view,        setView]        = useState('on-clock');
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     const { ok, status, data } = await apiFetch('/admin/dashboard');
     if (ok && data?.success) {
       setData(data);
-      // Server runs queries with allSettled — a successful response can
-      // still carry per-query errors. Show those as a warning but keep
-      // the dashboard visible.
       if (data.errors?.length) {
         setError({
           status,
@@ -89,7 +86,6 @@ const AdminHome = () => {
 
   useEffect(() => {
     refresh();
-    // Auto-refresh every 60s so "currently working" stays live.
     const id = setInterval(refresh, 60000);
     return () => clearInterval(id);
   }, [refresh]);
@@ -104,13 +100,207 @@ const AdminHome = () => {
   const now       = new Date();
   const adminName = user?.name || user?.username || 'admin';
 
+  // Coming up today = scheduled today, not currently working, not yet
+  // finished. Status came from the dashboard endpoint already.
+  const comingUp = useMemo(
+    () => (data?.todaySchedule || [])
+      .filter(s => s.status === 'late' || s.status === 'yet-to-start'),
+    [data]
+  );
+
   // Group currently working by department
-  const workingByDept = {};
-  (data?.currentlyWorking || []).forEach(w => {
-    const key = w.department || 'Unassigned';
-    (workingByDept[key] = workingByDept[key] || []).push(w);
-  });
+  const workingByDept = useMemo(() => {
+    const map = {};
+    (data?.currentlyWorking || []).forEach(w => {
+      const key = w.department || 'Unassigned';
+      (map[key] = map[key] || []).push(w);
+    });
+    return map;
+  }, [data]);
   const workingDepts = Object.keys(workingByDept).sort();
+
+  const stats = [
+    {
+      key:       'on-clock',
+      eyebrow:   'On the clock',
+      value:     loading ? '—' : (data?.onTheClockCount ?? 0),
+      meta:      data?.onTheClockCount ? 'right now' : 'no one currently',
+      tone:      data?.onTheClockCount ? 'live' : null,
+      clickable: true,
+    },
+    {
+      key:       'coming-up',
+      eyebrow:   'Coming up today',
+      value:     loading ? '—' : comingUp.length,
+      meta:      comingUp.length
+        ? `${comingUp.filter(s => s.status === 'late').length} late`
+        : 'all clocked in',
+      tone:      comingUp.some(s => s.status === 'late') ? 'warn' : null,
+      clickable: true,
+    },
+    {
+      key:       'hours',
+      eyebrow:   'Hours this week',
+      value:     loading ? '—' : (data?.weekHoursTotal ?? 0),
+      meta:      'across all staff',
+      tone:      null,
+      clickable: false,
+    },
+    {
+      key:       'approvals',
+      eyebrow:   'Pending approvals',
+      value:     loading ? '—' : (data?.pendingApprovalsCount ?? 0),
+      meta:      data?.pendingApprovalsCount ? 'waiting for review' : 'all caught up',
+      tone:      data?.pendingApprovalsCount ? 'action' : null,
+      clickable: true,
+    },
+  ];
+
+  // ── Detail card content (varies by selected view) ─────────────────────────
+  const renderDetail = () => {
+    if (loading) {
+      return (
+        <>
+          <div className="adm-skel" />
+          <div className="adm-skel" style={{ width: '70%' }} />
+          <div className="adm-skel" />
+        </>
+      );
+    }
+
+    if (view === 'on-clock') {
+      const total = data?.currentlyWorking?.length || 0;
+      return (
+        <>
+          <div className="adm-card-head">
+            <h2 className="adm-card-title">On the floor</h2>
+            {total > 0 && (
+              <span className="adm-card-count is-live">
+                <span className="adm-pulse-dot" />
+                {total} {total === 1 ? 'person' : 'people'}
+              </span>
+            )}
+          </div>
+          {total === 0 ? (
+            <div className="adm-empty">
+              No one is clocked in right now.
+              <div className="adm-empty-sub">
+                Open clock-ins (entries with no clock-out yet) appear here.
+              </div>
+            </div>
+          ) : workingDepts.map(dept => (
+            <div key={dept} className="adm-working-group">
+              <div className="adm-group-title">{dept}</div>
+              <ul className="adm-working-list">
+                {workingByDept[dept].map(w => (
+                  <li
+                    key={w.user_id}
+                    className="adm-working-row"
+                    onClick={() => nav(`/admin/employees/${w.user_id}`)}
+                  >
+                    <div className="adm-working-avatar">
+                      {(w.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="adm-working-info">
+                      <div className="adm-working-name">{w.name}</div>
+                      <div className="adm-working-meta">
+                        {(w.role || '').replace('_', ' ')}
+                      </div>
+                    </div>
+                    <div className="adm-working-since">
+                      {fmtSince(w.clock_in_time)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </>
+      );
+    }
+
+    if (view === 'coming-up') {
+      return (
+        <>
+          <div className="adm-card-head">
+            <h2 className="adm-card-title">Coming up today</h2>
+            {comingUp.length > 0 && (
+              <span className="adm-card-count">
+                {comingUp.length}
+              </span>
+            )}
+          </div>
+          {comingUp.length === 0 ? (
+            <div className="adm-empty">
+              Everyone scheduled today has either started or finished.
+              <div className="adm-empty-sub">
+                People still expected to clock in show up here.
+              </div>
+            </div>
+          ) : (
+            <ul className="adm-sched-list">
+              {comingUp.map(s => (
+                <li
+                  key={s.schedule_id}
+                  className="adm-sched-row"
+                  onClick={() => nav(`/admin/employees/${s.user_id}`)}
+                >
+                  <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
+                  <div className="adm-sched-info">
+                    <div className="adm-sched-name">{s.name}</div>
+                    <div className="adm-sched-meta">
+                      {fmtScheduleTime(s.start_time)} – {fmtScheduleTime(s.end_time)}
+                      {s.department ? ` · ${s.department}` : ''}
+                    </div>
+                  </div>
+                  <span className={`adm-sched-pill pill-${s.status}`}>
+                    {STATUS_LABEL[s.status]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      );
+    }
+
+    if (view === 'approvals') {
+      const list = data?.pendingApprovals || [];
+      return (
+        <>
+          <div className="adm-card-head">
+            <h2 className="adm-card-title">Pending approvals</h2>
+            {list.length > 0 && <span className="adm-card-count">{list.length}</span>}
+          </div>
+          {list.length === 0 ? (
+            <div className="adm-empty">
+              No approvals waiting.
+              <div className="adm-empty-sub">
+                Manual time-edit requests show up here for review.
+              </div>
+            </div>
+          ) : (
+            <ul className="adm-appr-list">
+              {list.map(a => (
+                <li key={a.request_id} className="adm-appr-row">
+                  <span className="adm-appr-name">{a.requested_by_name}</span>
+                  {' — manual time edit'}
+                  <div className="adm-appr-reason">"{a.reason}"</div>
+                  <div className="adm-appr-date">
+                    {new Date(a.created_at).toLocaleDateString([], {
+                      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="adm-page">
@@ -178,167 +368,41 @@ const AdminHome = () => {
         </div>
       )}
 
-      {/* Stats banner */}
+      {/* Stats banner — clickable cards select the detail view below */}
       <div className="adm-stats">
-        <div className="adm-stat-card">
-          <div className="adm-stat-eyebrow">Active staff</div>
-          <div className="adm-stat-num">{loading ? '—' : data?.activeStaffCount ?? 0}</div>
-          <div className="adm-stat-meta">total on the roster</div>
-        </div>
-        <div className={`adm-stat-card ${data?.onTheClockCount ? 'is-live' : ''}`}>
-          <div className="adm-stat-eyebrow">On the clock</div>
-          <div className="adm-stat-num">{loading ? '—' : data?.onTheClockCount ?? 0}</div>
-          <div className={`adm-stat-meta ${data?.onTheClockCount ? 'is-live' : ''}`}>
-            {data?.onTheClockCount ? 'right now' : 'no one currently'}
-          </div>
-        </div>
-        <div className="adm-stat-card">
-          <div className="adm-stat-eyebrow">Hours this week</div>
-          <div className="adm-stat-num">{loading ? '—' : (data?.weekHoursTotal ?? 0)}</div>
-          <div className="adm-stat-meta">across all staff</div>
-        </div>
-        <div className={`adm-stat-card ${data?.pendingApprovalsCount ? 'is-action' : ''}`}>
-          <div className="adm-stat-eyebrow">Pending approvals</div>
-          <div className="adm-stat-num">{loading ? '—' : data?.pendingApprovalsCount ?? 0}</div>
-          <div className="adm-stat-meta">
-            {data?.pendingApprovalsCount ? 'waiting for review' : 'all caught up'}
-          </div>
-        </div>
+        {stats.map(s => {
+          const isSelected = s.clickable && view === s.key;
+          const cls = [
+            'adm-stat-card',
+            s.tone === 'live'   ? 'is-live'   : '',
+            s.tone === 'warn'   ? 'is-warn'   : '',
+            s.tone === 'action' ? 'is-action' : '',
+            s.clickable         ? 'is-clickable' : '',
+            isSelected          ? 'is-selected'  : '',
+          ].filter(Boolean).join(' ');
+          return (
+            <button
+              key={s.key}
+              type="button"
+              className={cls}
+              onClick={s.clickable ? () => setView(s.key) : undefined}
+              disabled={!s.clickable}
+            >
+              <div className="adm-stat-eyebrow">{s.eyebrow}</div>
+              <div className="adm-stat-num">{s.value}</div>
+              <div className={`adm-stat-meta ${s.tone === 'live' ? 'is-live' : ''}`}>
+                {s.meta}
+              </div>
+              {VIEWS.includes(s.key) && isSelected && <div className="adm-stat-arrow" aria-hidden />}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="adm-grid">
-
-        {/* On the floor now */}
-        <div className="adm-card">
-          <div className="adm-card-head">
-            <h2 className="adm-card-title">On the floor</h2>
-            {data?.currentlyWorking?.length > 0 && (
-              <span className="adm-card-count is-live">
-                <span className="adm-pulse-dot" />
-                {data.currentlyWorking.length} {data.currentlyWorking.length === 1 ? 'person' : 'people'}
-              </span>
-            )}
-          </div>
-          {loading && (
-            <>
-              <div className="adm-skel" />
-              <div className="adm-skel" style={{ width: '70%' }} />
-              <div className="adm-skel" />
-            </>
-          )}
-          {!loading && (data?.currentlyWorking?.length || 0) === 0 && (
-            <div className="adm-empty">
-              No one is clocked in right now.
-              <div className="adm-empty-sub">
-                Open clock-ins (entries with no clock-out yet) appear here.
-              </div>
-            </div>
-          )}
-          {!loading && workingDepts.map(dept => (
-            <div key={dept} className="adm-working-group">
-              <div className="adm-group-title">{dept}</div>
-              <ul className="adm-working-list">
-                {workingByDept[dept].map(w => (
-                  <li
-                    key={w.user_id}
-                    className="adm-working-row"
-                    onClick={() => nav(`/admin/employees/${w.user_id}`)}
-                  >
-                    <div className="adm-working-avatar">
-                      {(w.name || '?').charAt(0).toUpperCase()}
-                    </div>
-                    <div className="adm-working-info">
-                      <div className="adm-working-name">{w.name}</div>
-                      <div className="adm-working-meta">
-                        {(w.role || '').replace('_', ' ')}
-                      </div>
-                    </div>
-                    <div className="adm-working-since">
-                      {fmtSince(w.clock_in_time)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-
-        {/* Today's schedule */}
-        <div className="adm-card">
-          <div className="adm-card-head">
-            <h2 className="adm-card-title">Today's schedule</h2>
-            {data?.todaySchedule?.length > 0 && (
-              <span className="adm-card-count">
-                {data.todaySchedule.length}
-              </span>
-            )}
-          </div>
-          {loading && (
-            <>
-              <div className="adm-skel" />
-              <div className="adm-skel" style={{ width: '85%' }} />
-              <div className="adm-skel" style={{ width: '90%' }} />
-              <div className="adm-skel" />
-            </>
-          )}
-          {!loading && (data?.todaySchedule?.length || 0) === 0 && (
-            <div className="adm-empty">
-              No shifts scheduled today.
-              <div className="adm-empty-sub">
-                Add a shift in Scheduling to see it here.
-              </div>
-            </div>
-          )}
-          {!loading && (data?.todaySchedule?.length || 0) > 0 && (
-            <ul className="adm-sched-list">
-              {data.todaySchedule.map(s => (
-                <li
-                  key={s.schedule_id}
-                  className="adm-sched-row"
-                  onClick={() => nav(`/admin/employees/${s.user_id}`)}
-                >
-                  <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
-                  <div className="adm-sched-info">
-                    <div className="adm-sched-name">{s.name}</div>
-                    <div className="adm-sched-meta">
-                      {fmtScheduleTime(s.start_time)} – {fmtScheduleTime(s.end_time)}
-                      {s.department ? ` · ${s.department}` : ''}
-                    </div>
-                  </div>
-                  <span className={`adm-sched-pill pill-${s.status}`}>
-                    {STATUS_LABEL[s.status]}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
+      {/* Detail card — content swaps based on selected stat */}
+      <div className="adm-card adm-detail-card" key={view}>
+        {renderDetail()}
       </div>
-
-      {/* Pending approvals */}
-      {(data?.pendingApprovalsCount || 0) > 0 && (
-        <div className="adm-card">
-          <div className="adm-card-head">
-            <h2 className="adm-card-title">Pending approvals</h2>
-            <span className="adm-card-count">{data.pendingApprovalsCount}</span>
-          </div>
-          <ul className="adm-appr-list">
-            {(data.pendingApprovals || []).map(a => (
-              <li key={a.request_id} className="adm-appr-row">
-                <span className="adm-appr-name">{a.requested_by_name}</span>
-                {' — manual time edit'}
-                <div className="adm-appr-reason">"{a.reason}"</div>
-                <div className="adm-appr-date">
-                  {new Date(a.created_at).toLocaleDateString([], {
-                    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                  })}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
     </div>
   );
