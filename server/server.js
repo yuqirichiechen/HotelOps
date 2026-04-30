@@ -696,7 +696,7 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   // hid the real error in production.)
   const labels = [
     'activeStaff', 'currentlyWorking', 'todaySchedule',
-    'todayEntries', 'pendingApprovals', 'weekHours',
+    'todayEntries', 'pendingApprovals', 'weekHours', 'staffHours',
   ];
   const settled = await Promise.allSettled([
     pool.query('SELECT COUNT(*)::int AS n FROM users WHERE active = true'),
@@ -744,6 +744,22 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
       FROM time_entries
       WHERE clock_in_time >= date_trunc('week', CURRENT_DATE)
     `),
+    // Per-employee hours this week (for the "Hours this week" detail view).
+    // Inner join — only employees who actually clocked anything count.
+    pool.query(`
+      SELECT u.user_id, u.name, d.name AS department,
+             SUM(
+               EXTRACT(EPOCH FROM (COALESCE(te.clock_out_time, NOW()) - te.clock_in_time)) / 3600.0
+             )::float AS hours
+      FROM users u
+      JOIN time_entries te
+        ON te.user_id = u.user_id
+       AND te.clock_in_time >= date_trunc('week', CURRENT_DATE)
+      LEFT JOIN departments d ON u.department_id = d.department_id
+      WHERE u.active = true
+      GROUP BY u.user_id, u.name, d.name
+      ORDER BY hours DESC, u.name
+    `),
   ]);
 
   const errors = [];
@@ -765,6 +781,7 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   const todayEntries     = out.todayEntries     || { rows: [] };
   const pendingApprovals = out.pendingApprovals || { rows: [] };
   const weekHours        = out.weekHours        || { rows: [{ hours: 0 }] };
+  const staffHours       = out.staffHours       || { rows: [] };
 
   // Derive per-schedule status (clocked-in / late / yet-to-start / finished).
   const now     = new Date();
@@ -799,6 +816,12 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
     pendingApprovals:      pendingApprovals.rows,
     pendingApprovalsCount: pendingApprovals.rows.length,
     weekHoursTotal:        Math.round((weekHours.rows[0]?.hours ?? 0) * 10) / 10,
+    staffHoursThisWeek:    staffHours.rows.map(r => ({
+                             user_id:    r.user_id,
+                             name:       r.name,
+                             department: r.department,
+                             hours:      Math.round(r.hours * 10) / 10,
+                           })),
     onTheClockCount:       currentlyWorking.rows.length,
     errors:                errors.length ? errors : undefined,
   });

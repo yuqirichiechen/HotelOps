@@ -723,6 +723,43 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 5.3: blue-only selection + per-employee hours
+
+**Two visual + functional fixes on AdminHome:**
+
+1. **Tone-colored borders gone.** "On the clock" was always green-bordered
+   (`is-live`) regardless of selection state, and the selected variants
+   for live/warn/action overrode the blue ring. Result: inconsistent
+   highlight grammar. Fix:
+   - Removed `is-live` and `is-action` border-color rules entirely.
+   - Removed the three `is-selected.is-{live,warn,action}` overrides.
+   - Removed the matching `.adm-stat-arrow` tone overrides.
+   - Selection ring is **always** `var(--accent-alt)` blue. Tone now
+     only drives the meta text color (e.g. "Coming up today" still goes
+     warn-orange when there are late staff).
+2. **Hours this week is clickable.** Server's `/api/admin/dashboard`
+   returns a 7th query result `staffHoursThisWeek`: per-employee totals
+   for the current week, sorted desc. Client's stats card flipped to
+   `clickable: true`; new `'hours'` view on the detail card shows a
+   horizontal bar per employee (linear-gradient accent → accent-alt),
+   click row → employee detail.
+
+**Files modified:**
+- `server/server.js` — added `staffHours` query (inner-join → only
+  employees with > 0 hours this week) to the dashboard `Promise.allSettled`
+  list. Response gained `staffHoursThisWeek`.
+- `src/pages/AdminHome/AdminHome.css` — pruned tone borders, added
+  `.adm-hours-list` + `.adm-hours-row` + `.adm-hours-bar` rules.
+- `src/pages/AdminHome/index.js` — Hours card now clickable, new
+  `view === 'hours'` branch in `renderDetail`, `VIEWS` array updated.
+
+**Conventions reinforced:**
+- **Single highlight grammar.** When a list of cards is acting as a
+  picker, the selection state should look identical regardless of the
+  card's underlying tone. Mixing tone+selection colors confuses which
+  one is "active". Tone goes on text + small icons; the ring is reserved
+  for selection.
+
 ### 2026-04-29 — Sprint 5.2: dashboard rework + admin auth cleanup
 
 **Sprint 5.2A — Admin auth single-sourced:**

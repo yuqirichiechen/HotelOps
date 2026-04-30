@@ -61,8 +61,9 @@
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.adm-stat-card.is-live   { border-color: var(--success); }
-.adm-stat-card.is-action { border-color: var(--warn-text); }
+/* Tone classes (is-live, is-warn, is-action) don't recolor the card border —
+   the only border highlight is the blue selection ring. Tone still drives
+   the meta text color (see further down). */
 
 .adm-stat-eyebrow {
   font-size: 11px;
@@ -548,21 +549,15 @@
   transform: translateY(0);
 }
 
-/* Selected stat card — highlighted to signal the detail card matches it */
+/* Selected stat card — single highlight grammar (blue ring) regardless of
+   tone, so the same visual signals "this is the active filter". */
 .adm-stat-card.is-selected {
   border-color: var(--accent-alt);
   box-shadow: 0 0 0 3px var(--accent-bg), var(--shadow-sm);
 }
 
-.adm-stat-card.is-selected.is-live   { border-color: var(--success); box-shadow: 0 0 0 3px var(--success-bg), var(--shadow-sm); }
-.adm-stat-card.is-selected.is-warn   { border-color: var(--warn-text); box-shadow: 0 0 0 3px var(--warn-bg), var(--shadow-sm); }
-.adm-stat-card.is-selected.is-action { border-color: var(--warn-text); box-shadow: 0 0 0 3px var(--warn-bg), var(--shadow-sm); }
-
-.adm-stat-card.is-warn { border-color: var(--warn-text); }
-.adm-stat-card .adm-stat-meta {
-  /* meta text is already styled; keep base color unless tone overrides below */
-}
-.adm-stat-card.is-warn .adm-stat-meta { color: var(--warn-text); font-weight: 600; }
+.adm-stat-card.is-warn   .adm-stat-meta { color: var(--warn-text); font-weight: 600; }
+.adm-stat-card.is-action .adm-stat-meta { color: var(--warn-text); font-weight: 600; }
 
 /* Down-arrow indicator that points from the selected stat to the detail card */
 .adm-stat-arrow {
@@ -577,9 +572,7 @@
   border-top: 10px solid var(--accent-alt);
 }
 
-.adm-stat-card.is-selected.is-live   .adm-stat-arrow { border-top-color: var(--success); }
-.adm-stat-card.is-selected.is-warn   .adm-stat-arrow,
-.adm-stat-card.is-selected.is-action .adm-stat-arrow { border-top-color: var(--warn-text); }
+/* Arrow stays blue regardless of tone — matches the selection ring. */
 
 /* ── Detail card — animates on view swap ─────────────────────────────────── */
 
@@ -596,4 +589,81 @@
    Hide them when wrapping happens. */
 @media (max-width: 880px) {
   .adm-stat-arrow { display: none; }
+}
+
+/* ── Hours this week detail (per-employee bars) ──────────────────────────── */
+
+.adm-hours-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adm-hours-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 2fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-radius: 6px;
+}
+
+.adm-hours-row:last-child { border-bottom: none; }
+.adm-hours-row:hover      { background: var(--bg-raised); }
+
+.adm-hours-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.adm-hours-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adm-hours-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.adm-hours-bar-wrap {
+  height: 8px;
+  background: var(--bg-raised);
+  border-radius: 999px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.adm-hours-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.adm-hours-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 56px;
+}
+
+@media (max-width: 480px) {
+  .adm-hours-row    { grid-template-columns: 1fr 1.4fr 50px; gap: 8px; }
+  .adm-hours-name   { font-size: 13px; }
+  .adm-hours-meta   { display: none; }
+  .adm-hours-num    { font-size: 13px; min-width: 44px; }
 }

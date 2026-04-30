@@ -43,7 +43,7 @@ const STATUS_LABEL = {
   'yet-to-start': 'Yet to start',
 };
 
-const VIEWS = ['on-clock', 'coming-up', 'approvals'];
+const VIEWS = ['on-clock', 'coming-up', 'hours', 'approvals'];
 
 const AdminHome = () => {
   const { user, logout } = useAuth();
@@ -144,7 +144,7 @@ const AdminHome = () => {
       value:     loading ? '—' : (data?.weekHoursTotal ?? 0),
       meta:      'across all staff',
       tone:      null,
-      clickable: false,
+      clickable: true,
     },
     {
       key:       'approvals',
@@ -258,6 +258,53 @@ const AdminHome = () => {
                   </span>
                 </li>
               ))}
+            </ul>
+          )}
+        </>
+      );
+    }
+
+    if (view === 'hours') {
+      const list   = data?.staffHoursThisWeek || [];
+      const maxHrs = Math.max(0, ...list.map(s => s.hours));
+      return (
+        <>
+          <div className="adm-card-head">
+            <h2 className="adm-card-title">Hours this week — by employee</h2>
+            {list.length > 0 && (
+              <span className="adm-card-count">
+                {list.length} {list.length === 1 ? 'person' : 'people'}
+              </span>
+            )}
+          </div>
+          {list.length === 0 ? (
+            <div className="adm-empty">
+              No hours logged this week yet.
+              <div className="adm-empty-sub">
+                Each employee with at least one clock-in this week will appear here.
+              </div>
+            </div>
+          ) : (
+            <ul className="adm-hours-list">
+              {list.map(s => {
+                const pct = maxHrs > 0 ? (s.hours / maxHrs) * 100 : 0;
+                return (
+                  <li
+                    key={s.user_id}
+                    className="adm-hours-row"
+                    onClick={() => nav(`/admin/employees/${s.user_id}`)}
+                  >
+                    <div className="adm-hours-info">
+                      <div className="adm-hours-name">{s.name}</div>
+                      <div className="adm-hours-meta">{s.department || 'Unassigned'}</div>
+                    </div>
+                    <div className="adm-hours-bar-wrap">
+                      <div className="adm-hours-bar" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="adm-hours-num">{s.hours}h</div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </>
