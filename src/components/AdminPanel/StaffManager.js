@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../auth';
 
 // List-as-dashboard pattern (Sprint 6.3): clickable stats banner drives the
 // list filter, rich rows show this-week metrics inline, Add Staff is a
@@ -20,6 +21,33 @@ const fmtHireDate = (d) => {
 
 const fmtRole = (r) => (r || '').replace('_', ' ');
 
+const isoDay = (d) => {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// Compute [from, to] (inclusive) for a named period — used by CSV export.
+const periodRange = (period) => {
+  const now = new Date();
+  if (period === 'today') {
+    const k = isoDay(now);
+    return { from: k, to: k };
+  }
+  if (period === 'week') {
+    const dow    = now.getDay() || 7;
+    const monday = new Date(now); monday.setDate(now.getDate() - (dow - 1));
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+    return { from: isoDay(monday), to: isoDay(sunday) };
+  }
+  if (period === 'month') {
+    const first = new Date(now.getFullYear(), now.getMonth(),     1);
+    const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: isoDay(first), to: isoDay(last) };
+  }
+  // year
+  return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
+};
+
 const StaffManager = () => {
   const nav = useNavigate();
 
@@ -39,6 +67,13 @@ const StaffManager = () => {
   const [statFilter,      setStatFilter]      = useState('all'); // 'all' | 'on-clock' | 'pending-ot'
   const [includeInactive, setIncludeInactive] = useState(false);
 
+  // CSV export popover (Sprint 6.4)
+  const [csvOpen,    setCsvOpen]    = useState(false);
+  const [csvBusy,    setCsvBusy]    = useState(false);
+  const [csvPeriod,  setCsvPeriod]  = useState('week');     // today | week | month | year
+  const [csvScope,   setCsvScope]   = useState('all');      // all | department | filtered
+  const csvWrapRef = useRef(null);
+
   const reload = async () => {
     setLoading(true);
     const [emp, dept] = await Promise.all([
@@ -51,6 +86,18 @@ const StaffManager = () => {
   };
 
   useEffect(() => { reload(); }, []);
+
+  // Click-outside dismiss for the export popover
+  useEffect(() => {
+    if (!csvOpen) return;
+    const onDown = (e) => {
+      if (csvWrapRef.current && !csvWrapRef.current.contains(e.target)) {
+        setCsvOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [csvOpen]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -102,6 +149,72 @@ const StaffManager = () => {
   }, [employees, search, selectedDept, statFilter, includeInactive]);
 
   const maxHours = Math.max(8, ...filtered.map(e => e.hours_this_week || 0));
+
+  // ── CSV export ────────────────────────────────────────────────────────────
+  const runExport = async () => {
+    setCsvBusy(true);
+    const { from, to } = periodRange(csvPeriod);
+
+    const params = new URLSearchParams({ from, to });
+    let scopeLabel = 'all-staff';
+    if (csvScope === 'department' && selectedDept !== 'all' && selectedDept !== '__none__') {
+      params.set('dept_id', selectedDept);
+      const dept = departments.find(d => String(d.department_id) === selectedDept);
+      scopeLabel = `dept-${(dept?.name || 'department').toLowerCase().replace(/\s+/g, '-')}`;
+    } else if (csvScope === 'filtered') {
+      const ids = filtered.map(e => e.user_id);
+      if (ids.length === 0) {
+        setCsvBusy(false);
+        alert('Filtered list is empty — nothing to export.');
+        return;
+      }
+      params.set('user_ids', ids.join(','));
+      scopeLabel = `filtered-${ids.length}`;
+    }
+
+    const { ok, data } = await apiFetch(`/admin/entries?${params.toString()}`);
+    setCsvBusy(false);
+
+    if (!ok || !data?.success) {
+      alert(data?.message || 'Export failed.');
+      return;
+    }
+
+    const rows = [['Name', 'Department', 'Date', 'Day', 'Clock In', 'Clock Out', 'Hours', 'Manual', 'OT Approved']];
+    (data.entries || []).forEach(e => {
+      const start = new Date(e.clock_in_time);
+      rows.push([
+        e.name,
+        e.department || 'Unassigned',
+        isoDay(start),
+        start.toLocaleDateString([], { weekday: 'short' }),
+        start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        e.clock_out_time
+          ? new Date(e.clock_out_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+          : 'In progress',
+        e.clock_out_time ? e.hours.toFixed(2) : '',
+        e.manual_entry ? 'Yes' : '',
+        e.ot_approved  ? 'Yes' : '',
+      ]);
+    });
+
+    const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `staff-${scopeLabel}-${csvPeriod}-${from}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    setCsvOpen(false);
+  };
+
+  // Department option only valid when a single dept is filtered
+  const deptScopeAvailable = selectedDept !== 'all' && selectedDept !== '__none__';
+  const deptScopeName      = departments.find(d => String(d.department_id) === selectedDept)?.name || '';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -222,70 +335,92 @@ const StaffManager = () => {
           />
           <span>Include inactive</span>
         </label>
+
+        <div className={`staff-mgr-export ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
+          <button
+            type="button"
+            className="staff-mgr-export-btn"
+            onClick={() => setCsvOpen(o => !o)}
+          >
+            ↓ Export <span className="staff-mgr-export-caret">▾</span>
+          </button>
+          {csvOpen && (
+            <div className="staff-mgr-export-menu" role="menu">
+              <div className="staff-mgr-export-title">Export CSV</div>
+
+              <div className="staff-mgr-export-section">
+                <div className="staff-mgr-export-label">Period</div>
+                <div className="staff-mgr-export-period">
+                  {[
+                    { v: 'today', label: 'Today' },
+                    { v: 'week',  label: 'Week'  },
+                    { v: 'month', label: 'Month' },
+                    { v: 'year',  label: 'Year'  },
+                  ].map(p => (
+                    <button
+                      key={p.v}
+                      type="button"
+                      className={`staff-mgr-export-period-btn ${csvPeriod === p.v ? 'is-active' : ''}`}
+                      onClick={() => setCsvPeriod(p.v)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="staff-mgr-export-section">
+                <div className="staff-mgr-export-label">Scope</div>
+                <div className="staff-mgr-export-scope">
+                  <label className="staff-mgr-export-radio">
+                    <input
+                      type="radio"
+                      name="csv-scope"
+                      checked={csvScope === 'all'}
+                      onChange={() => setCsvScope('all')}
+                    />
+                    <span>All staff <span className="staff-mgr-export-meta">{stats.total}</span></span>
+                  </label>
+                  <label className={`staff-mgr-export-radio ${!deptScopeAvailable ? 'is-disabled' : ''}`}>
+                    <input
+                      type="radio"
+                      name="csv-scope"
+                      disabled={!deptScopeAvailable}
+                      checked={csvScope === 'department'}
+                      onChange={() => setCsvScope('department')}
+                    />
+                    <span>
+                      {deptScopeAvailable
+                        ? <>Department: <strong>{deptScopeName}</strong></>
+                        : <>Department <span className="staff-mgr-export-meta">pick a chip first</span></>}
+                    </span>
+                  </label>
+                  <label className="staff-mgr-export-radio">
+                    <input
+                      type="radio"
+                      name="csv-scope"
+                      checked={csvScope === 'filtered'}
+                      onChange={() => setCsvScope('filtered')}
+                    />
+                    <span>Filtered list <span className="staff-mgr-export-meta">{filtered.length}</span></span>
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="staff-mgr-export-go"
+                onClick={runExport}
+                disabled={csvBusy || (csvScope === 'department' && !deptScopeAvailable)}
+              >
+                {csvBusy ? 'Exporting…' : 'Download CSV'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* List */}
-      {loading ? (
-        <div className="staff-mgr-loading">Loading staff…</div>
-      ) : filtered.length === 0 ? (
-        <div className="staff-mgr-empty">
-          No staff match the current filters.
-          <div className="staff-mgr-empty-sub">Try clearing search or changing the department.</div>
-        </div>
-      ) : (
-        <ul className="staff-mgr-list">
-          {filtered.map(e => {
-            const pct = maxHours > 0 ? ((e.hours_this_week || 0) / maxHours) * 100 : 0;
-            return (
-              <li
-                key={e.user_id}
-                className={`staff-mgr-row ${e.active ? '' : 'is-inactive'}`}
-                onClick={() => nav(`/admin/staff/${e.user_id}`)}
-              >
-                <div className="staff-mgr-avatar">
-                  {(e.name || '?').charAt(0).toUpperCase()}
-                </div>
-
-                <div className="staff-mgr-row-info">
-                  <div className="staff-mgr-row-name">{e.name}</div>
-                  <div className="staff-mgr-row-meta">
-                    <span style={{ textTransform: 'capitalize' }}>{fmtRole(e.role)}</span>
-                    <span className="staff-mgr-row-dot">·</span>
-                    <span>{e.department || 'Unassigned'}</span>
-                    <span className="staff-mgr-row-dot">·</span>
-                    <span>Hired {fmtHireDate(e.hire_date)}</span>
-                  </div>
-                </div>
-
-                <div className="staff-mgr-row-hours">
-                  <div className="staff-mgr-row-hours-num">{e.hours_this_week || 0}h</div>
-                  <div className="staff-mgr-row-bar">
-                    <div className="staff-mgr-row-bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-
-                <div className="staff-mgr-row-pills">
-                  {e.is_on_clock && (
-                    <span className="staff-mgr-pill is-live">
-                      <span className="staff-mgr-pill-dot" /> On the clock
-                    </span>
-                  )}
-                  {(e.pending_ot_hours || 0) > 0 && (
-                    <span className="staff-mgr-pill is-warn">
-                      {e.pending_ot_hours}h OT pending
-                    </span>
-                  )}
-                  {!e.active && <span className="staff-mgr-pill is-inactive">Inactive</span>}
-                </div>
-
-                <div className="staff-mgr-row-chevron">›</div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {/* Add staff tile — low-key, expands inline */}
+      {/* Add staff tile — sits between filters and the list (Sprint 6.4 tweak) */}
       <div className={`staff-mgr-add ${showAdd ? 'is-open' : ''}`}>
         {!showAdd ? (
           <button
@@ -351,6 +486,67 @@ const StaffManager = () => {
           </form>
         )}
       </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="staff-mgr-loading">Loading staff…</div>
+      ) : filtered.length === 0 ? (
+        <div className="staff-mgr-empty">
+          No staff match the current filters.
+          <div className="staff-mgr-empty-sub">Try clearing search or changing the department.</div>
+        </div>
+      ) : (
+        <ul className="staff-mgr-list">
+          {filtered.map(e => {
+            const pct = maxHours > 0 ? ((e.hours_this_week || 0) / maxHours) * 100 : 0;
+            return (
+              <li
+                key={e.user_id}
+                className={`staff-mgr-row ${e.active ? '' : 'is-inactive'}`}
+                onClick={() => nav(`/admin/staff/${e.user_id}`)}
+              >
+                <div className="staff-mgr-avatar">
+                  {(e.name || '?').charAt(0).toUpperCase()}
+                </div>
+
+                <div className="staff-mgr-row-info">
+                  <div className="staff-mgr-row-name">{e.name}</div>
+                  <div className="staff-mgr-row-meta">
+                    <span style={{ textTransform: 'capitalize' }}>{fmtRole(e.role)}</span>
+                    <span className="staff-mgr-row-dot">·</span>
+                    <span>{e.department || 'Unassigned'}</span>
+                    <span className="staff-mgr-row-dot">·</span>
+                    <span>Hired {fmtHireDate(e.hire_date)}</span>
+                  </div>
+                </div>
+
+                <div className="staff-mgr-row-hours">
+                  <div className="staff-mgr-row-hours-num">{e.hours_this_week || 0}h</div>
+                  <div className="staff-mgr-row-bar">
+                    <div className="staff-mgr-row-bar-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+
+                <div className="staff-mgr-row-pills">
+                  {e.is_on_clock && (
+                    <span className="staff-mgr-pill is-live">
+                      <span className="staff-mgr-pill-dot" /> On the clock
+                    </span>
+                  )}
+                  {(e.pending_ot_hours || 0) > 0 && (
+                    <span className="staff-mgr-pill is-warn">
+                      {e.pending_ot_hours}h OT pending
+                    </span>
+                  )}
+                  {!e.active && <span className="staff-mgr-pill is-inactive">Inactive</span>}
+                </div>
+
+                <div className="staff-mgr-row-chevron">›</div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
     </div>
   );

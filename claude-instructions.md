@@ -218,6 +218,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 - `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data (now also `staffHoursThisWeek`)
 - `GET  /api/admin/staff/:userId/performance?period=week|month|year`  auth (admin) — Sprint 6 — per-staff metrics (hours, OT split into approved/pending, on-time, shifts, 8-week trend, prev-period comparison)
 - `POST /api/admin/staff/:userId/approve-ot?period=week|month|year`  auth (admin) — Sprint 6.2 — flips ot_approved=true on every unapproved entry in range; single audit_logs row per bulk action
+- `GET  /api/admin/entries?from=&to=&user_ids=&dept_id=`  auth (admin) — Sprint 6.4 — bulk time-entries query for CSV export; filters by date range plus optional user_ids (comma-sep) or dept_id; returns entries joined with name + department
 - `PATCH /api/admin/time-entries/:id`          auth (admin) — Sprint 5 — hour override (writes audit_logs)
 - `GET  /api/admin/departments`
 - `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin, plus Sprint 6.3: hours_this_week, is_on_clock, pending_ot_hours)
@@ -724,6 +725,70 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-04-30 — Sprint 6.4: bulk CSV export + Add Staff repositioned
+
+**Two changes on the staff list page:**
+
+1. **Bulk CSV export** with the "↓ Export ▾" pattern from Timesheet,
+   adapted for admin scopes.
+2. **Tweak per user feedback:** the "Add new staff member" tile moves
+   from the bottom of the list up to *between* the filter row and the
+   list rows, so newly added staff appear right under it.
+
+**Server (`GET /api/admin/entries?from=&to=&user_ids=&dept_id=`):**
+- Returns time_entries in `[from, to]` (inclusive both ends) joined
+  with `users.name` and `departments.name`.
+- Optional filters: `user_ids` (comma-separated UUIDs) or `dept_id`
+  (single department). Practically mutually exclusive — the client
+  picks one based on selected scope.
+- `requireAuth + requireRole('admin')`.
+
+**Client (StaffManager export popover):**
+- New "↓ Export ▾" button at the end of the filter row, primary tone
+  (matches `.btn-add` color so it reads as the row's primary action).
+- Click opens a 280px-wide popover with two sections:
+  - **Period** segmented control: Today / Week / Month / Year. Today
+    is `from === to`; Week is current Mon→Sun; Month is calendar 1st
+    → last day; Year is Jan 1 → Dec 31.
+  - **Scope** radio: All staff (count of active), Department: <name>
+    (only enabled when a dept chip is active), Filtered list (count
+    of currently-visible rows; uses `user_ids` from filter result).
+- Click-outside dismisses. CSV columns: Name, Department, Date, Day,
+  Clock In, Clock Out, Hours, Manual, OT Approved. Filename includes
+  scope + period + start date for traceability:
+  `staff-all-staff-week-2026-04-27.csv`,
+  `staff-dept-front-desk-month-2026-04-01.csv`,
+  `staff-filtered-12-year-2026-01-01.csv`, etc.
+
+**Add Staff tile relocated:**
+- Was: bottom of the page after the list.
+- Now: directly under the filter row, above the list. The dashed-border
+  visual stays the same; only its position changed.
+- When form expands inline, it stays at the top so admin doesn't lose
+  scroll context after submit. Reload places the new staff in
+  alphabetical order in the list below — natural reading order.
+
+**Files modified:**
+- `server/server.js` — new `/api/admin/entries` endpoint.
+- `src/components/AdminPanel/StaffManager.js` — added `apiFetch` import,
+  CSV state (csvOpen / csvBusy / csvPeriod / csvScope), click-outside
+  ref, `runExport` builder + downloader, `periodRange` helper.
+  Repositioned the entire `.staff-mgr-add` block from below the list
+  to between the filter row and the list.
+- `src/components/AdminPanel/AdminPanel.css` — appended
+  `.staff-mgr-export*` rules (button, caret, menu, period control,
+  scope radios, CTA, mobile reposition for the popover).
+
+**Conventions reinforced:**
+- **Two-axis export popover.** When export has independent dimensions
+  (period × scope, range × filter), present both as side-by-side
+  controls in a single popover instead of a long combinatorial menu.
+  4 × 3 = 12 items as buttons would have been overwhelming.
+- **Disabled scope hint.** When the "department" scope is unavailable
+  (no dept chip selected), keep the radio visible but greyed out and
+  add a helper "pick a chip first" — better than hiding it (less
+  confusing as the menu doesn't reflow).
 
 ### 2026-04-30 — Sprint 6.3: StaffManager rebuild — list-as-dashboard
 

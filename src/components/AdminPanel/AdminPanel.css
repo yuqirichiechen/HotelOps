@@ -2296,3 +2296,180 @@
   .staff-mgr-stat-num   { font-size: 24px; }
   .staff-mgr-row-name   { font-size: 14px; }
 }
+
+/* ── StaffManager export popover (Sprint 6.4) ────────────────────────────── */
+
+.staff-mgr-export {
+  position: relative;
+}
+
+.staff-mgr-export-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border: 1px solid var(--brand-bg);
+  border-radius: 9px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  height: 38px;
+}
+
+.staff-mgr-export-btn:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.staff-mgr-export-caret {
+  font-size: 10px;
+  opacity: 0.85;
+  transition: transform 0.15s ease;
+}
+
+.staff-mgr-export.is-open .staff-mgr-export-caret { transform: rotate(180deg); }
+
+.staff-mgr-export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 280px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 16px 18px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: staff-mgr-export-in 0.15s ease both;
+}
+
+@keyframes staff-mgr-export-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.staff-mgr-export-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.staff-mgr-export-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-mgr-export-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.staff-mgr-export-period {
+  display: inline-flex;
+  background: var(--bg-raised);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.staff-mgr-export-period-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex: 1;
+}
+
+.staff-mgr-export-period-btn:hover { color: var(--text-primary); }
+
+.staff-mgr-export-period-btn.is-active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+
+.staff-mgr-export-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-mgr-export-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 5px 4px;
+  border-radius: 6px;
+}
+
+.staff-mgr-export-radio.is-disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.staff-mgr-export-radio input { cursor: pointer; }
+.staff-mgr-export-radio.is-disabled input { cursor: not-allowed; }
+
+.staff-mgr-export-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.staff-mgr-export-go {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border: 1px solid var(--brand-bg);
+  border-radius: 9px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  margin-top: 4px;
+}
+
+.staff-mgr-export-go:hover:not(:disabled) {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.staff-mgr-export-go:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .staff-mgr-export-menu {
+    min-width: 0;
+    right: auto;
+    left: 0;
+    width: calc(100vw - 36px);
+    max-width: 360px;
+  }
+}

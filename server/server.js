@@ -1099,6 +1099,74 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
   }
 });
 
+// ── Admin: bulk entries (powers Staff list CSV export) ──────────────────────
+//
+// GET /api/admin/entries?from=YYYY-MM-DD&to=YYYY-MM-DD[&user_ids=a,b][&dept_id=N]
+// Returns time_entries in [from, to] joined with the user's name and
+// department. Optional filters narrow to specific users or a department.
+// Date filter is inclusive on both ends.
+
+app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res) => {
+  const { from, to, user_ids, dept_id } = req.query;
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ success: false, message: 'from and to dates required (YYYY-MM-DD)' });
+  }
+
+  const conditions = [
+    `te.clock_in_time >= $1::date`,
+    `te.clock_in_time <  ($2::date + INTERVAL '1 day')`,
+  ];
+  const params = [from, to];
+
+  if (user_ids) {
+    const ids = String(user_ids).split(',').map(s => s.trim()).filter(Boolean);
+    if (ids.length) {
+      params.push(ids);
+      conditions.push(`te.user_id = ANY($${params.length}::uuid[])`);
+    }
+  }
+  if (dept_id) {
+    params.push(parseInt(dept_id, 10));
+    conditions.push(`u.department_id = $${params.length}::int`);
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT te.entry_id, te.clock_in_time, te.clock_out_time, te.manual_entry, te.ot_approved,
+              EXTRACT(EPOCH FROM (COALESCE(te.clock_out_time, NOW()) - te.clock_in_time)) / 3600.0 AS hours,
+              u.user_id, u.name, u.phone_number, u.role,
+              u.department_id, d.name AS department
+       FROM time_entries te
+       JOIN users u ON te.user_id = u.user_id
+       LEFT JOIN departments d ON u.department_id = d.department_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY u.name, te.clock_in_time`,
+      params
+    );
+    return res.json({
+      success: true,
+      from, to,
+      entries: rows.map(e => ({
+        entry_id:       e.entry_id,
+        user_id:        e.user_id,
+        name:           e.name,
+        phone_number:   e.phone_number,
+        role:           e.role,
+        department_id:  e.department_id,
+        department:     e.department,
+        clock_in_time:  e.clock_in_time,
+        clock_out_time: e.clock_out_time,
+        manual_entry:   e.manual_entry,
+        ot_approved:    e.ot_approved,
+        hours:          Math.round(parseFloat(e.hours) * 10) / 10,
+      })),
+    });
+  } catch (err) {
+    console.error('[admin/entries]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // ── Admin: bulk OT approve ───────────────────────────────────────────────────
 //
 // Sets ot_approved=true on every unapproved time_entry for the given staff
