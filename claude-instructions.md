@@ -723,6 +723,62 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 5.1.3: production schema backfill
+
+**Diagnosis (from Koyeb logs):**
+```
+error: relation "approval_requests" does not exist
+  code: '42P01'
+  at async Promise.all (index 4)
+```
+Production DB never had `approval_requests`. Schema.sql defines it, but
+the table was missing on the Koyeb deployment — likely an older partial
+install. `audit_logs` (used by the hour-override endpoint) was probably
+skipped at the same time.
+
+**Fix — `database/migrations/005_backfill_approval_audit.sql`:**
+- `CREATE TABLE IF NOT EXISTS approval_requests` (with `idx_approval_requests_status`).
+- `CREATE TABLE IF NOT EXISTS audit_logs` (with both indexes).
+- `entry_status` enum guarded by a `DO $$ … EXCEPTION WHEN duplicate_object` block (Postgres has no `CREATE TYPE IF NOT EXISTS`).
+- All idempotent — running on a clean install does nothing harmful.
+
+**To apply:** `psql "$DATABASE_URL?sslmode=require" -f database/migrations/005_backfill_approval_audit.sql`
+
+**Conventions added:**
+- **Schema convergence migrations.** When production drifts from
+  `schema.sql`, ship a numbered migration that creates only the missing
+  pieces with `IF NOT EXISTS` guards. Don't try to re-run schema.sql
+  against a populated DB.
+- **Use `DO $$ … EXCEPTION` for `CREATE TYPE`.** Postgres doesn't
+  support `CREATE TYPE IF NOT EXISTS`. The block-level exception handler
+  catches `duplicate_object` and continues.
+
+### 2026-04-29 — Sprint 5.1.2: resilient dashboard + per-query error surfacing
+
+**Bug:** `/api/admin/dashboard` returned 500 in production. The handler ran
+6 queries via `Promise.all`, so any single query throwing collapsed the
+whole response with no detail beyond "Server error" — couldn't tell which
+of the 6 was failing.
+
+**Fix:**
+- Switched to `Promise.allSettled` so per-query failures don't 500 the
+  whole endpoint. Queries are labeled (`activeStaff`, `currentlyWorking`,
+  `todaySchedule`, `todayEntries`, `pendingApprovals`, `weekHours`).
+- Failed queries are logged server-side (`[dashboard] LABEL failed: ERROR`)
+  AND included in the response as `errors: ["LABEL: message", …]`.
+- Successful queries still populate their cards. Failed ones fall back
+  to safe defaults (empty list, 0).
+- AdminHome's banner now has a third state (`isWarn`) that shows the
+  per-query error list as an info-tone notice without hiding the working
+  cards. Server errors still get the red error banner; auth errors still
+  get the "Sign in" banner.
+
+**Conventions added:**
+- **Aggregator endpoints should be partial-failure tolerant.** Use
+  `Promise.allSettled`, label each branch, surface failures in the
+  response so the UI can show *what* broke without losing access to the
+  rest of the data. A silent 500 is the worst outcome for a debug pass.
+
 ### 2026-04-29 — Sprint 5.1.1: 401 auto-recovery + apiFetch diagnostics
 
 **Bug:** AdminHome was getting `401 {"message": "Missing token"}` from

@@ -61,13 +61,26 @@ const AdminHome = () => {
     const { ok, status, data } = await apiFetch('/admin/dashboard');
     if (ok && data?.success) {
       setData(data);
-      setError(null);
+      // Server runs queries with allSettled — a successful response can
+      // still carry per-query errors. Show those as a warning but keep
+      // the dashboard visible.
+      if (data.errors?.length) {
+        setError({
+          status,
+          message: `Some data couldn't load:\n${data.errors.join('\n')}`,
+          isAuth:  false,
+          isWarn:  true,
+        });
+      } else {
+        setError(null);
+      }
       setLastUpdated(new Date());
     } else {
       setError({
         status,
         message: data?.message || `Could not load dashboard${status ? ` (HTTP ${status})` : ''}.`,
         isAuth:  status === 401 || status === 403,
+        isWarn:  false,
       });
     }
     setLoading(false);
@@ -128,19 +141,23 @@ const AdminHome = () => {
         </div>
       </div>
 
-      {/* Error banner */}
+      {/* Error / warning banner */}
       {error && (
-        <div className="adm-error-banner">
-          <div className="adm-error-icon">⚠</div>
+        <div className={`adm-error-banner ${error.isWarn ? 'is-warn' : ''}`}>
+          <div className="adm-error-icon">{error.isWarn ? 'ℹ' : '⚠'}</div>
           <div className="adm-error-msg">
             <div className="adm-error-title">
-              {error.isAuth ? 'Your session expired' : "Couldn't refresh dashboard"}
+              {error.isAuth
+                ? 'Your session expired'
+                : error.isWarn
+                  ? 'Partial dashboard load'
+                  : "Couldn't refresh dashboard"}
             </div>
-            <div className="adm-error-detail">
+            <div className="adm-error-detail" style={{ whiteSpace: 'pre-line' }}>
               {error.isAuth
                 ? 'Please sign in again to continue.'
                 : error.message}
-              {!error.isAuth && error.status ? ` (HTTP ${error.status})` : ''}
+              {!error.isAuth && !error.isWarn && error.status ? ` (HTTP ${error.status})` : ''}
             </div>
           </div>
           {error.isAuth ? (

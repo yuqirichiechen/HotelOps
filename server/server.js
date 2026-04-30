@@ -689,100 +689,119 @@ app.delete('/api/admin/employees/:id', async (req, res) => {
 // counters. Called once on AdminHome mount; refreshes can re-call as needed.
 
 app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, res) => {
-  try {
-    const [activeStaff, currentlyWorking, todaySchedule, todayEntries, pendingApprovals, weekHours] =
-      await Promise.all([
-        pool.query('SELECT COUNT(*)::int AS n FROM users WHERE active = true'),
-        pool.query(`
-          SELECT u.user_id, u.name, u.phone_number, u.role, u.department_id,
-                 d.name AS department, te.entry_id, te.clock_in_time
-          FROM time_entries te
-          JOIN users u        ON te.user_id        = u.user_id
-          LEFT JOIN departments d ON u.department_id = d.department_id
-          WHERE te.clock_out_time IS NULL
-            AND u.active = true
-          ORDER BY u.name
-        `),
-        pool.query(`
-          SELECT sc.schedule_id, sc.user_id,
-                 COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
-                 COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time,
-                 u.name, u.role, d.name AS department
-          FROM schedules sc
-          LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id
-          JOIN users u        ON sc.user_id  = u.user_id
-          LEFT JOIN departments d ON u.department_id = d.department_id
-          WHERE sc.scheduled_date = CURRENT_DATE
-            AND u.active = true
-          ORDER BY start_time, u.name
-        `),
-        pool.query(`
-          SELECT user_id, clock_in_time, clock_out_time
-          FROM time_entries
-          WHERE clock_in_time >= CURRENT_DATE - INTERVAL '1 day'
-        `),
-        pool.query(`
-          SELECT ar.request_id, ar.entry_id, ar.requested_by, ar.reason,
-                 ar.created_at, u.name AS requested_by_name
-          FROM approval_requests ar
-          JOIN users u ON ar.requested_by = u.user_id
-          WHERE ar.status = 'pending'
-          ORDER BY ar.created_at DESC
-          LIMIT 10
-        `),
-        pool.query(`
-          SELECT COALESCE(SUM(
-            EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0
-          ), 0)::float AS hours
-          FROM time_entries
-          WHERE clock_in_time >= date_trunc('week', CURRENT_DATE)
-        `),
-      ]);
+  // Use allSettled so one broken query doesn't 500 the whole dashboard. We
+  // log per-query failures and surface them on the response so the client
+  // can show a warning banner without losing access to the data that DID
+  // load. (Earlier behavior returned a generic 500 with no detail, which
+  // hid the real error in production.)
+  const labels = [
+    'activeStaff', 'currentlyWorking', 'todaySchedule',
+    'todayEntries', 'pendingApprovals', 'weekHours',
+  ];
+  const settled = await Promise.allSettled([
+    pool.query('SELECT COUNT(*)::int AS n FROM users WHERE active = true'),
+    pool.query(`
+      SELECT u.user_id, u.name, u.phone_number, u.role, u.department_id,
+             d.name AS department, te.entry_id, te.clock_in_time
+      FROM time_entries te
+      JOIN users u        ON te.user_id        = u.user_id
+      LEFT JOIN departments d ON u.department_id = d.department_id
+      WHERE te.clock_out_time IS NULL
+        AND u.active = true
+      ORDER BY u.name
+    `),
+    pool.query(`
+      SELECT sc.schedule_id, sc.user_id,
+             COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+             COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time,
+             u.name, u.role, d.name AS department
+      FROM schedules sc
+      LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id
+      JOIN users u        ON sc.user_id  = u.user_id
+      LEFT JOIN departments d ON u.department_id = d.department_id
+      WHERE sc.scheduled_date = CURRENT_DATE
+        AND u.active = true
+      ORDER BY start_time, u.name
+    `),
+    pool.query(`
+      SELECT user_id, clock_in_time, clock_out_time
+      FROM time_entries
+      WHERE clock_in_time >= CURRENT_DATE - INTERVAL '1 day'
+    `),
+    pool.query(`
+      SELECT ar.request_id, ar.entry_id, ar.requested_by, ar.reason,
+             ar.created_at, u.name AS requested_by_name
+      FROM approval_requests ar
+      JOIN users u ON ar.requested_by = u.user_id
+      WHERE ar.status = 'pending'
+      ORDER BY ar.created_at DESC
+      LIMIT 10
+    `),
+    pool.query(`
+      SELECT COALESCE(SUM(
+        EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0
+      ), 0)::float AS hours
+      FROM time_entries
+      WHERE clock_in_time >= date_trunc('week', CURRENT_DATE)
+    `),
+  ]);
 
-    // Derive per-schedule status. We map each scheduled employee onto their
-    // time entries today and decide:
-    //   clocked-in     → has an open entry now
-    //   late           → schedule started already, no entry yet
-    //   yet-to-start   → schedule starts later today
-    //   finished       → has only a closed entry today
-    const now      = new Date();
-    const userMap  = {};
-    todayEntries.rows.forEach(e => {
-      (userMap[e.user_id] = userMap[e.user_id] || []).push(e);
-    });
+  const errors = [];
+  const out = {};
+  settled.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      out[labels[i]] = r.value;
+    } else {
+      const msg = r.reason?.message || String(r.reason);
+      errors.push(`${labels[i]}: ${msg}`);
+      console.error(`[dashboard] ${labels[i]} failed:`, r.reason);
+    }
+  });
 
-    const scheduleWithStatus = todaySchedule.rows.map(s => {
-      const entries     = userMap[s.user_id] || [];
-      const openEntry   = entries.find(e => !e.clock_out_time);
-      const finished    = entries.find(e => e.clock_out_time);
+  // Defaults for any failed query so the response shape is still safe.
+  const activeStaff      = out.activeStaff      || { rows: [{ n: 0 }] };
+  const currentlyWorking = out.currentlyWorking || { rows: [] };
+  const todaySchedule    = out.todaySchedule    || { rows: [] };
+  const todayEntries     = out.todayEntries     || { rows: [] };
+  const pendingApprovals = out.pendingApprovals || { rows: [] };
+  const weekHours        = out.weekHours        || { rows: [{ hours: 0 }] };
 
-      const [sh, sm] = s.start_time.split(':').map(Number);
-      const start    = new Date(now);
-      start.setHours(sh, sm, 0, 0);
+  // Derive per-schedule status (clocked-in / late / yet-to-start / finished).
+  const now     = new Date();
+  const userMap = {};
+  todayEntries.rows.forEach(e => {
+    (userMap[e.user_id] = userMap[e.user_id] || []).push(e);
+  });
 
-      let status;
-      if (openEntry)        status = 'clocked-in';
-      else if (finished)    status = 'finished';
-      else if (now > start) status = 'late';
-      else                  status = 'yet-to-start';
+  const scheduleWithStatus = todaySchedule.rows.map(s => {
+    const entries   = userMap[s.user_id] || [];
+    const openEntry = entries.find(e => !e.clock_out_time);
+    const finished  = entries.find(e => e.clock_out_time);
 
-      return { ...s, status, open_clock_in_time: openEntry?.clock_in_time || null };
-    });
+    const [sh, sm] = (s.start_time || '00:00').split(':').map(Number);
+    const start    = new Date(now);
+    start.setHours(sh, sm, 0, 0);
 
-    return res.json({
-      success:               true,
-      activeStaffCount:      activeStaff.rows[0].n,
-      currentlyWorking:      currentlyWorking.rows,
-      todaySchedule:         scheduleWithStatus,
-      pendingApprovals:      pendingApprovals.rows,
-      pendingApprovalsCount: pendingApprovals.rows.length,
-      weekHoursTotal:        Math.round(weekHours.rows[0].hours * 10) / 10,
-      onTheClockCount:       currentlyWorking.rows.length,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
+    let status;
+    if (openEntry)        status = 'clocked-in';
+    else if (finished)    status = 'finished';
+    else if (now > start) status = 'late';
+    else                  status = 'yet-to-start';
+
+    return { ...s, status, open_clock_in_time: openEntry?.clock_in_time || null };
+  });
+
+  return res.json({
+    success:               true,
+    activeStaffCount:      activeStaff.rows[0]?.n ?? 0,
+    currentlyWorking:      currentlyWorking.rows,
+    todaySchedule:         scheduleWithStatus,
+    pendingApprovals:      pendingApprovals.rows,
+    pendingApprovalsCount: pendingApprovals.rows.length,
+    weekHoursTotal:        Math.round((weekHours.rows[0]?.hours ?? 0) * 10) / 10,
+    onTheClockCount:       currentlyWorking.rows.length,
+    errors:                errors.length ? errors : undefined,
+  });
 });
 
 // ── Admin: time entry override ───────────────────────────────────────────────
