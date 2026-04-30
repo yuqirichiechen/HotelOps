@@ -700,6 +700,7 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
           JOIN users u        ON te.user_id        = u.user_id
           LEFT JOIN departments d ON u.department_id = d.department_id
           WHERE te.clock_out_time IS NULL
+            AND u.active = true
           ORDER BY u.name
         `),
         pool.query(`

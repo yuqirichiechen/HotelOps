@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../../auth';
 import './AdminHome.css';
@@ -8,12 +8,16 @@ import './AdminHome.css';
 //   - On the floor now (currently clocked in, grouped by department)
 //   - Today's schedule with derived status (clocked-in / late / yet / done)
 //   - Pending approvals queue
+//
+// Errors are surfaced as a banner with a Retry button — silently empty
+// dashboards mask auth failures and server errors.
 
 const fmtSince = (iso) => {
   const ms = Date.now() - new Date(iso).getTime();
   const m  = Math.floor(ms / 60000);
+  if (m < 1)  return 'just now';
   if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
+  const h  = Math.floor(m / 60);
   const rm = m % 60;
   return rm ? `${h}h ${rm}m` : `${h}h`;
 };
@@ -26,6 +30,15 @@ const fmtScheduleTime = (s) => {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 
+const fmtUpdated = (date) => {
+  if (!date) return '';
+  const sec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (sec < 5)  return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const m = Math.floor(sec / 60);
+  return m === 1 ? '1m ago' : `${m}m ago`;
+};
+
 const STATUS_LABEL = {
   'clocked-in':   'On the clock',
   'late':         'Late',
@@ -35,24 +48,45 @@ const STATUS_LABEL = {
 
 const AdminHome = () => {
   const { user } = useAuth();
-  const nav = useNavigate();
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
+  const nav      = useNavigate();
 
-  const refresh = async () => {
-    const { ok, data } = await apiFetch('/admin/dashboard');
-    if (ok && data?.success) setData(data);
+  const [data,        setData]        = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [refreshing,  setRefreshing]  = useState(false);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    const { ok, status, data } = await apiFetch('/admin/dashboard');
+    if (ok && data?.success) {
+      setData(data);
+      setError(null);
+      setLastUpdated(new Date());
+    } else {
+      setError(data?.message
+        ? `${data.message}${status ? ` (HTTP ${status})` : ''}`
+        : `Could not load dashboard${status ? ` (HTTP ${status})` : ''}.`);
+    }
     setLoading(false);
-  };
+    setRefreshing(false);
+  }, []);
 
   useEffect(() => {
     refresh();
-    // Refresh every 60s so "currently working" stays live
+    // Auto-refresh every 60s so "currently working" stays live.
     const id = setInterval(refresh, 60000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  // Tick "X ago" label every 10s without re-fetching
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 10000);
     return () => clearInterval(id);
   }, []);
 
-  const now      = new Date();
+  const now       = new Date();
   const adminName = user?.name || user?.username || 'admin';
 
   // Group currently working by department
@@ -66,13 +100,45 @@ const AdminHome = () => {
   return (
     <div className="adm-page">
 
-      {/* Greeting */}
-      <div className="adm-greeting">
-        <div className="adm-greeting-eyebrow">
-          {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+      {/* Greeting + refresh */}
+      <div className="adm-greeting-row">
+        <div className="adm-greeting">
+          <div className="adm-greeting-eyebrow">
+            {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+          </div>
+          <h1 className="adm-greeting-title">Welcome, {adminName}.</h1>
         </div>
-        <h1 className="adm-greeting-title">Welcome, {adminName}.</h1>
+        <div className="adm-greeting-actions">
+          {lastUpdated && (
+            <span className="adm-updated" title={lastUpdated.toLocaleTimeString()}>
+              Updated {fmtUpdated(lastUpdated)}
+            </span>
+          )}
+          <button
+            className="adm-refresh-btn"
+            onClick={refresh}
+            disabled={refreshing}
+            aria-label="Refresh dashboard"
+            title="Refresh"
+          >
+            {refreshing ? '…' : '↻'}
+          </button>
+        </div>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="adm-error-banner">
+          <div className="adm-error-icon">⚠</div>
+          <div className="adm-error-msg">
+            <div className="adm-error-title">Couldn't refresh dashboard</div>
+            <div className="adm-error-detail">{error}</div>
+          </div>
+          <button className="adm-error-retry" onClick={refresh} disabled={refreshing}>
+            {refreshing ? '…' : 'Retry'}
+          </button>
+        </div>
+      )}
 
       {/* Stats banner */}
       <div className="adm-stats">
@@ -123,7 +189,12 @@ const AdminHome = () => {
             </>
           )}
           {!loading && (data?.currentlyWorking?.length || 0) === 0 && (
-            <div className="adm-empty">No one is clocked in right now.</div>
+            <div className="adm-empty">
+              No one is clocked in right now.
+              <div className="adm-empty-sub">
+                Open clock-ins (entries with no clock-out yet) appear here.
+              </div>
+            </div>
           )}
           {!loading && workingDepts.map(dept => (
             <div key={dept} className="adm-working-group">
@@ -173,28 +244,36 @@ const AdminHome = () => {
             </>
           )}
           {!loading && (data?.todaySchedule?.length || 0) === 0 && (
-            <div className="adm-empty">No shifts scheduled today.</div>
+            <div className="adm-empty">
+              No shifts scheduled today.
+              <div className="adm-empty-sub">
+                Add a shift in Scheduling to see it here.
+              </div>
+            </div>
           )}
-          {!loading && (data?.todaySchedule || []).map(s => (
-            <ul key={s.schedule_id} className="adm-sched-list">
-              <li
-                className="adm-sched-row"
-                onClick={() => nav(`/admin/employees/${s.user_id}`)}
-              >
-                <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
-                <div className="adm-sched-info">
-                  <div className="adm-sched-name">{s.name}</div>
-                  <div className="adm-sched-meta">
-                    {fmtScheduleTime(s.start_time)} – {fmtScheduleTime(s.end_time)}
-                    {s.department ? ` · ${s.department}` : ''}
+          {!loading && (data?.todaySchedule?.length || 0) > 0 && (
+            <ul className="adm-sched-list">
+              {data.todaySchedule.map(s => (
+                <li
+                  key={s.schedule_id}
+                  className="adm-sched-row"
+                  onClick={() => nav(`/admin/employees/${s.user_id}`)}
+                >
+                  <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
+                  <div className="adm-sched-info">
+                    <div className="adm-sched-name">{s.name}</div>
+                    <div className="adm-sched-meta">
+                      {fmtScheduleTime(s.start_time)} – {fmtScheduleTime(s.end_time)}
+                      {s.department ? ` · ${s.department}` : ''}
+                    </div>
                   </div>
-                </div>
-                <span className={`adm-sched-pill pill-${s.status}`}>
-                  {STATUS_LABEL[s.status]}
-                </span>
-              </li>
+                  <span className={`adm-sched-pill pill-${s.status}`}>
+                    {STATUS_LABEL[s.status]}
+                  </span>
+                </li>
+              ))}
             </ul>
-          ))}
+          )}
         </div>
 
       </div>

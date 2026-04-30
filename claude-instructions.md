@@ -723,6 +723,41 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 5.1: dashboard error surfacing
+
+**Bug:** AdminHome silently swallowed fetch failures (auth errors, server
+errors, partial data) and rendered as if nothing was wrong — empty cards
+plus zeros across the stats banner. The user reported "dashboard not
+displaying anything even when staff are working" with no diagnostic info
+to point at the cause.
+
+**Files modified:**
+- `src/pages/AdminHome/index.js` — added `error` and `lastUpdated` state.
+  `refresh` now distinguishes success vs failure and stores either the
+  data or the error message. UI changes:
+  - **Greeting row** has a "Updated 12s ago" indicator + manual refresh
+    button (↻). Tick state re-renders the relative time every 10s
+    without re-fetching.
+  - **Error banner** appears above the stats banner when a request fails
+    — shows the server's error message, HTTP status, and a Retry button.
+  - **Empty states gained sub-text** ("Open clock-ins appear here.",
+    "Add a shift in Scheduling to see it here.") so the user knows
+    *what* would populate the card.
+  - Fixed wrong `<ul>`-per-row structure in today's schedule list — now
+    one `<ul>` with N `<li>`s as expected.
+- `src/pages/AdminHome/AdminHome.css` — appended `.adm-greeting-row`,
+  `.adm-greeting-actions`, `.adm-updated`, `.adm-refresh-btn`,
+  `.adm-error-banner` (+ icon/title/detail/retry), `.adm-empty-sub`.
+- `server/server.js` — `/api/admin/dashboard` currently-working query now
+  filters `u.active = true`. Defensive against a stale open entry on a
+  deactivated user.
+
+**Conventions added:**
+- **Surface fetch errors visibly on data-driven dashboards.** Silently
+  empty UI hides auth and server failures, exactly the bugs you want to
+  see fast. Pattern: `error` state + banner with Retry, `lastUpdated`
+  indicator with relative-time tick, plus a manual refresh button.
+
 **Sprint 5.x backlog (open — debug + extras):**
 - User-driven bug fixes after this sprint settles.
 - Approval-request review screen (clicking pending approvals on
