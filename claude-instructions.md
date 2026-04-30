@@ -724,6 +724,39 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 6 hotfix: API URL collateral damage from rename
+
+**Bug:** Clicking a staff row threw
+`Uncaught (in promise) SyntaxError: Unexpected token '<', "<!doctype "...
+is not valid JSON` and showed "Staff not found".
+
+**Cause:** During Sprint 6A I ran `replace_all` on
+`/admin/employees` → `/admin/staff` inside `StaffDetail.js`. That
+correctly updated the page-route nav targets but **also rewrote every
+API URL** in the file. The server still exposes the data layer at
+`/api/admin/employees/...` (unchanged on purpose), so the client started
+calling endpoints that don't exist. Express's SPA catch-all served
+`index.html`, which `res.json()` tried to parse and choked on the
+leading `<!doctype`.
+
+**Fix:** reverted the API URLs in `StaffDetail.js` to `/api/admin/employees/...`
+(`reloadEmployee`, `reloadEntries`, profile PUT, status PATCH, DELETE,
+PIN PATCH, PIN reset). Kept the new
+`/api/admin/staff/:userId/performance` endpoint (Sprint 6 addition,
+intentionally on the new namespace) and the browser routes (`/admin/staff[/...]`).
+
+**Convention added:**
+- **Page routes ≠ API routes.** When you rename a UI route, don't blanket
+  `replace_all` on the path string. The same path lives in three
+  places — page nav, API URLs, and sometimes documentation — and the
+  rename should only apply to the page. Use targeted edits or grep with
+  context first.
+- **Defense in depth.** All `res.json()` calls should be tolerant of
+  non-JSON responses. `apiFetch` already swallows them silently; raw
+  `fetch().then(r => r.json())` does not. Sprint 6.x cleanup: route
+  every admin fetch through `apiFetch` so a stray HTML body never
+  throws an unhandled SyntaxError again.
+
 ### 2026-04-29 — Sprint 6 hotfix: production build cleanup
 
 **Bug:** Koyeb Docker build failed at `npm run build`. Two errors:

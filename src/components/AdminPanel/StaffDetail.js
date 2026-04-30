@@ -71,14 +71,14 @@ const StaffDetail = () => {
 
   const reloadEmployee = useCallback(async () => {
     setLoading(true);
-    const { ok, data } = await apiFetch(`/admin/staff/${userId}`);
+    const { ok, data } = await apiFetch(`/admin/employees/${userId}`);
     if (ok && data?.success) setEmp(data.employee);
     setLoading(false);
   }, [userId]);
 
   const reloadEntries = useCallback(async () => {
     setEntryLoad(true);
-    const res  = await fetch(`/api/admin/staff/${userId}/time-entries`);
+    const res  = await fetch(`/api/admin/employees/${userId}/time-entries`);
     const data = await res.json();
     if (data.success) setEntries(data.timeEntries);
     setEntryLoad(false);
@@ -129,7 +129,7 @@ const StaffDetail = () => {
     e.preventDefault();
     setSaving(true);
     setError('');
-    const res  = await fetch(`/api/admin/staff/${emp.user_id}`, {
+    const res  = await fetch(`/api/admin/employees/${emp.user_id}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -151,7 +151,7 @@ const StaffDetail = () => {
   const handleToggle = async () => {
     setToggling(true);
     setError('');
-    const res  = await fetch(`/api/admin/staff/${emp.user_id}/status`, {
+    const res  = await fetch(`/api/admin/employees/${emp.user_id}/status`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !emp.active }),
@@ -169,7 +169,7 @@ const StaffDetail = () => {
   const handleDelete = async () => {
     setDeleting(true);
     setError('');
-    const res  = await fetch(`/api/admin/staff/${emp.user_id}`, { method: 'DELETE' });
+    const res  = await fetch(`/api/admin/employees/${emp.user_id}`, { method: 'DELETE' });
     const data = await res.json();
     setDeleting(false);
     if (data.success) nav('/admin/staff');
@@ -180,7 +180,7 @@ const StaffDetail = () => {
   const togglePinRequired = async () => {
     setPinBusy(true);
     setPinErr('');
-    const { ok, data } = await apiFetch(`/admin/staff/${emp.user_id}/pin`, {
+    const { ok, data } = await apiFetch(`/admin/employees/${emp.user_id}/pin`, {
       method: 'PATCH',
       body:   JSON.stringify({ pin_required: !emp.pin_required }),
     });
@@ -193,7 +193,7 @@ const StaffDetail = () => {
     if (!window.confirm(`Reset PIN for ${emp.name}? They'll be prompted to set a new one on their next login.`)) return;
     setPinBusy(true);
     setPinErr('');
-    const { ok, data } = await apiFetch(`/admin/staff/${emp.user_id}/pin/reset`, {
+    const { ok, data } = await apiFetch(`/admin/employees/${emp.user_id}/pin/reset`, {
       method: 'POST',
     });
     setPinBusy(false);
