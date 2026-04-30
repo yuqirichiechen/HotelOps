@@ -1401,3 +1401,306 @@
   gap: 10px;
   margin-top: 8px;
 }
+
+/* ── Staff performance dashboard (Sprint 6D) ─────────────────────────────── */
+
+.staff-perf {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 26px;
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 22px;
+  font-family: 'TiemposText', Georgia, serif;
+  animation: staff-perf-fade 0.35s ease both;
+}
+
+@keyframes staff-perf-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.staff-perf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.staff-perf-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.staff-perf-tabs {
+  display: inline-flex;
+  background: var(--bg-raised);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.staff-perf-tab {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 7px;
+  transition: background 0.15s ease, color 0.15s ease;
+  letter-spacing: 0.04em;
+}
+
+.staff-perf-tab:hover     { color: var(--text-primary); }
+.staff-perf-tab.is-active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Stat cards */
+
+.staff-perf-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.staff-perf-card {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.staff-perf-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.staff-perf-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-perf-num.is-warn { color: var(--warn-text); }
+
+.staff-perf-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-perf-delta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.staff-perf-delta.is-up   { color: var(--success-text); }
+.staff-perf-delta.is-down { color: var(--danger);       }
+
+.staff-perf-delta-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Trend bar chart */
+
+.staff-perf-trend {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px 12px;
+}
+
+.staff-perf-trend-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.staff-perf-trend-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.staff-perf-trend-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.staff-perf-bars {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  height: 130px;
+  align-items: end;
+}
+
+.staff-perf-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 4px;
+}
+
+.staff-perf-bar-track {
+  flex: 1;
+  width: 70%;
+  max-width: 32px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.staff-perf-bar-fill {
+  width: 100%;
+  min-height: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-alt));
+  border-radius: 5px 5px 0 0;
+  animation: staff-perf-bar-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.staff-perf-bar-fill.is-overtime {
+  background: linear-gradient(180deg, var(--warn-text), var(--danger));
+}
+
+@keyframes staff-perf-bar-grow {
+  from { transform: scaleY(0); transform-origin: bottom; }
+  to   { transform: scaleY(1); transform-origin: bottom; }
+}
+
+.staff-perf-bar-hours {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  height: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-perf-bar-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+/* Mobile */
+
+@media (max-width: 768px) {
+  .staff-perf            { padding: 18px 18px; }
+  .staff-perf-stats      { grid-template-columns: repeat(2, 1fr); }
+  .staff-perf-num        { font-size: 24px; }
+  .staff-perf-bars       { height: 100px; gap: 4px; }
+  .staff-perf-bar-track  { width: 80%; }
+  .staff-perf-bar-label  { font-size: 9px; }
+}
+
+/* ── AdminSettings: performance config (Sprint 6B) ───────────────────────── */
+
+.settings-perf-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.settings-perf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-perf-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.settings-perf-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-perf-input-wrap input {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 15px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: 90px;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-perf-input-wrap input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.settings-perf-unit {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.settings-perf-help {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.settings-perf-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.settings-perf-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.settings-perf-radio input { cursor: pointer; }

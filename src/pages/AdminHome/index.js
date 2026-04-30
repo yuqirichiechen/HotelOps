@@ -196,7 +196,7 @@ const AdminHome = () => {
                   <li
                     key={w.user_id}
                     className="adm-working-row"
-                    onClick={() => nav(`/admin/employees/${w.user_id}`)}
+                    onClick={() => nav(`/admin/staff/${w.user_id}`)}
                   >
                     <div className="adm-working-avatar">
                       {(w.name || '?').charAt(0).toUpperCase()}
@@ -243,7 +243,7 @@ const AdminHome = () => {
                 <li
                   key={s.schedule_id}
                   className="adm-sched-row"
-                  onClick={() => nav(`/admin/employees/${s.user_id}`)}
+                  onClick={() => nav(`/admin/staff/${s.user_id}`)}
                 >
                   <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
                   <div className="adm-sched-info">
@@ -292,7 +292,7 @@ const AdminHome = () => {
                   <li
                     key={s.user_id}
                     className="adm-hours-row"
-                    onClick={() => nav(`/admin/employees/${s.user_id}`)}
+                    onClick={() => nav(`/admin/staff/${s.user_id}`)}
                   >
                     <div className="adm-hours-info">
                       <div className="adm-hours-name">{s.name}</div>

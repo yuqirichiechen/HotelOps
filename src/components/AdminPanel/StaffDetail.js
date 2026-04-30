@@ -38,7 +38,7 @@ const toLocalInput = (iso) => {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const EmployeeDetail = () => {
+const StaffDetail = () => {
   const { userId } = useParams();
   const nav = useNavigate();
 
@@ -63,16 +63,22 @@ const EmployeeDetail = () => {
   const [entrySave,  setEntrySave]  = useState(false);
   const [entryErr,   setEntryErr]   = useState('');
 
+  // Performance dashboard (Sprint 6D)
+  const [perf,       setPerf]       = useState(null);
+  const [perfLoad,   setPerfLoad]   = useState(true);
+  const [perfErr,    setPerfErr]    = useState('');
+  const [period,     setPeriod]     = useState('week'); // 'week' | 'month' | 'year'
+
   const reloadEmployee = useCallback(async () => {
     setLoading(true);
-    const { ok, data } = await apiFetch(`/admin/employees/${userId}`);
+    const { ok, data } = await apiFetch(`/admin/staff/${userId}`);
     if (ok && data?.success) setEmp(data.employee);
     setLoading(false);
   }, [userId]);
 
   const reloadEntries = useCallback(async () => {
     setEntryLoad(true);
-    const res  = await fetch(`/api/admin/employees/${userId}/time-entries`);
+    const res  = await fetch(`/api/admin/staff/${userId}/time-entries`);
     const data = await res.json();
     if (data.success) setEntries(data.timeEntries);
     setEntryLoad(false);
@@ -85,6 +91,23 @@ const EmployeeDetail = () => {
       if (d.success) setDepartments(d.departments);
     });
   }, [reloadEmployee, reloadEntries]);
+
+  // Performance fetch (re-runs when period changes)
+  useEffect(() => {
+    let active = true;
+    setPerfLoad(true);
+    setPerfErr('');
+    apiFetch(`/admin/staff/${userId}/performance?period=${period}`).then(({ ok, status, data }) => {
+      if (!active) return;
+      if (ok && data?.success) {
+        setPerf(data);
+      } else {
+        setPerfErr(data?.message || `Could not load performance${status ? ` (HTTP ${status})` : ''}.`);
+      }
+      setPerfLoad(false);
+    });
+    return () => { active = false; };
+  }, [userId, period]);
 
   // ── profile edit ──────────────────────────────────────────────────────────
   const startEdit = () => {
@@ -106,7 +129,7 @@ const EmployeeDetail = () => {
     e.preventDefault();
     setSaving(true);
     setError('');
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}`, {
+    const res  = await fetch(`/api/admin/staff/${emp.user_id}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -128,7 +151,7 @@ const EmployeeDetail = () => {
   const handleToggle = async () => {
     setToggling(true);
     setError('');
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}/status`, {
+    const res  = await fetch(`/api/admin/staff/${emp.user_id}/status`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !emp.active }),
@@ -146,10 +169,10 @@ const EmployeeDetail = () => {
   const handleDelete = async () => {
     setDeleting(true);
     setError('');
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}`, { method: 'DELETE' });
+    const res  = await fetch(`/api/admin/staff/${emp.user_id}`, { method: 'DELETE' });
     const data = await res.json();
     setDeleting(false);
-    if (data.success) nav('/admin/employees');
+    if (data.success) nav('/admin/staff');
     else              setError(data.message);
   };
 
@@ -157,7 +180,7 @@ const EmployeeDetail = () => {
   const togglePinRequired = async () => {
     setPinBusy(true);
     setPinErr('');
-    const { ok, data } = await apiFetch(`/admin/employees/${emp.user_id}/pin`, {
+    const { ok, data } = await apiFetch(`/admin/staff/${emp.user_id}/pin`, {
       method: 'PATCH',
       body:   JSON.stringify({ pin_required: !emp.pin_required }),
     });
@@ -170,7 +193,7 @@ const EmployeeDetail = () => {
     if (!window.confirm(`Reset PIN for ${emp.name}? They'll be prompted to set a new one on their next login.`)) return;
     setPinBusy(true);
     setPinErr('');
-    const { ok, data } = await apiFetch(`/admin/employees/${emp.user_id}/pin/reset`, {
+    const { ok, data } = await apiFetch(`/admin/staff/${emp.user_id}/pin/reset`, {
       method: 'POST',
     });
     setPinBusy(false);
@@ -233,9 +256,9 @@ const EmployeeDetail = () => {
   if (!emp)    return (
     <div className="emp-detail">
       <div className="emp-detail-topbar">
-        <button className="btn-back" onClick={() => nav('/admin/employees')}>‹ Employees</button>
+        <button className="btn-back" onClick={() => nav('/admin/staff')}>‹ Staff</button>
       </div>
-      <div className="emp-empty">Employee not found.</div>
+      <div className="emp-empty">Staff not found.</div>
     </div>
   );
 
@@ -249,7 +272,7 @@ const EmployeeDetail = () => {
     <div className="emp-detail">
       {/* Header */}
       <div className="emp-detail-topbar">
-        <button className="btn-back" onClick={() => nav('/admin/employees')}>‹ Employees</button>
+        <button className="btn-back" onClick={() => nav('/admin/staff')}>‹ Staff</button>
         {!editing && <button className="btn-edit" onClick={startEdit}>Edit</button>}
       </div>
 
@@ -263,6 +286,119 @@ const EmployeeDetail = () => {
       </div>
 
       {error && <div className="admin-error" style={{ margin: '0 0 16px' }}>{error}</div>}
+
+      {/* ── Performance dashboard (Sprint 6D) ─────────────────────────────── */}
+      {!editing && (
+        <section className="staff-perf">
+          <div className="staff-perf-head">
+            <h3 className="staff-perf-title">Performance</h3>
+            <div className="staff-perf-tabs">
+              {['week', 'month', 'year'].map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`staff-perf-tab${period === p ? ' is-active' : ''}`}
+                  onClick={() => setPeriod(p)}
+                >
+                  {p[0].toUpperCase() + p.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {perfErr && <div className="admin-error" style={{ margin: '0 0 12px' }}>{perfErr}</div>}
+
+          <div className="staff-perf-stats">
+            {/* Hours worked */}
+            <div className="staff-perf-card">
+              <div className="staff-perf-eyebrow">Hours worked</div>
+              <div className="staff-perf-num">
+                {perfLoad ? '—' : `${perf?.hoursWorked ?? 0}h`}
+              </div>
+              {perf?.comparison?.deltaPct != null ? (
+                <div className={`staff-perf-delta ${perf.comparison.deltaPct >= 0 ? 'is-up' : 'is-down'}`}>
+                  {perf.comparison.deltaPct >= 0 ? '↑' : '↓'} {Math.abs(Math.round(perf.comparison.deltaPct * 100))}%
+                  <span className="staff-perf-delta-label">{perf.comparison.label}</span>
+                </div>
+              ) : (
+                <div className="staff-perf-meta">
+                  {perf?.comparison?.previousValue
+                    ? `${perf.comparison.previousValue}h previous period`
+                    : 'no prior data'}
+                </div>
+              )}
+            </div>
+
+            {/* On-time rate */}
+            <div className="staff-perf-card">
+              <div className="staff-perf-eyebrow">On-time rate</div>
+              <div className="staff-perf-num">
+                {perfLoad ? '—' : (perf?.onTimeRate != null ? `${Math.round(perf.onTimeRate * 100)}%` : '—')}
+              </div>
+              <div className="staff-perf-meta">
+                {perf?.shiftsWorked
+                  ? `${perf.shiftsOnTime || 0} of ${perf.shiftsWorked} on time`
+                  : 'no shifts worked'}
+              </div>
+            </div>
+
+            {/* Overtime */}
+            <div className="staff-perf-card">
+              <div className="staff-perf-eyebrow">Overtime</div>
+              <div className={`staff-perf-num ${(perf?.hoursOvertime || 0) > 0 ? 'is-warn' : ''}`}>
+                {perfLoad ? '—' : `${perf?.hoursOvertime ?? 0}h`}
+              </div>
+              <div className="staff-perf-meta">
+                past {perf?.config?.overtime_threshold_hours ?? 40}h/wk
+              </div>
+            </div>
+
+            {/* Shifts */}
+            <div className="staff-perf-card">
+              <div className="staff-perf-eyebrow">Shifts</div>
+              <div className="staff-perf-num">
+                {perfLoad ? '—' : (perf?.shiftsWorked ?? 0)}
+              </div>
+              <div className="staff-perf-meta">
+                {perf
+                  ? `${perf.shiftsMissed || 0} missed · ${perf.shiftsLate || 0} late`
+                  : '—'}
+              </div>
+            </div>
+          </div>
+
+          {/* 8-week trend chart */}
+          <div className="staff-perf-trend">
+            <div className="staff-perf-trend-head">
+              <span className="staff-perf-trend-title">Last 8 weeks</span>
+              <span className="staff-perf-trend-sub">weekly hours</span>
+            </div>
+            <div className="staff-perf-bars">
+              {(perf?.trend || Array.from({ length: 8 }, () => ({ hours: 0 }))).map((t, i) => {
+                const max = Math.max(8, ...((perf?.trend || []).map(x => x.hours)));
+                const pct = max > 0 ? (t.hours / max) * 100 : 0;
+                const isOT = t.hours > (perf?.config?.overtime_threshold_hours || 40);
+                return (
+                  <div key={t.weekStart || i} className="staff-perf-bar-col">
+                    <div className="staff-perf-bar-track">
+                      <div
+                        className={`staff-perf-bar-fill${isOT ? ' is-overtime' : ''}`}
+                        style={{ height: `${pct}%`, opacity: t.hours ? 1 : 0.2 }}
+                      />
+                    </div>
+                    <div className="staff-perf-bar-hours">{t.hours ? `${t.hours}h` : ''}</div>
+                    <div className="staff-perf-bar-label">
+                      {t.weekStart
+                        ? new Date(t.weekStart + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })
+                        : ''}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Edit form */}
       {editing ? (
@@ -471,4 +607,4 @@ const EmployeeDetail = () => {
   );
 };
 
-export default EmployeeDetail;
+export default StaffDetail;

@@ -28,6 +28,9 @@ const AdminSettings = () => {
   const nav = useNavigate();
 
   const [visibility, setVisibility] = useState('all');
+  const [otHours,    setOtHours]    = useState('40');
+  const [otMins,     setOtMins]     = useState('10');
+  const [baseline,   setBaseline]   = useState('self');
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
@@ -37,7 +40,12 @@ const AdminSettings = () => {
     fetch('/api/admin/settings')
       .then(r => r.json())
       .then(data => {
-        if (data.success) setVisibility(data.settings.schedule_visibility || 'all');
+        if (data.success) {
+          setVisibility(data.settings.schedule_visibility       || 'all');
+          setOtHours   (data.settings.overtime_threshold_hours  || '40');
+          setOtMins    (data.settings.on_time_tolerance_minutes || '10');
+          setBaseline  (data.settings.compare_baseline          || 'self');
+        }
         setLoading(false);
       });
   }, []);
@@ -49,7 +57,12 @@ const AdminSettings = () => {
     const res  = await fetch('/api/admin/settings', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ schedule_visibility: visibility }),
+      body:    JSON.stringify({
+        schedule_visibility:       visibility,
+        overtime_threshold_hours:  otHours,
+        on_time_tolerance_minutes: otMins,
+        compare_baseline:          baseline,
+      }),
     });
     const data = await res.json();
     setSaving(false);
@@ -125,6 +138,82 @@ const AdminSettings = () => {
             >
               {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Settings'}
             </button>
+          </div>
+
+          {/* Performance section (Sprint 6B) */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">📈</div>
+              <div>
+                <div className="settings-section-title">Performance Thresholds</div>
+                <div className="settings-section-desc">
+                  Drives the staff performance dashboard and the dashboard "Coming up" / overtime metrics.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-perf-grid">
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Overtime threshold</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="1"
+                    max="168"
+                    step="0.5"
+                    value={otHours}
+                    onChange={e => { setOtHours(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">hours / week</span>
+                </span>
+                <span className="settings-perf-help">
+                  Hours past this counts as overtime. Federal default: 40h.
+                </span>
+              </label>
+
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">On-time tolerance</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="0"
+                    max="240"
+                    step="1"
+                    value={otMins}
+                    onChange={e => { setOtMins(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">minutes</span>
+                </span>
+                <span className="settings-perf-help">
+                  Clock-ins within this window of scheduled start count as on-time.
+                </span>
+              </label>
+
+              <div className="settings-perf-field">
+                <span className="settings-perf-label">Compare baseline</span>
+                <div className="settings-perf-radio-group">
+                  {[
+                    { v: 'self',       label: 'Self (previous period)' },
+                    { v: 'department', label: 'Department average (coming soon)' },
+                    { v: 'all',        label: 'All staff (coming soon)' },
+                  ].map(opt => (
+                    <label key={opt.v} className="settings-perf-radio">
+                      <input
+                        type="radio"
+                        name="baseline"
+                        value={opt.v}
+                        checked={baseline === opt.v}
+                        onChange={() => { setBaseline(opt.v); setSaved(false); }}
+                      />
+                      <span>{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <span className="settings-perf-help">
+                  What the percentage delta on each performance card compares against.
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Account / Sign out section */}

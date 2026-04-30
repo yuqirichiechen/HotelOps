@@ -17,7 +17,7 @@ const STAFF_NAV = [
 
 const ADMIN_NAV = [
   { to: '/admin',             label: 'Home',        icon: '🏠', live: true,  end: true },
-  { to: '/admin/employees',   label: 'Employees',   icon: '👥', live: true  },
+  { to: '/admin/staff',       label: 'Staff',       icon: '👥', live: true  },
   { to: '/admin/scheduling',  label: 'Scheduling',  icon: '📅', live: true  },
   { to: '/admin/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
   { to: '/admin/reports',     label: 'Reports',     icon: '📊', live: false },

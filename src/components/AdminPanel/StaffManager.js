@@ -6,7 +6,7 @@ const UNASSIGNED  = { department_id: '__none__', name: 'Unassigned' };
 const today       = () => new Date().toISOString().split('T')[0];
 const emptyForm   = () => ({ name: '', phone: '', role: 'employee', departmentId: '', hireDate: today(), baseHourlyRate: '' });
 
-const EmployeeManager = () => {
+const StaffManager = () => {
   const nav = useNavigate();
   const [employees,   setEmployees]   = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -84,7 +84,7 @@ const EmployeeManager = () => {
       <div className="emp-header">
         <div className="emp-header-left">
           <button className="btn-back" onClick={() => nav('/admin')}>‹ Home</button>
-          <h2>Employees</h2>
+          <h2>Staff</h2>
         </div>
         <div className="emp-header-right">
           <button className="btn-add" onClick={() => { setShowAdd(s => !s); setFormError(''); }}>
@@ -193,7 +193,7 @@ const EmployeeManager = () => {
                       <div
                         key={emp.user_id}
                         className={`emp-card emp-card-clickable ${emp.active ? '' : 'emp-inactive'}`}
-                        onClick={() => nav(`/admin/employees/${emp.user_id}`)}
+                        onClick={() => nav(`/admin/staff/${emp.user_id}`)}
                       >
                         <div className="emp-card-main">
                           <div className="emp-avatar">{emp.name.charAt(0).toUpperCase()}</div>
@@ -222,4 +222,4 @@ const EmployeeManager = () => {
   );
 };
 
-export default EmployeeManager;
+export default StaffManager;

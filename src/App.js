@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
+
+// Tiny helper component: redirect /admin/employees/:userId → /admin/staff/:userId.
+const NavStaff = () => {
+  const { userId } = useParams();
+  return <Navigate to={`/admin/staff/${userId}`} replace />;
+};
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import ShiftsView from './components/ShiftsView';
@@ -13,8 +19,8 @@ import SetPin from './pages/SetPin';
 import AdminHome from './pages/AdminHome';
 import AdminReports from './pages/AdminReports';
 import AdminShiftNotes from './pages/AdminShiftNotes';
-import EmployeeManager from './components/AdminPanel/EmployeeManager';
-import EmployeeDetail from './components/AdminPanel/EmployeeDetail';
+import StaffManager from './components/AdminPanel/StaffManager';
+import StaffDetail from './components/AdminPanel/StaffDetail';
 import SchedulingManager from './components/AdminPanel/Scheduling';
 import AdminSettings from './components/AdminPanel/AdminSettings';
 import './App.css';
@@ -78,8 +84,11 @@ const App = () => {
             </RequireRole>
           }>
             <Route path="/admin"                   element={<AdminHome />} />
-            <Route path="/admin/employees"         element={<EmployeeManager />} />
-            <Route path="/admin/employees/:userId" element={<EmployeeDetail />} />
+            <Route path="/admin/staff"             element={<StaffManager />} />
+            <Route path="/admin/staff/:userId"     element={<StaffDetail />} />
+            {/* Legacy /admin/employees → /admin/staff */}
+            <Route path="/admin/employees"         element={<Navigate to="/admin/staff" replace />} />
+            <Route path="/admin/employees/:userId" element={<NavStaff />} />
             <Route path="/admin/scheduling"        element={<SchedulingManager />} />
             <Route path="/admin/shift-notes"       element={<AdminShiftNotes />} />
             <Route path="/admin/reports"           element={<AdminReports />} />

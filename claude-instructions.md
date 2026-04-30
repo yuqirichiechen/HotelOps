@@ -68,8 +68,8 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 
 **Admin** (sidebar shows ADMIN_NAV when `user.role === 'admin'`):
 - `/admin` — `AdminHome` dashboard: greeting, stats banner (active staff / on the clock / hours this week / pending approvals), Currently Working card (dept-grouped, click to detail), Today's Schedule with status pills, Pending Approvals list.
-- `/admin/employees` — `EmployeeManager` (list, grouped by dept; click row → detail).
-- `/admin/employees/:userId` — `EmployeeDetail` (profile, PIN management, Time Entries with admin override modal, deactivate/delete).
+- `/admin/staff` — `StaffManager` (list, grouped by dept; click row → detail). `/admin/employees` 301-redirects here.
+- `/admin/staff/:userId` — `StaffDetail` — **performance dashboard** (period selector, 4 stat cards with delta, 8-week trend chart) on top, then existing edit form / PIN management / Time Entries override / deactivate-delete sections.
 - `/admin/scheduling` — `SchedulingManager` (week/month views).
 - `/admin/shift-notes` — `AdminShiftNotes` placeholder.
 - `/admin/reports` — `AdminReports` placeholder.
@@ -82,7 +82,7 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 ### Sidebars (role-driven)
 
 - **Staff**: Home → Timesheet → Calendar → Shift Notes → Settings.
-- **Admin**: Home → Employees → Scheduling → Shift Notes → Reports → Settings.
+- **Admin**: Home → Staff → Scheduling → Shift Notes → Reports → Settings.
 
 The Sidebar component picks the right NAV based on `user.role`. There is no
 shared sidebar between staff and admin — admins are not in the `users` table
@@ -215,7 +215,8 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 ### Admin (mix of protected and legacy unprotected)
 
 - `GET  /api/health`
-- `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data
+- `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data (now also `staffHoursThisWeek`)
+- `GET  /api/admin/staff/:userId/performance?period=week|month|year`  auth (admin) — Sprint 6 — per-staff metrics (hours, OT, on-time, shifts, 8-week trend, prev-period comparison)
 - `PATCH /api/admin/time-entries/:id`          auth (admin) — Sprint 5 — hour override (writes audit_logs)
 - `GET  /api/admin/departments`
 - `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin)
@@ -722,6 +723,112 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-04-29 — Sprint 6: staff performance dashboard
+
+Major rework. Employees → Staff everywhere. New per-staff performance
+page with configurable thresholds and an 8-week trend chart.
+
+**Sprint 6A — Rename Employees → Staff**
+- Sidebar label, route (`/admin/staff` from `/admin/employees`),
+  component file rename (EmployeeManager.js → StaffManager.js,
+  EmployeeDetail.js → StaffDetail.js), all internal nav refs.
+  `/admin/employees` and `/admin/employees/:userId` redirect to
+  `/admin/staff[/:userId]` for back-compat. `App.js` exports a tiny
+  `NavStaff` helper that re-injects `:userId` into the redirect target
+  via `useParams` (note for next time: this pattern works for any
+  param-preserving redirect).
+- DB stays on `users` — the data layer doesn't change.
+- API endpoints `/api/admin/employees*` are unchanged for now (they're
+  the data resource, not the page route). Sprint 6.x can rename if the
+  cosmetic break is worth it.
+
+**Sprint 6B — Configurable performance thresholds**
+- Migration `006_perf_config.sql` inserts three default rows into
+  `app_settings`: `overtime_threshold_hours` (40), `on_time_tolerance_minutes`
+  (10), `compare_baseline` ('self').
+- `PUT /api/admin/settings` is now generic — accepts `{ key1: v1, key2: v2 }`
+  pairs and validates each against an `ALLOWED` map. Single-key updates
+  still work.
+- AdminSettings.js gained a "Performance Thresholds" section: number
+  inputs for OT hours and on-time minutes, radio for the compare
+  baseline. Save batches all four settings (visibility + the three new
+  ones) in one PUT.
+
+**Sprint 6C — Performance endpoint**
+- `GET /api/admin/staff/:userId/performance?period=week|month|year`
+  (auth: admin). Returns user, current config, current period range,
+  hoursWorked, hoursOvertime (weekly-bucketed against the threshold),
+  shiftsScheduled / shiftsWorked / shiftsMissed / shiftsOnTime /
+  shiftsLate, onTimeRate, comparison (self vs previous period for now),
+  trend (last 8 weeks of weekly hours), recentShifts (last 10).
+- Uses `Promise.allSettled` over 4 queries; user-not-found fails the
+  whole request, others degrade to safe defaults.
+- Schedule-vs-entry pairing: a schedule matches an entry if the entry's
+  clock-in is within ±4h of the scheduled start; on-time if the lag
+  ≤ tolerance.
+
+**Sprint 6D — StaffDetail performance dashboard UI**
+- New `<section className="staff-perf">` lives between the profile
+  block and the existing edit/PIN/time-entries sections.
+- **Period selector**: pill tabs (Week / Month / Year), pill-shaped
+  segmented control with subtle background.
+- **4 stat cards**: Hours worked (with delta vs comparison.previousValue),
+  On-time rate (% + "X of Y on time"), Overtime (warn-orange when > 0),
+  Shifts (count + "X missed · Y late").
+- **8-week trend bar chart**: animated grow-on-mount, weeks with hours
+  past the threshold use a warn-toned gradient (orange → red) instead
+  of the normal accent gradient — visual cue for chronic overtime.
+- All existing sections (edit, PIN management, Time Entries override,
+  deactivate/delete) stay below. Sprint 6.x may consolidate them into
+  the action panel I sketched in the kickoff message.
+
+**Files added:**
+- `database/migrations/006_perf_config.sql`
+- `src/components/AdminPanel/StaffManager.js` (replacing EmployeeManager.js)
+- `src/components/AdminPanel/StaffDetail.js` (replacing EmployeeDetail.js)
+
+**Files modified:**
+- `server/server.js` — generic settings PUT + performance endpoint.
+- `src/components/Layout/Sidebar.js` — Employees → Staff in ADMIN_NAV.
+- `src/App.js` — staff routes + `/admin/employees*` redirects.
+- `src/pages/AdminHome/index.js` — nav targets updated to `/admin/staff/:id`.
+- `src/components/AdminPanel/AdminSettings.js` — Performance Thresholds section.
+- `src/components/AdminPanel/AdminPanel.css` — `.staff-perf*` rules,
+  `.settings-perf-*` rules.
+
+**Files deleted:**
+- `src/components/AdminPanel/EmployeeManager.js`
+- `src/components/AdminPanel/EmployeeDetail.js`
+
+**Conventions added:**
+- **Generic settings PUT.** When a settings table holds many keys, the
+  endpoint should accept `{ key: value }` pairs and validate via an
+  ALLOWED map. Avoids one route per setting.
+- **Self-comparison default.** Performance dashboards comparing
+  "yourself this period" against "yourself last period" gives the most
+  actionable signal without needing department/all-staff baselines.
+  The latter are slated as Sprint 6.x add-ons.
+- **Param-preserving redirect.** When renaming a `:param` route, write
+  a tiny inline component that calls `useParams()` and `<Navigate>` to
+  the new path with the param re-inserted.
+
+**Sprint 6.1 backlog:** Manual clock-in (admin: insert + reason; staff:
+upload as approval_request) — including the staff-side UI for "I forgot
+to clock in" requests.
+
+**Sprint 6.2 backlog:** OT approval. Migration 007 adds
+`time_entries.ot_approved BOOLEAN DEFAULT FALSE`. Performance card gains
+a "Pending OT" subtotal + approve action.
+
+**Sprint 6.3 backlog:** Bulk CSV export on the StaffManager list — same
+Timesheet-style menu (week / month / year) plus scope (this staff /
+department / all staff).
+
+**To run before testing:**
+- `psql "$DATABASE_URL?sslmode=require" -f database/migrations/006_perf_config.sql`
+- Redeploy server (the new `/api/admin/staff/:userId/performance` route
+  must be live for the dashboard to populate).
 
 ### 2026-04-29 — Sprint 5.3: blue-only selection + per-employee hours
 

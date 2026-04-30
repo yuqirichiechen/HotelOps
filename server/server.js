@@ -827,6 +827,218 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   });
 });
 
+// ── Admin: per-staff performance ─────────────────────────────────────────────
+//
+// One round-trip computes every metric the StaffDetail performance dashboard
+// needs: hours worked + overtime against a configurable threshold, on-time
+// rate (clock-in within tolerance of scheduled start), shifts worked / missed,
+// 8-week trend, recent shifts, and a self-comparison vs the previous period.
+
+app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'), async (req, res) => {
+  const { userId } = req.params;
+  const period = ['week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'week';
+
+  try {
+    // ── Period ranges (server local time) ─────────────────────────────────
+    const now = new Date();
+    let from, to, prevFrom, prevTo, label;
+
+    if (period === 'week') {
+      const dow    = now.getDay() || 7;             // 1..7 (Mon..Sun)
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (dow - 1));
+      monday.setHours(0, 0, 0, 0);
+      from     = monday;
+      to       = new Date(monday); to.setDate(to.getDate() + 7);
+      prevFrom = new Date(from);   prevFrom.setDate(prevFrom.getDate() - 7);
+      prevTo   = new Date(to);     prevTo.setDate(prevTo.getDate() - 7);
+      label    = 'vs last week';
+    } else if (period === 'month') {
+      from     = new Date(now.getFullYear(), now.getMonth(),     1);
+      to       = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      prevFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      prevTo   = new Date(now.getFullYear(), now.getMonth(),     1);
+      label    = 'vs last month';
+    } else {
+      from     = new Date(now.getFullYear(),     0, 1);
+      to       = new Date(now.getFullYear() + 1, 0, 1);
+      prevFrom = new Date(now.getFullYear() - 1, 0, 1);
+      prevTo   = new Date(now.getFullYear(),     0, 1);
+      label    = 'vs last year';
+    }
+
+    // 8 weeks back (this Monday) for the trend chart
+    const trendStart = new Date(now);
+    const tDow       = trendStart.getDay() || 7;
+    trendStart.setDate(trendStart.getDate() - (tDow - 1) - 7 * 7);
+    trendStart.setHours(0, 0, 0, 0);
+
+    // Earliest cutoff: trend start or prev-period start, whichever is older
+    const fetchFrom = trendStart < prevFrom ? trendStart : prevFrom;
+
+    const settled = await Promise.allSettled([
+      pool.query(
+        `SELECT u.user_id, u.name, u.phone_number, u.role, u.hire_date, u.active,
+                u.department_id, d.name AS department
+         FROM users u LEFT JOIN departments d ON u.department_id = d.department_id
+         WHERE u.user_id = $1`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT key, value FROM app_settings
+         WHERE key IN ('overtime_threshold_hours','on_time_tolerance_minutes','compare_baseline')`
+      ),
+      pool.query(
+        `SELECT entry_id, clock_in_time, clock_out_time, manual_entry,
+                EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
+         FROM time_entries
+         WHERE user_id = $1 AND clock_in_time >= $2
+         ORDER BY clock_in_time DESC`,
+        [userId, fetchFrom]
+      ),
+      pool.query(
+        `SELECT sc.schedule_id, sc.scheduled_date::text,
+                COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+                COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time
+         FROM schedules sc LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id
+         WHERE sc.user_id = $1
+           AND sc.scheduled_date >= $2::date
+           AND sc.scheduled_date <  $3::date`,
+        [userId, from.toISOString().split('T')[0], to.toISOString().split('T')[0]]
+      ),
+    ]);
+
+    // User must exist; everything else can degrade gracefully.
+    if (settled[0].status === 'rejected' || !settled[0].value.rows.length) {
+      return res.status(404).json({ success: false, message: 'Staff not found' });
+    }
+
+    const user      = settled[0].value.rows[0];
+    const config    = { overtime_threshold_hours: 40, on_time_tolerance_minutes: 10, compare_baseline: 'self' };
+    if (settled[1].status === 'fulfilled') {
+      settled[1].value.rows.forEach(r => { if (r.key in config) config[r.key] = r.value; });
+    }
+    config.overtime_threshold_hours  = parseFloat(config.overtime_threshold_hours);
+    config.on_time_tolerance_minutes = parseInt(config.on_time_tolerance_minutes, 10);
+
+    const entries   = settled[2].status === 'fulfilled' ? settled[2].value.rows : [];
+    const schedules = settled[3].status === 'fulfilled' ? settled[3].value.rows : [];
+
+    // Hours of an entry that overlap [a, b)
+    const hoursIn = (e, a, b) => {
+      const start = new Date(e.clock_in_time);
+      const end   = e.clock_out_time ? new Date(e.clock_out_time) : new Date();
+      const oa    = start > a ? start : a;
+      const ob    = end   < b ? end   : b;
+      const ms    = ob - oa;
+      return ms > 0 ? ms / 3600000 : 0;
+    };
+
+    const hoursWorked = entries.reduce((s, e) => s + hoursIn(e, from, to), 0);
+    const prevHours   = entries.reduce((s, e) => s + hoursIn(e, prevFrom, prevTo), 0);
+
+    // Weekly-bucketed overtime within the period
+    const weekMs = 7 * 24 * 3600 * 1000;
+    let hoursOvertime = 0;
+    let cursor = new Date(from);
+    while (cursor < to) {
+      const wEnd  = new Date(cursor.getTime() + weekMs);
+      const clip  = wEnd < to ? wEnd : to;
+      const wHrs  = entries.reduce((s, e) => s + hoursIn(e, cursor, clip), 0);
+      if (wHrs > config.overtime_threshold_hours) hoursOvertime += wHrs - config.overtime_threshold_hours;
+      cursor = wEnd;
+    }
+
+    // Shifts: pair each schedule with an entry within ±4h of scheduled start
+    const tolMs   = config.on_time_tolerance_minutes * 60 * 1000;
+    const matchMs = 4 * 3600 * 1000;
+    let shiftsWorked = 0, shiftsMissed = 0, shiftsLate = 0, shiftsOnTime = 0;
+    schedules.forEach(s => {
+      const schedStart = new Date(`${s.scheduled_date}T${s.start_time}`);
+      const match = entries.find(e =>
+        Math.abs(new Date(e.clock_in_time).getTime() - schedStart.getTime()) <= matchMs
+      );
+      if (match) {
+        shiftsWorked += 1;
+        const lateBy = new Date(match.clock_in_time).getTime() - schedStart.getTime();
+        if (lateBy <= tolMs) shiftsOnTime += 1;
+        else                 shiftsLate   += 1;
+      } else {
+        shiftsMissed += 1;
+      }
+    });
+    const onTimeRate = shiftsWorked > 0 ? shiftsOnTime / shiftsWorked : null;
+
+    // Trend: last 8 weeks of weekly hours (oldest → newest)
+    const trend = [];
+    for (let i = 7; i >= 0; i--) {
+      const dow    = now.getDay() || 7;
+      const wStart = new Date(now);
+      wStart.setDate(now.getDate() - (dow - 1) - i * 7);
+      wStart.setHours(0, 0, 0, 0);
+      const wEnd = new Date(wStart);
+      wEnd.setDate(wStart.getDate() + 7);
+      const h = entries.reduce((s, e) => s + hoursIn(e, wStart, wEnd), 0);
+      trend.push({
+        weekStart: wStart.toISOString().split('T')[0],
+        hours:     Math.round(h * 10) / 10,
+      });
+    }
+
+    const recentShifts = entries.slice(0, 10).map(e => ({
+      entry_id:       e.entry_id,
+      clock_in_time:  e.clock_in_time,
+      clock_out_time: e.clock_out_time,
+      hours:          e.clock_out_time ? Math.round(parseFloat(e.hours) * 10) / 10 : null,
+      manual_entry:   e.manual_entry,
+    }));
+
+    const comparison = {
+      baseline:      config.compare_baseline,
+      label,
+      previousValue: Math.round(prevHours * 10) / 10,
+      deltaPct:      prevHours > 0 ? (hoursWorked - prevHours) / prevHours : null,
+      note:          config.compare_baseline === 'self'
+                       ? null
+                       : 'Other baselines (department / all-staff) not yet implemented — showing self comparison.',
+    };
+
+    return res.json({
+      success: true,
+      user: {
+        user_id:       user.user_id,
+        name:          user.name,
+        phone_number:  user.phone_number,
+        role:          user.role,
+        department:    user.department,
+        department_id: user.department_id,
+        hire_date:     user.hire_date,
+        active:        user.active,
+      },
+      config,
+      period,
+      range: {
+        from: from.toISOString().split('T')[0],
+        to:   new Date(to.getTime() - 86400000).toISOString().split('T')[0],   // inclusive end
+      },
+      hoursWorked:     Math.round(hoursWorked * 10) / 10,
+      hoursOvertime:   Math.round(hoursOvertime * 10) / 10,
+      shiftsScheduled: schedules.length,
+      shiftsWorked,
+      shiftsMissed,
+      shiftsOnTime,
+      shiftsLate,
+      onTimeRate:      onTimeRate != null ? Math.round(onTimeRate * 100) / 100 : null,
+      comparison,
+      trend,
+      recentShifts,
+    });
+  } catch (err) {
+    console.error('[performance]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // ── Admin: time entry override ───────────────────────────────────────────────
 //
 // Direct write to time_entries. Admins are approvers, not requesters, so we
@@ -1122,18 +1334,33 @@ app.get('/api/admin/settings', async (req, res) => {
   }
 });
 
+// Generic settings update — accepts any of the known keys with validation.
+// Body shape is { key1: value1, key2: value2, ... } — single-key or batch
+// updates both work.
 app.put('/api/admin/settings', async (req, res) => {
-  const { schedule_visibility } = req.body;
-  if (!['all', 'department', 'none'].includes(schedule_visibility)) {
-    return res.status(400).json({ success: false, message: 'Invalid visibility value' });
+  const ALLOWED = {
+    schedule_visibility:        v => ['all', 'department', 'none'].includes(v),
+    overtime_threshold_hours:   v => /^\d+(\.\d+)?$/.test(String(v)) && parseFloat(v) > 0 && parseFloat(v) <= 168,
+    on_time_tolerance_minutes:  v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 0 && parseInt(v, 10) <= 240,
+    compare_baseline:           v => ['self', 'department', 'all'].includes(v),
+  };
+  const updates = req.body || {};
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ success: false, message: 'No settings provided' });
+  }
+  for (const [k, v] of Object.entries(updates)) {
+    if (!(k in ALLOWED))   return res.status(400).json({ success: false, message: `Unknown setting: ${k}` });
+    if (!ALLOWED[k](v))    return res.status(400).json({ success: false, message: `Invalid value for ${k}` });
   }
   try {
-    await pool.query(
-      `INSERT INTO app_settings (key, value)
-       VALUES ('schedule_visibility', $1)
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-      [schedule_visibility]
-    );
+    for (const [k, v] of Object.entries(updates)) {
+      await pool.query(
+        `INSERT INTO app_settings (key, value)
+         VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [k, String(v)]
+      );
+    }
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
