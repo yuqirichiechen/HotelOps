@@ -47,8 +47,8 @@ const STATUS_LABEL = {
 };
 
 const AdminHome = () => {
-  const { user } = useAuth();
-  const nav      = useNavigate();
+  const { user, logout } = useAuth();
+  const nav              = useNavigate();
 
   const [data,        setData]        = useState(null);
   const [loading,     setLoading]     = useState(true);
@@ -64,9 +64,11 @@ const AdminHome = () => {
       setError(null);
       setLastUpdated(new Date());
     } else {
-      setError(data?.message
-        ? `${data.message}${status ? ` (HTTP ${status})` : ''}`
-        : `Could not load dashboard${status ? ` (HTTP ${status})` : ''}.`);
+      setError({
+        status,
+        message: data?.message || `Could not load dashboard${status ? ` (HTTP ${status})` : ''}.`,
+        isAuth:  status === 401 || status === 403,
+      });
     }
     setLoading(false);
     setRefreshing(false);
@@ -131,12 +133,31 @@ const AdminHome = () => {
         <div className="adm-error-banner">
           <div className="adm-error-icon">⚠</div>
           <div className="adm-error-msg">
-            <div className="adm-error-title">Couldn't refresh dashboard</div>
-            <div className="adm-error-detail">{error}</div>
+            <div className="adm-error-title">
+              {error.isAuth ? 'Your session expired' : "Couldn't refresh dashboard"}
+            </div>
+            <div className="adm-error-detail">
+              {error.isAuth
+                ? 'Please sign in again to continue.'
+                : error.message}
+              {!error.isAuth && error.status ? ` (HTTP ${error.status})` : ''}
+            </div>
           </div>
-          <button className="adm-error-retry" onClick={refresh} disabled={refreshing}>
-            {refreshing ? '…' : 'Retry'}
-          </button>
+          {error.isAuth ? (
+            <button
+              className="adm-error-retry"
+              onClick={async () => {
+                await logout();
+                nav('/login/admin', { replace: true });
+              }}
+            >
+              Sign in
+            </button>
+          ) : (
+            <button className="adm-error-retry" onClick={refresh} disabled={refreshing}>
+              {refreshing ? '…' : 'Retry'}
+            </button>
+          )}
         </div>
       )}
 

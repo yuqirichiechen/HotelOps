@@ -21,6 +21,16 @@ export const apiFetch = async (path, opts = {}) => {
     ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
     ...(token     ? { Authorization: `Bearer ${token}` }   : {}),
   };
+
+  if (process.env.NODE_ENV === 'development') {
+    // Single-line trace so the network panel and the console agree.
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[apiFetch] ${opts.method || 'GET'} ${path}`,
+      'token:', token ? `${token.slice(0, 12)}…` : 'NONE'
+    );
+  }
+
   let res, data = null;
   try {
     res = await fetch(`${API}${path}`, { ...opts, headers });
@@ -28,6 +38,19 @@ export const apiFetch = async (path, opts = {}) => {
     return { ok: false, status: 0, data: { message: 'Cannot reach server' } };
   }
   try { data = await res.json(); } catch { /* non-JSON */ }
+
+  // 401 means the token is missing/invalid/expired. Clear it and notify
+  // anything listening (AuthProvider) so the user gets a clean kick to
+  // /login instead of a silent dashboard with cryptic errors.
+  if (res.status === 401) {
+    if (token) localStorage.removeItem(TOKEN_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:expired', {
+        detail: { path, hadToken: !!token },
+      }));
+    }
+  }
+
   return { ok: res.ok, status: res.status, data };
 };
 
@@ -57,6 +80,16 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // If any apiFetch elsewhere hits 401 (stale/missing/expired token), it
+  // dispatches 'auth:expired'. We clear local user state so RequireRole
+  // bounces the next render to /login rather than letting components show
+  // empty dashboards with cryptic "missing token" banners.
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener('auth:expired', onExpired);
+    return () => window.removeEventListener('auth:expired', onExpired);
+  }, []);
 
   const loginStaff = async (phone, pin) => {
     const { ok, data } = await apiFetch('/auth/staff/login', {

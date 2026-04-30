@@ -723,6 +723,58 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-04-29 — Sprint 5.1.1: 401 auto-recovery + apiFetch diagnostics
+
+**Bug:** AdminHome was getting `401 {"message": "Missing token"}` from
+`/api/admin/dashboard`, leaving the user on a useless dashboard with no
+escape hatch. The Retry button just re-sent the same broken request.
+
+**Fix — three layers:**
+- **`apiFetch` instruments token usage in dev.** Logs
+  `[apiFetch] METHOD /path token: <prefix>… | NONE` to the console for
+  every call. Makes "is the token actually being sent?" a one-glance
+  question.
+- **`apiFetch` recovers from 401.** Any 401 response triggers
+  `localStorage.removeItem('hotelops-token')` and dispatches a
+  `window` `'auth:expired'` event. Stale/invalid tokens stop sticking
+  around to fail subsequent calls.
+- **`AuthProvider` listens for `'auth:expired'`** and clears `user`.
+  RequireRole bounces the next render to `/login/staff` or
+  `/login/admin` automatically.
+- **`AdminHome` distinguishes auth errors from server errors.** Auth
+  errors get a "Your session expired — Sign in" banner that walks the
+  user through `logout()` + `nav('/login/admin')` instead of pointlessly
+  retrying the same call. Other errors keep the standard Retry button.
+
+**Conventions added:**
+- **401 means session over.** Treat any 401 as terminal: clear the
+  token, mark the user signed-out, and redirect. Don't quietly retry
+  with a token the server has already rejected.
+- **Auth state changes use a window event when the trigger isn't
+  React-lifecycle.** Background fetches discovering a 401 can't easily
+  call `setUser`, but they can dispatch `'auth:expired'`. AuthProvider
+  subscribes once at mount and reacts cleanly.
+
+### 2026-04-29 — Sprint 5.1.1: dev proxy fix
+
+**Bug:** `npm start` (CRA dev server, port 3000) had no proxy to the
+Express API on port 3001. All `/api/*` requests 404'd — login was
+completely broken in development. The legacy `services/timeClock.js`
+hit `/api` which got intercepted by CRA's dev server, returning the
+React app HTML or 404.
+
+**Fix:** added `"proxy": "http://localhost:3001"` to the frontend
+`package.json`. CRA automatically forwards unknown paths (anything not
+matching a static asset) to the proxy target during dev. Production
+behavior is unchanged because the Express server serves the React build
+on the same origin.
+
+**Note for future iterations:** CRA reads the `proxy` field once at
+dev-server startup. If you change it (or the backend port), you must
+restart `npm start`. In production, it's not used — `server.js` serves
+the static build via `express.static(buildPath)` plus the SPA `*`
+fallback, so `/api/*` and `/*` share an origin.
+
 ### 2026-04-29 — Sprint 5.1: dashboard error surfacing
 
 **Bug:** AdminHome silently swallowed fetch failures (auth errors, server
