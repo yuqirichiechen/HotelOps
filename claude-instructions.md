@@ -67,7 +67,7 @@ Single repo. Frontend in `src/`, backend in `server/`, schema/migrations in `dat
 - `/timeclock` — redirects to `/`.
 
 **Admin** (sidebar shows ADMIN_NAV when `user.role === 'admin'`):
-- `/admin` — `AdminHome` dashboard: greeting, stats banner (active staff / on the clock / hours this week / pending approvals), Currently Working card (dept-grouped, click to detail), Today's Schedule with status pills, Pending Approvals list.
+- `/admin` — `AdminHome` dashboard: greeting, stats banner — operational lens (on the clock / coming up today / hours this week / pending OT in hours) — clickable cards swap a single detail card below.
 - `/admin/staff` — `StaffManager` (list, grouped by dept; click row → detail). `/admin/employees` 301-redirects here.
 - `/admin/staff/:userId` — `StaffDetail` — **performance dashboard** (period selector, 4 stat cards with delta, 8-week trend chart) on top, then existing edit form / PIN management / Time Entries override / deactivate-delete sections.
 - `/admin/scheduling` — `SchedulingManager` (week/month views).
@@ -215,7 +215,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 ### Admin (mix of protected and legacy unprotected)
 
 - `GET  /api/health`
-- `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data (now also `staffHoursThisWeek`)
+- `GET  /api/admin/dashboard`                  auth (admin) — Sprint 5 — aggregated home data (Sprint 6.5.1 added `weekOTTotal` (hours) + `staffWithPendingOT` (per-staff list) computed against `app_settings.overtime_threshold_hours`; also includes `staffHoursThisWeek`)
 - `GET  /api/admin/staff/:userId/performance?period=week|month|year`  auth (admin) — Sprint 6 — per-staff metrics (hours, OT split into approved/pending, on-time, shifts, 8-week trend, prev-period comparison)
 - `POST /api/admin/staff/:userId/approve-ot?period=week|month|year`  auth (admin) — Sprint 6.2 — flips ot_approved=true on every unapproved entry in range; single audit_logs row per bulk action
 - `GET  /api/admin/entries?from=&to=&user_ids=&dept_id=`  auth (admin) — Sprint 6.4 — bulk time-entries query for CSV export; filters by date range plus optional user_ids (comma-sep) or dept_id; returns entries joined with name + department
@@ -725,6 +725,89 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-05-02 — Sprint 6.5.1: finish the Home/Staff de-duplication
+
+Sprint 6.5B made the two banners *less* duplicated but didn't go far enough.
+"On the clock" still appeared on both pages, and "Pending approvals" on
+AdminHome was a leftover (manual-edit approval queue is empty in practice
+— the OT bucket is the real action-required signal). The user also caught
+a subtle bug in **Avg hours / staff**: the denominator was `total active`
+even when half the staff didn't work that week, so the average drifted
+down for reasons unrelated to scheduling.
+
+**Final lens split.** Both pages now have one truly shared metric (Pending
+OT) but expressed in the unit each page cares about:
+
+- **Home (operational):** On the clock · Coming up today · Hours this week
+  · **Pending OT** *(in hours, e.g. `5.5h` — "how much OT do I owe this
+  week?")*
+- **Staff (roster):** Active staff · **Needs OT approval** *(head count —
+  "how many people need my approval?")* · Avg hours / staff · Recent hires
+
+**Server (`GET /api/admin/dashboard`).** Added an 8th query reading
+`overtime_threshold_hours` from `app_settings` (defaults to 40 if missing
+or unparseable). The existing `staffHours` query also picks up
+`BOOL_AND(te.ot_approved) AS all_approved`. JS then iterates staffHours
+and, for each row where `hours > threshold && all_approved !== true`,
+pushes to `staffWithPendingOT` (with `pending_ot_hours = hours - threshold`)
+and adds the pending hours to `weekOTTotal`. Both new fields ship in the
+response. `BOOL_AND` over an empty set is null, which is why the check is
+`!== true` rather than `=== false` — staff with no entries still surface
+correctly if their hours straddle the threshold via cross-week shifts.
+
+**Avg hours bug fix.** Denominator is now the count of staff who actually
+worked any hours this week (`hours_this_week > 0`), not all active staff.
+Why: on a week where half the team was off, the old metric reported
+half-strength averages even though the people who *did* work logged
+normal hours. The number was technically correct but operationally
+misleading — managers care about utilization of the people scheduled to
+work, not utilization across everyone on payroll. Same logic should apply
+to any future "per-X" metric where X excludes zero-cases.
+
+**Files modified:**
+- `server/server.js` — added `otThreshold` to the labels array (8th
+  Promise.allSettled slot); `staffHours` query gains
+  `BOOL_AND(te.ot_approved) AS all_approved`; new query reads
+  `app_settings.overtime_threshold_hours`; JS pass builds
+  `staffWithPendingOT` array and `weekOTTotal` number; both added to
+  response payload.
+- `src/pages/AdminHome/index.js` — `VIEWS` array swaps `'approvals'` →
+  `'pending-ot'`; stat card 4 swaps eyebrow/value/meta to read pending
+  OT in **hours** with `tone: 'action'` when nonzero; renderDetail
+  branch lists `staffWithPendingOT` rows showing logged hours + pending
+  OT, click navigates to `/admin/staff/:userId`. Standalone bottom
+  approvals card removed (was already gone in this build).
+- `src/components/AdminPanel/StaffManager.js` — `stats` useMemo splits
+  `activeOnly` into `working = activeOnly.filter(hours > 0)` and uses
+  `working.length` as the avg-hours denominator; new `needsOT` count of
+  active staff with `pending_ot_hours > 0`; banner swaps "On the clock"
+  for "Needs OT approval" (warn-tone when > 0, clickable when > 0);
+  `filtered` useMemo replaces the `'on-clock'` branch with `'needs-ot'`
+  (filters to `pending_ot_hours > 0`). Avg-hours subtitle reworded to
+  "this week, working staff" to make the denominator explicit.
+
+**Conventions added:**
+- **Same metric, different unit.** When the same underlying data
+  belongs on two pages, vary the unit so each page expresses the
+  question its lens is asking. Pending OT lives on Home as a
+  **time** ("how much do I owe?") and on Staff as a **count** ("how
+  many people?"). The two cards stay in sync because they read the
+  same server fields, but a reader skimming the two pages doesn't
+  feel they're seeing the same number twice.
+- **"Per-staff" averages exclude zero-cases.** Any avg/count/ratio
+  whose denominator is "active staff" should ask first whether
+  zero-case staff *belong* in the denominator. For utilization-style
+  metrics they don't — the person who didn't work is not "below
+  average," they're outside the population. Use the working subset
+  as denominator; surface that fact in the meta line so it's
+  auditable.
+- **`BOOL_AND` for "all approved" rollups.** When you need "is every
+  matching row in state X?", `BOOL_AND` over the boolean column is
+  cheaper than counting separately. Watch for the empty-set case —
+  `BOOL_AND` returns null, so always compare `!== true` (not
+  `=== false`) when "no entries at all" should fall through to the
+  not-yet-approved branch.
 
 ### 2026-05-02 — Sprint 6.5: QoL polish (closes Sprint 6)
 

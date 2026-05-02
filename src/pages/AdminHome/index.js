@@ -5,11 +5,13 @@ import './AdminHome.css';
 
 // Manager dashboard. Stats banner cards are clickable and drive a single
 // detail panel below — clicking "On the clock" shows currently working,
-// "Coming up today" shows scheduled-not-yet-started, "Pending approvals"
-// shows the queue. "Hours this week" stays informational.
+// "Coming up today" shows scheduled-not-yet-started, "Pending OT" shows
+// staff over the weekly OT threshold whose hours haven't been approved.
+// "Hours this week" stays informational.
 //
-// Active-staff count was dropped (50+ employees → not actionable). Today's
-// schedule card is gone too — that view belongs on the calendar.
+// Pending OT lives on Home as an hours total (operational lens — "how
+// much OT do I owe this week?") and on Staff as a head count (roster
+// lens — "who needs my approval?"). Same source data, different unit.
 
 const fmtSince = (iso) => {
   const ms = Date.now() - new Date(iso).getTime();
@@ -43,7 +45,7 @@ const STATUS_LABEL = {
   'yet-to-start': 'Yet to start',
 };
 
-const VIEWS = ['on-clock', 'coming-up', 'hours', 'approvals'];
+const VIEWS = ['on-clock', 'coming-up', 'hours', 'pending-ot'];
 
 const AdminHome = () => {
   const { user, logout } = useAuth();
@@ -147,11 +149,13 @@ const AdminHome = () => {
       clickable: true,
     },
     {
-      key:       'approvals',
-      eyebrow:   'Pending approvals',
-      value:     loading ? '—' : (data?.pendingApprovalsCount ?? 0),
-      meta:      data?.pendingApprovalsCount ? 'waiting for review' : 'all caught up',
-      tone:      data?.pendingApprovalsCount ? 'action' : null,
+      key:       'pending-ot',
+      eyebrow:   'Pending OT',
+      value:     loading ? '—' : `${data?.weekOTTotal ?? 0}h`,
+      meta:      data?.weekOTTotal
+        ? `${(data?.staffWithPendingOT || []).length} ${(data?.staffWithPendingOT || []).length === 1 ? 'person' : 'people'} over threshold`
+        : 'no one over threshold',
+      tone:      data?.weekOTTotal ? 'action' : null,
       clickable: true,
     },
   ];
@@ -311,33 +315,40 @@ const AdminHome = () => {
       );
     }
 
-    if (view === 'approvals') {
-      const list = data?.pendingApprovals || [];
+    if (view === 'pending-ot') {
+      const list = data?.staffWithPendingOT || [];
       return (
         <>
           <div className="adm-card-head">
-            <h2 className="adm-card-title">Pending approvals</h2>
-            {list.length > 0 && <span className="adm-card-count">{list.length}</span>}
+            <h2 className="adm-card-title">Pending OT approval</h2>
+            {list.length > 0 && (
+              <span className="adm-card-count">
+                {list.length} {list.length === 1 ? 'person' : 'people'}
+              </span>
+            )}
           </div>
           {list.length === 0 ? (
             <div className="adm-empty">
-              No approvals waiting.
+              No one is over the weekly OT threshold.
               <div className="adm-empty-sub">
-                Manual time-edit requests show up here for review.
+                When staff log more than the threshold, their pending hours show here for approval.
               </div>
             </div>
           ) : (
-            <ul className="adm-appr-list">
-              {list.map(a => (
-                <li key={a.request_id} className="adm-appr-row">
-                  <span className="adm-appr-name">{a.requested_by_name}</span>
-                  {' — manual time edit'}
-                  <div className="adm-appr-reason">"{a.reason}"</div>
-                  <div className="adm-appr-date">
-                    {new Date(a.created_at).toLocaleDateString([], {
-                      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                    })}
+            <ul className="adm-hours-list">
+              {list.map(s => (
+                <li
+                  key={s.user_id}
+                  className="adm-hours-row"
+                  onClick={() => nav(`/admin/staff/${s.user_id}`)}
+                >
+                  <div className="adm-hours-info">
+                    <div className="adm-hours-name">{s.name}</div>
+                    <div className="adm-hours-meta">
+                      {s.department || 'Unassigned'} · {s.hours}h logged
+                    </div>
                   </div>
+                  <div className="adm-hours-num">+{s.pending_ot_hours}h</div>
                 </li>
               ))}
             </ul>

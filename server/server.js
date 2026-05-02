@@ -734,6 +734,7 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   const labels = [
     'activeStaff', 'currentlyWorking', 'todaySchedule',
     'todayEntries', 'pendingApprovals', 'weekHours', 'staffHours',
+    'otThreshold',
   ];
   const settled = await Promise.allSettled([
     pool.query('SELECT COUNT(*)::int AS n FROM users WHERE active = true'),
@@ -781,13 +782,14 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
       FROM time_entries
       WHERE clock_in_time >= date_trunc('week', CURRENT_DATE)
     `),
-    // Per-employee hours this week (for the "Hours this week" detail view).
-    // Inner join — only employees who actually clocked anything count.
+    // Per-employee hours this week + whether all entries are OT-approved
+    // (drives both the Hours-detail view and the new Pending-OT view).
     pool.query(`
       SELECT u.user_id, u.name, d.name AS department,
              SUM(
                EXTRACT(EPOCH FROM (COALESCE(te.clock_out_time, NOW()) - te.clock_in_time)) / 3600.0
-             )::float AS hours
+             )::float                       AS hours,
+             BOOL_AND(te.ot_approved)        AS all_approved
       FROM users u
       JOIN time_entries te
         ON te.user_id = u.user_id
@@ -797,6 +799,10 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
       GROUP BY u.user_id, u.name, d.name
       ORDER BY hours DESC, u.name
     `),
+    // OT threshold for pending-OT computation
+    pool.query(
+      `SELECT value FROM app_settings WHERE key = 'overtime_threshold_hours'`
+    ),
   ]);
 
   const errors = [];
@@ -819,6 +825,28 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   const pendingApprovals = out.pendingApprovals || { rows: [] };
   const weekHours        = out.weekHours        || { rows: [{ hours: 0 }] };
   const staffHours       = out.staffHours       || { rows: [] };
+  const otThreshold      = out.otThreshold      || { rows: [] };
+
+  // Pending-OT aggregation: a staff has pending OT when their weekly hours
+  // exceed the threshold AND any of their entries this week is unapproved.
+  const threshold      = parseFloat(otThreshold.rows[0]?.value || '40') || 40;
+  const staffWithPendingOT = [];
+  let   weekOTTotal    = 0;
+  staffHours.rows.forEach(r => {
+    const hrs = parseFloat(r.hours) || 0;
+    if (hrs > threshold && r.all_approved !== true) {
+      const pending = hrs - threshold;
+      weekOTTotal += pending;
+      staffWithPendingOT.push({
+        user_id:          r.user_id,
+        name:             r.name,
+        department:       r.department,
+        pending_ot_hours: Math.round(pending * 10) / 10,
+        hours:            Math.round(hrs * 10) / 10,
+      });
+    }
+  });
+  weekOTTotal = Math.round(weekOTTotal * 10) / 10;
 
   // Derive per-schedule status (clocked-in / late / yet-to-start / finished).
   const now     = new Date();
@@ -853,6 +881,8 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
     pendingApprovals:      pendingApprovals.rows,
     pendingApprovalsCount: pendingApprovals.rows.length,
     weekHoursTotal:        Math.round((weekHours.rows[0]?.hours ?? 0) * 10) / 10,
+    weekOTTotal,                                          // Sprint 6.5.1
+    staffWithPendingOT,                                   // Sprint 6.5.1
     staffHoursThisWeek:    staffHours.rows.map(r => ({
                              user_id:    r.user_id,
                              name:       r.name,

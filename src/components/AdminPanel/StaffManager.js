@@ -64,7 +64,7 @@ const StaffManager = () => {
   // List controls
   const [search,          setSearch]          = useState('');
   const [selectedDept,    setSelectedDept]    = useState('all');
-  const [statFilter,      setStatFilter]      = useState('all'); // 'all' | 'on-clock' | 'pending-ot'
+  const [statFilter,      setStatFilter]      = useState('all'); // 'all' | 'needs-ot' | 'recent-hires'
   const [includeInactive, setIncludeInactive] = useState(false);
 
   // CSV export popover (Sprint 6.4)
@@ -128,8 +128,16 @@ const StaffManager = () => {
   const stats = useMemo(() => {
     const activeOnly = employees.filter(e => e.active);
     const total      = activeOnly.length;
-    const onClock    = activeOnly.filter(e => e.is_on_clock).length;
-    const totalHrs   = activeOnly.reduce((s, e) => s + (e.hours_this_week || 0), 0);
+
+    // Avg hours denominator = staff who actually worked any hours this week.
+    // Including non-working staff drags the average down even when no one
+    // joined or left, which makes the metric noisy and misleading.
+    const working  = activeOnly.filter(e => (e.hours_this_week || 0) > 0);
+    const totalHrs = working.reduce((s, e) => s + (e.hours_this_week || 0), 0);
+
+    // Needs OT approval = active staff whose pending_ot_hours > 0. Server
+    // already accounted for the threshold and ot_approved flag.
+    const needsOT = activeOnly.filter(e => (e.pending_ot_hours || 0) > 0).length;
 
     // Recent hires = active staff whose hire_date is within the last 30 days.
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
@@ -140,11 +148,9 @@ const StaffManager = () => {
 
     return {
       total,
-      onClock,
-      avgHours:    total ? Math.round((totalHrs / total) * 10) / 10 : 0,
+      needsOT,
+      avgHours:    working.length ? Math.round((totalHrs / working.length) * 10) / 10 : 0,
       recentHires: recent,
-      weekHours:   Math.round(totalHrs * 10) / 10,
-      pendingOT:   Math.round(employees.reduce((s, e) => s + (e.pending_ot_hours || 0), 0) * 10) / 10,
     };
   }, [employees]);
 
@@ -159,7 +165,7 @@ const StaffManager = () => {
         if (key !== selectedDept) return false;
       }
       if (q && !e.name.toLowerCase().includes(q)) return false;
-      if (statFilter === 'on-clock'     && !e.is_on_clock) return false;
+      if (statFilter === 'needs-ot'     && !((e.pending_ot_hours || 0) > 0)) return false;
       if (statFilter === 'recent-hires' && (!e.hire_date || new Date(e.hire_date).getTime() < cutoff)) {
         return false;
       }
@@ -253,19 +259,21 @@ const StaffManager = () => {
             value: loading ? '—' : stats.total,
             meta: 'on the roster',  clickable: true,
           },
+          // Roster lens: who needs my attention as a manager? "On the clock"
+          // moved to AdminHome (operational lens). Pending OT shows up here
+          // as a head count — staff above the weekly threshold pending
+          // approval — and on AdminHome as an hours total.
           {
-            key: 'on-clock',   eyebrow: 'On the clock',
-            value: loading ? '—' : stats.onClock,
-            meta: stats.onClock ? 'right now' : 'no one',
-            tone: stats.onClock ? 'live' : null,    clickable: true,
+            key: 'needs-ot',   eyebrow: 'Needs OT approval',
+            value: loading ? '—' : stats.needsOT,
+            meta: stats.needsOT ? 'over weekly threshold' : 'all caught up',
+            tone: stats.needsOT ? 'warn' : null,
+            clickable: stats.needsOT > 0,
           },
-          // Operational vs roster lens: the StaffManager focuses on the
-          // workforce composition. Hours-this-week + Pending OT moved to
-          // AdminHome's operational lens. These two are the roster lens.
           {
             key: 'avg-hours', eyebrow: 'Avg hours / staff',
             value: loading ? '—' : `${stats.avgHours}h`,
-            meta: 'this week, active staff',  clickable: false,
+            meta: 'this week, working staff',  clickable: false,
           },
           {
             key: 'recent-hires', eyebrow: 'Recent hires',
