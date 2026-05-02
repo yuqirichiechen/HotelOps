@@ -124,17 +124,34 @@ const StaffManager = () => {
     }
   };
 
-  // ── Stats (across all employees, regardless of filters) ───────────────────
-  const stats = useMemo(() => ({
-    total:     employees.filter(e => e.active).length,
-    onClock:   employees.filter(e => e.is_on_clock).length,
-    weekHours: Math.round(employees.reduce((s, e) => s + (e.hours_this_week || 0), 0) * 10) / 10,
-    pendingOT: Math.round(employees.reduce((s, e) => s + (e.pending_ot_hours || 0), 0) * 10) / 10,
-  }), [employees]);
+  // ── Stats (roster lens — see claude-instructions.md "operational vs roster") ──
+  const stats = useMemo(() => {
+    const activeOnly = employees.filter(e => e.active);
+    const total      = activeOnly.length;
+    const onClock    = activeOnly.filter(e => e.is_on_clock).length;
+    const totalHrs   = activeOnly.reduce((s, e) => s + (e.hours_this_week || 0), 0);
+
+    // Recent hires = active staff whose hire_date is within the last 30 days.
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    const recent = activeOnly.filter(e => {
+      if (!e.hire_date) return false;
+      return new Date(e.hire_date).getTime() >= cutoff;
+    }).length;
+
+    return {
+      total,
+      onClock,
+      avgHours:    total ? Math.round((totalHrs / total) * 10) / 10 : 0,
+      recentHires: recent,
+      weekHours:   Math.round(totalHrs * 10) / 10,
+      pendingOT:   Math.round(employees.reduce((s, e) => s + (e.pending_ot_hours || 0), 0) * 10) / 10,
+    };
+  }, [employees]);
 
   // ── Filtered list ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q      = search.trim().toLowerCase();
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
     return employees.filter(e => {
       if (!includeInactive && !e.active) return false;
       if (selectedDept !== 'all') {
@@ -142,8 +159,10 @@ const StaffManager = () => {
         if (key !== selectedDept) return false;
       }
       if (q && !e.name.toLowerCase().includes(q)) return false;
-      if (statFilter === 'on-clock'   && !e.is_on_clock)            return false;
-      if (statFilter === 'pending-ot' && (e.pending_ot_hours || 0) === 0) return false;
+      if (statFilter === 'on-clock'     && !e.is_on_clock) return false;
+      if (statFilter === 'recent-hires' && (!e.hire_date || new Date(e.hire_date).getTime() < cutoff)) {
+        return false;
+      }
       return true;
     });
   }, [employees, search, selectedDept, statFilter, includeInactive]);
@@ -240,17 +259,20 @@ const StaffManager = () => {
             meta: stats.onClock ? 'right now' : 'no one',
             tone: stats.onClock ? 'live' : null,    clickable: true,
           },
+          // Operational vs roster lens: the StaffManager focuses on the
+          // workforce composition. Hours-this-week + Pending OT moved to
+          // AdminHome's operational lens. These two are the roster lens.
           {
-            key: 'hours',      eyebrow: 'Hours this week',
-            value: loading ? '—' : stats.weekHours,
-            meta: 'across all staff',  clickable: false,
+            key: 'avg-hours', eyebrow: 'Avg hours / staff',
+            value: loading ? '—' : `${stats.avgHours}h`,
+            meta: 'this week, active staff',  clickable: false,
           },
           {
-            key: 'pending-ot', eyebrow: 'Pending OT',
-            value: loading ? '—' : `${stats.pendingOT}h`,
-            meta: stats.pendingOT > 0 ? 'awaiting review' : 'all approved',
-            tone: stats.pendingOT > 0 ? 'warn' : null,
-            clickable: stats.pendingOT > 0,
+            key: 'recent-hires', eyebrow: 'Recent hires',
+            value: loading ? '—' : stats.recentHires,
+            meta: stats.recentHires > 0 ? 'last 30 days' : 'no one new',
+            tone: stats.recentHires > 0 ? 'action' : null,
+            clickable: stats.recentHires > 0,
           },
         ].map(s => {
           const isSelected = s.clickable && statFilter === s.key;

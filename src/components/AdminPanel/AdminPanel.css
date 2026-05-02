@@ -2338,7 +2338,12 @@
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  min-width: 280px;
+  /* Sized to content with sane bounds: never narrower than 260px,
+     never wider than the viewport minus a 32px gutter. */
+  width: max-content;
+  min-width: 260px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -2379,7 +2384,8 @@
 }
 
 .staff-mgr-export-period {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   background: var(--bg-raised);
   border-radius: 9px;
   padding: 3px;
@@ -2397,7 +2403,9 @@
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.15s ease, color 0.15s ease;
-  flex: 1;
+  flex: 1 1 64px;
+  min-width: 60px;
+  white-space: nowrap;
 }
 
 .staff-mgr-export-period-btn:hover { color: var(--text-primary); }
@@ -2466,10 +2474,24 @@
 
 @media (max-width: 720px) {
   .staff-mgr-export-menu {
-    min-width: 0;
+    /* width/max-width above keep it inside viewport; just tighten paddings. */
+    min-width: 240px;
+    padding: 14px 14px;
+    gap: 12px;
+  }
+  .staff-mgr-export-title      { font-size: 13px; }
+  .staff-mgr-export-radio      { font-size: 12px; }
+  .staff-mgr-export-period-btn { padding: 6px 10px; font-size: 11px; }
+}
+
+@media (max-width: 420px) {
+  .staff-mgr-export-menu {
+    /* Tight phones: switch the anchor edge so the popover doesn't
+       spill past the right side of the viewport when the trigger is
+       deep on the right. */
     right: auto;
     left: 0;
-    width: calc(100vw - 36px);
-    max-width: 360px;
+    min-width: 0;
+    width: calc(100vw - 32px);
   }
 }

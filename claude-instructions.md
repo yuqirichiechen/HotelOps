@@ -726,6 +726,59 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-02 — Sprint 6.5: QoL polish (closes Sprint 6)
+
+Two cleanups before calling Sprint 6 done.
+
+**6.5A — Export popover responsive on mobile.** The popover was a fixed
+≥280px wide regardless of viewport. Switched the menu to
+`width: max-content; min-width: 260px; max-width: calc(100vw - 32px);
+box-sizing: border-box;` so it fits content without overflowing the
+screen. Period control now `flex-wrap`s its buttons (4 in a row on
+desktop, 2×2 on tight phones). Added a tighter mobile breakpoint at
+720px (smaller padding, tighter type) and a phone breakpoint at 420px
+that flips the anchor edge from `right: 0` to `left: 0` so the popover
+doesn't spill off-screen when the trigger is deep on the right.
+
+**6.5B — StaffManager stats: replace duplicates.** AdminHome already
+shows "Hours this week" and "Pending OT"-adjacent metrics (it owns the
+operational lens — what's happening *now*). StaffManager owning the
+same numbers was redundant. New StaffManager stats focus on the
+**roster lens** (who is *here*):
+- Removed: Hours this week, Pending OT.
+- Added: **Avg hours / staff** (totalHrs ÷ active count, "this week,
+  active staff" subtitle). Informational, not clickable. Workforce
+  utilization signal — if this drops, the team is under-scheduled.
+- Added: **Recent hires** (count of active staff whose `hire_date`
+  is within the last 30 days). Action-tone when > 0; clickable to
+  filter the list to those new staff. Goes informational ("no one
+  new") when zero.
+- Existing list filter now supports `statFilter === 'recent-hires'` —
+  same 30-day cutoff so the count and the filtered rows agree.
+
+**Files modified:**
+- `src/components/AdminPanel/AdminPanel.css` — rewrote
+  `.staff-mgr-export-menu` width strategy, `.staff-mgr-export-period`
+  flex-wrap, two responsive breakpoints (720px tighten, 420px anchor
+  flip).
+- `src/components/AdminPanel/StaffManager.js` — `stats` useMemo now
+  also returns `avgHours` and `recentHires`; banner card array
+  swapped two entries; `filtered` useMemo gained the `recent-hires`
+  filter branch.
+
+**Conventions added:**
+- **Operational vs roster lens.** When two pages have stats banners,
+  give them different lenses so they read as complementary rather
+  than redundant. AdminHome = operational ("what's happening now —
+  on the clock, coming up, hours, approvals"). StaffManager = roster
+  ("who's here — total active, on the clock, avg utilization, growth").
+  The "On the clock" overlap is fine because both lenses care about
+  it; the *other* numbers should differ.
+- **Popover sizing.** Use `width: max-content` + `max-width: calc(100vw
+  - 32px)` so popovers grow to fit content but never overflow. Pair
+  with `box-sizing: border-box` so padding is included in the cap.
+  Don't hard-code widths.
+
 ### 2026-04-30 — Sprint 6.4: bulk CSV export + Add Staff repositioned
 
 **Two changes on the staff list page:**
