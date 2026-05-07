@@ -1281,6 +1281,254 @@
   .day-shift-meta { font-size: 10px; }
 }
 
+/* ── Sprint 8.4: Day controls (filter chips + mode toggle) ──────────────── */
+
+.day-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.day-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+
+.day-chip {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+.day-chip:hover { background: var(--bg-raised); color: var(--text-primary); }
+.day-chip.is-active {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  color: white;
+}
+
+.day-mode-toggle {
+  display: flex;
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.day-mode-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.day-mode-btn.is-active {
+  background: var(--bg-surface);
+  color: var(--brand-text);
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Sprint 8.4: Resource view (staff rows × hours columns) ─────────────── */
+
+.day-resource-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.day-resource-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--border-light);
+  min-height: 44px;
+}
+.day-resource-row:last-child { border-bottom: none; }
+
+/* Hour-axis header at the top of the resource grid. */
+.day-resource-hour-header {
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 28px;
+}
+.day-resource-hour-bar {
+  position: relative;
+  height: 24px;
+  margin: 0 8px;
+}
+.day-resource-hour-label {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Subtle dept group header row. */
+.day-resource-dept-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-surface-alt);
+  border-bottom: 1px solid var(--border-light);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.day-resource-dept-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.day-resource-dept-name { flex: 0 1 auto; }
+.day-resource-dept-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Staff name column. Sticky-left within rows so it stays visible during
+   any future horizontal-scroll story; for now the track fits without
+   scroll, but the position:sticky doesn't hurt. */
+.day-resource-name-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  border-right: 1px solid var(--border-light);
+  height: 100%;
+}
+
+.day-resource-initial {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.day-resource-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The 24h track that holds the staff's shift bar (if any). */
+.day-resource-track {
+  position: relative;
+  height: 28px;
+  margin: 6px 8px;
+  background: var(--bg-base);
+  border-radius: 6px;
+}
+.day-resource-tick {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 0;
+  border-left: 1px dashed var(--border);
+  pointer-events: none;
+}
+
+.day-resource-shift {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 1.5px solid;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: box-shadow 0.12s ease;
+  z-index: 1;
+}
+.day-resource-shift:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  z-index: 2;
+}
+.day-resource-shift-time {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-empty-static {
+  position: static;
+  display: block;
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+@media (max-width: 480px) {
+  .day-resource-row { grid-template-columns: 96px 1fr; }
+  .day-resource-name-col { padding: 6px 8px; gap: 6px; font-size: 12px; }
+  .day-resource-initial { width: 20px; height: 20px; font-size: 10px; }
+  .day-resource-track { margin: 6px 6px; }
+  .day-resource-shift-time { font-size: 10px; }
+  .day-resource-dept-row { padding: 7px 10px; font-size: 11px; }
+  .day-resource-hour-bar { margin: 0 6px; }
+  .day-mode-btn { padding: 6px 10px; }
+}
+
 /* ── Sprint 8.0: header "+" button + view transitions ───────────────────── */
 
 .sched-add-btn {

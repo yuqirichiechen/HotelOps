@@ -733,6 +733,84 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 8.4: dual-mode DayView (Timeline + Resource) + dept filter
+
+The iOS-Calendar-Day pattern from 8.0D — hours-on-Y with lane-packed
+overlapping shifts — broke down at 4+ overlaps: lanes shrink to ~85px
+each and text inside becomes unreadable. The user reported it as
+unusable on mobile with even 3 staff visible. Sprint 8.4 keeps the
+iOS-style timeline as one mode and adds a **Resource mode**
+(staff-on-Y / hours-on-X, one row per person) that scales to any
+number of staff, plus a department filter to focus on one team.
+
+**Two modes, user toggles:**
+- **Timeline** — hours-on-Y, lane-packed shift blocks. Beautiful for a
+  single department (lane count is bounded by that dept's headcount).
+- **Resource (Rows)** — staff-on-Y, 24h track per person, single
+  positioned shift bar per row. Doesn't lane-pack because nothing
+  overlaps within a row; scales arbitrarily — 30 staff → 30 rows.
+
+**Department filter chips** above the controls: `All · Front Desk ·
+Housekeeping · …`. Filter and mode are independent state, but the
+filter has a **smart default** that auto-flips the mode on change:
+- Pick a single dept → switch to **Timeline** (lane count is bounded
+  to that dept's people, so blocks read).
+- Pick **All** → switch to **Resource** (no lane-packing needed).
+The admin can still override via the toggle — both modes work in
+either filter state, the smart default is just a starting point so
+the obvious-good combo lands without an extra click.
+
+**Resource view layout:**
+- Hour-axis header at top (sticky) with labels at 12am/6am/12pm/6pm.
+- One row per staff: `grid-template-columns: 130px 1fr` — sticky
+  staff-name column on the left, 24h track on the right with a single
+  positioned `.day-resource-shift` bar per row.
+- Department-grouped subtle headers above each dept's rows, with a
+  count summary (`3 / 5 on` — three of five front-desk staff are
+  scheduled).
+- Empty rows render the track without a bar, so the dept's coverage
+  gaps stay visible at a glance.
+
+**Why this layout exists alongside the iOS one rather than replacing
+it.** The user explicitly liked the iOS-Calendar feel for one-team
+views (small lane count + tall hours feels like reading an actual
+schedule). They didn't want to lose it. Resource is the
+escape-hatch for "I need to see everyone today" — same data, different
+projection. Toggle keeps the per-team aesthetic available when the
+admin wants it.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/DayView.js` — split into a
+  parent component (state + chips + toggle + week strip) and two
+  inner components: `TimelineMode` (the original 8.0D layout,
+  lane-packed) and `ResourceMode` (new staff-rows layout). New
+  helpers `verticalShiftBox()` and `horizontalShiftBox()` for the
+  two axis orientations.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` — appended
+  styles: `.day-controls` row (chips + toggle), `.day-chip` /
+  `.day-mode-btn` (chip + segmented-control style), full
+  `.day-resource-*` layout (wrap, row, name-col, track, shift bar,
+  dept-row sub-headers, hour-bar header). Mobile breakpoint
+  shrinks the name column to 96px on phones.
+
+**Conventions added:**
+- **When one visualization breaks at scale, add a sibling, don't
+  replace.** The iOS-Calendar-Day timeline reads beautifully at small
+  scale and breaks at large scale; resource view reads at any scale
+  but loses the iOS aesthetic. Toggle between them. Same data,
+  different projections — admin picks the one matching the question
+  they're asking ("who is here today?" vs "what's the morning
+  coverage look like?"). Don't force a one-size-fits-all visual when
+  two genuinely different shapes serve different intents.
+- **Smart default + manual override beats either alone.** Auto-
+  switching mode when the filter changes saves the admin a click for
+  the common case (filter Front Desk → wants Timeline 90% of the
+  time), but allowing manual override means we don't have to be
+  right 100% of the time. The pattern: `setX(suggested(input))` on
+  every input change, but never block subsequent manual `setX(other)`
+  calls. The "smart" part is just precomputing a reasonable starting
+  point, not enforcing a coupling.
+
 ### 2026-05-07 — Sprint 8.3: warn-but-allow conflict detection + Sprint 8 close
 
 The last bit of the Sprint 8 umbrella — conflict detection on shift
