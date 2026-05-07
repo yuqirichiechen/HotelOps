@@ -32,39 +32,41 @@ const ROW_1 = ['q','w','e','r','t','y','u','i','o','p'];
 const ROW_2 = ['a','s','d','f','g','h','j','k','l'];
 const ROW_3 = ['z','x','c','v','b','n','m'];
 
-const KeypadNumbers = ({ onKey, onSwitch }) => (
-  <div className="login-keypad">
+const KeypadNumbers = ({ onKey, onSwitch, hidden }) => (
+  <div className={`login-keypad ${hidden ? 'is-hidden' : ''}`} aria-hidden={hidden || undefined}>
     {['1','2','3','4','5','6','7','8','9'].map(n => (
-      <button key={n} type="button" className="lk-btn" onClick={() => onKey(n)}>
+      <button key={n} type="button" className="lk-btn" tabIndex={hidden ? -1 : 0} onClick={() => onKey(n)}>
         {n}
       </button>
     ))}
-    <button type="button" className="lk-btn lk-aux" onClick={() => onKey('clear')}>Clear</button>
-    <button type="button" className="lk-btn"        onClick={() => onKey('0')}>0</button>
-    <button type="button" className="lk-btn lk-aux" onClick={() => onKey('back')}>⌫</button>
+    <button type="button" className="lk-btn lk-aux" tabIndex={hidden ? -1 : 0} onClick={() => onKey('clear')}>Clear</button>
+    <button type="button" className="lk-btn"        tabIndex={hidden ? -1 : 0} onClick={() => onKey('0')}>0</button>
+    <button type="button" className="lk-btn lk-aux" tabIndex={hidden ? -1 : 0} onClick={() => onKey('back')}>⌫</button>
     {onSwitch && (
-      <button type="button" className="lk-btn lk-aux lk-kb-switch" onClick={onSwitch}>
+      <button type="button" className="lk-btn lk-aux lk-kb-switch" tabIndex={hidden ? -1 : 0} onClick={onSwitch}>
         ABC
       </button>
     )}
   </div>
 );
 
-const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch }) => {
+const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch, hidden }) => {
   const xform = (l) => caps ? l.toUpperCase() : l;
+  const tabIdx = hidden ? -1 : 0;
   const renderLetter = (l) => (
-    <button key={l} type="button" className="lk-btn lk-letter" onClick={() => onKey(xform(l))}>
+    <button key={l} type="button" className="lk-btn lk-letter" tabIndex={tabIdx} onClick={() => onKey(xform(l))}>
       {xform(l)}
     </button>
   );
   return (
-    <div className="login-kb-letters">
+    <div className={`login-kb-letters ${hidden ? 'is-hidden' : ''}`} aria-hidden={hidden || undefined}>
       <div className="login-kb-row login-kb-row-1">{ROW_1.map(renderLetter)}</div>
       <div className="login-kb-row login-kb-row-2">{ROW_2.map(renderLetter)}</div>
       <div className="login-kb-row login-kb-row-3">
         <button
           type="button"
           className={`lk-btn lk-aux lk-mod ${caps ? 'is-active' : ''}`}
+          tabIndex={tabIdx}
           onClick={onCaps}
           aria-pressed={caps}
           aria-label="Caps lock"
@@ -73,6 +75,7 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch }) => {
         <button
           type="button"
           className="lk-btn lk-aux lk-mod"
+          tabIndex={tabIdx}
           onClick={() => onKey('back')}
           aria-label="Backspace"
         >⌫</button>
@@ -82,11 +85,11 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch }) => {
           the row reads as a balanced control band rather than one floater
           in the corner. */}
       <div className="login-kb-row login-kb-row-4">
-        <button type="button" className="lk-btn lk-aux"            onClick={() => onKey('clear')}>Clear</button>
-        <button type="button" className="lk-btn lk-aux lk-kb-switch" onClick={onSwitch}>123</button>
-        <button type="button" className="lk-btn lk-sym"            onClick={() => onKey('_')}>_</button>
-        <button type="button" className="lk-btn lk-sym"            onClick={() => onKey('-')}>-</button>
-        <button type="button" className="lk-btn lk-sym"            onClick={() => onKey('.')}>.</button>
+        <button type="button" className="lk-btn lk-aux"            tabIndex={tabIdx} onClick={() => onKey('clear')}>Clear</button>
+        <button type="button" className="lk-btn lk-aux lk-kb-switch" tabIndex={tabIdx} onClick={onSwitch}>123</button>
+        <button type="button" className="lk-btn lk-sym"            tabIndex={tabIdx} onClick={() => onKey('_')}>_</button>
+        <button type="button" className="lk-btn lk-sym"            tabIndex={tabIdx} onClick={() => onKey('-')}>-</button>
+        <button type="button" className="lk-btn lk-sym"            tabIndex={tabIdx} onClick={() => onKey('.')}>.</button>
       </div>
     </div>
   );
@@ -183,7 +186,7 @@ const StaffLogin = () => {
             <label htmlFor="identifier">Phone, employee ID, or username</label>
             <input
               id="identifier"
-              className="is-keypad"
+              className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
               type="text"
               autoComplete="username"
               autoCapitalize="none"
@@ -203,7 +206,7 @@ const StaffLogin = () => {
               <label htmlFor="pin">PIN</label>
               <input
                 id="pin"
-                className="is-keypad"
+                className="is-keypad is-numeric"
                 type="password"
                 inputMode="numeric"
                 maxLength={4}
@@ -217,19 +220,26 @@ const StaffLogin = () => {
 
           {err && <div className="login-error">{err}</div>}
 
-          {showLetters ? (
+          {/* Both keyboards rendered always; the inactive one is hidden via
+              visibility + pointer-events, and the wrapper sizes to whichever
+              is taller. This locks the form height so switching modes
+              doesn't shift the page layout. The numeric keypad happens to be
+              the taller of the two (5 rows vs 4), so the letters keyboard
+              leaves a small bottom gap — accepted as the better tradeoff. */}
+          <div className="login-kb-area">
+            <KeypadNumbers
+              onKey={onKey}
+              onSwitch={activeField === 'id' ? () => setKbMode('letters') : null}
+              hidden={showLetters}
+            />
             <KeyboardLetters
               onKey={onKey}
               caps={caps}
               onCaps={() => setCaps(c => !c)}
               onSwitch={() => setKbMode('numbers')}
+              hidden={!showLetters}
             />
-          ) : (
-            <KeypadNumbers
-              onKey={onKey}
-              onSwitch={activeField === 'id' ? () => setKbMode('letters') : null}
-            />
-          )}
+          </div>
 
           <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
             {loading ? 'Signing in…' : 'Sign in'}

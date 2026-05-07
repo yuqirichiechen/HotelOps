@@ -159,9 +159,16 @@
 
 .login-field input.is-keypad {
   text-align: center;
+  caret-color: transparent;
+}
+
+/* Wide letter-spacing only when the input is purely numeric (phone /
+   employee ID / PIN). For usernames and the long placeholder hint
+   ("10-digit phone · 4–6 digit ID · username"), normal spacing keeps
+   the text fitting inside the input. */
+.login-field input.is-keypad.is-numeric {
   letter-spacing: 0.18em;
   font-variant-numeric: tabular-nums;
-  caret-color: transparent;
 }
 
 .login-keypad {
@@ -196,13 +203,40 @@
   letter-spacing: 0.04em;
 }
 
-/* Sprint 7.1: keyboard-mode switcher (ABC / 123). Spans the full row of
-   whichever keyboard it's living inside, sitting alone at the bottom
-   like the iOS keyboard's bottom-left corner. */
+/* Sprint 7.1: keyboard-mode switcher (ABC / 123). In the numeric keypad
+   (a 3-col grid) it spans the full bottom row; in the letters keyboard
+   (a flex row) the grid-column rule is silently ignored and the button
+   shares row 4 with Clear and the punctuation keys at equal width. */
 .lk-btn.lk-kb-switch {
   grid-column: 1 / -1;
   font-size: 14px;
   letter-spacing: 0.06em;
+}
+
+/* Sprint 7.3: keyboard area locks the form height by stacking both
+   keyboards in the same grid cell. The cell sizes to whichever is
+   taller (the numeric keypad — 5 rows vs the letters keyboard's 4),
+   so toggling between modes never shifts the page. The inactive
+   keyboard is `visibility: hidden` (still contributes to grid sizing)
+   and `pointer-events: none` (no stray clicks). Buttons inside the
+   hidden keyboard get `tabIndex={-1}` so keyboard nav skips them. */
+.login-kb-area {
+  display: grid;
+  margin-top: 18px;
+}
+.login-kb-area > .login-keypad,
+.login-kb-area > .login-kb-letters {
+  grid-column: 1;
+  grid-row: 1;
+  margin-top: 0;
+}
+.login-kb-area > .is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .login-kb-area { margin-top: 14px; }
 }
 
 /* Sprint 7.1: QWERTY letter keyboard. Three rows of letters + a switcher

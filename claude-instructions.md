@@ -733,6 +733,73 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 7.3: locked-height keyboard + content-aware letter-spacing
+
+Two visual fixes on the staff login.
+
+**7.3A — page jumps when switching keyboards.** The numeric keypad
+(5-row grid) and the letters keyboard (4-row flex) had different
+heights, so toggling between them shifted the submit button + the
+"Manager sign-in" link up and down. Fix: render *both* keyboards
+always, stacked in the same grid cell:
+```css
+.login-kb-area { display: grid; }
+.login-kb-area > * { grid-column: 1; grid-row: 1; }
+.login-kb-area > .is-hidden { visibility: hidden; pointer-events: none; }
+```
+Grid sizes the cell to fit *both* children (since `visibility: hidden`
+items still contribute to layout — only `display: none` removes them).
+Whichever keyboard is the taller drives the cell height, the other
+fills the same space and is invisible. The numeric keypad is taller, so
+the letters keyboard leaves a small bottom gap when active — accepted
+as a better tradeoff than the page jumping.
+
+Hidden buttons also get `tabIndex={-1}` so keyboard nav doesn't tab
+through invisible buttons, and the wrapper carries `aria-hidden` so
+screen readers skip the inactive set.
+
+**7.3B — long placeholder cut off by `letter-spacing`.** The
+`.is-keypad` input had a uniform `letter-spacing: 0.18em` that made
+phone numbers look nicely spaced but blew up the placeholder
+("10-digit phone · 4–6 digit ID · username") past the input's right
+edge. Split the rule by content type:
+```css
+.login-field input.is-keypad           { /* normal spacing */ }
+.login-field input.is-keypad.is-numeric { letter-spacing: 0.18em; ... }
+```
+The `is-numeric` class is applied via JS only when the input value is
+purely digits (`/^[0-9]+$/`) — empty input doesn't match, so the
+placeholder never gets the wide spacing. Usernames also keep normal
+spacing, which reads more naturally for letters. PIN input always has
+`is-numeric` because PIN is digits-only.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js` — both keyboard components accept a
+  `hidden` prop that adds `is-hidden` class and sets `tabIndex={-1}`
+  on inner buttons; render both inside `<div className="login-kb-area">`
+  always; identifier input gets `is-numeric` based on content; PIN
+  input gets `is-numeric` always.
+- `src/pages/Login/Login.css` — `.login-kb-area` grid stack;
+  `.is-hidden` visibility/pointer-events rule; split letter-spacing
+  rule into base + `.is-numeric` modifier.
+
+**Conventions added:**
+- **Lock interactive UI height by stacking both states.** When two
+  views (toggleable keyboards, before/after states, etc.) live in the
+  same flow position and have different intrinsic heights, render both
+  always and stack them in a 1×1 grid cell. `visibility: hidden` keeps
+  inactive content in the layout for sizing purposes without showing
+  it. The wrapper auto-sizes to the taller child, so toggling never
+  shifts surrounding content. Cheaper than measuring with JS and
+  applying a fixed `min-height`.
+- **Decouple display style from content.** Don't hardcode visual
+  treatments (wide letter-spacing, monospace, tabular-nums) on a
+  control that accepts multiple content types. Apply them via a
+  modifier class (`.is-numeric`) toggled by JS based on what's
+  actually in the input. Same field looks like a phone-number entry
+  when the user types digits and like a normal text input when they
+  type a name.
+
 ### 2026-05-07 — Sprint 7.2: letters keyboard bottom row
 
 Sprint 7.1 left the letters-keyboard bottom row with just the `123`
