@@ -733,6 +733,80 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 8.2: timeline-positioned shift blocks in WeekView
+
+WeekView cells used to be full-width "9–5pm" text. Sprint 8.2 turns each
+cell into a **24h track** with the shift rendered as a colored bar
+positioned by start/end time. At-a-glance you can now *see* who is
+working when across an entire dept-grouped week, and gaps in coverage
+are visible without reading any times. DayView already had positioned
+blocks from 8.0D — this aligns the pattern across both views.
+
+**Track + tick guides + positioned bar.** Every cell (occupied or empty)
+renders a `.week-shift-track` — a flat gray rail spanning the cell's full
+width. Three faint dashed ticks at 25/50/75% mark 06:00 / 12:00 / 18:00
+so the eye has anchors. When the cell has a shift, a `.week-shift-block`
+absolutely-positioned bar sits on the rail with `left: startMin/1440`,
+`width: (endMin-startMin)/1440`. Department-tinted background, time text
+inside the bar (clipped via `overflow: hidden` for very short shifts).
+
+**Two helpers — `timeToMinutes()` and `shiftBarPos()`** — handle the math
+and the overnight-shift clip. If a row sneaks through with `end ≤ start`
+(overnight, which the assign modal validates against but defense in
+depth), the bar is clipped to "until midnight" so the visual still
+represents today's portion.
+
+**Empty cells stay clickable.** When no shift: track is still visible
+(the 24h rail is informative even without a bar — rows align across
+the grid), and a hidden "+" overlay fades in on hover. Cell-level
+`onClick` still fires `onAssign` because the track is non-interactive
+(`pointer-events: none` on ticks; the empty overlay has the same).
+Cells *with* a shift use `onClick` on the bar with `e.stopPropagation()`
+to open the edit modal — clicking the bare track in an occupied cell
+does nothing (the data model is one shift per user × day).
+
+**Hover lift removed for absolute-positioned bars.** The pre-8.2 block
+had `transform: translateY(-1px)` on hover. With absolute positioning
+inside a fixed-height track, the lift would push the bar out of the
+rail. Replaced with a `box-shadow` + `z-index: 2` on hover so the bar
+"comes forward" without leaving its slot.
+
+**Mobile gets the same visualization.** The mobile WeekView (single-day
+list) used to render shifts as flat text pills (`9–5pm`). Now each row
+is a `.mobile-shift-track-btn` containing the same `.week-shift-track`
++ `.week-shift-block` markup at slightly smaller size. Visual parity
+with desktop; the day-list reads as a vertical stack of mini timelines.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/WeekView.js` — added
+  `timeToMinutes()` + `shiftBarPos()` helpers; restructured both
+  desktop and mobile shift renders to use `.week-shift-track` +
+  positioned `.week-shift-block`; tick guides + title attribute for
+  hover tooltip with full time.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` — rewrote
+  `.week-shift-cell` / `.week-cell-empty` / `.week-shift-block` for
+  the new layout; added `.week-shift-track`, `.week-shift-tick`,
+  `.mobile-shift-track-btn`. Hover lift swapped for
+  `box-shadow + z-index`.
+
+**Conventions added:**
+- **Time-positioned bars over text labels for calendar cells.** When
+  a calendar cell holds an event with start/end times, render a
+  positioned bar on a uniform time-axis rail rather than text inside
+  the cell. Coverage gaps and overlap patterns become visually
+  obvious; a manager scanning a week of rows sees who's-working-when
+  in one read instead of decoding "9–5pm" repeated 50 times.
+- **Track-always-rendered for visual rhythm.** Even cells without an
+  event should render the empty track. The mental model "every row
+  has a 24h rail" is stronger than "rows with events look one way,
+  empty rows another" — the eye picks up on rhythm and finds gaps
+  faster. Cost is a few pixels of gray bar for empty cells.
+- **No `transform` lift on absolute-positioned hover targets.** The
+  classic "lift on hover via translateY" pattern doesn't compose
+  with `position: absolute` inside a fixed-height container — the
+  element exits its slot. Use `box-shadow` + `z-index` instead so
+  the element appears to come forward without leaving its track.
+
 ### 2026-05-07 — Sprint 8.1: docked Assign Shifts panel + bulk recurring assign
 
 The header `+` button placeholder from 8.0 is now wired to a real

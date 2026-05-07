@@ -22,6 +22,25 @@ const formatTime = (timeStr) => {
   return m === 0 ? `${hour}${period}` : `${hour}:${String(m).padStart(2, '0')}${period}`;
 };
 
+// Sprint 8.2: shifts now render as time-positioned bars on a 24h track
+// instead of full-width text. timeToMinutes converts HH:MM[:SS] → minutes
+// since midnight; the bar's left/width percentage is just min/1440.
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+};
+
+// Compute the {left, width} percentages for a shift on a 24h track.
+// Overnight shifts (end ≤ start) are clipped to "until midnight" so the
+// bar still represents the portion that lives in this day.
+const shiftBarPos = (start, end) => {
+  const s = timeToMinutes(start);
+  const eRaw = timeToMinutes(end);
+  const e = eRaw > s ? eRaw : 1440;
+  return { left: (s / 1440) * 100, width: ((e - s) / 1440) * 100 };
+};
+
 const fmtDate = (d) => {
   const date = new Date(d);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -119,16 +138,35 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
               {dept.employees.map(emp => {
                 const schedule = getSchedule(emp.user_id, activeDay);
                 const color    = getDeptColor(dept.name);
+                const pos      = schedule ? shiftBarPos(schedule.start_time, schedule.end_time) : null;
                 return (
                   <div key={emp.user_id} className="mobile-emp-row">
                     <span className="mobile-emp-name">{emp.name}</span>
-                    {schedule ? (
+                    {schedule && pos ? (
                       <button
-                        className="mobile-shift-pill"
-                        style={{ background: color.bg, borderColor: color.border, color: color.text }}
+                        className="mobile-shift-track-btn"
                         onClick={() => onEdit(schedule)}
+                        title={`${formatTime(schedule.start_time)}–${formatTime(schedule.end_time)}`}
                       >
-                        {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
+                        <div className="week-shift-track" aria-hidden>
+                          <div className="week-shift-tick" style={{ left: '25%' }} />
+                          <div className="week-shift-tick" style={{ left: '50%' }} />
+                          <div className="week-shift-tick" style={{ left: '75%' }} />
+                          <div
+                            className="week-shift-block"
+                            style={{
+                              left:        `${pos.left}%`,
+                              width:       `${pos.width}%`,
+                              background:  color.bg,
+                              borderColor: color.border,
+                              color:       color.text,
+                            }}
+                          >
+                            <span className="shift-time">
+                              {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
+                            </span>
+                          </div>
+                        </div>
                       </button>
                     ) : (
                       <button
@@ -191,6 +229,7 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
                     const schedule = getSchedule(emp.user_id, day);
                     const cellKey  = `${emp.user_id}__${fmtDate(day)}`;
                     const isOver   = dragOverKey === cellKey;
+                    const pos      = schedule ? shiftBarPos(schedule.start_time, schedule.end_time) : null;
                     return (
                       <div
                         key={di}
@@ -200,22 +239,35 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
                         onDrop={e => handleDrop(e, emp.user_id, day)}
                         onClick={() => !schedule && onAssign(emp, day)}
                       >
-                        {schedule ? (
-                          <div
-                            className={`week-shift-block${draggedId === schedule.schedule_id ? ' dragging' : ''}`}
-                            style={{ background: color.bg, borderColor: color.border, color: color.text }}
-                            draggable
-                            onDragStart={e => handleDragStart(e, schedule)}
-                            onDragEnd={() => setDraggedId(null)}
-                            onClick={e => { e.stopPropagation(); onEdit(schedule); }}
-                          >
-                            <span className="shift-time">
-                              {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="week-cell-empty">+</div>
-                        )}
+                        <div className="week-shift-track" aria-hidden>
+                          {/* Hour-mark guides at 06, 12, 18 — anchor for "see at a glance
+                              when the shift lives in the day". */}
+                          <div className="week-shift-tick" style={{ left: '25%' }} />
+                          <div className="week-shift-tick" style={{ left: '50%' }} />
+                          <div className="week-shift-tick" style={{ left: '75%' }} />
+                          {schedule && pos && (
+                            <div
+                              className={`week-shift-block${draggedId === schedule.schedule_id ? ' dragging' : ''}`}
+                              style={{
+                                left:        `${pos.left}%`,
+                                width:       `${pos.width}%`,
+                                background:  color.bg,
+                                borderColor: color.border,
+                                color:       color.text,
+                              }}
+                              draggable
+                              title={`${formatTime(schedule.start_time)}–${formatTime(schedule.end_time)}`}
+                              onDragStart={e => handleDragStart(e, schedule)}
+                              onDragEnd={() => setDraggedId(null)}
+                              onClick={e => { e.stopPropagation(); onEdit(schedule); }}
+                            >
+                              <span className="shift-time">
+                                {formatTime(schedule.start_time)}–{formatTime(schedule.end_time)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {!schedule && <div className="week-cell-empty">+</div>}
                       </div>
                     );
                   })}
