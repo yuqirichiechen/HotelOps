@@ -733,6 +733,87 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 8.1: docked Assign Shifts panel + bulk recurring assign
+
+The header `+` button placeholder from 8.0 is now wired to a real
+side-panel that lets the admin rapidly assign shifts — single-shot or
+**bulk recurring across many dates** — without leaving the calendar.
+Right-docked drawer on desktop, bottom-sheet on mobile.
+
+**Why a panel and not a modal.** Modals own the screen and demand a
+single completed task before closing. The hotel scheduling use case is
+the opposite — admin opens it once and fills in 5–20 shifts in one
+session ("schedule next week"). The panel stays open after each
+submit; only the staff selection + notes reset, while time/mode/range
+are retained so the next admin keystroke is "Jane → Add" → "Mike →
+Add" → done. AssignModal is kept around for the click-existing-shift
+edit/delete flow (different intent).
+
+**Two modes:**
+- **Single date** — one staff × one date × one start/end → one POST.
+  Lightest path; default landing.
+- **Recurring** — one staff × multi-date computed from
+  `{from, to, daysOfWeek}` × one start/end → N POSTs in a loop. Day-
+  of-week is a 7-button pill row (Mon–Sun, default Mon–Fri active);
+  the panel previews `"8 shifts will be created"` so admin sees the
+  count before submitting. `computeRecurringDates(from, to,
+  selectedDays)` is the helper — exported so 8.x sprints can reuse it
+  for "copy this schedule to next week" type features.
+
+**Dept-grouped staff dropdown.** The `<select>` uses `<optgroup>` so
+staff are clustered by department — much faster to scan than a flat
+alphabetical list. Templates (optional shift presets) auto-filter by
+the selected staff's department: a Housekeeping template doesn't
+appear when a Front Desk staff is selected.
+
+**Bulk POST loop, server unchanged.** `/api/admin/schedule` still
+accepts one shift per request; the panel iterates locally. The
+loop tracks `{ ok, fail, message }` and surfaces a per-batch summary
+inside the panel ("✓ Added 8 shifts" or "5 added, 3 failed — Phone
+already exists" if the server pushed back). One `loadSchedules()`
+refresh runs at the end if anything succeeded — not per-shift,
+because we don't want 8 GET round-trips during a Mon-Fri assign.
+
+**Mobile = bottom sheet.** Under 720px, the panel switches from
+right-docked (translateX) to bottom-anchored (translateY) with a
+rounded top edge. Standard touch pattern — Apple/Google Maps, Linear,
+Notion mobile all do this. Animations honor `prefers-reduced-motion`.
+
+**Files added:**
+- `src/components/AdminPanel/Scheduling/AssignPanel.js` — panel
+  component with the form, mode toggle, recurring-date computer,
+  and dept-grouped staff select. Exports `computeRecurringDates()`
+  for reuse.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/index.js` — `panelOpen` +
+  `panelPrefill` state; `handlePanelSubmit` runs the bulk POST loop
+  and refreshes once at the end; `+` button toggles the panel.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` — full
+  panel layout (scrim, drawer, head, body, fields, day-of-week pill
+  row, mode toggle, error/result strips, submit button) plus a
+  bottom-sheet override under 720px and reduced-motion fallback.
+
+**Conventions added:**
+- **Panel for repeat-task creation, modal for single edit.** When a
+  task is bulk-by-nature (assigning many shifts, importing many
+  rows), use a docked panel that survives submit. When a task is
+  one-shot-by-nature (edit *this* row), use a modal. The decision
+  rule: "after the user submits, what's the next thing they want
+  to do?" — same task again ⇒ panel; back to the page ⇒ modal.
+- **Reset only the discriminating fields after submit.** When a
+  panel keeps state across submissions, reset just the fields that
+  *differ* between consecutive entries (staff, notes), keep the
+  ones that probably stay the same (time, mode, date range). The
+  admin perceives speed because each subsequent shift takes one
+  field worth of typing instead of a full form.
+- **Sequential POSTs with one final refresh, not per-iteration.**
+  When a UI action causes N writes, run them sequentially and
+  refresh the read-side once at the end. Refreshing per-write
+  multiplies network round-trips and can make the screen flicker
+  through intermediate states. Track per-write outcomes in a local
+  counter so the user still gets a per-batch summary.
+
 ### 2026-05-07 — Sprint 8.0: scheduling rebuilt as iOS-Calendar-style 4-view zoom
 
 The old scheduling page was a Week+Month toggle with per-day "Assign"

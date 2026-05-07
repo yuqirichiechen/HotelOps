@@ -6,6 +6,7 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
 import AssignModal from './AssignModal';
+import AssignPanel from './AssignPanel';
 import './Scheduling.css';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -55,6 +56,8 @@ const SchedulingManager = () => {
   const [templates,    setTemplates]    = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [modal,        setModal]        = useState(null);
+  const [panelOpen,    setPanelOpen]    = useState(false);
+  const [panelPrefill, setPanelPrefill] = useState(null);
 
   // Load base data once
   useEffect(() => {
@@ -147,6 +150,39 @@ const SchedulingManager = () => {
     loadSchedules();
   };
 
+  // Bulk POST loop for the AssignPanel. The existing /api/admin/schedule
+  // endpoint accepts one shift per request, so for recurring assignments
+  // we just iterate. Returns { ok, fail, message } so the panel can show a
+  // summary; we re-load schedules once at the end so the calendar reflects
+  // every successful insert.
+  const handlePanelSubmit = async ({ userId, dates, startTime, endTime, shiftId, notes }) => {
+    let ok = 0, fail = 0, lastErr = '';
+    for (const d of dates) {
+      try {
+        const res = await fetch('/api/admin/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id:        userId,
+            scheduled_date: d,
+            start_time:     startTime,
+            end_time:       endTime,
+            shift_id:       shiftId || null,
+            notes:          notes   || null,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) ok++;
+        else { fail++; lastErr = data.message || lastErr; }
+      } catch (e) {
+        fail++;
+        lastErr = e.message || lastErr;
+      }
+    }
+    if (ok > 0) loadSchedules();
+    return { ok, fail, message: lastErr };
+  };
+
   const handleMove = async (scheduleId, newUserId, newDate) => {
     const s = schedules.find(sc => sc.schedule_id === scheduleId);
     if (!s) return;
@@ -229,8 +265,12 @@ const SchedulingManager = () => {
               </button>
             ))}
           </div>
-          {/* Sprint 8.1 lands the docked Assign Shifts side panel here. */}
-          <button className="sched-add-btn" aria-label="Assign shifts" disabled title="Side panel coming in 8.1">＋</button>
+          <button
+            className="sched-add-btn"
+            aria-label="Assign shifts"
+            title="Assign shifts"
+            onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
+          >＋</button>
         </div>
       </div>
 
@@ -295,6 +335,16 @@ const SchedulingManager = () => {
           onClose={() => setModal(null)}
         />
       )}
+
+      <AssignPanel
+        open={panelOpen}
+        employees={employees}
+        departments={departments}
+        templates={templates}
+        prefill={panelPrefill}
+        onClose={() => setPanelOpen(false)}
+        onSubmit={handlePanelSubmit}
+      />
     </div>
   );
 };
