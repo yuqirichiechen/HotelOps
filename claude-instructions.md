@@ -740,23 +740,32 @@ cells. Buttons drop their `flex` / `min-width` and let grid drive
 sizing; padding tightened to `6px 8px`.
 
 **6.6B — Mobile popover cut off on the left.** On narrow viewports
-the filter row wraps and the export wrapper sits *mid-row*, not on
-the right edge of the screen. With `right: 0` of the wrapper, the
-popover's right edge tracked the trigger's right edge, and the
-popover's natural width pushed its left edge past the left side of
-the viewport. Previous attempt at <420px swapped to `left: 0` of
-the wrapper, but that has the same problem in reverse: the popover
-extends *right* off-screen if the wrapper isn't on the left edge.
+the filter row wraps and the export wrapper landed *mid-row*, not
+on the right edge of the screen. With `right: 0` of the wrapper,
+the popover's right edge tracked the trigger's right edge, and
+the popover's natural `max-content` width (~430px in practice
+because of the longest scope row) pushed its left edge past the
+left side of the viewport.
 
-Fix: under 720px, switch to **viewport-fixed bottom-sheet
-positioning** (`position: fixed; left: 16px; right: 16px; bottom:
-16px; max-height: calc(100vh - 32px); overflow: auto`). Anchored to
-viewport edges, the popover is guaranteed inside the screen no
-matter where the trigger lives. Above 720px, keep the standard
-`right: 0` desktop popover — but reduced its width to a fixed
-`320px` (with `max-width: calc(100vw - 32px)` belt-and-suspenders)
-so even at desktop sizes it can't overflow when the trigger sits
-unusually far left.
+First attempt at fixing this used a viewport-fixed bottom-sheet
+under 720px (`position: fixed; left/right: 16px; bottom: 16px`),
+which kept the popover inside the screen but visually disconnected
+it from the Export trigger — it floated at the bottom of the
+viewport with the staff list, search, and chips between it and the
+button. User feedback: it should still feel anchored to the
+button.
+
+Final fix has two parts that together keep the popover both
+in-viewport and visually attached:
+1. `.staff-mgr-export { margin-left: auto }` at all viewports —
+   forces the export wrapper to the right of its filter-row line
+   regardless of how the row wraps. With that guarantee, `right: 0`
+   anchoring lands the popover at a known position near the right
+   edge of the viewport.
+2. Cap popover width at a fixed `320px` (with
+   `max-width: calc(100vw - 32px)` as a guard for very narrow
+   phones). Content fits comfortably at 320px and the popover can
+   never grow wide enough to overshoot the left edge.
 
 **6.6C — Include-inactive used the default browser checkbox.** The
 control sat next to chip-styled department filters and a primary
@@ -788,15 +797,24 @@ on `aria-pressed`. Native checkbox / `<label>` removed.
   Flex with `min-width` will wrap on narrow content widths and
   produce the lone-button-on-second-row look. Grid removes that
   failure mode entirely.
-- **Bottom-sheet for narrow-viewport popovers.** When a popover
-  trigger isn't guaranteed to live on the screen edge (e.g. it's
-  inside a wrap-able filter row), neither `right: 0` nor `left: 0`
-  of the wrapper protects against off-screen overflow. The robust
-  fallback is `position: fixed; left: 16px; right: 16px; bottom:
-  16px;` — a viewport-anchored bottom-sheet that is always inside
-  the screen regardless of trigger position. Keep the
-  desktop-anchored absolute popover for >720px where the trigger
-  *is* near the right edge.
+- **Pin the trigger, not the popover.** When a wrap-able filter
+  row holds a popover trigger, the temptation is to make the
+  *popover* smarter (left/right anchor, fixed bottom-sheet, JS
+  position calc). Often it's easier to pin the **trigger**: give
+  the wrapper `margin-left: auto` so it always sits at the right
+  edge of its line. Then a simple `right: 0` absolute popover
+  always lands in a predictable, in-viewport position — and stays
+  visually connected to its button. Bottom-sheets are great for
+  things like menus and dialogs that are *intentionally* detached
+  from a trigger, but for inline popovers the connection matters.
+- **Cap popover width over `max-content`.** A `width: max-content`
+  popover sizes to the longest single line inside it (often a
+  scope label or radio option) and can balloon past viewport
+  bounds. Pick a sensible fixed width (e.g. `320px`) that fits
+  the content comfortably and clamp with
+  `max-width: calc(100vw - 32px)` for very narrow phones. The
+  fixed width also gives the segmented controls inside it a
+  stable basis to grid against.
 - **Native form controls inherit OS chrome — restyle them when they
   ride alongside themed controls.** A native checkbox in a row of
   chip-styled buttons reads as alien. The cheapest fix is to drop

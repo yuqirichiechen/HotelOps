@@ -2314,6 +2314,12 @@
 
 .staff-mgr-export {
   position: relative;
+  /* Always sit at the right of its line so the popover (right-anchored
+     to this wrapper) hangs leftward from a known position near the
+     viewport's right edge. Without this, the export wrapper can land
+     anywhere on a wrapped filter row and the popover ends up
+     overflowing the left side of the screen. */
+  margin-left: auto;
 }
 
 .staff-mgr-export-btn {
@@ -2351,9 +2357,10 @@
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  /* Compact desktop popover — content fits comfortably at this width and
-     it never reaches off-screen left when right-anchored from a trigger
-     deep on the right. Mobile uses a fixed bottom-sheet (see breakpoint). */
+  /* Fixed compact width at all viewports — content fits comfortably here.
+     Pinning the trigger (margin-left: auto on .staff-mgr-export) keeps
+     the wrapper at the right of its line, so right:0 anchoring lands
+     the popover inside the viewport even when the filter row wraps. */
   width: 320px;
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
@@ -2489,22 +2496,12 @@
 }
 
 @media (max-width: 720px) {
-  /* On narrow viewports the export wrapper isn't necessarily on the right
-     edge of the screen — the filter row wraps and the wrapper can sit
-     mid-row. Anchoring `right: 0` of the wrapper then pushes the popover
-     off the LEFT edge of the viewport. Switch to a viewport-fixed
-     bottom sheet so the popover always stays inside the screen
-     regardless of where the trigger landed. */
+  /* Stay anchored to the trigger so the popover reads as connected to
+     the Export button (an under-the-button card, not a bottom sheet
+     floating off in the void). The wrapper's margin-left: auto keeps
+     it on the right of its filter-row line, so right:0 anchoring lands
+     the popover comfortably inside the viewport. */
   .staff-mgr-export-menu {
-    position: fixed;
-    top: auto;
-    right: 16px;
-    bottom: 16px;
-    left: 16px;
-    width: auto;
-    max-width: none;
-    max-height: calc(100vh - 32px);
-    overflow: auto;
     padding: 14px 14px;
     gap: 12px;
   }
