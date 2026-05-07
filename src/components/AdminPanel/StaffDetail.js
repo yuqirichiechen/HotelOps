@@ -136,7 +136,9 @@ const StaffDetail = () => {
   const startEdit = () => {
     setForm({
       name:           emp.name,
-      phone:          emp.phone_number,
+      phone:          emp.phone_number  || '',
+      username:       emp.username      || '',
+      employeeCode:   emp.employee_code || '',
       role:           emp.role,
       departmentId:   emp.department_id || '',
       hireDate:       emp.hire_date ? emp.hire_date.split('T')[0] : '',
@@ -150,14 +152,24 @@ const StaffDetail = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    // ≥1 of phone / username / employee ID — same rule as create.
+    if (!form.phone && !form.username && !form.employeeCode) {
+      setError('Provide at least one of phone, username, or employee ID');
+      return;
+    }
     setSaving(true);
     setError('');
     const res  = await fetch(`/api/admin/employees/${emp.user_id}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: form.name, phoneNumber: form.phone, role: form.role,
-        hireDate: form.hireDate, departmentId: form.departmentId || null,
+        name:           form.name,
+        phoneNumber:    form.phone        || null,
+        username:       form.username     || null,
+        employeeCode:   form.employeeCode || null,
+        role:           form.role,
+        hireDate:       form.hireDate,
+        departmentId:   form.departmentId || null,
         baseHourlyRate: form.baseHourlyRate || null,
       }),
     });
@@ -454,10 +466,6 @@ const StaffDetail = () => {
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
             </div>
             <div className="admin-field">
-              <label>Phone Number *</label>
-              <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))} required />
-            </div>
-            <div className="admin-field">
               <label>Role *</label>
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                 {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
@@ -478,6 +486,39 @@ const StaffDetail = () => {
               <label>Hourly Rate ($)</label>
               <input type="number" step="0.01" min="0" value={form.baseHourlyRate} onChange={e => setForm(f => ({ ...f, baseHourlyRate: e.target.value }))} placeholder="0.00" />
             </div>
+            <div className="admin-field add-form-section">
+              <div className="add-form-section-label">Login identifiers — at least one required</div>
+              <div className="add-form-section-sub">Clear a field to remove that login method.</div>
+            </div>
+            <div className="admin-field">
+              <label>Phone Number</label>
+              <input
+                inputMode="numeric"
+                value={form.phone}
+                onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))}
+                placeholder="10 digits"
+              />
+            </div>
+            <div className="admin-field">
+              <label>Username</label>
+              <input
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={form.username}
+                onChange={e => setForm(f => ({ ...f, username: e.target.value.replace(/[^A-Za-z0-9._-]/g,'').slice(0,16) }))}
+                placeholder="3–16 chars · letters/numbers/._-"
+              />
+            </div>
+            <div className="admin-field">
+              <label>Employee ID</label>
+              <input
+                inputMode="numeric"
+                value={form.employeeCode}
+                onChange={e => setForm(f => ({ ...f, employeeCode: e.target.value.replace(/\D/g,'').slice(0,6) }))}
+                placeholder="4–6 digits"
+              />
+            </div>
           </div>
           <div className="add-form-actions" style={{ gap: '10px' }}>
             <button type="button" className="btn-logout" onClick={cancelEdit}>Cancel</button>
@@ -487,6 +528,8 @@ const StaffDetail = () => {
       ) : (
         <div className="emp-detail-info-grid">
           <div className="detail-info-row"><span className="detail-info-lbl">Phone</span><span className="detail-info-val">{fmt(emp.phone_number)}</span></div>
+          <div className="detail-info-row"><span className="detail-info-lbl">Username</span><span className="detail-info-val">{fmt(emp.username)}</span></div>
+          <div className="detail-info-row"><span className="detail-info-lbl">Employee ID</span><span className="detail-info-val">{fmt(emp.employee_code)}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Role</span><span className="detail-info-val" style={{ textTransform: 'capitalize' }}>{emp.role.replace('_',' ')}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Department</span><span className="detail-info-val">{deptName()}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Hire Date</span><span className="detail-info-val">{fmtDate(emp.hire_date)}</span></div>
@@ -505,7 +548,7 @@ const StaffDetail = () => {
               <div className="emp-pin-meta">
                 {emp.pin_required
                   ? 'Employee must enter their PIN to log in.'
-                  : 'Employee can log in with their phone number alone.'}
+                  : 'Employee can log in with their identifier alone.'}
               </div>
             </div>
             <button

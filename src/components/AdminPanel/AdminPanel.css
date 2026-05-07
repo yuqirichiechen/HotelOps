@@ -401,6 +401,27 @@
   margin-bottom: 16px;
 }
 
+/* Sprint 7: section header inside the add-form-grid spans the full row to
+   visually group the three login-identifier fields underneath. */
+.add-form-section {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.add-form-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.add-form-section-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .add-form-actions {
   display: flex;
   justify-content: flex-end;

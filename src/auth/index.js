@@ -91,10 +91,10 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('auth:expired', onExpired);
   }, []);
 
-  const loginStaff = async (phone, pin) => {
+  const loginStaff = async (identifier, pin) => {
     const { ok, data } = await apiFetch('/auth/staff/login', {
       method: 'POST',
-      body:   JSON.stringify({ phone, pin: pin || undefined }),
+      body:   JSON.stringify({ identifier, pin: pin || undefined }),
     });
     if (!ok || !data?.success) {
       return {

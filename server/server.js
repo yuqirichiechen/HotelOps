@@ -35,18 +35,93 @@ pool.query('SELECT NOW()').then(() => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// ── Login identifier helpers (Sprint 7) ──────────────────────────────────────
+// Staff log in via any of {phone_number, username, employee_code}. The login
+// endpoint accepts a single `identifier` and auto-detects the type:
+//   - all digits, length 10  → phone_number
+//   - all digits, length 4-6 → employee_code
+//   - has a letter           → username (case-insensitive lookup)
+//   - anything else          → invalid
+// Username must contain at least one letter (enforced at signup + DB CHECK)
+// so an all-digit username cannot shadow an employee_code.
+
+const PHONE_RE    = /^[0-9]{10}$/;
+const CODE_RE     = /^[0-9]{4,6}$/;
+const USERNAME_RE = /^[A-Za-z0-9._-]{3,16}$/;
+const HAS_LETTER  = /[A-Za-z]/;
+
+function classifyIdentifier(raw) {
+  if (typeof raw !== 'string') return null;
+  const v = raw.trim();
+  if (!v) return null;
+  if (PHONE_RE.test(v))                                    return { kind: 'phone',    value: v };
+  if (CODE_RE.test(v))                                     return { kind: 'code',     value: v };
+  if (USERNAME_RE.test(v) && HAS_LETTER.test(v))           return { kind: 'username', value: v };
+  return null;
+}
+
+function validatePhone(raw) {
+  const v = String(raw || '').replace(/\D/g, '');
+  if (!PHONE_RE.test(v)) return { ok: false, message: 'Phone must be 10 digits' };
+  return { ok: true, value: v };
+}
+function validateUsername(raw) {
+  const v = String(raw || '').trim();
+  if (!USERNAME_RE.test(v) || !HAS_LETTER.test(v)) {
+    return { ok: false, message: 'Username must be 3–16 chars from letters/numbers/._- and contain a letter' };
+  }
+  return { ok: true, value: v };
+}
+function validateEmployeeCode(raw) {
+  const v = String(raw || '').trim();
+  if (!CODE_RE.test(v)) return { ok: false, message: 'Employee ID must be 4–6 digits' };
+  return { ok: true, value: v };
+}
+
+// Validates the three identifier fields for create/update. Returns
+// { ok, normalized: { phoneNumber, username, employeeCode } } or
+// { ok: false, message }. requireAtLeastOne guards create-time inserts;
+// updates may pass false if the caller wants to allow clearing all three
+// (we don't, but the option exists).
+function validateIdentifiers({ phoneNumber, username, employeeCode }, { requireAtLeastOne = true } = {}) {
+  const out = { phoneNumber: null, username: null, employeeCode: null };
+  const has = (v) => v !== undefined && v !== null && String(v).trim() !== '';
+  if (has(phoneNumber))  { const r = validatePhone(phoneNumber);         if (!r.ok) return { ok: false, message: r.message }; out.phoneNumber  = r.value; }
+  if (has(username))     { const r = validateUsername(username);         if (!r.ok) return { ok: false, message: r.message }; out.username     = r.value; }
+  if (has(employeeCode)) { const r = validateEmployeeCode(employeeCode); if (!r.ok) return { ok: false, message: r.message }; out.employeeCode = r.value; }
+  if (requireAtLeastOne && !out.phoneNumber && !out.username && !out.employeeCode) {
+    return { ok: false, message: 'At least one of phone, username, or employee ID is required' };
+  }
+  return { ok: true, normalized: out };
+}
+
+// Maps a unique-constraint error from a write to a user-friendly message.
+function uniqueViolationMessage(err) {
+  const detail = err && err.detail ? String(err.detail) : '';
+  if (detail.includes('phone_number'))   return 'Phone number already exists';
+  if (detail.includes('username'))       return 'Username already taken';
+  if (detail.includes('employee_code'))  return 'Employee ID already taken';
+  return 'Identifier already exists';
+}
+
 // ── Auth (new — JWT-based) ───────────────────────────────────────────────────
 
 app.post('/api/auth/staff/login', async (req, res) => {
-  const { phone, pin } = req.body || {};
-  if (!phone) return res.status(400).json({ success: false, message: 'Phone required' });
+  // Accept `identifier` (Sprint 7) or `phone` (legacy clients pre-Sprint 7).
+  const raw = (req.body?.identifier ?? req.body?.phone ?? '').toString();
+  const { pin } = req.body || {};
+  const id = classifyIdentifier(raw);
+  if (!id) return res.status(400).json({ success: false, message: 'Enter your phone, username, or employee ID' });
 
   try {
+    const where = id.kind === 'phone'    ? 'phone_number = $1'
+                : id.kind === 'code'     ? 'employee_code = $1'
+                :                          'LOWER(username) = LOWER($1)';
     const { rows } = await pool.query(
-      `SELECT user_id, name, phone_number, role, department_id,
+      `SELECT user_id, name, phone_number, username, employee_code, role, department_id,
               pin_hash, pin_required, pin_must_set
-       FROM users WHERE phone_number = $1 AND active = true`,
-      [phone]
+       FROM users WHERE ${where} AND active = true`,
+      [id.value]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     const user = rows[0];
@@ -72,6 +147,8 @@ app.post('/api/auth/staff/login', async (req, res) => {
         user_id:       user.user_id,
         name:          user.name,
         phone_number:  user.phone_number,
+        username:      user.username,
+        employee_code: user.employee_code,
         role:          user.role,
         department_id: user.department_id,
         pin_required:  user.pin_required,
@@ -149,7 +226,8 @@ app.get('/api/me', requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT u.user_id, u.name, u.phone_number, u.role, u.department_id,
+      `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code,
+              u.role, u.department_id,
               u.pin_required, u.pin_must_set,
               (u.pin_hash IS NOT NULL) AS has_pin,
               d.name AS department
@@ -598,7 +676,8 @@ app.get('/api/admin/employees', async (req, res) => {
          GROUP BY user_id
        )
        SELECT
-         u.user_id, u.name, u.phone_number, u.role, u.hire_date,
+         u.user_id, u.name, u.phone_number, u.username, u.employee_code,
+         u.role, u.hire_date,
          u.base_hourly_rate, u.active, u.department_id, d.name AS department,
          u.pin_required, u.pin_must_set,
          (u.pin_hash IS NOT NULL) AS has_pin,
@@ -633,7 +712,8 @@ app.get('/api/admin/employees', async (req, res) => {
 app.get('/api/admin/employees/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT u.user_id, u.name, u.phone_number, u.role, u.hire_date,
+      `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code,
+              u.role, u.hire_date,
               u.base_hourly_rate, u.active, u.department_id, d.name AS department,
               u.pin_required, u.pin_must_set,
               (u.pin_hash IS NOT NULL) AS has_pin
@@ -651,19 +731,24 @@ app.get('/api/admin/employees/:id', async (req, res) => {
 });
 
 app.post('/api/admin/employees', async (req, res) => {
-  const { name, phoneNumber, role, hireDate, departmentId, baseHourlyRate } = req.body;
-  if (!name || !phoneNumber || !hireDate) {
-    return res.status(400).json({ success: false, message: 'name, phoneNumber, hireDate required' });
+  const { name, role, hireDate, departmentId, baseHourlyRate,
+          phoneNumber, username, employeeCode } = req.body;
+  if (!name || !hireDate) {
+    return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
+  const v = validateIdentifiers({ phoneNumber, username, employeeCode });
+  if (!v.ok) return res.status(400).json({ success: false, message: v.message });
   try {
     const { rows } = await pool.query(
-      `INSERT INTO users (name, phone_number, role, hire_date, department_id, base_hourly_rate)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [name, phoneNumber, role || 'employee', hireDate, departmentId || null, baseHourlyRate || null]
+      `INSERT INTO users (name, phone_number, username, employee_code,
+                          role, hire_date, department_id, base_hourly_rate)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode,
+       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null]
     );
     return res.json({ success: true, employee: rows[0] });
   } catch (err) {
-    if (err.code === '23505') return res.status(400).json({ success: false, message: 'Phone number already exists' });
+    if (err.code === '23505') return res.status(400).json({ success: false, message: uniqueViolationMessage(err) });
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -685,20 +770,25 @@ app.patch('/api/admin/employees/:id/status', async (req, res) => {
 });
 
 app.put('/api/admin/employees/:id', async (req, res) => {
-  const { name, phoneNumber, role, hireDate, departmentId, baseHourlyRate } = req.body;
-  if (!name || !phoneNumber || !hireDate) {
-    return res.status(400).json({ success: false, message: 'name, phoneNumber, hireDate required' });
+  const { name, role, hireDate, departmentId, baseHourlyRate,
+          phoneNumber, username, employeeCode } = req.body;
+  if (!name || !hireDate) {
+    return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
+  const v = validateIdentifiers({ phoneNumber, username, employeeCode });
+  if (!v.ok) return res.status(400).json({ success: false, message: v.message });
   try {
     const { rows } = await pool.query(
-      `UPDATE users SET name=$1, phone_number=$2, role=$3, hire_date=$4,
-       department_id=$5, base_hourly_rate=$6 WHERE user_id=$7 RETURNING *`,
-      [name, phoneNumber, role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, req.params.id]
+      `UPDATE users SET name=$1, phone_number=$2, username=$3, employee_code=$4,
+                        role=$5, hire_date=$6, department_id=$7, base_hourly_rate=$8
+       WHERE user_id=$9 RETURNING *`,
+      [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode,
+       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     return res.json({ success: true, employee: rows[0] });
   } catch (err) {
-    if (err.code === '23505') return res.status(400).json({ success: false, message: 'Phone number already exists' });
+    if (err.code === '23505') return res.status(400).json({ success: false, message: uniqueViolationMessage(err) });
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }

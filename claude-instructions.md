@@ -187,9 +187,16 @@ Tables: `departments`, `users`, `time_entries`, `approval_requests`, `shifts`,
 `schedules` (+ custom times via migration 002), `shift_notes`, `room_types`,
 `forecasts`, `audit_logs`, `app_settings` (migration 003).
 
-`users` columns: `user_id` (UUID), `phone_number` (10-char unique), `name`,
-`email`, `role` (ENUM `employee | front_desk | admin`), `department_id`,
-`hire_date`, `base_hourly_rate`, `active`, `created_at`, `updated_at`.
+`users` columns: `user_id` (UUID), `name`, `email`, `role` (ENUM
+`employee | front_desk | admin`), `department_id`, `hire_date`,
+`base_hourly_rate`, `active`, `created_at`, `updated_at`.
+
+Login identifiers (Sprint 7): `phone_number` (VARCHAR(10), nullable, unique),
+`username` (TEXT, nullable, case-insensitive unique via `LOWER()` partial
+index), `employee_code` (TEXT, nullable, unique). At least one must be set
+per row (`users_at_least_one_identifier` CHECK). Format CHECKs:
+`employee_code ~ '^[0-9]{4,6}$'`, username ∈ `[A-Za-z0-9._-]{3,16}` and
+must contain a letter.
 
 After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 
@@ -197,7 +204,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 
 ### Auth (JWT, HS256, 8h expiry)
 
-- `POST /api/auth/staff/login`           body: `{ phone, pin? }` → `{ token, user }`
+- `POST /api/auth/staff/login`           body: `{ identifier, pin? }` → `{ token, user }` — Sprint 7: `identifier` auto-detected (10-digit phone / 4–6 digit employee_code / username with a letter); legacy `{ phone }` still accepted
 - `POST /api/auth/admin/login`           body: `{ username, password }` → `{ token, user }`
 - `POST /api/auth/staff/set-pin`         body: `{ pin }` (auth) → `{ ok }`
 - `POST /api/auth/staff/change-pin`      body: `{ currentPin, newPin }` (auth)
@@ -221,7 +228,7 @@ After Sprint 1: `users` also has `pin_hash`, `pin_required`, `pin_must_set`.
 - `GET  /api/admin/entries?from=&to=&user_ids=&dept_id=`  auth (admin) — Sprint 6.4 — bulk time-entries query for CSV export; filters by date range plus optional user_ids (comma-sep) or dept_id; returns entries joined with name + department
 - `PATCH /api/admin/time-entries/:id`          auth (admin) — Sprint 5 — hour override (writes audit_logs)
 - `GET  /api/admin/departments`
-- `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin, plus Sprint 6.3: hours_this_week, is_on_clock, pending_ot_hours)
+- `GET  /api/admin/employees`                  (returns pin_required, pin_must_set, has_pin, plus Sprint 6.3: hours_this_week, is_on_clock, pending_ot_hours; Sprint 7: also `username` + `employee_code`)
 - `GET  /api/admin/employees/:id`              Sprint 5 — single employee fetch (powers EmployeeDetail)
 - `POST /api/admin/employees`
 - `PUT  /api/admin/employees/:id`
@@ -725,6 +732,112 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-05-07 — Sprint 7: multi-identifier login (phone / username / employee ID)
+
+Until now staff logged in with a phone number. Sprint 7 adds two more
+identifier types — **username** and **employee ID** — and lets the admin
+attach any combination of the three to a staff record. A staff member can
+log in via whichever identifier they remember; behind the scenes the
+server auto-detects the type from the input shape.
+
+**Format rules (enforced both in the app and via DB CHECK constraints):**
+- `phone_number` — 10 digits, stored as `VARCHAR(10)`. Now nullable.
+- `employee_code` — 4–6 digits, stored as `TEXT` so leading zeros work
+  (`"0042"` ≠ `"42"`).
+- `username` — 3–16 chars from `[A-Za-z0-9._-]`, **must contain at least
+  one letter**, case-insensitive uniqueness, case-preserving storage.
+
+The "must contain a letter" rule on usernames is the keystone of the
+auto-detect: it guarantees an all-digit value can be classified
+unambiguously as either phone (10 digits) or employee ID (4–6 digits).
+Without it, the username `"12345"` would be unreachable at login because
+the auto-detect would always read it as an employee_code. Document this
+constraint anywhere usernames are accepted.
+
+**Auto-detect classifier (`server.js: classifyIdentifier`):**
+```
+all digits, length 10  → phone_number
+all digits, length 4-6 → employee_code
+[A-Za-z0-9._-]{3,16} with ≥1 letter → username (case-insensitive)
+anything else          → reject
+```
+Identical regex constants live on the client (`StaffLogin.js`) for
+submit-button gating; the server is the source of truth.
+
+**At least one identifier required.** A `users_at_least_one_identifier`
+CHECK constraint guarantees no row exists that nobody can log in as. The
+admin add-staff form and the StaffDetail edit form both bail with a
+friendly message before the request is sent, so the constraint is a
+defense-in-depth backstop, not the primary user-facing validator.
+
+**Backward compatibility on the login endpoint.** `POST
+/api/auth/staff/login` reads `req.body.identifier ?? req.body.phone`, so
+any pre-Sprint-7 client that still sends `{ phone }` keeps working. New
+clients send `{ identifier }`.
+
+**DB migration 008 is required before deploy.**
+`psql "$DATABASE_URL?sslmode=require" -f database/migrations/008_login_methods.sql`
+adds the new columns, drops `NOT NULL` from `phone_number`, creates the
+two partial unique indexes (`LOWER(username)` + `employee_code`), and
+adds the three CHECK constraints. Idempotent — safe to re-run.
+
+**Files added:**
+- `database/migrations/008_login_methods.sql`.
+
+**Files modified:**
+- `database/schema.sql` — `users` table mirrors migration 008 (new
+  columns, dropped NOT NULL on `phone_number`, partial unique indexes,
+  CHECK constraints for at-least-one + format on each).
+- `server/server.js` —
+  - Added classifier + per-field validators + `validateIdentifiers()`
+    helper + `uniqueViolationMessage()` mapper.
+  - Rewrote `POST /api/auth/staff/login` to use the classifier.
+  - `GET /api/admin/employees`, `GET /api/admin/employees/:id`,
+    `GET /api/me` now return `username` + `employee_code`.
+  - `POST /api/admin/employees` and `PUT /api/admin/employees/:id`
+    accept all three identifier fields, require ≥1, surface
+    field-specific unique-violation messages.
+- `src/auth/index.js` — `loginStaff(identifier, pin)` (param renamed,
+  body now sends `{ identifier }`).
+- `src/pages/Login/StaffLogin.js` — renamed phone state to
+  `identifier`; input accepts `[A-Za-z0-9._-]` up to 16 chars;
+  `inputMode="text"`; on-screen keypad **hidden** when input contains a
+  non-digit (signals username intent); label and placeholder updated.
+- `src/components/AdminPanel/StaffManager.js` — add-form now has three
+  identifier inputs in a sectioned group; phone no longer marked
+  required; client-side ≥1 check before submit.
+- `src/components/AdminPanel/StaffDetail.js` — edit form parallels the
+  add-form; read-only info grid shows all three identifiers; pin-meta
+  copy updated to "log in with their identifier alone".
+- `src/components/AdminPanel/AdminPanel.css` — `.add-form-section`
+  styles (full-row separator block inside the auto-fill grid).
+
+**Conventions added:**
+- **Letter-required usernames as auto-detect tiebreaker.** When a single
+  input field accepts multiple identifier types, define the regex of
+  each type so they don't overlap. For HotelOps that meant requiring
+  at least one letter in usernames so all-digit inputs are
+  unambiguously phone or employee ID. Same principle applies any time
+  you build "smart" inputs — the rule must be stated and enforced at
+  every layer (client validator, server classifier, DB CHECK).
+- **Partial unique indexes for nullable identifiers.** Don't reach for
+  `UNIQUE` on a nullable column when you want "unique when present" —
+  the SQL standard treats NULLs as distinct, but PostgreSQL's
+  `UNIQUE NULLS DISTINCT` semantics are version-sensitive. Use a
+  partial index instead: `CREATE UNIQUE INDEX ... WHERE col IS NOT
+  NULL`. Same pattern works for case-insensitive uniqueness via
+  `LOWER(col)`.
+- **Backward-compat on auth endpoints.** When renaming a field on a
+  login route, accept both old and new for a window
+  (`req.body.identifier ?? req.body.phone`). Even with a single
+  client, refresh-load lag means an in-flight tab on the old code can
+  hit a redeployed server. Cheap insurance.
+- **Defense-in-depth validation.** Format rules live in three places:
+  client (friendly error before submit), server (final word for the
+  API), DB CHECK (last-line guarantee that bad data can never reach a
+  row). The DB layer doesn't replace the others — it backs them up
+  when an app-level bug lets something through.
 
 ### 2026-05-07 — Sprint 6.7: themed radio + checkbox utilities
 

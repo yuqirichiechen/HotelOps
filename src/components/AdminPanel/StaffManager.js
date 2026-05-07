@@ -9,7 +9,7 @@ import { apiFetch } from '../../auth';
 const ROLES     = ['employee', 'front_desk', 'admin'];
 const today     = () => new Date().toISOString().split('T')[0];
 const emptyForm = () => ({
-  name: '', phone: '', role: 'employee',
+  name: '', phone: '', username: '', employeeCode: '', role: 'employee',
   departmentId: '', hireDate: today(), baseHourlyRate: '',
 });
 
@@ -101,14 +101,25 @@ const StaffManager = () => {
 
   const handleAdd = async (e) => {
     e.preventDefault();
+    // Sprint 7: at least one of phone / username / employee ID is required.
+    // Server enforces too — this is just a friendlier early bail.
+    if (!form.phone && !form.username && !form.employeeCode) {
+      setFormError('Provide at least one of phone, username, or employee ID');
+      return;
+    }
     setFormLoading(true);
     setFormError('');
     const res  = await fetch('/api/admin/employees', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: form.name, phoneNumber: form.phone, role: form.role,
-        hireDate: form.hireDate, departmentId: form.departmentId || null,
+        name:           form.name,
+        phoneNumber:    form.phone        || null,
+        username:       form.username     || null,
+        employeeCode:   form.employeeCode || null,
+        role:           form.role,
+        hireDate:       form.hireDate,
+        departmentId:   form.departmentId || null,
         baseHourlyRate: form.baseHourlyRate || null,
       }),
     });
@@ -489,10 +500,6 @@ const StaffManager = () => {
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Smith" required />
               </div>
               <div className="admin-field">
-                <label>Phone Number *</label>
-                <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))} placeholder="10 digits" required />
-              </div>
-              <div className="admin-field">
                 <label>Role *</label>
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                   {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
@@ -512,6 +519,39 @@ const StaffManager = () => {
               <div className="admin-field">
                 <label>Hourly Rate ($)</label>
                 <input type="number" step="0.01" min="0" value={form.baseHourlyRate} onChange={e => setForm(f => ({ ...f, baseHourlyRate: e.target.value }))} placeholder="0.00" />
+              </div>
+              <div className="admin-field add-form-section">
+                <div className="add-form-section-label">Login identifiers — at least one required</div>
+                <div className="add-form-section-sub">Staff can sign in using any of these.</div>
+              </div>
+              <div className="admin-field">
+                <label>Phone Number</label>
+                <input
+                  inputMode="numeric"
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))}
+                  placeholder="10 digits"
+                />
+              </div>
+              <div className="admin-field">
+                <label>Username</label>
+                <input
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={form.username}
+                  onChange={e => setForm(f => ({ ...f, username: e.target.value.replace(/[^A-Za-z0-9._-]/g,'').slice(0,16) }))}
+                  placeholder="3–16 chars · letters/numbers/._-"
+                />
+              </div>
+              <div className="admin-field">
+                <label>Employee ID</label>
+                <input
+                  inputMode="numeric"
+                  value={form.employeeCode}
+                  onChange={e => setForm(f => ({ ...f, employeeCode: e.target.value.replace(/\D/g,'').slice(0,6) }))}
+                  placeholder="4–6 digits"
+                />
               </div>
             </div>
             {formError && <div className="admin-error">{formError}</div>}

@@ -51,7 +51,11 @@ INSERT INTO departments (name) VALUES
 
 CREATE TABLE users (
   user_id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone_number     VARCHAR(10)  NOT NULL UNIQUE,
+  -- Login identifiers (Sprint 7): staff can log in via any of these. At least
+  -- one must be set; uniqueness enforced per-column via partial indexes.
+  phone_number     VARCHAR(10)  UNIQUE,             -- 10 digits, optional
+  username         TEXT,                            -- 3-16 chars [A-Za-z0-9._-], must contain a letter
+  employee_code    TEXT,                            -- 4-6 digits, string so leading zeros work
   name             VARCHAR(200) NOT NULL,
   email            VARCHAR(255) UNIQUE,
   role             user_role    NOT NULL DEFAULT 'employee',
@@ -63,12 +67,23 @@ CREATE TABLE users (
   pin_required     BOOLEAN      NOT NULL DEFAULT FALSE,  -- admin-controlled
   pin_must_set     BOOLEAN      NOT NULL DEFAULT FALSE,  -- forces set-PIN interstitial after admin reset
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  CONSTRAINT users_at_least_one_identifier CHECK (
+    phone_number IS NOT NULL OR username IS NOT NULL OR employee_code IS NOT NULL
+  ),
+  CONSTRAINT users_employee_code_format CHECK (
+    employee_code IS NULL OR employee_code ~ '^[0-9]{4,6}$'
+  ),
+  CONSTRAINT users_username_format CHECK (
+    username IS NULL OR (username ~ '^[A-Za-z0-9._-]{3,16}$' AND username ~ '[A-Za-z]')
+  )
 );
 
 CREATE INDEX idx_users_phone      ON users(phone_number);
 CREATE INDEX idx_users_role       ON users(role);
 CREATE INDEX idx_users_department ON users(department_id);
+CREATE UNIQUE INDEX idx_users_username_lower  ON users (LOWER(username))   WHERE username      IS NOT NULL;
+CREATE UNIQUE INDEX idx_users_employee_code   ON users (employee_code)     WHERE employee_code IS NOT NULL;
 
 
 -- ── TIME ENTRIES ──────────────────────────────────────────────────────────────

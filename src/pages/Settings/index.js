@@ -101,6 +101,14 @@ const Settings = ({ theme, onToggleTheme }) => {
               <span className="settings-field-value">{formatPhone(user?.phone_number)}</span>
             </div>
             <div className="settings-field">
+              <span className="settings-field-label">Username</span>
+              <span className="settings-field-value">{user?.username || '—'}</span>
+            </div>
+            <div className="settings-field">
+              <span className="settings-field-label">Employee ID</span>
+              <span className="settings-field-value">{user?.employee_code || '—'}</span>
+            </div>
+            <div className="settings-field">
               <span className="settings-field-label">Role</span>
               <span className="settings-field-value">{ROLE_LABELS[user?.role] || user?.role || '—'}</span>
             </div>
