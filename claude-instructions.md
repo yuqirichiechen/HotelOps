@@ -733,6 +733,111 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 8.3: warn-but-allow conflict detection + Sprint 8 close
+
+The last bit of the Sprint 8 umbrella — conflict detection on shift
+saves, mobile/tablet polish on the new views. Closes the front-end
+scheduling rebuild.
+
+**Conflict detection — warn-but-allow.** Hotels run 24/7 and admins
+*sometimes* intentionally double-book a person (sick-call cover,
+training overlap, shift handover). Blocking on overlap would force
+admins to delete the existing shift first just to add a covering one;
+warning lets them confirm-and-go. The `findConflicts()` helper
+(exported from `AssignPanel.js`) takes the proposed
+`{ userId, dates, startTime, endTime, excludeId }` plus the loaded
+`schedules` array and returns the overlapping rows.
+
+The check is purely client-side against currently-loaded schedules
+(the slice covering the active view's date range). For recurring
+assignments that span past the loaded range, conflicts in unloaded
+dates won't be flagged — acceptable tradeoff vs. round-tripping to
+the server, since the existing `/api/admin/schedule` POST happily
+accepts overlaps too. If the user navigates the view before
+assigning, the freshly-loaded data covers the new range.
+
+**Three places get the same warn-but-allow flow:**
+- `AssignPanel` — pre-flight check on the bulk submit. If any
+  conflicts found, shows an amber strip listing them ("Mon May 7 ·
+  9am–5pm") with `[Cancel] [Save N shifts anyway]` actions. The
+  regular submit button is hidden during this state.
+- `AssignModal` — same pattern for the click-cell-to-assign and
+  edit-existing flows. Edit mode passes `excludeId: schedule.schedule_id`
+  so the shift being edited doesn't conflict with itself.
+- WeekView drag-to-move — *intentionally skipped* for this sprint.
+  Drag is fast-paced and a confirmation dialog mid-drag would be
+  jarring; if a manager wants conflict-aware moves they'll get it
+  via the existing edit modal. Revisit in 8.x.
+
+**Visual: amber, not red.** Errors that block (validation failures
+in `.ap-error`) stay red; warnings that allow (`.ap-conflict`) are
+amber. Distinct visual codes so the admin learns "red = fix me, amber
+= confirm." The "Save anyway" button uses the same amber tone
+(`.ap-submit-warn`) so the action and the warning read as paired.
+
+**Mobile/tablet polish:**
+- DayView timeline is 1344px tall; gave its wrapper
+  `overflow-y: auto` + `-webkit-overflow-scrolling: touch` so it
+  scrolls correctly on iOS without rubber-banding the whole page.
+  Also added `max-height: calc(100vh - 280px)` so the timeline
+  fits within the visible viewport instead of pushing the page
+  scrollbar.
+- AssignPanel bottom-sheet breakpoint bumped from `<720px` to
+  `<900px`. iPads in portrait (820/834px wide) were getting the
+  380px right-drawer, which left only ~440px for the calendar
+  behind it — too cramped. Bumping the breakpoint puts iPads on
+  the bottom-sheet pattern. iPad landscape (≥1024) still gets the
+  desktop drawer.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/AssignPanel.js` — added
+  `findConflicts()` (exported), conflict state, conflict warning UI,
+  `proceedSubmit()` / `handleSaveAnyway()` / `handleCancelConflict()`
+  flow.
+- `src/components/AdminPanel/Scheduling/AssignModal.js` — imports
+  `findConflicts` from AssignPanel, adds the same conflict state +
+  warning block in the modal body, and split-button footer
+  ("Cancel" + "Save anyway" replaces the regular save button when
+  conflicts are present).
+- `src/components/AdminPanel/Scheduling/index.js` — passes the
+  loaded `schedules` array as a prop to both AssignPanel and
+  AssignModal.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` — amber
+  conflict block (`.ap-conflict` + `.ap-conflict-head/list/help/actions`),
+  `.ap-submit-warn` amber-tinted button, `.ap-btn-secondary`
+  outlined cancel button. DayView wrapper switched to
+  `overflow-y: auto`. AssignPanel mobile breakpoint 720→900.
+
+**Conventions added:**
+- **Warn-but-allow for soft constraints; block for hard ones.** A
+  validation that *can* legitimately be bypassed (overlapping shifts
+  in 24/7 ops) should warn the user with an explicit "do it anyway"
+  action — never silently allow, never hard-block. The amber +
+  paired-amber-button pattern works: amber says "look at this," the
+  matching-color action says "yes, that one." Reserve red for "this
+  literally cannot proceed" (missing required fields, end-before-start).
+- **Pre-flight client checks against loaded data, not round-trip.**
+  When the admin's already looking at the data the check needs, do
+  the validation client-side against the loaded slice. Cheaper than
+  a server round-trip per save, and the server stays the
+  authoritative gatekeeper for hard constraints. The tradeoff —
+  conflicts outside the loaded range won't surface — is documented
+  inline so future maintainers don't have to rediscover it.
+- **Skip the warning UI on fast-paced gestures.** Drag-to-move
+  shouldn't surface a confirm dialog mid-drag; conflict checks belong
+  on the edit/save flows, not in the middle of a continuous gesture.
+  If conflict-aware drag is wanted later, the right pattern is a
+  visual hint during the drag (red drop target) rather than a modal
+  after the drop.
+
+**Sprint 8 — closing notes.** The four-view iOS-Calendar architecture
+(8.0), docked Assign panel + bulk recurring (8.1), timeline-positioned
+shift blocks (8.2), and warn-but-allow conflict detection (8.3) are
+all front-end changes — schema and API surface unchanged. Drag-to-
+create and conflict-aware drag-move are explicit non-goals for 8.x;
+revisit in a separate sprint. Major debugging session lives at 8.4
+when the user finds rough edges.
+
 ### 2026-05-07 — Sprint 8.2: timeline-positioned shift blocks in WeekView
 
 WeekView cells used to be full-width "9–5pm" text. Sprint 8.2 turns each

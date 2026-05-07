@@ -330,6 +330,7 @@ const SchedulingManager = () => {
         <AssignModal
           modal={modal}
           templates={templates}
+          schedules={schedules}
           onSave={handleSave}
           onDelete={handleDelete}
           onClose={() => setModal(null)}
@@ -341,6 +342,7 @@ const SchedulingManager = () => {
         employees={employees}
         departments={departments}
         templates={templates}
+        schedules={schedules}
         prefill={panelPrefill}
         onClose={() => setPanelOpen(false)}
         onSubmit={handlePanelSubmit}

@@ -14,6 +14,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 // Conflict detection (warn-but-allow per Sprint 8 plan) lands in 8.3.
 
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const SHORT_DAY   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const SHORT_MONTH = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const fmtConflictDate = (iso) => {
+  const d = new Date(iso + 'T00:00:00');
+  return `${SHORT_DAY[d.getDay()]} ${SHORT_MONTH[d.getMonth()]} ${d.getDate()}`;
+};
+const fmtTime = (t) => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const period = h >= 12 ? 'pm' : 'am';
+  const hour   = h % 12 || 12;
+  return m === 0 ? `${hour}${period}` : `${hour}:${String(m).padStart(2, '0')}${period}`;
+};
 
 const today = () => {
   const d = new Date();
@@ -50,7 +64,36 @@ export const computeRecurringDates = (fromIso, toIso, selectedDays) => {
   return out;
 };
 
-const AssignPanel = ({ open, employees, departments, templates, onClose, onSubmit, prefill }) => {
+// Conflict detection (Sprint 8.3) — find existing shifts that overlap with
+// any of the proposed (userId, date, startTime-endTime) tuples. We
+// "warn-but-allow" because hotels run 24/7 and admin sometimes intentionally
+// double-books a person to cover a sick call. Limited to the loaded
+// `existingSchedules` slice — if a recurring assignment runs past the
+// currently-loaded date range, conflicts in the unloaded portion will not
+// be flagged. Acceptable tradeoff vs. round-tripping to the server.
+const toMin = (t) => {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
+const timeOverlap = (aStart, aEnd, bStart, bEnd) =>
+  toMin(aStart) < toMin(bEnd) && toMin(aEnd) > toMin(bStart);
+
+export const findConflicts = ({ userId, dates, startTime, endTime, excludeId, schedules }) => {
+  const dateSet = new Set(dates);
+  const out = [];
+  schedules.forEach(s => {
+    if (s.user_id !== userId) return;
+    if (excludeId && s.schedule_id === excludeId) return;
+    if (!dateSet.has(s.scheduled_date)) return;
+    if (timeOverlap(startTime, endTime, s.start_time.slice(0,5), s.end_time.slice(0,5))) {
+      out.push(s);
+    }
+  });
+  return out;
+};
+
+const AssignPanel = ({ open, employees, departments, templates, schedules = [], onClose, onSubmit, prefill }) => {
   // ── form state ──────────────────────────────────────────────────────────
   const [userId,     setUserId]     = useState('');
   const [mode,       setMode]       = useState('single'); // 'single' | 'recurring'
@@ -65,6 +108,7 @@ const AssignPanel = ({ open, employees, departments, templates, onClose, onSubmi
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState('');
   const [lastResult, setLastResult] = useState(null); // { ok, fail, message }
+  const [conflicts,  setConflicts]  = useState(null);  // null = not checked yet; [] = no conflicts; [...] = warn
 
   // Apply prefill (e.g. when WeekView empty cell is clicked) once per change.
   useEffect(() => {
@@ -139,15 +183,11 @@ const AssignPanel = ({ open, employees, departments, templates, onClose, onSubmi
     return null;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const v = validate();
-    if (v) { setError(v); return; }
+  const proceedSubmit = async (dates) => {
     setError('');
     setSaving(true);
     setLastResult(null);
-
-    const dates = mode === 'single' ? [date] : recurringDates;
+    setConflicts(null);
     const result = await onSubmit({
       userId, dates, startTime, endTime,
       shiftId: templateId || null,
@@ -164,6 +204,29 @@ const AssignPanel = ({ open, employees, departments, templates, onClose, onSubmi
       setTemplateId('');
     }
   };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const v = validate();
+    if (v) { setError(v); return; }
+    const dates = mode === 'single' ? [date] : recurringDates;
+
+    // Pre-flight conflict check. Warn but allow — see the "warn-but-allow"
+    // comment near findConflicts. The admin must explicitly click
+    // "Save anyway" to acknowledge.
+    const c = findConflicts({ userId, dates, startTime, endTime, schedules });
+    if (c.length > 0) {
+      setConflicts(c);
+      return;
+    }
+    proceedSubmit(dates);
+  };
+
+  const handleSaveAnyway = () => {
+    const dates = mode === 'single' ? [date] : recurringDates;
+    proceedSubmit(dates);
+  };
+  const handleCancelConflict = () => setConflicts(null);
 
   if (!open) return null;
 
@@ -312,13 +375,40 @@ const AssignPanel = ({ open, employees, departments, templates, onClose, onSubmi
             </div>
           )}
 
-          <button type="submit" className="ap-submit" disabled={saving || dateCount === 0}>
-            {saving
-              ? 'Saving…'
-              : dateCount > 1
-                ? `Add ${dateCount} shifts`
-                : 'Add shift'}
-          </button>
+          {conflicts && conflicts.length > 0 ? (
+            <div className="ap-conflict">
+              <div className="ap-conflict-head">
+                ⚠ {conflicts.length} overlap{conflicts.length === 1 ? '' : 's'} with existing shift{conflicts.length === 1 ? '' : 's'}
+              </div>
+              <ul className="ap-conflict-list">
+                {conflicts.slice(0, 5).map(c => (
+                  <li key={c.schedule_id}>
+                    {fmtConflictDate(c.scheduled_date)} · {fmtTime(c.start_time.slice(0,5))}–{fmtTime(c.end_time.slice(0,5))}
+                  </li>
+                ))}
+                {conflicts.length > 5 && <li>…and {conflicts.length - 5} more</li>}
+              </ul>
+              <div className="ap-conflict-help">
+                Hotels run 24/7 — overlaps are sometimes intentional (sick-call cover, training, etc.). Save anyway?
+              </div>
+              <div className="ap-conflict-actions">
+                <button type="button" className="ap-btn-secondary" onClick={handleCancelConflict}>Cancel</button>
+                <button type="button" className="ap-submit ap-submit-warn" onClick={handleSaveAnyway} disabled={saving}>
+                  {saving
+                    ? 'Saving…'
+                    : dateCount > 1 ? `Save ${dateCount} shifts anyway` : 'Save anyway'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="submit" className="ap-submit" disabled={saving || dateCount === 0}>
+              {saving
+                ? 'Saving…'
+                : dateCount > 1
+                  ? `Add ${dateCount} shifts`
+                  : 'Add shift'}
+            </button>
+          )}
         </form>
       </aside>
     </>
