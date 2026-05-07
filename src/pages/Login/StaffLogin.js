@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { TENANT } from '../../config/tenant';
+import { TransitionLink } from './TransitionLink';
 import './Login.css';
 
 // Sprint 7.1: built-in QWERTY keyboard alongside the existing numeric
@@ -247,7 +248,7 @@ const StaffLogin = () => {
         </form>
 
         <div className="login-switch">
-          <Link to="/login/admin">Manager sign-in →</Link>
+          <TransitionLink to="/login/admin">Manager sign-in →</TransitionLink>
         </div>
       </div>
     </div>

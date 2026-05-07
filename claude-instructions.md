@@ -733,6 +733,63 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 7.4: animated swap between staff + admin login
+
+The staff login card is tall (auto-detect identifier + on-screen keyboard),
+the admin login card is short (just username + password). Switching
+between them via the `Manager sign-in →` / `Staff sign-in →` link was a
+hard cut — the card snapped to the new size, content swapped instantly.
+
+**Fix: View Transitions API.** Tagged `.login-card` with a unique
+`view-transition-name`. When a navigation is wrapped in
+`document.startViewTransition()`, the browser captures snapshot of the
+old DOM, runs the React update, captures the new DOM, and animates
+between them — size, position, and content cross-fade are handled
+automatically. No FLIP math, no measuring, no JS animation library.
+
+**`flushSync` is mandatory.** React batches state updates, so by default
+a `nav('/login/admin')` call inside the transition callback wouldn't
+have actually mutated the DOM by the time `startViewTransition` snapshots
+the "new" state — the browser would diff the old DOM against the still-old
+DOM and animate nothing. Wrapping the nav in `flushSync()` forces the
+update synchronously inside the callback so the snapshot lands correctly.
+
+**Implemented as a reusable `<TransitionLink>` component**
+(`src/pages/Login/TransitionLink.js`) that wraps react-router's `<Link>`:
+intercepts the click only when the API is available, skips on
+modifier-key clicks (cmd/ctrl-click should still open in a new tab via
+the underlying `<a>`), and falls through to vanilla Link nav on browsers
+without the API. Means the only changes in StaffLogin/AdminLogin are
+swapping `Link` for `TransitionLink`.
+
+**`prefers-reduced-motion` honored** by collapsing the animation duration
+to 1ms — keeps the API working for behavior (the navigation still goes
+through `startViewTransition`) without showing motion to users who've
+opted out.
+
+**Files added:** `src/pages/Login/TransitionLink.js`.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js`, `AdminLogin.js` — `Link` → `TransitionLink`.
+- `src/pages/Login/Login.css` — `view-transition-name: login-card` on
+  `.login-card`; custom `::view-transition-old/new` duration + easing;
+  reduced-motion override.
+
+**Conventions added:**
+- **`document.startViewTransition` + `flushSync` for React route
+  transitions.** When animating between two react-router routes that
+  share a visual element (a card, a panel, a modal), wrap the
+  navigation in `document.startViewTransition(() => flushSync(() =>
+  navigate(to)))`. Tag the shared element with `view-transition-name`.
+  The browser handles the FLIP-style animation. Skip the API gracefully
+  when unsupported — *don't* polyfill it with framer-motion or similar
+  unless the visual is critical to the UX.
+- **Modifier-key passthrough on intercepted Links.** Anything that
+  intercepts a `<Link>`'s click and prevents default needs to early-out
+  on `metaKey || ctrlKey || shiftKey || altKey` so cmd-click / ctrl-click
+  / shift-click still hand off to the browser's "open in new
+  tab/window" behavior. Otherwise the link feels broken to power users.
+
 ### 2026-05-07 — Sprint 7.3: locked-height keyboard + content-aware letter-spacing
 
 Two visual fixes on the staff login.

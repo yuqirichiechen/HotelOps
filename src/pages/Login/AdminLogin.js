@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { TENANT } from '../../config/tenant';
+import { TransitionLink } from './TransitionLink';
 import './Login.css';
 
 const AdminLogin = () => {
@@ -74,7 +75,7 @@ const AdminLogin = () => {
         </form>
 
         <div className="login-switch">
-          <Link to="/login/staff">Staff sign-in →</Link>
+          <TransitionLink to="/login/staff">Staff sign-in →</TransitionLink>
         </div>
       </div>
     </div>

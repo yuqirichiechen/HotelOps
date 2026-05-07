@@ -17,6 +17,27 @@
   box-shadow: var(--shadow-md);
   padding: 36px 32px 28px;
   border: 1px solid var(--border);
+  /* Sprint 7.4: tags this element for the View Transitions API. When a
+     navigation between staff <-> admin login is wrapped in
+     `document.startViewTransition` (see TransitionLink.js), the browser
+     auto-animates the card's size + cross-fades the inner content
+     between the two snapshots. Browsers without the API skip silently. */
+  view-transition-name: login-card;
+}
+
+/* Slightly softer + slower than the browser default (250ms ease) so the
+   resize + cross-fade reads as deliberate rather than snappy. */
+::view-transition-old(login-card),
+::view-transition-new(login-card) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(login-card),
+  ::view-transition-new(login-card) {
+    animation-duration: 1ms;
+  }
 }
 
 .login-brand {
