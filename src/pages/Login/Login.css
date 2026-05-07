@@ -196,7 +196,63 @@
   letter-spacing: 0.04em;
 }
 
+/* Sprint 7.1: keyboard-mode switcher (ABC / 123). Spans the full row of
+   whichever keyboard it's living inside, sitting alone at the bottom
+   like the iOS keyboard's bottom-left corner. */
+.lk-btn.lk-kb-switch {
+  grid-column: 1 / -1;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+
+/* Sprint 7.1: QWERTY letter keyboard. Three rows of letters + a switcher
+   row, mirroring iOS keyboard rhythm. Row 2 is slightly indented; row 3
+   frames the letters between a Caps modifier and a Backspace modifier. */
+.login-kb-letters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.login-kb-row {
+  display: flex;
+  gap: 5px;
+}
+
+.login-kb-row .lk-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 0;
+  font-size: 17px;
+}
+
+/* Indent row 2 so the 9 keys sit centered under row 1's 10 keys. */
+.login-kb-row-2 {
+  padding: 0 5%;
+}
+
+/* Caps + Backspace are visually wider than a letter. */
+.login-kb-row-3 .lk-mod {
+  flex: 1.5 1 0;
+  font-size: 15px;
+}
+
+.login-kb-row-3 .lk-mod.is-active {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  color: white;
+}
+
+.login-kb-row-4 .lk-btn {
+  flex: 0 0 28%;
+}
+
 @media (max-width: 480px) {
   .lk-btn { padding: 12px 0; font-size: 20px; }
   .login-keypad { gap: 6px; margin-top: 14px; }
+  .login-kb-row .lk-btn { padding: 11px 0; font-size: 16px; }
+  .login-kb-row-3 .lk-mod { font-size: 14px; }
+  .login-kb-letters { gap: 5px; margin-top: 14px; }
+  .login-kb-row { gap: 4px; }
 }

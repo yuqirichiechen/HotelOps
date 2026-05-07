@@ -4,15 +4,20 @@ import { useAuth } from '../../auth';
 import { TENANT } from '../../config/tenant';
 import './Login.css';
 
-// Sprint 7: staff can sign in with phone, employee ID, or username (auto-detected
-// server-side). The on-screen keypad is still useful for phone / employee-ID
-// users; we hide it once the input contains a non-digit, since at that point
-// they're typing a username via the system keyboard. PIN remains 4 digits and
-// always uses the keypad.
+// Sprint 7.1: built-in QWERTY keyboard alongside the existing numeric
+// keypad. Tablet/kiosk deployments can't always rely on the OS keyboard
+// being available or appropriate, so we render our own. The two keyboards
+// swap via the bottom 123 / ABC button — same pattern as the iOS keyboard.
+//
+// PIN field always uses the numeric keypad regardless of mode, since the
+// PIN is a 4-digit code.
+//
+// Caps is purely an HCI nicety — the server compares usernames
+// case-insensitively (LOWER(username) = LOWER($1)), so caps state doesn't
+// affect login outcome. We still render it so the keyboard "feels right."
 
 // Mirrors the server's classifier (server.js: classifyIdentifier). Used here
-// purely to decide whether the input is a *valid-looking* identifier so we can
-// enable the submit button — final auth happens server-side.
+// to gate the submit button — final auth happens server-side.
 const PHONE_RE    = /^[0-9]{10}$/;
 const CODE_RE     = /^[0-9]{4,6}$/;
 const USERNAME_RE = /^[A-Za-z0-9._-]{3,16}$/;
@@ -23,9 +28,11 @@ const isValidIdentifier = (v) => {
   return false;
 };
 
-const isAllDigits = (v) => v === '' || /^[0-9]+$/.test(v);
+const ROW_1 = ['q','w','e','r','t','y','u','i','o','p'];
+const ROW_2 = ['a','s','d','f','g','h','j','k','l'];
+const ROW_3 = ['z','x','c','v','b','n','m'];
 
-const KeypadButtons = ({ onKey }) => (
+const KeypadNumbers = ({ onKey, onSwitch }) => (
   <div className="login-keypad">
     {['1','2','3','4','5','6','7','8','9'].map(n => (
       <button key={n} type="button" className="lk-btn" onClick={() => onKey(n)}>
@@ -35,8 +42,49 @@ const KeypadButtons = ({ onKey }) => (
     <button type="button" className="lk-btn lk-aux" onClick={() => onKey('clear')}>Clear</button>
     <button type="button" className="lk-btn"        onClick={() => onKey('0')}>0</button>
     <button type="button" className="lk-btn lk-aux" onClick={() => onKey('back')}>⌫</button>
+    {onSwitch && (
+      <button type="button" className="lk-btn lk-aux lk-kb-switch" onClick={onSwitch}>
+        ABC
+      </button>
+    )}
   </div>
 );
+
+const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch }) => {
+  const xform = (l) => caps ? l.toUpperCase() : l;
+  const renderLetter = (l) => (
+    <button key={l} type="button" className="lk-btn lk-letter" onClick={() => onKey(xform(l))}>
+      {xform(l)}
+    </button>
+  );
+  return (
+    <div className="login-kb-letters">
+      <div className="login-kb-row login-kb-row-1">{ROW_1.map(renderLetter)}</div>
+      <div className="login-kb-row login-kb-row-2">{ROW_2.map(renderLetter)}</div>
+      <div className="login-kb-row login-kb-row-3">
+        <button
+          type="button"
+          className={`lk-btn lk-aux lk-mod ${caps ? 'is-active' : ''}`}
+          onClick={onCaps}
+          aria-pressed={caps}
+          aria-label="Caps lock"
+        >⇧</button>
+        {ROW_3.map(renderLetter)}
+        <button
+          type="button"
+          className="lk-btn lk-aux lk-mod"
+          onClick={() => onKey('back')}
+          aria-label="Backspace"
+        >⌫</button>
+      </div>
+      <div className="login-kb-row login-kb-row-4">
+        <button type="button" className="lk-btn lk-aux lk-kb-switch" onClick={onSwitch}>
+          123
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const StaffLogin = () => {
   const { loginStaff } = useAuth();
@@ -49,6 +97,8 @@ const StaffLogin = () => {
   const [activeField, setActive]      = useState('id');
   const [err,         setErr]         = useState('');
   const [loading,     setLoading]     = useState(false);
+  const [kbMode,      setKbMode]      = useState('numbers'); // 'numbers' | 'letters'
+  const [caps,        setCaps]        = useState(false);
 
   // Auto-advance to PIN once a valid identifier is entered and the server
   // already told us PIN is required.
@@ -58,13 +108,15 @@ const StaffLogin = () => {
     }
   }, [identifier, needsPin, activeField]);
 
-  // Keypad drives whichever field is active. For the identifier field we
-  // append digits as-is (covers phone + employee ID flows). The PIN field
-  // is digits-only.
+  // Append a key to whichever field is active. Numbers keypad emits digits
+  // and the special tokens 'clear' / 'back'. Letters keyboard emits a single
+  // letter (already cased per `caps`) or 'back'.
   const onKey = (val) => {
     if (activeField === 'pin') {
       if (val === 'clear') return setPin('');
       if (val === 'back')  return setPin(p => p.slice(0, -1));
+      // PIN ignores letters even if the letters keyboard is somehow active.
+      if (!/^[0-9]$/.test(val)) return;
       return setPin(p => p.length < 4 ? p + val : p);
     }
     if (val === 'clear') return setIdentifier('');
@@ -73,10 +125,8 @@ const StaffLogin = () => {
   };
 
   const onIdentifierChange = (e) => {
-    // Allow letters/digits/._- up to 16 chars. Server still validates;
-    // this is just a typing-time filter that drops obviously-invalid chars
-    // (spaces, punctuation other than . _ -) so the user can't enter them
-    // and then get a server error.
+    // Hand-typing via system keyboard still works; filter to the same
+    // chars the on-screen keyboard can produce.
     const next = e.target.value.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 16);
     setIdentifier(next);
   };
@@ -104,10 +154,9 @@ const StaffLogin = () => {
 
   const canSubmit = isValidIdentifier(identifier) && (!needsPin || pin.length === 4);
 
-  // Hide the on-screen keypad once the user starts typing letters — at that
-  // point they're entering a username via the system keyboard and the keypad
-  // is just visual noise. Keep it for the PIN field unconditionally.
-  const showKeypad = activeField === 'pin' || isAllDigits(identifier);
+  // PIN field always uses the numeric keypad. For the identifier field, the
+  // user toggles between letters and numbers via the bottom switcher.
+  const showLetters = activeField === 'id' && kbMode === 'letters';
 
   return (
     <div className="login-page">
@@ -162,7 +211,19 @@ const StaffLogin = () => {
 
           {err && <div className="login-error">{err}</div>}
 
-          {showKeypad && <KeypadButtons onKey={onKey} />}
+          {showLetters ? (
+            <KeyboardLetters
+              onKey={onKey}
+              caps={caps}
+              onCaps={() => setCaps(c => !c)}
+              onSwitch={() => setKbMode('numbers')}
+            />
+          ) : (
+            <KeypadNumbers
+              onKey={onKey}
+              onSwitch={activeField === 'id' ? () => setKbMode('letters') : null}
+            />
+          )}
 
           <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
             {loading ? 'Signing in…' : 'Sign in'}

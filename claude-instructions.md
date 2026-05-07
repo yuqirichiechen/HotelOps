@@ -733,6 +733,59 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 7.1: built-in QWERTY keyboard on the staff login
+
+Sprint 7 added username login but left the on-screen widget as the
+existing 3-column numeric keypad — fine for phone/employee-ID, useless
+for usernames. Sprint 7.1 adds a full QWERTY keyboard so a tablet/kiosk
+deployment doesn't need to depend on the OS soft keyboard being
+available or appropriate. The two keyboards swap via a corner switcher,
+the same pattern iOS uses (`123` on the letter keyboard, `ABC` on the
+number keyboard).
+
+**Layout (mirrors iPhone portrait):**
+- Row 1: `Q W E R T Y U I O P` (10 keys)
+- Row 2: `A S D F G H J K L` (9 keys, indented ~5% so they sit centered
+  under row 1)
+- Row 3: `⇧ Z X C V B N M ⌫` — Caps and Backspace flank the 7 letters,
+  styled `flex: 1.5` so they read as wider modifiers
+- Row 4: `123` switcher, narrow button at the left (28% width) like iOS
+
+**Caps is intentionally cosmetic.** The server compares usernames
+case-insensitively (`LOWER(username) = LOWER($1)`), so toggling caps
+doesn't change the login outcome — it just changes what the user sees
+they're typing. Documented inline in the StaffLogin comment so a future
+maintainer doesn't "fix" the no-op.
+
+**PIN field is hardwired to numbers.** `activeField === 'pin'` ignores
+`kbMode` and always renders the numeric keypad, so the user can't get
+themselves into a state where they're trying to enter a 4-digit PIN on a
+letters keyboard. The letters keyboard's `onKey` also rejects non-digit
+input when the PIN field is active as a defense-in-depth check.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js` — split the keypad into two
+  components (`KeypadNumbers`, `KeyboardLetters`), added `kbMode` and
+  `caps` state, added `onSwitch` props that flip mode, conditionally
+  rendered based on `activeField === 'id' && kbMode === 'letters'`.
+- `src/pages/Login/Login.css` — `.login-kb-letters` flex-column
+  container, four `.login-kb-row-N` rows with their own widths,
+  `.lk-kb-switch` spans the full row in the numbers keypad
+  (`grid-column: 1 / -1`) so `ABC` sits alone at the bottom.
+
+**Conventions added:**
+- **Two-mode soft keyboard pattern.** When a single input accepts both
+  digit-shaped and letter-shaped values, render two keyboards and let
+  the user toggle via a corner switcher button (`123` / `ABC`).
+  Trying to render one keyboard with both letters and digits crammed
+  together makes every key tiny and stops looking like a keyboard.
+  Mode lives in component state, not auto-detected from input —
+  the user can always force the mode they want.
+- **Cosmetic-vs-functional toggles deserve a comment.** When a
+  control's *visual* state intentionally has no effect on backend
+  behavior (Caps in our case), say so in a comment near the toggle.
+  Future maintainers will assume "broken" otherwise.
+
 ### 2026-05-07 — Sprint 7: multi-identifier login (phone / username / employee ID)
 
 Until now staff logged in with a phone number. Sprint 7 adds two more
