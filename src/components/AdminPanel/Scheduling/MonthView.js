@@ -2,6 +2,16 @@ import React from 'react';
 
 const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// Department abbreviations shown on each day cell. Mirrors the labels users
+// already recognize from staff cards / scheduling. Anything not in this map
+// falls back to first 2 letters uppercased.
+const DEPT_ABBREV = {
+  'Front Desk':      'FD',
+  'Housekeeping':    'HK',
+  'Maintenance':     'MT',
+  'Food & Beverage': 'F&B',
+  'Management':      'MG',
+};
 const DEPT_DOTS = {
   'Front Desk':      '#3182ce',
   'Housekeeping':    '#38a169',
@@ -10,15 +20,21 @@ const DEPT_DOTS = {
   'Management':      '#718096',
 };
 
+const abbreviate = (name) => DEPT_ABBREV[name] || (name || '').slice(0, 2).toUpperCase();
+
 const fmtDate = (d) => {
   const date = new Date(d);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const MonthView = ({ year, month, schedules, loading, onSelectDay }) => {
-  const firstDay      = new Date(year, month, 1);
-  const lastDay       = new Date(year, month + 1, 0);
-  const firstDayOfWeek = (firstDay.getDay() + 6) % 7; // 0 = Mon
+// Sprint 8.0: month cells now show department-grouped headcount summaries
+// (e.g. "FD: 2 · HK: 2") instead of a single shift count + dots. Compact
+// enough to fit a 7-col month grid; each line is sorted alphabetically so
+// the order is stable across days.
+const MonthView = ({ year, month, schedules, departments, loading, onSelectDay }) => {
+  const firstDay       = new Date(year, month, 1);
+  const lastDay        = new Date(year, month + 1, 0);
+  const firstDayOfWeek = (firstDay.getDay() + 6) % 7;
 
   const days = [];
   for (let i = 0; i < firstDayOfWeek; i++) {
@@ -32,12 +48,13 @@ const MonthView = ({ year, month, schedules, loading, onSelectDay }) => {
     days.push({ date: new Date(year, month + 1, i), current: false });
   }
 
-  // Per-day stats: { count, depts: Set }
-  const dayData = {};
+  // Per-day, per-department count: { 'YYYY-MM-DD': { 'Front Desk': 2, ... } }
+  const dayDeptCounts = {};
   schedules.forEach(s => {
-    if (!dayData[s.scheduled_date]) dayData[s.scheduled_date] = { count: 0, depts: new Set() };
-    dayData[s.scheduled_date].count++;
-    dayData[s.scheduled_date].depts.add(s.department_name);
+    const date = s.scheduled_date;
+    const dept = s.department_name || 'Unassigned';
+    if (!dayDeptCounts[date]) dayDeptCounts[date] = {};
+    dayDeptCounts[date][dept] = (dayDeptCounts[date][dept] || 0) + 1;
   });
 
   const today = fmtDate(new Date());
@@ -45,7 +62,7 @@ const MonthView = ({ year, month, schedules, loading, onSelectDay }) => {
   if (loading) return <div className="sched-loading">Loading schedule…</div>;
 
   return (
-    <div className="month-view">
+    <div className="month-view" style={{ viewTransitionName: `sched-month-${month}` }}>
       <div className="month-grid">
         {DAY_HEADERS.map(d => (
           <div key={d} className="month-day-header">{d}</div>
@@ -53,51 +70,44 @@ const MonthView = ({ year, month, schedules, loading, onSelectDay }) => {
 
         {days.map((item, i) => {
           const dateStr = fmtDate(item.date);
-          const data    = item.current ? dayData[dateStr] : null;
+          const counts  = item.current ? dayDeptCounts[dateStr] : null;
           const isToday = dateStr === today;
+          const deptList = counts ? Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0])) : [];
 
           return (
-            <div
+            <button
               key={i}
+              type="button"
               className={[
                 'month-day-cell',
-                !item.current  ? 'month-day-other' : '',
-                isToday        ? 'month-day-today'  : '',
+                !item.current ? 'month-day-other' : '',
+                isToday       ? 'month-day-today' : '',
               ].join(' ').trim()}
               onClick={() => item.current && onSelectDay(item.date)}
+              disabled={!item.current}
+              style={item.current ? { viewTransitionName: `sched-day-${dateStr}` } : undefined}
             >
               <span className={`month-day-num${isToday ? ' month-day-num-today' : ''}`}>
                 {item.date.getDate()}
               </span>
-              {data && (
+              {deptList.length > 0 && (
                 <div className="month-day-content">
-                  <span className="month-shift-count">
-                    {data.count} shift{data.count !== 1 ? 's' : ''}
-                  </span>
-                  <div className="month-dept-dots">
-                    {[...data.depts].map(deptName => (
+                  {deptList.map(([deptName, n]) => (
+                    <div key={deptName} className="month-dept-line">
                       <span
-                        key={deptName}
-                        className="month-dept-dot"
+                        className="month-dept-tag"
                         style={{ background: DEPT_DOTS[deptName] || '#a0aec0' }}
-                        title={deptName}
-                      />
-                    ))}
-                  </div>
+                      >
+                        {abbreviate(deptName)}
+                      </span>
+                      <span className="month-dept-count">: {n}</span>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
+            </button>
           );
         })}
-      </div>
-
-      <div className="month-legend">
-        {Object.entries(DEPT_DOTS).map(([name, color]) => (
-          <div key={name} className="month-legend-item">
-            <span className="month-legend-dot" style={{ background: color }} />
-            <span>{name}</span>
-          </div>
-        ))}
       </div>
     </div>
   );

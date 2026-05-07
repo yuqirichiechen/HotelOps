@@ -733,6 +733,105 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 8.0: scheduling rebuilt as iOS-Calendar-style 4-view zoom
+
+The old scheduling page was a Week+Month toggle with per-day "Assign"
+modal lookup. Functional but doesn't scale once a hotel has 30+ staff
+across multiple departments — managers can't see coverage at a glance,
+and the assign flow is one shift at a time. Sprint 8.0 lays the
+foundation for a new scheduling experience patterned on the iOS Calendar
+app: **Year → Month → Week → Day**, with smooth zoom animations between
+them via the View Transitions API (Sprint 7.4 pattern).
+
+**View hierarchy + cursor model.** A single `cursor` Date drives every
+view; switching views preserves the cursor so the admin keeps their
+place. Default landing is **Month** (matches iOS). The user's
+explicitly-stated rules:
+- **Year**: 12 mini-month tiles (4×3 desktop / 2×6 tablet / 1×12 mobile).
+  Click anywhere on a month → zoom into that month. Cannot jump to a
+  specific day from Year — must enter Month first, then click a day
+  (mirrors iOS Calendar behavior exactly).
+- **Month**: 7-col grid; each day cell shows department-abbreviated
+  headcount (`FD: 2 · HK: 2 · MT: 1`) instead of just total count +
+  dots. Click a day → zoom into Day.
+- **Week**: existing staff-by-day grid kept as-is for power users.
+  Reachable via the segmented control; not in the zoom hierarchy.
+- **Day**: iOS-Calendar Day-view layout — horizontal week strip on top
+  (M T W T F S S, cursor highlighted, click to switch days), then a
+  full 24-hour timeline (00:00 → 24:00) with shifts as positioned
+  colored blocks (department-tinted). Overlapping shifts are
+  **lane-packed** side-by-side via a greedy first-fit algorithm.
+
+**View Transitions API zoom.** Each Year-view month tile and each
+MonthView day cell carries a unique `view-transition-name`
+(`sched-month-${m}` / `sched-day-${YYYY-MM-DD}`). The corresponding
+container in MonthView / DayView carries the *same* name. Wrapping the
+nav in `runWithTransition()` (`document.startViewTransition` +
+`flushSync`) makes the browser FLIP from the small targeted tile to the
+full container. Default duration tuned to 320ms with the same
+ease-out-cubic curve we use everywhere else.
+
+**Header restructure.** Left side of the header now shows a contextual
+back arrow when the current view is zoomed in (Day → Month, Month →
+Year), or the original "← Home" otherwise. Right side has the 4-way
+segmented control (Year/Month/Week/Day) and a "+" placeholder button
+that 8.1 will wire to the docked Assign Shifts side panel.
+
+**Schema unchanged.** Sprint 8 is front-end-first; the existing
+`schedules` table is sufficient. No backend changes in 8.0.
+
+**Files added:**
+- `src/components/AdminPanel/Scheduling/YearView.js` — 12 mini-month
+  tiles + a `MiniMonth` helper component (today circled, days with
+  shifts dotted).
+- `src/components/AdminPanel/Scheduling/DayView.js` — week strip + 24h
+  timeline with `laneAssign()` greedy lane-packer for overlapping
+  shifts. Renders blocks via `position: absolute` with top/height as %
+  of 24h and left/width based on lane index ÷ lane count.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/index.js` — replaced
+  `view`/`weekStart`/`month` triple-state with `view` + `cursor`
+  (single Date) + `runWithTransition()` zoom helper. Header rebuilt
+  with back arrow + 4-way toggle + "+" placeholder. Conditional
+  rendering for all four view components.
+- `src/components/AdminPanel/Scheduling/MonthView.js` — day cells
+  rebuilt as `<button>` elements that show department-abbrev + count
+  rows (`FD: 2`). Each day cell carries the `sched-day-${dateStr}`
+  view-transition-name so the zoom into DayView works.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` — appended
+  styles for: button-element overrides on `.month-day-cell`,
+  `.month-dept-line/tag/count`, full Year-view + mini-month layout,
+  full Day-view (week strip + timeline + shift blocks), `.sched-add-btn`,
+  and a universal `::view-transition-old/new(*)` rule that times every
+  named transition at 320ms with reduced-motion override.
+
+**Conventions added:**
+- **iOS-Calendar-style hierarchical zoom.** When you have nested
+  granularities (year → month → day), each *target* tile in the
+  outer view and the matching *container* in the inner view both get
+  the same `view-transition-name`. The browser's FLIP animation
+  scales the tile up to the container — feels exactly like iOS
+  Calendar's pinch-zoom. Universal selector
+  `::view-transition-old/new(*)` lets you set duration/easing once
+  for all named transitions in the page; no need to enumerate the 12
+  + 365 unique names.
+- **Single cursor + view enum beats parallel state.** When multiple
+  views all describe a moment in time at different granularities,
+  collapse them to one `cursor: Date` and derive view-specific ranges
+  from it (`startOfWeek(cursor)`, `cursor.getMonth()`, etc.). The
+  alternative — separate `weekStart`, `monthYear`, `dayDate` — drifts
+  out of sync the moment any view-switch logic forgets to update one.
+  Single source of truth; switch view, keep place.
+- **Greedy lane-packing for overlapping calendar blocks.** Sort by
+  start time; for each block, drop into the leftmost lane whose last
+  block ends ≤ this block's start; if none, append a new lane. Track
+  `_lane` per block plus total lane count, then position with
+  `left: lane/count`, `width: 1/count`. Doesn't produce optimal
+  packing but produces *stable* packing (admin sees the same lanes
+  on a refresh) and is O(n × lanes) — fast enough for any single-day
+  shift count a hotel will throw at it.
+
 ### 2026-05-07 — Sprint 7.4: animated swap between staff + admin login
 
 The staff login card is tall (auto-detect identifier + on-screen keyboard),

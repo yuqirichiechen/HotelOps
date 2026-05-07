@@ -1,13 +1,24 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import WeekView from './WeekView';
+import { flushSync } from 'react-dom';
+import YearView from './YearView';
 import MonthView from './MonthView';
+import WeekView from './WeekView';
+import DayView from './DayView';
 import AssignModal from './AssignModal';
 import './Scheduling.css';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-const getWeekStart = (d = new Date()) => {
+// Sprint 8.0: scheduling now mirrors the iOS Calendar app — Year / Month /
+// Week / Day. A single `cursor` date drives every view; switching views
+// preserves the cursor so the admin keeps their place. Zooming between
+// views (Year → Month → Day) is animated via the View Transitions API,
+// reusing the Sprint 7.4 pattern (document.startViewTransition + flushSync).
+//
+// Default landing view is Month, matching iOS Calendar's default.
+
+const startOfWeek = (d) => {
   const date = new Date(d);
   date.setHours(0, 0, 0, 0);
   const day = date.getDay();
@@ -20,12 +31,24 @@ const fmtDate = (d) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
+// Browser-supported view transition wrapper. Falls back to an instant
+// state update if startViewTransition is unavailable (e.g. older Firefox).
+const runWithTransition = (cb) => {
+  if (typeof document !== 'undefined' && document.startViewTransition) {
+    document.startViewTransition(() => flushSync(cb));
+  } else {
+    cb();
+  }
+};
+
 const SchedulingManager = () => {
   const nav = useNavigate();
-  const [view,      setView]      = useState('week');
-  const [weekStart, setWeekStart] = useState(() => getWeekStart());
-  const [month,     setMonth]     = useState(() => ({ year: new Date().getFullYear(), month: new Date().getMonth() }));
 
+  // ── View + cursor state ─────────────────────────────────────────────────
+  const [view,   setView]   = useState('month'); // year | month | week | day
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
+
+  // ── Data ────────────────────────────────────────────────────────────────
   const [schedules,    setSchedules]    = useState([]);
   const [employees,    setEmployees]    = useState([]);
   const [departments,  setDepartments]  = useState([]);
@@ -46,27 +69,40 @@ const SchedulingManager = () => {
     });
   }, []);
 
+  // Range to fetch is driven by the current view + cursor. We always fetch a
+  // little extra so view-internal navigation (next/prev day, etc.) doesn't
+  // refetch unless the cursor leaves the range.
+  const fetchRange = useMemo(() => {
+    if (view === 'year') {
+      return { start: `${cursor.getFullYear()}-01-01`, end: `${cursor.getFullYear()}-12-31` };
+    }
+    if (view === 'month') {
+      const last = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+      return {
+        start: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2,'0')}-01`,
+        end:   `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2,'0')}-${String(last).padStart(2,'0')}`,
+      };
+    }
+    if (view === 'week') {
+      const ws = startOfWeek(cursor);
+      const we = new Date(ws); we.setDate(we.getDate() + 6);
+      return { start: fmtDate(ws), end: fmtDate(we) };
+    }
+    // day
+    return { start: fmtDate(cursor), end: fmtDate(cursor) };
+  }, [view, cursor]);
+
   const loadSchedules = useCallback(async () => {
     setLoading(true);
-    let start, end;
-    if (view === 'week') {
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      start = fmtDate(weekStart);
-      end   = fmtDate(weekEnd);
-    } else {
-      const lastDay = new Date(month.year, month.month + 1, 0).getDate();
-      start = `${month.year}-${String(month.month + 1).padStart(2, '0')}-01`;
-      end   = `${month.year}-${String(month.month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    }
-    const res  = await fetch(`/api/admin/schedule?start=${start}&end=${end}`);
+    const res  = await fetch(`/api/admin/schedule?start=${fetchRange.start}&end=${fetchRange.end}`);
     const data = await res.json();
     if (data.success) setSchedules(data.schedules);
     setLoading(false);
-  }, [view, weekStart, month]);
+  }, [fetchRange]);
 
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
 
+  // ── Save / delete / move (unchanged from prior sprint) ──────────────────
   const handleSave = async ({ startTime, endTime, shiftId, notes }) => {
     if (modal?.type === 'assign') {
       const res = await fetch('/api/admin/schedule', {
@@ -129,57 +165,105 @@ const SchedulingManager = () => {
     loadSchedules();
   };
 
-  const prevWeek = () => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() - 7);
-    setWeekStart(d);
-  };
-  const nextWeek = () => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + 7);
-    setWeekStart(d);
-  };
+  // ── Navigation helpers (animated via View Transitions API) ──────────────
+  const zoomTo = (nextView, nextCursor) => runWithTransition(() => {
+    if (nextCursor) setCursor(nextCursor);
+    setView(nextView);
+  });
 
-  const prevMonth = () => setMonth(m => m.month === 0 ? { year: m.year - 1, month: 11 } : { ...m, month: m.month - 1 });
-  const nextMonth = () => setMonth(m => m.month === 11 ? { year: m.year + 1, month: 0 } : { ...m, month: m.month + 1 });
-
-  const handleSelectDayFromMonth = (date) => {
-    setWeekStart(getWeekStart(date));
-    setView('week');
+  const goPrev = () => {
+    const d = new Date(cursor);
+    if (view === 'year')  d.setFullYear(d.getFullYear() - 1);
+    if (view === 'month') d.setMonth(d.getMonth() - 1);
+    if (view === 'week')  d.setDate(d.getDate() - 7);
+    if (view === 'day')   d.setDate(d.getDate() - 1);
+    setCursor(d);
   };
+  const goNext = () => {
+    const d = new Date(cursor);
+    if (view === 'year')  d.setFullYear(d.getFullYear() + 1);
+    if (view === 'month') d.setMonth(d.getMonth() + 1);
+    if (view === 'week')  d.setDate(d.getDate() + 7);
+    if (view === 'day')   d.setDate(d.getDate() + 1);
+    setCursor(d);
+  };
+  const goToday = () => setCursor(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
+
+  // ── Header label depending on view ──────────────────────────────────────
+  const headerLabel = (() => {
+    if (view === 'year')  return `${cursor.getFullYear()}`;
+    if (view === 'month') return `${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`;
+    if (view === 'week')  {
+      const ws = startOfWeek(cursor);
+      return `${MONTH_NAMES[ws.getMonth()]} ${ws.getFullYear()}`;
+    }
+    return cursor.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  })();
+
+  // Back-arrow target depending on current view (mirrors iOS Calendar):
+  // Day → Month, Month → Year, Year/Week → none.
+  const backTarget = view === 'day' ? 'month' : view === 'month' ? 'year' : null;
 
   return (
     <div className="sched-manager">
       <div className="sched-header">
         <div className="sched-header-left">
-          <button className="btn-back" onClick={() => nav('/admin')}>← Home</button>
-          <h2>Scheduling</h2>
+          {backTarget ? (
+            <button className="btn-back" onClick={() => zoomTo(backTarget)} aria-label="Back">
+              ‹ {backTarget === 'month' ? MONTH_NAMES[cursor.getMonth()] : cursor.getFullYear()}
+            </button>
+          ) : (
+            <button className="btn-back" onClick={() => nav('/admin')}>‹ Home</button>
+          )}
+          <h2 className="sched-title">{headerLabel}</h2>
         </div>
         <div className="sched-header-right">
           <div className="sched-view-toggle">
-            <button className={`view-btn${view === 'week'  ? ' active' : ''}`} onClick={() => setView('week')}>Week</button>
-            <button className={`view-btn${view === 'month' ? ' active' : ''}`} onClick={() => setView('month')}>Month</button>
+            {['year','month','week','day'].map(v => (
+              <button
+                key={v}
+                className={`view-btn${view === v ? ' active' : ''}`}
+                onClick={() => zoomTo(v)}
+              >
+                {v[0].toUpperCase() + v.slice(1)}
+              </button>
+            ))}
           </div>
+          {/* Sprint 8.1 lands the docked Assign Shifts side panel here. */}
+          <button className="sched-add-btn" aria-label="Assign shifts" disabled title="Side panel coming in 8.1">＋</button>
         </div>
       </div>
 
       <div className="sched-nav-bar">
-        <button className="nav-arrow" onClick={view === 'week' ? prevWeek : prevMonth}>‹</button>
-        {view === 'week' && (
-          <button className="nav-today" onClick={() => setWeekStart(getWeekStart())}>Today</button>
-        )}
-        <span className="nav-label">
-          {view === 'week'
-            ? `${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getFullYear()}`
-            : `${MONTH_NAMES[month.month]} ${month.year}`}
-        </span>
-        <button className="nav-arrow" onClick={view === 'week' ? nextWeek : nextMonth}>›</button>
+        <button className="nav-arrow" onClick={goPrev} aria-label="Previous">‹</button>
+        <button className="nav-today" onClick={goToday}>Today</button>
+        <button className="nav-arrow" onClick={goNext} aria-label="Next">›</button>
       </div>
 
       <div className="sched-content">
-        {view === 'week' ? (
+        {view === 'year' && (
+          <YearView
+            year={cursor.getFullYear()}
+            schedules={schedules}
+            loading={loading}
+            onSelectMonth={(m) => {
+              const d = new Date(cursor); d.setMonth(m, 1); zoomTo('month', d);
+            }}
+          />
+        )}
+        {view === 'month' && (
+          <MonthView
+            year={cursor.getFullYear()}
+            month={cursor.getMonth()}
+            schedules={schedules}
+            departments={departments}
+            loading={loading}
+            onSelectDay={(date) => zoomTo('day', new Date(date))}
+          />
+        )}
+        {view === 'week' && (
           <WeekView
-            weekStart={weekStart}
+            weekStart={startOfWeek(cursor)}
             employees={employees}
             departments={departments}
             schedules={schedules}
@@ -188,13 +272,16 @@ const SchedulingManager = () => {
             onEdit={(schedule)    => setModal({ type: 'edit',   schedule })}
             onMove={handleMove}
           />
-        ) : (
-          <MonthView
-            year={month.year}
-            month={month.month}
+        )}
+        {view === 'day' && (
+          <DayView
+            date={cursor}
             schedules={schedules}
+            employees={employees}
+            departments={departments}
             loading={loading}
-            onSelectDay={handleSelectDayFromMonth}
+            onPickDate={(d)   => setCursor(new Date(d))}
+            onEdit={(schedule) => setModal({ type: 'edit', schedule })}
           />
         )}
       </div>
