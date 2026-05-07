@@ -409,6 +409,7 @@ const StaffManager = () => {
                   <label className="staff-mgr-export-radio">
                     <input
                       type="radio"
+                      className="hop-radio"
                       name="csv-scope"
                       checked={csvScope === 'all'}
                       onChange={() => setCsvScope('all')}
@@ -418,6 +419,7 @@ const StaffManager = () => {
                   <label className={`staff-mgr-export-radio ${!deptScopeAvailable ? 'is-disabled' : ''}`}>
                     <input
                       type="radio"
+                      className="hop-radio"
                       name="csv-scope"
                       disabled={!deptScopeAvailable}
                       checked={csvScope === 'department'}
@@ -432,6 +434,7 @@ const StaffManager = () => {
                   <label className="staff-mgr-export-radio">
                     <input
                       type="radio"
+                      className="hop-radio"
                       name="csv-scope"
                       checked={csvScope === 'filtered'}
                       onChange={() => setCsvScope('filtered')}

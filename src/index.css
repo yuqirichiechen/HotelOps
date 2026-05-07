@@ -27,3 +27,73 @@ button {
 input, select, textarea {
   font-family: 'TiemposText', Georgia, serif;
 }
+
+/* ── Form controls (project-wide utilities) ──────────────────────────────
+   Restyle native <input type=radio> / <input type=checkbox> by hiding the
+   platform widget with appearance:none and drawing our own indicator with
+   ::after. The native input still handles every behavior — radio grouping
+   via name=, keyboard arrow navigation between radios, focus, change
+   events, screen-reader semantics — so this is purely visual.
+
+   Apply by adding the class to the input itself:
+     <input type="radio"    className="hop-radio" name="..." />
+     <input type="checkbox" className="hop-check" />                       */
+
+.hop-radio,
+.hop-check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin: 0;
+  position: relative;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.hop-radio { border-radius: 50%; }
+.hop-check { border-radius: 4px; }
+
+.hop-radio:hover:not(:disabled),
+.hop-check:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.hop-radio:focus-visible,
+.hop-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hop-radio:checked         { border-color: var(--brand-bg); }
+.hop-radio:checked::after  {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-bg);
+}
+
+.hop-check:checked {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+}
+.hop-check:checked::after {
+  content: '✓';
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hop-radio:disabled,
+.hop-check:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

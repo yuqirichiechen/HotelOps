@@ -726,6 +726,76 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 6.7: themed radio + checkbox utilities
+
+The Export popover's Scope section had three native `<input
+type="radio">` controls. Same problem as the Include-inactive
+checkbox before Sprint 6.6 — native form widgets stuck out as
+un-themed elements next to chip-styled controls and brand-colored
+buttons. The Include-inactive fix was easy: it's a binary toggle,
+so a `<button aria-pressed>` works. But radios in a group need
+keyboard arrow navigation, focus management, and `name=`-based
+mutual exclusion — re-implementing those by hand is the kind of
+thing that's easy to subtly break (forgetting `aria-checked`,
+losing focus on selection change, missing arrow-key handling).
+
+**Decision: restyle native inputs rather than rebuild them.** Keep
+the platform `<input type="radio">` / `<input type="checkbox">`
+exactly as is — the browser handles every behavior — and just hide
+the platform widget visually with `appearance: none` and draw our
+own indicator using `::after`. This is what Stripe / Vercel /
+Notion / every production design system does for the same reason:
+the behavior cost of rebuilding is not worth the visual control.
+
+**Two utility classes in `src/index.css`:**
+- `.hop-radio` — circle (`border-radius: 50%`), checked state shows
+  an 8px brand-color dot via `::after`.
+- `.hop-check` — square (`border-radius: 4px`), checked state fills
+  with brand color and shows a white `✓` via `::after`.
+
+Both share a base ruleset for sizing (16×16, 1.5px border), hover
+(border darkens via `var(--text-muted)`), `:focus-visible` (2px
+accent outline with offset), and `:disabled` (40% opacity,
+not-allowed cursor). Apply by adding the class to the input itself
+— no wrapper restructuring needed:
+
+```jsx
+<label>
+  <input type="radio"    className="hop-radio" name="..." />
+  <input type="checkbox" className="hop-check" />
+</label>
+```
+
+**First consumer:** the three Scope radios in `StaffManager.js`
+export popover. The previous `staff-mgr-export-radio` *label*
+styling stays — it owns the row layout, gap, hover, disabled state
+of the row. The new utility class only repaints the *input*.
+
+**Files modified:**
+- `src/index.css` — appended `.hop-radio` + `.hop-check` rules
+  after the base typography reset.
+- `src/components/AdminPanel/StaffManager.js` — added
+  `className="hop-radio"` to all three `csv-scope` radios.
+
+**Conventions added:**
+- **Restyle native form inputs; don't rebuild them.** When a
+  themed UI needs custom-looking checkboxes / radios, the answer
+  is `<input type=... > + appearance: none + ::after` — not
+  `<button aria-checked>`. The native input keeps doing all the
+  accessibility work (radio grouping via `name=`, keyboard arrow
+  nav, focus, screen-reader semantics) and we just paint over the
+  platform widget. The exception is binary on/off toggles where
+  there's no group: `<button aria-pressed>` is fine because you
+  don't lose anything by skipping the input (see Include-inactive
+  in Sprint 6.6C).
+- **Project-wide form utilities live in `src/index.css`.** Classes
+  named `hop-*` (HotelOps namespace) are global utilities that
+  any component can use. Component-scoped CSS files
+  (e.g. `AdminPanel.css`) are for component layout and one-off
+  styling; cross-cutting controls go in `index.css` so we don't
+  have N copies of the same restyled radio scattered across
+  feature folders.
+
 ### 2026-05-07 — Sprint 6.6: filter-row polish (export popover + toggle)
 
 Three small but visible bugs in the StaffManager filter row.
