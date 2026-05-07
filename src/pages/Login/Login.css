@@ -244,8 +244,13 @@
   color: white;
 }
 
-.login-kb-row-4 .lk-btn {
-  flex: 0 0 28%;
+/* Row 4 holds 5 buttons (Clear, 123, _, -, .) — let them share the row at
+   equal width via the inherited `flex: 1 1 0` from `.login-kb-row .lk-btn`.
+   Symbol buttons get a slightly larger glyph since underscore/dash/period
+   read as small at the row's default 17px. */
+.login-kb-row-4 .lk-sym {
+  font-size: 22px;
+  font-weight: 700;
 }
 
 @media (max-width: 480px) {

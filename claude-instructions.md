@@ -733,6 +733,29 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 7.2: letters keyboard bottom row
+
+Sprint 7.1 left the letters-keyboard bottom row with just the `123`
+switcher in the corner — visually unbalanced *and* missing the three
+legal username punctuation chars (`_`, `-`, `.` per the
+`[A-Za-z0-9._-]` regex). Without those keys, a username with a period
+or dash couldn't be typed on the on-screen keyboard at all.
+
+Bottom row is now five equal-width keys: `Clear · 123 · _ · - · .`.
+Dropped the previous `flex: 0 0 28%` rule so the five buttons inherit
+the row's default `flex: 1 1 0`. Added `.lk-sym` for the three
+punctuation buttons with a slightly larger glyph (22px vs the row's
+17px) since underscore/dash/period look anemic at letter size.
+
+The `grid-column: 1 / -1` on `.lk-kb-switch` keeps working for the
+numeric keypad's `ABC` button (it spans all 3 grid cols there) and is
+silently ignored in the letters-keyboard row 4 (a flex container,
+where `grid-column` does nothing). Same class, two layout contexts —
+worth being aware of when touching either keyboard's CSS.
+
+**File modified:** `src/pages/Login/StaffLogin.js` (5-button row 4),
+`src/pages/Login/Login.css` (drop 28%-width rule, add `.lk-sym`).
+
 ### 2026-05-07 — Sprint 7.1: built-in QWERTY keyboard on the staff login
 
 Sprint 7 added username login but left the on-screen widget as the

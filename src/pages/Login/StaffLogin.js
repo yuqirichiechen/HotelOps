@@ -77,10 +77,16 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch }) => {
           aria-label="Backspace"
         >⌫</button>
       </div>
+      {/* Bottom row: Clear, 123 switcher, then the three legal punctuation
+          chars usernames may contain (._- per the regex). Equal widths so
+          the row reads as a balanced control band rather than one floater
+          in the corner. */}
       <div className="login-kb-row login-kb-row-4">
-        <button type="button" className="lk-btn lk-aux lk-kb-switch" onClick={onSwitch}>
-          123
-        </button>
+        <button type="button" className="lk-btn lk-aux"            onClick={() => onKey('clear')}>Clear</button>
+        <button type="button" className="lk-btn lk-aux lk-kb-switch" onClick={onSwitch}>123</button>
+        <button type="button" className="lk-btn lk-sym"            onClick={() => onKey('_')}>_</button>
+        <button type="button" className="lk-btn lk-sym"            onClick={() => onKey('-')}>-</button>
+        <button type="button" className="lk-btn lk-sym"            onClick={() => onKey('.')}>.</button>
       </div>
     </div>
   );
