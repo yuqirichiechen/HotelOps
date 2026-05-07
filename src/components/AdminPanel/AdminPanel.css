@@ -1858,18 +1858,6 @@
 .staff-mgr-stat-meta.is-live { color: var(--success-text); font-weight: 600; }
 .staff-mgr-stat.is-warn .staff-mgr-stat-meta { color: var(--warn-text); font-weight: 600; }
 
-.staff-mgr-stat-arrow {
-  position: absolute;
-  bottom: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid var(--accent-alt);
-}
-
 /* Filter row */
 
 .staff-mgr-filters {
@@ -1953,6 +1941,17 @@
   background: var(--brand-bg);
   border-color: var(--brand-bg);
   color: white;
+}
+
+/* Forces a flex-row wrap break and draws a thin separator. The dept
+   chips above filter the list; Include inactive + Export below are
+   display + action concerns — visually separating them stops the row
+   from reading as one continuous control band. */
+.staff-mgr-filter-divider {
+  flex-basis: 100%;
+  height: 0;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
 }
 
 /* Chip-styled toggle. Native checkbox stuck out against the rest of the

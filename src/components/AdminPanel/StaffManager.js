@@ -304,7 +304,6 @@ const StaffManager = () => {
               <div className={`staff-mgr-stat-meta ${s.tone === 'live' ? 'is-live' : ''}`}>
                 {s.meta}
               </div>
-              {isSelected && <div className="staff-mgr-stat-arrow" aria-hidden />}
             </button>
           );
         })}
@@ -356,6 +355,11 @@ const StaffManager = () => {
             Unassigned
           </button>
         </div>
+
+        {/* Separates the *filter* row (search + dept chips) from the
+            *display + action* row (include-inactive toggle + export).
+            Different concerns shouldn't read as one continuous control band. */}
+        <div className="staff-mgr-filter-divider" aria-hidden />
 
         <button
           type="button"

@@ -824,6 +824,41 @@ on `aria-pressed`. Native checkbox / `<label>` removed.
   the platform UI (e.g., long form submission with default browser
   validation).
 
+**6.6 addendum — filter row visual hierarchy + stat arrow removal.**
+Two small post-fix polish items.
+
+1. The filter row had four flex children — search, dept chips,
+   include-inactive, export — but the first two are *filtering*
+   the list while the last two are *display + action* on the
+   list. Reading them as one continuous band of controls was
+   misleading. Inserted a `<div class="staff-mgr-filter-divider"
+   aria-hidden />` between chips and toggle. CSS:
+   `flex-basis: 100%; height: 0; border-top: 1px solid
+   var(--border)`. The `flex-basis: 100%` is the trick — it
+   forces a wrap break in the flex container *and* draws a
+   horizontal rule via `border-top` on a zero-height element.
+   Cleaner than a pseudo-element on `.staff-mgr-toggle` because
+   the divider is a real element with `aria-hidden` and works
+   even when toggle isn't rendered.
+2. Selected stat cards in StaffManager had a downward-pointing
+   triangle below them (`.staff-mgr-stat-arrow`) pointing at the
+   list. Visual noise — the blue ring already conveys "this
+   filter is selected." Removed both the JSX render and the CSS
+   rule. (AdminHome's `.adm-stat-arrow` left in place — the user
+   only flagged the StaffManager case, and AdminHome's arrow
+   does the connecting work between the stats banner and a
+   detail card *swap* below, which is a slightly different UX.)
+
+**Convention added:**
+- **`flex-basis: 100%` divider for visual sectioning inside a
+  flex-wrap row.** When a wrap-able flex row holds two
+  conceptually distinct groups of controls, separate them with
+  an empty `<div>` whose `flex-basis: 100%` forces a row break.
+  Add `border-top` to also draw a rule. Beats restructuring the
+  DOM into two separate flex containers because it preserves
+  the single-row layout when the screen is wide enough for
+  everything to fit.
+
 ### 2026-05-02 — Sprint 6.5.1: finish the Home/Staff de-duplication
 
 Sprint 6.5B made the two banners *less* duplicated but didn't go far enough.
