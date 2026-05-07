@@ -1955,19 +1955,32 @@
   color: white;
 }
 
+/* Chip-styled toggle. Native checkbox stuck out against the rest of the
+   filter row (chips, search input, primary button) — this matches the
+   chip language and uses aria-pressed instead of an input for state. */
 .staff-mgr-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
   font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
   margin-left: auto;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.staff-mgr-toggle input { cursor: pointer; }
+.staff-mgr-toggle:hover { background: var(--bg-raised); color: var(--text-primary); }
+
+.staff-mgr-toggle.is-active {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  color: white;
+}
 
 /* List */
 
@@ -2338,10 +2351,10 @@
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  /* Sized to content with sane bounds: never narrower than 260px,
-     never wider than the viewport minus a 32px gutter. */
-  width: max-content;
-  min-width: 260px;
+  /* Compact desktop popover — content fits comfortably at this width and
+     it never reaches off-screen left when right-anchored from a trigger
+     deep on the right. Mobile uses a fixed bottom-sheet (see breakpoint). */
+  width: 320px;
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
   background: var(--bg-surface);
@@ -2384,8 +2397,11 @@
 }
 
 .staff-mgr-export-period {
-  display: flex;
-  flex-wrap: wrap;
+  /* Fixed-count segmented control — grid keeps all 4 buttons in one row at
+     equal widths regardless of label length. Flex with min-width caused
+     "Year" to wrap to a second row on the popover's natural width. */
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   background: var(--bg-raised);
   border-radius: 9px;
   padding: 3px;
@@ -2396,16 +2412,16 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 500;
-  padding: 6px 12px;
+  padding: 6px 8px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.15s ease, color 0.15s ease;
-  flex: 1 1 64px;
-  min-width: 60px;
+  min-width: 0;
   white-space: nowrap;
+  text-align: center;
 }
 
 .staff-mgr-export-period-btn:hover { color: var(--text-primary); }
@@ -2473,25 +2489,26 @@
 }
 
 @media (max-width: 720px) {
+  /* On narrow viewports the export wrapper isn't necessarily on the right
+     edge of the screen — the filter row wraps and the wrapper can sit
+     mid-row. Anchoring `right: 0` of the wrapper then pushes the popover
+     off the LEFT edge of the viewport. Switch to a viewport-fixed
+     bottom sheet so the popover always stays inside the screen
+     regardless of where the trigger landed. */
   .staff-mgr-export-menu {
-    /* width/max-width above keep it inside viewport; just tighten paddings. */
-    min-width: 240px;
+    position: fixed;
+    top: auto;
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
     padding: 14px 14px;
     gap: 12px;
   }
   .staff-mgr-export-title      { font-size: 13px; }
   .staff-mgr-export-radio      { font-size: 12px; }
-  .staff-mgr-export-period-btn { padding: 6px 10px; font-size: 11px; }
-}
-
-@media (max-width: 420px) {
-  .staff-mgr-export-menu {
-    /* Tight phones: switch the anchor edge so the popover doesn't
-       spill past the right side of the viewport when the trigger is
-       deep on the right. */
-    right: auto;
-    left: 0;
-    min-width: 0;
-    width: calc(100vw - 32px);
-  }
+  .staff-mgr-export-period-btn { padding: 6px 8px; font-size: 11px; }
 }

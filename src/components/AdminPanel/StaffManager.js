@@ -357,14 +357,14 @@ const StaffManager = () => {
           </button>
         </div>
 
-        <label className="staff-mgr-toggle">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={e => setIncludeInactive(e.target.checked)}
-          />
-          <span>Include inactive</span>
-        </label>
+        <button
+          type="button"
+          className={`staff-mgr-toggle ${includeInactive ? 'is-active' : ''}`}
+          onClick={() => setIncludeInactive(v => !v)}
+          aria-pressed={includeInactive}
+        >
+          Include inactive
+        </button>
 
         <div className={`staff-mgr-export ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
           <button
