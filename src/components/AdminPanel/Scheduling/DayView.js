@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 // Sprint 8.4: DayView now supports two render modes — `timeline` (iOS-Calendar
 // hours-on-Y, lane-packed shifts) and `resource` (staff-on-Y / hours-on-X,
@@ -225,20 +225,33 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
 };
 
 // ── Timeline mode (iOS-Calendar Day, lane-packed) ─────────────────────────
+// Sprint 8.4.1: render 25 hour markers (00:00 → 24:00) so the close-of-day
+// midnight is visible — without it the day reads as "11 PM is the end"
+// which is misleading for a 24-hour view. Hour labels + lines positioned
+// absolutely at top: (h / 24) * 100% so the spacing between every pair of
+// hours is identical (the prior 24-row layout had the first row's label
+// special-cased and the gap between 12 AM and 1 AM read smaller than the
+// others).
 const TimelineMode = ({ shifts, onEdit }) => {
   const { shifts: laneShifts, laneCount } = useMemo(() => laneAssign(shifts), [shifts]);
+  const hours = useMemo(() => Array.from({ length: 25 }, (_, h) => h), []);
   return (
     <div className="day-timeline-wrap">
       <div className="day-timeline">
         <div className="day-hour-rail">
-          {Array.from({ length: 24 }, (_, h) => (
-            <div key={h} className="day-hour-row">
-              <span className="day-hour-label">{fmtHour(h)}</span>
-            </div>
+          {hours.map(h => (
+            <span
+              key={h}
+              className="day-hour-label"
+              data-edge={h === 0 ? 'start' : h === 24 ? 'end' : undefined}
+              style={{ top: `${(h / 24) * 100}%` }}
+            >
+              {fmtHour(h % 24)}
+            </span>
           ))}
         </div>
         <div className="day-shift-surface">
-          {Array.from({ length: 24 }, (_, h) => (
+          {hours.map(h => (
             <div key={h} className="day-hour-line" style={{ top: `${(h / 24) * 100}%` }} />
           ))}
           {laneShifts.length === 0 && <div className="day-empty">No shifts scheduled.</div>}
@@ -277,6 +290,13 @@ const TimelineMode = ({ shifts, onEdit }) => {
 };
 
 // ── Resource mode (staff rows × hours columns) ───────────────────────────
+// Sprint 8.4.1: hour-label density adapts to the bar's measured width via a
+// ResizeObserver. Three discrete steps so labels never crowd or feel sparse:
+//   - bar < 360px → step 6h (5 labels: 12 AM · 6 AM · 12 PM · 6 PM · 12 AM)
+//   - bar 360-720px → step 3h (9 labels)
+//   - bar ≥ 720px → step 1h (25 labels)
+// The first (h=0) and last (h=24) labels are anchored to their respective
+// edges via data-edge so they don't get clipped by translate(-50%).
 const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
   // Build shift index by user_id for the per-row lookup. Limited to one
   // shift per user per day to match the data model the rest of the views
@@ -287,20 +307,45 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
     return m;
   }, [shifts]);
 
+  const hourBarRef = useRef(null);
+  const [labelStep, setLabelStep] = useState(6);
+  useEffect(() => {
+    const el = hourBarRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0].contentRect.width;
+      setLabelStep(w >= 720 ? 1 : w >= 360 ? 3 : 6);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const hourLabels = useMemo(() => {
+    const out = [];
+    for (let h = 0; h <= 24; h += labelStep) out.push(h);
+    return out;
+  }, [labelStep]);
+
   if (deptGroups.length === 0) {
     return <div className="day-empty day-empty-static">No staff in this filter.</div>;
   }
 
   return (
     <div className="day-resource-wrap">
-      {/* Hour-axis header — labels at 6 / 12 / 18, ticks aligned to the
-          tracks below. Sits above all rows so the time scale reads top-down. */}
+      {/* Hour-axis header. Labels are absolute-positioned at left:
+          (h / 24) * 100%; first/last anchored to their edges so the
+          start/end "12 AM" labels stay fully visible. */}
       <div className="day-resource-row day-resource-hour-header">
         <div className="day-resource-name-col" />
-        <div className="day-resource-hour-bar" aria-hidden>
-          {[0, 6, 12, 18].map(h => (
-            <span key={h} className="day-resource-hour-label" style={{ left: `${(h / 24) * 100}%` }}>
-              {fmtHour(h)}
+        <div className="day-resource-hour-bar" aria-hidden ref={hourBarRef}>
+          {hourLabels.map(h => (
+            <span
+              key={h}
+              className="day-resource-hour-label"
+              data-edge={h === 0 ? 'start' : h === 24 ? 'end' : undefined}
+              style={{ left: `${(h / 24) * 100}%` }}
+            >
+              {fmtHour(h % 24)}
             </span>
           ))}
         </div>

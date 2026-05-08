@@ -733,6 +733,97 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 8.4.1: DayView axis polish (edge labels + adaptive density + close-of-day)
+
+Three small but visible fixes after 8.4 landed.
+
+**Resource view — edge "12 AM" labels were clipping.** Hour labels were
+positioned at `left: (h/24)*100%` with `transform: translateX(-50%)` —
+the standard "center on the position" pattern. At the edges (h=0 →
+left:0%, h=24 → left:100%) the centered label half-overflowed the bar,
+so the start "12 AM" was cut off on the left and the end "12 AM" was
+cut off on the right. Fixed by anchoring the edge labels to their
+respective edges via `data-edge`:
+```css
+.day-resource-hour-label[data-edge="start"] { transform: translate(0,    -50%); }
+.day-resource-hour-label[data-edge="end"]   { transform: translate(-100%, -50%); }
+```
+Mid-axis labels keep `translate(-50%, -50%)`. Visually, every label sits
+on its hour line with its appropriate edge anchored.
+
+**Resource view — adaptive label density via ResizeObserver.** At any
+single density, you either crowd on small screens or look sparse on
+large ones. ResizeObserver on the hour-bar element tracks its measured
+width and switches between three discrete steps:
+- `< 360px` → step 6h (5 labels: 12 AM · 6 AM · 12 PM · 6 PM · 12 AM)
+- `360–720px` → step 3h (9 labels)
+- `≥ 720px` → step 1h (25 labels — every hour from 12 AM to 12 AM)
+
+Hour-bar width is the right thing to measure — not viewport width —
+because the panel/calendar layout can compress the bar independently
+of the viewport. Three discrete steps were chosen so the layout stops
+"breathing" between transitions; continuous density would feel jittery
+when you resize the window.
+
+**Timeline view — render 25 hour markers + fix the inconsistent top
+gap.** The previous layout used 24 row-divs, each 56px tall, with
+labels position:absolute at `top: -7px` inside their row — except the
+*first* row, special-cased to `top: 4px` to avoid clipping by the
+wrapper's top edge. That special case made the visible gap between
+12 AM and 1 AM read smaller than the gap between every other pair
+(11px shift). Also: the rail stopped at 11 PM, so the close-of-day
+midnight wasn't shown — making "I'm scheduling for a 24h day"
+ambiguous to the user.
+
+Fix: drop the row-based layout entirely. Hour labels and hour lines
+are now absolute-positioned at `top: (h / 24) * 100%` against the
+rail/surface. Render 25 markers (h = 0..24, label = `fmtHour(h % 24)`,
+so h=0 and h=24 both render "12 AM"). The timeline gets `padding: 8px
+0` and `height: 1360px` (1344 + 16) so the first and last labels —
+vertically centered on their lines via `translateY(-50%)` — have room
+to render without clipping. Every gap is now identical because there's
+no special case for any row.
+
+**Day controls — visual divider before the content.** Added
+`padding-bottom: 12px; border-bottom: 1px solid var(--border)` to
+`.day-controls`. The chip filter + mode toggle pick *what* is shown;
+the rows or timeline below are *the showing*. Different concerns,
+visually decoupled.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/DayView.js` — TimelineMode
+  renders 25 absolute-positioned hour labels (`fmtHour(h % 24)`) and
+  25 hour lines instead of 24-row layout. ResourceMode adds a
+  `useEffect` + ResizeObserver on the hour-bar ref, derives
+  `labelStep`, computes `hourLabels` array, marks first/last with
+  `data-edge`. Imported `useEffect` and `useRef`.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` —
+  `.day-controls` gets the divider; `.day-timeline` gets
+  `height: 1360px` + `padding: 8px 0`; `.day-hour-rail` becomes
+  `position: relative`; `.day-hour-row` rules removed; `.day-hour-label`
+  rewritten to absolute with `transform: translateY(-50%)`;
+  `.day-resource-hour-label[data-edge="start"|"end"]` anchor overrides.
+
+**Conventions added:**
+- **Anchor edge elements to their edges, not their centers.** The
+  `transform: translateX(-50%)` "center on the position" pattern works
+  for everything *except* the edges of the axis. For first/last
+  labels, anchor the relevant edge to the position via
+  `translate(0, ...)` or `translate(-100%, ...)`. Mark them via a
+  `data-edge` attribute so the conditional doesn't pollute the JSX.
+- **Element-width-driven adaptive density beats viewport queries.**
+  When a sub-component's container can compress independently of the
+  viewport (because of a sibling panel, sidebar, etc.), measure the
+  *element* with ResizeObserver and switch density by what the user
+  actually sees. Discrete steps (3 here) avoid jitter on resize; pick
+  thresholds where the density change is genuinely warranted, not
+  every few pixels.
+- **Inclusive close-of-day in 24h timelines.** When showing a "full
+  day" view, render the close-of-day midnight as well as the start.
+  A range from 12 AM to 11 PM reads as "ends at 11 PM"; a range from
+  12 AM to 12 AM (next day) reads as "covers the whole day." The
+  cost is one extra label/line and a tiny bit of breathing room.
+
 ### 2026-05-07 — Sprint 8.4: dual-mode DayView (Timeline + Resource) + dept filter
 
 The iOS-Calendar-Day pattern from 8.0D — hours-on-Y with lane-packed

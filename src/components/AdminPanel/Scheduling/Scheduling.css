@@ -1185,24 +1185,25 @@
 .day-timeline {
   display: grid;
   grid-template-columns: 64px 1fr;
-  height: 1344px; /* 24 × 56px hour rows */
+  /* 25 hour markers (12 AM → 12 AM) at 56px each = 24 intervals × 56 +
+     16px breathing room (8 top + 8 bottom) so the first and last labels
+     can vertically center on their hour line without clipping. */
+  height: 1360px;
+  padding: 8px 0;
 }
 
 .day-hour-rail {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   border-right: 1px solid var(--border-light);
 }
-.day-hour-row {
-  height: 56px;
-  border-top: 1px solid var(--border-light);
-  position: relative;
-}
-.day-hour-row:first-child { border-top: none; }
 .day-hour-label {
+  /* Sprint 8.4.1: absolute-positioned at top: (h / 24) * 100%, vertically
+     centered on the line via translateY(-50%). Every hour-to-hour gap is
+     visually identical because there's no row-based first-row special-
+     case anymore. */
   position: absolute;
-  top: -7px;
   right: 8px;
+  transform: translateY(-50%);
   font-family: 'TiemposText', Georgia, serif;
   font-size: 10px;
   font-weight: 600;
@@ -1210,8 +1211,8 @@
   color: var(--text-muted);
   background: var(--bg-surface);
   padding: 0 2px;
+  white-space: nowrap;
 }
-.day-hour-row:first-child .day-hour-label { top: 4px; }
 
 .day-shift-surface {
   position: relative;
@@ -1288,6 +1289,12 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  /* Sprint 8.4.1: visual separator between the dept-filter band and the
+     schedule view below. The chips choose *what* is shown; the rows or
+     timeline are *the showing*. They're different concerns and shouldn't
+     read as one continuous control band. */
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .day-filter-chips {
@@ -1390,6 +1397,10 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+/* Sprint 8.4.1: anchor the start/end "12 AM" labels to their respective
+   edges so they don't get clipped by translateX(-50%) at left:0% / 100%. */
+.day-resource-hour-label[data-edge="start"] { transform: translate(0,    -50%); }
+.day-resource-hour-label[data-edge="end"]   { transform: translate(-100%, -50%); }
 
 /* Subtle dept group header row. */
 .day-resource-dept-row {
