@@ -733,6 +733,77 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.5.2: view-transition-group duration + canvas zoom prominence + nav z-index
+
+Three follow-ups from real use of 8.5.1's animations.
+
+**8.5.2A — `::view-transition-group(*)` duration override.** The
+universal `::view-transition-old/new(*)` rule from earlier sprints
+controlled only the *fade* part of the FLIP, not the *position/size*
+morph. The morph stayed at the browser default (~250ms with default
+ease), which made Day↔Month / Month↔Year shrinks/grows feel like
+"no animation" — especially when the source/target had little content
+to visually move. Adding `::view-transition-group(*) { animation-
+duration: 320ms; animation-timing-function: cubic-bezier(0.4, 0, 0.2,
+1) }` aligns the morph timing with the rest of the schedule
+animations. Both the fade pseudos and the group pseudo need to be set
+together because they animate different aspects of the same
+transition.
+
+**8.5.2B — bumped canvas zoom scale.** When the user zooms Month → Year
+on a month with zero shifts, the inner FLIP between MonthView's
+container and YearView's mini-month tile happens but isn't visually
+prominent because both states are nearly empty. The canvas-level zoom
+exists to provide a perceived animation regardless of inner content,
+but at scale 0.92↔1.08 the change was too subtle to read. Bumped to
+0.85↔1.18 — the page now visibly grows/shrinks during view-level
+zooms.
+
+**8.5.2C — z-index on the nav groups.** Even after naming `.bottom-nav`
+in 8.5.1, the user reported the nav blinking briefly during prev/next
+slide transitions. The cause: view-transition layers stack in DOM
+order by default. `.sched-content` (canvas) comes earlier in the DOM
+than `.bottom-nav`, but the canvas snapshot's bounding box could
+extend past the canvas's normal area while sliding (`translateX(-30%)`
++ opacity fade), painting over where the bottom nav sits. The fix:
+```css
+::view-transition-group(app-bottom-nav),
+::view-transition-group(app-sidebar) {
+  z-index: 9999;
+}
+```
+This pins the nav groups above all other transition layers, so even
+if the canvas snapshot reaches over their area, the nav layers paint
+on top. Static chrome stays solid throughout every transition.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/Scheduling.css` —
+  `::view-transition-group(*)` duration/easing rule;
+  `::view-transition-group(app-bottom-nav | app-sidebar)` z-index;
+  `sched-zoom-*` keyframes' scale endpoints widened to 0.85/1.18.
+
+**Conventions added:**
+- **Style both the group and the old/new pseudos.** When customizing
+  a View Transitions animation duration, set the rule on both
+  `::view-transition-group(<name>)` and
+  `::view-transition-old/new(<name>)`. The first controls
+  position/size morphing, the others control the cross-fade. They're
+  separate properties; setting one without the other means part of
+  your transition runs at your duration and part runs at the
+  browser default.
+- **Canvas-level animation as a perceptual fallback.** When
+  zooming between views that share named elements, the inner FLIP
+  may not be visually prominent if the named elements have similar
+  empty content. Layer a canvas-level scale + fade so there's
+  always *something* moving — the user doesn't perceive whether the
+  animation is FLIP-driven or canvas-driven, just that there is one.
+- **z-index on view-transition-group for stacking control.** If a
+  transition snapshot can paint over content you want to keep on
+  top (sticky chrome, modals, toolbars), give those elements a
+  view-transition-name AND an elevated z-index on the group. Layers
+  default to DOM order, which doesn't always match visual intent
+  during animation.
+
 ### 2026-05-08 — Sprint 8.5.1: animation polish + Week repurposed as hours summary
 
 Four problems from real use of 8.5: bottom nav blinking on mobile during
