@@ -32,6 +32,7 @@ const AdminSettings = () => {
   const [otMins,     setOtMins]     = useState('10');
   const [baseline,   setBaseline]   = useState('self');
   const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
+  const [blockKbd,   setBlockKbd]   = useState(false); // Sprint 8.7: lock to on-screen keypad
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
@@ -47,6 +48,7 @@ const AdminSettings = () => {
           setOtMins    (data.settings.on_time_tolerance_minutes || '10');
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
+          setBlockKbd  (data.settings.block_system_keyboard === 'true');
         }
         setLoading(false);
       });
@@ -65,6 +67,7 @@ const AdminSettings = () => {
         on_time_tolerance_minutes: otMins,
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
+        block_system_keyboard:     blockKbd ? 'true' : 'false',
       }),
     });
     const data = await res.json();
@@ -251,6 +254,37 @@ const AdminSettings = () => {
                 </span>
               </label>
             </div>
+          </div>
+
+          {/* Sprint 8.7: kiosk keypad lock */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">⌨️</div>
+              <div>
+                <div className="settings-section-title">Lock staff login to on-screen keypad</div>
+                <div className="settings-section-desc">
+                  Suppresses the device's built-in keyboard on the staff login page so only the in-app keypad is usable.
+                  Recommended for shared kiosks/tablets where staff aren't tech-savvy enough to dismiss a system
+                  keyboard if it accidentally appears.
+                </div>
+              </div>
+            </div>
+
+            <label className="settings-toggle-row">
+              <input
+                type="checkbox"
+                className="hop-check"
+                checked={blockKbd}
+                onChange={e => { setBlockKbd(e.target.checked); setSaved(false); }}
+              />
+              <div className="settings-toggle-text">
+                <div className="settings-toggle-label">{blockKbd ? 'On — only the in-app keypad accepts input' : 'Off — both system keyboard and in-app keypad work'}</div>
+                <div className="settings-toggle-help">
+                  When on, the input fields are read-only and `inputMode="none"` so tapping them won't summon
+                  the device keyboard. Our on-screen keypad still drives input as usual.
+                </div>
+              </div>
+            </label>
           </div>
 
           {/* Account / Sign out section */}

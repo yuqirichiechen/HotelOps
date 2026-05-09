@@ -1631,6 +1631,26 @@ app.get('/api/shifts/daily', async (req, res) => {
 
 // ── App settings ──────────────────────────────────────────────────────────────
 
+// Sprint 8.7: unauthenticated config the login page needs to render
+// itself correctly. Limited to UX-only flags — never anything that could
+// help an attacker map the system. Add new keys explicitly here, don't
+// dump the whole app_settings table.
+app.get('/api/public-config', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT key, value FROM app_settings WHERE key IN ('block_system_keyboard')`
+    );
+    const out = { block_system_keyboard: false };
+    rows.forEach(r => {
+      if (r.key === 'block_system_keyboard') out.block_system_keyboard = r.value === 'true';
+    });
+    return res.json({ success: true, config: out });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/admin/settings', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT key, value FROM app_settings ORDER BY key');
@@ -1657,6 +1677,13 @@ app.put('/api/admin/settings', async (req, res) => {
     // territory. Read by /api/me/hours so staff Home page can pick it up
     // without an admin endpoint.
     auto_signout_seconds:       v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 0 && parseInt(v, 10) <= 60,
+    // Sprint 8.7: kiosk lock — when 'true', the staff login inputs become
+    // readOnly with inputMode='none' so the system keyboard never pops up.
+    // Tablets / kiosks often have non-tech-savvy staff who don't know how
+    // to dismiss a system keyboard once it appears. Our on-screen keypad
+    // still drives input via setState. Read by /api/public-config so the
+    // login page can fetch it before authenticating.
+    block_system_keyboard:      v => v === 'true' || v === 'false',
   };
   const updates = req.body || {};
   if (Object.keys(updates).length === 0) {

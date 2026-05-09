@@ -109,6 +109,20 @@ const StaffLogin = () => {
   const [loading,     setLoading]     = useState(false);
   const [kbMode,      setKbMode]      = useState('numbers'); // 'numbers' | 'letters'
   const [caps,        setCaps]        = useState(false);
+  // Sprint 8.7: when admin enables `block_system_keyboard`, the inputs go
+  // readOnly and inputMode='none' so the device's built-in keyboard never
+  // pops up — kiosk staff who don't know how to dismiss it can't trip it
+  // accidentally. Our on-screen keypad still drives input via setState.
+  const [lockKbd,     setLockKbd]     = useState(false);
+
+  useEffect(() => {
+    fetch('/api/public-config')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.success) setLockKbd(!!data.config?.block_system_keyboard);
+      })
+      .catch(() => { /* fall through to default (system keyboard allowed) */ });
+  }, []);
 
   // Auto-advance to PIN once a valid identifier is entered and the server
   // already told us PIN is required.
@@ -199,6 +213,8 @@ const StaffLogin = () => {
               onFocus={() => setActive('id')}
               placeholder="10-digit phone · 4–6 digit ID · username"
               autoFocus
+              readOnly={lockKbd}
+              inputMode={lockKbd ? 'none' : 'text'}
             />
           </div>
 
@@ -209,12 +225,13 @@ const StaffLogin = () => {
                 id="pin"
                 className="is-keypad is-numeric"
                 type="password"
-                inputMode="numeric"
+                inputMode={lockKbd ? 'none' : 'numeric'}
                 maxLength={4}
                 value={pin}
                 onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 onFocus={() => setActive('pin')}
                 placeholder="• • • •"
+                readOnly={lockKbd}
               />
             </div>
           )}

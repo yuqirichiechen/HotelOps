@@ -733,6 +733,75 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-09 — Sprint 8.7: kiosk lock — block system keyboard on staff login
+
+For shared tablet/kiosk deployments the staff are often not tech-savvy
+enough to dismiss the device's built-in keyboard if it pops up. The
+in-app keypad we built (Sprint 7.1 / 7.2 / 7.3) is sufficient for all
+input types, so admins should be able to *suppress* the system
+keyboard entirely on the staff login screen.
+
+**Pattern: `readOnly` + `inputMode="none"`.** Both attributes together:
+- `readOnly` prevents the input from receiving keyboard input (so even
+  if a system keyboard appears, typing won't change the field).
+- `inputMode="none"` is the modern signal to mobile browsers that no
+  virtual keyboard should appear when the input is focused.
+
+The on-screen keypad is unaffected — it sets state via `setIdentifier`
+/ `setPin` directly, not through the input's `onChange`. Focus still
+fires (`readOnly` doesn't prevent focus), so `activeField` tracking
+keeps working.
+
+**Per-tenant configurable.** New admin setting `block_system_keyboard`
+('true'|'false', default 'false'). New unauthenticated GET
+`/api/public-config` endpoint returns just the flags the login page
+needs (currently only this one). Hand-listed allowlist in the endpoint
+so the public response can never accidentally leak settings — explicit
+beats "dump everything."
+
+**Admin toggle.** New section in AdminSettings under Auto sign-out: a
+chip-style hop-check toggle with help text explaining the kiosk use
+case. The toggle's label live-updates ("On — only the in-app keypad
+accepts input" / "Off — both system keyboard and in-app keypad work")
+so the admin sees what state they're saving.
+
+**StaffLogin** fetches `/api/public-config` on mount (best-effort —
+fetch failure falls back to "system keyboard allowed"). Both the
+identifier input and the PIN input bind their `readOnly` and
+`inputMode` to the fetched flag.
+
+**Files modified:**
+- `server/server.js` — `block_system_keyboard` added to settings
+  ALLOWED validator (`v === 'true' || v === 'false'`); new GET
+  `/api/public-config` endpoint with explicit allowlist of keys.
+- `src/components/AdminPanel/AdminSettings.js` — new state, fetch,
+  save for `blockKbd`; new toggle section under Auto sign-out
+  using `.hop-check` + `.settings-toggle-row`.
+- `src/components/AdminPanel/AdminPanel.css` — `.settings-toggle-row`
+  styling (boxed row with checkbox on left + label/help on right).
+- `src/pages/Login/StaffLogin.js` — `lockKbd` state + `useEffect`
+  fetch from `/api/public-config`. Both inputs apply
+  `readOnly={lockKbd}` and `inputMode={lockKbd ? 'none' : ...}`.
+
+**Conventions added:**
+- **`readOnly` + `inputMode="none"` is the standard kiosk-keyboard
+  block.** Don't try to intercept keyboard events or stuff the input
+  with a custom widget. Keep the native `<input>` for accessibility
+  and let the two attributes do the work. The on-screen keypad
+  drives state directly, so the input's `onChange` doesn't need to
+  fire for input to work.
+- **Public-config endpoint with an explicit allowlist.** When an
+  unauthenticated page needs a setting, expose it via a dedicated
+  endpoint that hand-lists the keys it returns — never SELECT *
+  from app_settings. Adding a new public flag is one line of code
+  and one decision; "everything is public unless I remember to hide
+  it" is the wrong default.
+- **Live-update toggle labels.** A toggle's accompanying caption
+  should reflect what the toggle currently *means*, not just its
+  generic name. "On — only the in-app keypad accepts input" gives
+  the admin certainty about what saving will do; "Block system
+  keyboard" alone forces them to mentally translate.
+
 ### 2026-05-08 — Sprint 8.6.2: banner moves inline; sign-out gets a transition
 
 Two issues with the 8.6 banner once the user lived with it:

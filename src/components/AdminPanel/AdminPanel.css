@@ -1658,6 +1658,35 @@
   margin-top: 8px;
 }
 
+/* Sprint 8.7: row that pairs a checkbox with explanatory copy on the
+   right. Uses the global .hop-check utility for the box itself. */
+.settings-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.settings-toggle-row .hop-check { margin-top: 2px; flex-shrink: 0; }
+.settings-toggle-text { flex: 1 1 auto; }
+.settings-toggle-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.settings-toggle-help {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
 .settings-perf-field {
   display: flex;
   flex-direction: column;
