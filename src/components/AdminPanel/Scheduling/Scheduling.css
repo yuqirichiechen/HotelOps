@@ -1263,6 +1263,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Sprint 8.5: extra detail on Day timeline blocks — a third line
+   for the shift's notes (if any). Italic so it's visually distinct
+   from the time/dept meta line. */
+.day-shift-notes {
+  font-size: 10px;
+  font-style: italic;
+  opacity: 0.75;
+  line-height: 1.2;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .day-empty {
   position: absolute;
@@ -1473,10 +1486,13 @@
   text-overflow: ellipsis;
 }
 
-/* The 24h track that holds the staff's shift bar (if any). */
+/* The 24h track that holds the staff's shift bar (if any).
+   Sprint 8.5: bumped from 28px to 36px so the bar can carry a second
+   line (notes preview) — the "extra detail" that distinguishes Day
+   from Week. */
 .day-resource-track {
   position: relative;
-  height: 28px;
+  height: 36px;
   margin: 6px 8px;
   background: var(--bg-base);
   border-radius: 6px;
@@ -1497,12 +1513,12 @@
   border: 1.5px solid;
   border-radius: 5px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  padding: 0 6px;
+  padding: 2px 8px;
   cursor: pointer;
   overflow: hidden;
-  white-space: nowrap;
   transition: box-shadow 0.12s ease;
   z-index: 1;
 }
@@ -1517,6 +1533,22 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
+}
+.day-resource-shift-hours {
+  font-weight: 700;
+  opacity: 0.85;
+}
+.day-resource-shift-notes {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  font-style: italic;
 }
 
 .day-empty-static {
@@ -1569,6 +1601,185 @@
 ::view-transition-new(*) {
   animation-duration: 320ms;
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sprint 8.5: directional slide on prev/next nav within the same view.
+   `runWithTransition(cb, 'prev'|'next')` sets `data-sched-dir` on the
+   document root for the duration of the transition; CSS scopes the
+   slide animation to the named `sched-canvas` content area. Without a
+   direction set (zoom transitions, today button), the canvas falls
+   back to the default cross-fade and the inner FLIP names own the
+   visual. */
+@keyframes sched-slide-out-left {
+  to { transform: translateX(-30%); opacity: 0; }
+}
+@keyframes sched-slide-in-right {
+  from { transform: translateX(30%); opacity: 0; }
+}
+@keyframes sched-slide-out-right {
+  to { transform: translateX(30%); opacity: 0; }
+}
+@keyframes sched-slide-in-left {
+  from { transform: translateX(-30%); opacity: 0; }
+}
+
+[data-sched-dir="next"]::view-transition-old(sched-canvas) {
+  animation: sched-slide-out-left 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+[data-sched-dir="next"]::view-transition-new(sched-canvas) {
+  animation: sched-slide-in-right 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+[data-sched-dir="prev"]::view-transition-old(sched-canvas) {
+  animation: sched-slide-out-right 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+[data-sched-dir="prev"]::view-transition-new(sched-canvas) {
+  animation: sched-slide-in-left 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ── Sprint 8.5: WeekView Timeline mode (7 day cols × 24h vertical) ────── */
+
+.week-tl-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(100vh - 280px);
+}
+
+.week-tl-grid {
+  display: grid;
+  grid-template-columns: 64px repeat(7, 1fr);
+  /* Day headers row + body. Body height fits 25 hour markers with 8px
+     breathing top/bottom inside the day cols and rail. */
+  grid-template-rows: auto 1360px;
+}
+
+.week-tl-corner {
+  grid-row: 1;
+  grid-column: 1;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border-light);
+}
+
+.week-tl-day-header {
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px 8px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border-light);
+  font-family: 'TiemposText', Georgia, serif;
+}
+.week-tl-day-header.is-today { background: var(--accent-bg); }
+.week-tl-day-header:last-child { border-right: none; }
+
+.week-tl-day-name {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.week-tl-day-num {
+  font-family: 'TiemposFine', Georgia, serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-top: 2px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  line-height: 1;
+}
+.week-tl-day-num.is-today {
+  background: var(--accent-alt);
+  color: white;
+  font-weight: 700;
+}
+
+.week-tl-rail {
+  grid-row: 2;
+  grid-column: 1;
+  position: relative;
+  border-right: 1px solid var(--border-light);
+  padding: 8px 0;
+}
+
+.week-tl-hour-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  background: var(--bg-surface);
+  padding: 0 2px;
+}
+
+.week-tl-day-col {
+  grid-row: 2;
+  position: relative;
+  border-right: 1px solid var(--border-light);
+  padding: 8px 0;
+}
+.week-tl-day-col:last-child { border-right: none; }
+
+.week-tl-hour-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--border-light);
+  pointer-events: none;
+}
+
+.week-tl-shift {
+  position: absolute;
+  border: 1.5px solid;
+  border-radius: 6px;
+  padding: 4px 6px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  transition: box-shadow 0.12s ease;
+  font-family: 'TiemposText', Georgia, serif;
+  z-index: 1;
+  background: var(--bg-surface);
+}
+.week-tl-shift:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  z-index: 2;
+}
+.week-tl-shift-name {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.week-tl-shift-time {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
 @media (prefers-reduced-motion: reduce) {

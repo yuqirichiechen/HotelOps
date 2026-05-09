@@ -63,6 +63,16 @@ const fmtTimeRange = (start, end) => {
   return `${f(start)} – ${f(end)}`;
 };
 
+// Sprint 8.5: computed shift duration in hours, used as the extra-detail
+// signal that distinguishes Day from Week. JS template literals strip
+// trailing zero, so 8 → "8h" and 8.5 → "8.5h" without extra formatting.
+const computeShiftHours = (start, end) => {
+  const sMin = timeToMinutes(start);
+  const eRaw = timeToMinutes(end);
+  const eMin = eRaw > sMin ? eRaw : 1440;
+  return Math.round(((eMin - sMin) / 60) * 10) / 10;
+};
+
 // Greedy lane-packing for timeline mode.
 const laneAssign = (shifts) => {
   const sorted = [...shifts].sort((a, b) => a.start_time.localeCompare(b.start_time));
@@ -278,8 +288,9 @@ const TimelineMode = ({ shifts, onEdit }) => {
               >
                 <div className="day-shift-name">{s.employee_name}</div>
                 <div className="day-shift-meta">
-                  {s.department_name || 'Unassigned'} · {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))}
+                  {s.department_name || 'Unassigned'} · {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))} · {computeShiftHours(s.start_time, s.end_time)}h
                 </div>
+                {s.notes && <div className="day-shift-notes">Note: {s.notes}</div>}
               </button>
             );
           })}
@@ -383,7 +394,7 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
                   {s && box && (
                     <button
                       type="button"
-                      className="day-resource-shift"
+                      className={`day-resource-shift ${s.notes ? 'has-notes' : ''}`}
                       style={{
                         left:  `${box.left}%`,
                         width: `${box.width}%`,
@@ -391,12 +402,17 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
                         borderColor: color.border,
                         color:       color.text,
                       }}
-                      title={`${fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))}`}
+                      title={`${fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))} · ${computeShiftHours(s.start_time, s.end_time)}h${s.notes ? ` · ${s.notes}` : ''}`}
                       onClick={() => onEdit(s)}
                     >
                       <span className="day-resource-shift-time">
                         {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))}
+                        {' · '}
+                        <span className="day-resource-shift-hours">{computeShiftHours(s.start_time, s.end_time)}h</span>
                       </span>
+                      {s.notes && (
+                        <span className="day-resource-shift-notes">{s.notes}</span>
+                      )}
                     </button>
                   )}
                 </div>

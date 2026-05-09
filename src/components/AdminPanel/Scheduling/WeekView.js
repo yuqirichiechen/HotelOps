@@ -1,7 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 const DAY_NAMES   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const fmtHour = (h) => {
+  if (h === 0)  return '12 AM';
+  if (h === 12) return '12 PM';
+  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+};
+
+// Sprint 8.5: greedy lane-packing for timeline mode (per-day-column).
+const laneAssign = (shifts) => {
+  const sorted = [...shifts].sort((a, b) => a.start_time.localeCompare(b.start_time));
+  const lanes = [];
+  return {
+    shifts: sorted.map(s => {
+      const startMin = timeToMinutes(s.start_time);
+      let lane = lanes.findIndex(end => end <= startMin);
+      if (lane === -1) { lane = lanes.length; lanes.push(0); }
+      lanes[lane] = timeToMinutes(s.end_time);
+      return { ...s, _lane: lane };
+    }),
+    laneCount: lanes.length || 1,
+  };
+};
 
 const DEPT_COLORS = {
   'Front Desk':      { bg: '#ebf8ff', border: '#3182ce', text: '#2c5282', dot: '#3182ce' },
@@ -63,6 +85,18 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
   });
   const [draggedId,     setDraggedId]     = useState(null);
   const [dragOverKey,   setDragOverKey]   = useState(null);
+  // Sprint 8.5: chassis state (matches DayView). Same smart-default rule —
+  // pick a single dept → switch to Timeline (lane count is bounded);
+  // pick All → switch to Resource (no lane-packing). Mode toggle is hidden
+  // on mobile because the existing day-tab list is already a single-day
+  // focus that doesn't need a mode choice.
+  const [deptFilter,    setDeptFilter]    = useState('all');
+  const [viewMode,      setViewMode]      = useState('resource');
+
+  const handleDeptFilterChange = (next) => {
+    setDeptFilter(next);
+    setViewMode(next === 'all' ? 'resource' : 'timeline');
+  };
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -76,12 +110,24 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
     return d;
   });
 
+  // Filtered slice based on the dept chip. Schedules drop along with their
+  // staff so the resource grid + timeline lanes only show what's in scope.
+  const filteredEmployees = useMemo(() =>
+    deptFilter === 'all' ? employees : employees.filter(e => e.department_id === deptFilter),
+    [employees, deptFilter]
+  );
+  const filteredEmpIds = useMemo(() => new Set(filteredEmployees.map(e => e.user_id)), [filteredEmployees]);
+  const filteredSchedules = useMemo(() =>
+    schedules.filter(s => filteredEmpIds.has(s.user_id)),
+    [schedules, filteredEmpIds]
+  );
+
   const scheduleMap = {};
-  schedules.forEach(s => { scheduleMap[`${s.user_id}__${s.scheduled_date}`] = s; });
+  filteredSchedules.forEach(s => { scheduleMap[`${s.user_id}__${s.scheduled_date}`] = s; });
   const getSchedule = (userId, date) => scheduleMap[`${userId}__${fmtDate(date)}`];
 
-  const deptGroups = departments
-    .map(dept => ({ ...dept, employees: employees.filter(e => e.department_id === dept.department_id) }))
+  const deptGroups = (deptFilter === 'all' ? departments : departments.filter(d => d.department_id === deptFilter))
+    .map(dept => ({ ...dept, employees: filteredEmployees.filter(e => e.department_id === dept.department_id) }))
     .filter(d => d.employees.length > 0);
 
   const handleDragStart = (e, schedule) => {
@@ -102,13 +148,54 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
 
   if (loading) return <div className="sched-loading">Loading schedule…</div>;
 
+  // Chassis — same dept-filter chips + mode-toggle pattern Day uses.
+  // Mode toggle hidden on mobile because the day-tab list there IS the
+  // single-day focus the toggle would otherwise pick.
+  const chassis = (
+    <div className="day-controls">
+      <div className="day-filter-chips">
+        <button
+          type="button"
+          className={`day-chip ${deptFilter === 'all' ? 'is-active' : ''}`}
+          onClick={() => handleDeptFilterChange('all')}
+        >All</button>
+        {departments.map(d => (
+          <button
+            key={d.department_id}
+            type="button"
+            className={`day-chip ${deptFilter === d.department_id ? 'is-active' : ''}`}
+            onClick={() => handleDeptFilterChange(d.department_id)}
+          >{d.name}</button>
+        ))}
+      </div>
+      {!isMobile && (
+        <div className="day-mode-toggle">
+          <button
+            type="button"
+            className={`day-mode-btn ${viewMode === 'resource' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('resource')}
+            title="Staff rows × 7 day columns — best for an overview of who works which days"
+          >Rows</button>
+          <button
+            type="button"
+            className={`day-mode-btn ${viewMode === 'timeline' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('timeline')}
+            title="7 day columns × 24h vertical — best for one department"
+          >Timeline</button>
+        </div>
+      )}
+    </div>
+  );
+
   // ── MOBILE ────────────────────────────────────────────────────────────────
   if (isMobile) {
     const activeDay = days[activeDayIdx];
     const today     = todayStr();
 
     return (
-      <div className="week-mobile">
+      <div className="week-view">
+        {chassis}
+        <div className="week-mobile">
         <div className="mobile-day-tabs">
           {days.map((day, i) => {
             const isToday = fmtDate(day) === today;
@@ -185,15 +272,33 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
             <div className="sched-empty">No active employees found. Add employees first.</div>
           )}
         </div>
+        </div>
       </div>
     );
   }
 
-  // ── DESKTOP (Gantt Grid) ──────────────────────────────────────────────────
+  // ── DESKTOP TIMELINE MODE (7 day columns × 24h vertical) ─────────────────
+  if (viewMode === 'timeline') {
+    return (
+      <div className="week-view">
+        {chassis}
+        <WeekTimelineMode
+          days={days}
+          schedules={filteredSchedules}
+          employees={filteredEmployees}
+          onEdit={onEdit}
+        />
+      </div>
+    );
+  }
+
+  // ── DESKTOP RESOURCE MODE (Gantt grid — staff rows × day columns) ────────
   const today = todayStr();
 
   return (
-    <div className="week-desktop-wrapper">
+    <div className="week-view">
+      {chassis}
+      <div className="week-desktop-wrapper">
       <div className="week-grid">
         {/* Header row */}
         <div className="week-corner" />
@@ -282,6 +387,110 @@ const WeekView = ({ weekStart, employees, departments, schedules, loading, onAss
             No active employees found.
           </div>
         )}
+      </div>
+      </div>
+    </div>
+  );
+};
+
+// Sprint 8.5: Week timeline mode — 7 day columns × 24h vertical axis.
+// Each day column gets its own greedy lane-pack so overlapping shifts within
+// that day split horizontally inside the column. Reads like Outlook week
+// view; complementary to the Resource grid which has days-on-X / staff-on-Y.
+const WeekTimelineMode = ({ days, schedules, employees, onEdit }) => {
+  const todayStrCached = todayStr();
+  const empById = useMemo(() => {
+    const m = {};
+    employees.forEach(e => { m[e.user_id] = e; });
+    return m;
+  }, [employees]);
+
+  // Per-day lane assignments, keyed by YYYY-MM-DD.
+  const perDay = useMemo(() => {
+    const m = {};
+    days.forEach(d => {
+      const ds = fmtDate(d);
+      m[ds] = laneAssign(schedules.filter(s => s.scheduled_date === ds));
+    });
+    return m;
+  }, [days, schedules]);
+
+  const hours = useMemo(() => Array.from({ length: 25 }, (_, h) => h), []);
+
+  return (
+    <div className="week-tl-wrap">
+      <div className="week-tl-grid">
+        <div className="week-tl-corner" />
+        {days.map((d, i) => {
+          const ds = fmtDate(d);
+          const isToday = ds === todayStrCached;
+          return (
+            <div key={i} className={`week-tl-day-header${isToday ? ' is-today' : ''}`}>
+              <span className="week-tl-day-name">{DAY_NAMES[i]}</span>
+              <span className={`week-tl-day-num${isToday ? ' is-today' : ''}`}>{d.getDate()}</span>
+            </div>
+          );
+        })}
+
+        <div className="week-tl-rail">
+          {hours.map(h => (
+            <span
+              key={h}
+              className="week-tl-hour-label"
+              style={{ top: `${(h / 24) * 100}%` }}
+            >
+              {fmtHour(h % 24)}
+            </span>
+          ))}
+        </div>
+
+        {days.map((d, i) => {
+          const ds = fmtDate(d);
+          const { shifts, laneCount } = perDay[ds] || { shifts: [], laneCount: 1 };
+          return (
+            <div key={i} className="week-tl-day-col">
+              {hours.map(h => (
+                <div key={h} className="week-tl-hour-line" style={{ top: `${(h / 24) * 100}%` }} />
+              ))}
+              {shifts.map(s => {
+                const startMin = timeToMinutes(s.start_time);
+                const endMinRaw = timeToMinutes(s.end_time);
+                const endMin = endMinRaw > startMin ? endMinRaw : 1440;
+                const top    = (startMin / 1440) * 100;
+                const height = ((endMin - startMin) / 1440) * 100;
+                const left   = (s._lane / laneCount) * 100;
+                const width  = (1 / laneCount) * 100;
+                const empData = empById[s.user_id];
+                const deptName = s.department_name || empData?.department || null;
+                const color = getDeptColor(deptName);
+                const firstName = (empData?.name || 'Unknown').split(' ')[0];
+                return (
+                  <button
+                    key={s.schedule_id}
+                    type="button"
+                    className="week-tl-shift"
+                    style={{
+                      top:    `${top}%`,
+                      height: `calc(${height}% - 2px)`,
+                      left:   `calc(${left}% + 2px)`,
+                      width:  `calc(${width}% - 4px)`,
+                      background:  color.bg,
+                      borderColor: color.border,
+                      color:       color.text,
+                    }}
+                    title={`${empData?.name || 'Unknown'} · ${formatTime(s.start_time)}–${formatTime(s.end_time)}`}
+                    onClick={() => onEdit(s)}
+                  >
+                    <div className="week-tl-shift-name">{firstName}</div>
+                    <div className="week-tl-shift-time">
+                      {formatTime(s.start_time)}–{formatTime(s.end_time)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

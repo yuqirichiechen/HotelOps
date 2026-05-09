@@ -733,6 +733,108 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.5: directional slide animations + Week chassis adoption + Day extra detail
+
+Two big rolls into one sprint: the missing animations on prev/next and
+zoom-back, plus a structural alignment between WeekView and DayView so
+they share a chassis but show different levels of detail.
+
+**Animations — directional slide on prev/next.** Zoom transitions
+(Year↔Month, Month↔Day) already worked both ways via shared
+`view-transition-name` on tile and container, but `goPrev`/`goNext`
+within a single view were unanimated — the cursor change was instant.
+Added a `dir` parameter to `runWithTransition(cb, dir)` that sets
+`document.documentElement.dataset.schedDir = 'prev' | 'next'` for the
+duration of the transition. The `.sched-content` element now carries
+`view-transition-name: sched-canvas`; CSS hooks
+`[data-sched-dir]::view-transition-old/new(sched-canvas)` to slide-out-
+left/in-right (next) or slide-out-right/in-left (prev) at 320ms with
+cubic-bezier(0.4, 0, 0.2, 1). The transition's `finished` promise
+clears the dataset attribute. Zooms (no `dir`) leave the canvas with
+its default cross-fade so the inner FLIP names own the visual.
+
+`goToday` deliberately skips the directional flag — could go either
+way depending on where the cursor sits, so a default cross-fade reads
+better than picking arbitrarily.
+
+**Week chassis adoption.** WeekView now wraps its rendering in the
+same dept-filter chips + mode-toggle pattern DayView introduced in
+8.4. Same smart-default rule: pick a single dept → switch to Timeline;
+pick All → switch to Resource. Mode toggle is hidden on mobile because
+the existing day-tab list there *is* the single-day focus the toggle
+would otherwise pick. Mobile gets the chips alone.
+
+**Week — two desktop modes:**
+- **Resource** — the existing staff-rows × 7 day columns Gantt grid.
+  Filtered by selected dept. Best at-a-glance overview of who works
+  which days across the week.
+- **Timeline** — *new*: 7 day columns × 24h vertical axis (Outlook-
+  week style). Shifts are positioned blocks within their day column;
+  per-day greedy lane-packing handles overlaps. Hour rail on the
+  left, 25 hour markers (12 AM → 12 AM) with the same translateY(-50%)
+  + 8px breathing pattern Sprint 8.4.1 introduced for DayView.
+
+**Day extra detail — what makes Day "Day" instead of Week-zoomed-in.**
+Day's resource track grew from 28px → 36px so each shift bar can hold
+two lines: time + computed hours on line 1 (`9am – 5pm · 8.5h`),
+notes preview on line 2 (italic, 10px). Day's timeline blocks gain a
+third line for notes (`Note: …`) when present, and the meta line now
+includes computed hours alongside dept and time. Week stays
+single-line per cell — denser, less detail. The pattern: Week is "what
+is the schedule?", Day is "what about this shift specifically?".
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/index.js` — `runWithTransition`
+  takes `(cb, dir)`; `goPrev`/`goNext`/`goToday` wrap their state
+  updates with the right direction; `.sched-content` carries
+  `view-transition-name: sched-canvas`.
+- `src/components/AdminPanel/Scheduling/WeekView.js` — added
+  `useMemo` import, `fmtHour`/`laneAssign` helpers; `deptFilter` /
+  `viewMode` state with smart-default handler; chassis JSX (chips +
+  toggle, toggle hidden on mobile) wrapped around all three render
+  paths (mobile / desktop-resource / desktop-timeline); new
+  `WeekTimelineMode` component renders the 7-col × 24h grid with
+  per-day lane-packing.
+- `src/components/AdminPanel/Scheduling/DayView.js` — added
+  `computeShiftHours()` helper; resource shift bar grows to two
+  lines (time + hours, italic notes preview); timeline block
+  appends computed hours to its meta line and adds a notes
+  preview line.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` —
+  `@keyframes` for sched-slide-{out,in}-{left,right};
+  `[data-sched-dir]::view-transition-old/new(sched-canvas)` rules;
+  full `.week-tl-*` layout (wrap, grid, corner, day header, rail,
+  hour label, day col, hour line, shift, name, time);
+  `.day-resource-track` height bumped to 36px;
+  `.day-resource-shift` becomes flex-column;
+  `.day-resource-shift-hours` (bold) and
+  `.day-resource-shift-notes` (italic) styles;
+  `.day-shift-notes` italic third line on timeline blocks.
+
+**Conventions added:**
+- **Direction-aware view transitions via dataset.** When the
+  same UI shape can be reached from multiple directions
+  (prev/next/today/zoom), set a directional hint on the document
+  root for the duration of the transition and let CSS
+  `[data-...]::view-transition-old/new(name)` rules pick the
+  matching animation. Cleaner than naming separate transitions for
+  each direction, and the dataset auto-clears when the transition's
+  `finished` promise resolves.
+- **Detail level differentiates sibling views.** Week and Day share
+  the same chassis (chips + toggle + Resource/Timeline modes), so
+  the user has one mental model. The difference is *content
+  density*: Week is one line of essentials per shift, Day is up to
+  three lines (time/hours, notes, dept). Same shape, different
+  depth — admin's pick of which to look at depends on whether
+  they're scanning or studying.
+- **Per-cell lane-packing for grid timelines.** When laying out
+  overlapping events in a grid where columns represent independent
+  time slots (per-day, per-resource, etc.), run the greedy
+  lane-packer separately for each cell. Don't try to pack across
+  cells — different cells have different overlap rules. Each
+  cell's `_lane` index is local to itself and sized against that
+  cell's lane count.
+
 ### 2026-05-07 — Sprint 8.4.1: DayView axis polish (edge labels + adaptive density + close-of-day)
 
 Three small but visible fixes after 8.4 landed.

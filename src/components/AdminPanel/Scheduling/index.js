@@ -32,11 +32,18 @@ const fmtDate = (d) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-// Browser-supported view transition wrapper. Falls back to an instant
-// state update if startViewTransition is unavailable (e.g. older Firefox).
-const runWithTransition = (cb) => {
+// Browser-supported view transition wrapper. Sprint 8.5: takes an optional
+// `dir` ('prev' | 'next' | null) that's set on the document root for the
+// duration of the transition. CSS reads `[data-sched-dir]` to drive
+// directional slide animations on `.sched-content` for prev/next nav,
+// while zoom transitions (no `dir`) use the inner element FLIPs unchanged.
+// Falls back to an instant state update if startViewTransition is
+// unavailable (e.g. older Firefox).
+const runWithTransition = (cb, dir = null) => {
   if (typeof document !== 'undefined' && document.startViewTransition) {
-    document.startViewTransition(() => flushSync(cb));
+    if (dir) document.documentElement.dataset.schedDir = dir;
+    const t = document.startViewTransition(() => flushSync(cb));
+    t.finished.finally(() => { delete document.documentElement.dataset.schedDir; });
   } else {
     cb();
   }
@@ -207,23 +214,32 @@ const SchedulingManager = () => {
     setView(nextView);
   });
 
-  const goPrev = () => {
+  const goPrev = () => runWithTransition(() => {
     const d = new Date(cursor);
     if (view === 'year')  d.setFullYear(d.getFullYear() - 1);
     if (view === 'month') d.setMonth(d.getMonth() - 1);
     if (view === 'week')  d.setDate(d.getDate() - 7);
     if (view === 'day')   d.setDate(d.getDate() - 1);
     setCursor(d);
-  };
-  const goNext = () => {
+  }, 'prev');
+
+  const goNext = () => runWithTransition(() => {
     const d = new Date(cursor);
     if (view === 'year')  d.setFullYear(d.getFullYear() + 1);
     if (view === 'month') d.setMonth(d.getMonth() + 1);
     if (view === 'week')  d.setDate(d.getDate() + 7);
     if (view === 'day')   d.setDate(d.getDate() + 1);
     setCursor(d);
-  };
-  const goToday = () => setCursor(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
+  }, 'next');
+
+  // Today jumps directly without a directional slide — could go either way
+  // depending on where the cursor is, so a default cross-fade reads better
+  // than an arbitrary slide direction.
+  const goToday = () => runWithTransition(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    setCursor(d);
+  });
 
   // ── Header label depending on view ──────────────────────────────────────
   const headerLabel = (() => {
@@ -280,7 +296,7 @@ const SchedulingManager = () => {
         <button className="nav-arrow" onClick={goNext} aria-label="Next">›</button>
       </div>
 
-      <div className="sched-content">
+      <div className="sched-content" style={{ viewTransitionName: 'sched-canvas' }}>
         {view === 'year' && (
           <YearView
             year={cursor.getFullYear()}
