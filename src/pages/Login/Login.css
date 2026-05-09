@@ -171,6 +171,23 @@
 
 .login-switch a:hover { text-decoration: underline; }
 
+/* ── Sprint 8.7.1: kiosk-keyboard lock ──────────────────────────────────
+   When the admin enables block_system_keyboard, the .login-field wrapper
+   carries .is-kbd-locked. Disable interaction on the actual <input> and
+   route the tap to the wrapper (which sets activeField). The input
+   never receives focus, so iOS Safari / Android Chrome can't pop the
+   system keyboard. */
+.login-field.is-kbd-locked {
+  cursor: pointer;
+}
+.login-field.is-kbd-locked input {
+  pointer-events: none;
+  user-select: none;
+  caret-color: transparent;
+  /* Keep the input visually identical — the locked state is a UX-level
+     constraint, not a "this field is broken" signal to the user. */
+}
+
 /* ── Compact keypad (staff login) ─────────────────────────────────────────── */
 
 .login-field.is-active input {

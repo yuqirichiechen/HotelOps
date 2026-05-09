@@ -733,6 +733,69 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-09 — Sprint 8.7.1: actually block the keyboard (pointer-events trick)
+
+8.7's `readOnly` + `inputMode="none"` combo is what the spec says
+should suppress the virtual keyboard, but in practice iOS Safari and
+several Android browsers ignore `inputMode="none"` once the input
+receives focus and pop their default keyboard anyway. Worse, with
+`readOnly` the input doesn't accept typing — so the user gets a
+useless keyboard they don't know how to dismiss. Net regression.
+
+**Root cause:** the spec relies on browsers honoring
+`inputMode="none"`, but the actual implementations don't on the older
+OS versions hotels typically have on shared kiosks. The spec is
+"compliant + broken in practice" — a classic platform fragmentation
+trap.
+
+**The reliable fix: don't let the input receive focus on tap.**
+- `pointer-events: none` on the `<input>` so taps fall through.
+- `tabIndex={-1}` so keyboard nav can't reach it either.
+- Wrap in `.login-field` with `cursor: pointer` and an `onClick`
+  that sets `activeField` directly.
+- Replace `autoFocus` with a `useEffect`-driven programmatic focus
+  that only fires when `lockKbd === false` *and* config has loaded.
+
+Result: no browser ever focuses the input → no browser ever has the
+chance to summon a keyboard. The on-screen keypad still drives state
+via `setIdentifier` / `setPin`, exactly as before. Visual styling
+unchanged so the user can't tell the field is "locked" — they just
+see the on-screen keypad as the only way to type.
+
+**Why programmatic focus + configLoaded matters.** With `autoFocus`
+on the JSX, the input focuses on first render — *before* the
+`/api/public-config` fetch resolves. On a kiosk where lockKbd should
+be true, the keyboard would have a moment to appear before the state
+flipped. The `useEffect` defers focus until the config is known and
+only focuses if locking is off.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js` — added `configLoaded` state and
+  `idInputRef`. Removed `autoFocus`; added a `useEffect` that calls
+  `idInputRef.current.focus()` when config is loaded and not locked.
+  Both `.login-field` wrappers gained `is-kbd-locked` class +
+  `onClick` handler when locked. Inputs gained `tabIndex={lockKbd
+  ? -1 : 0}` and `aria-readonly` for accessibility.
+- `src/pages/Login/Login.css` — new `.login-field.is-kbd-locked`
+  rules: `cursor: pointer` on wrapper, `pointer-events: none;
+  user-select: none; caret-color: transparent` on the input.
+
+**Conventions added:**
+- **`pointer-events: none` on the element + click on the wrapper is
+  the only reliable way to fully suppress mobile keyboards.** The
+  spec-blessed `inputMode="none"` and `readOnly` are advisory; older
+  OS implementations bypass them. If you absolutely need the
+  keyboard to *not* appear, remove the input from the interaction
+  graph entirely. The wrapper picks up the tap and updates app
+  state; the input is just a visual element at that point.
+- **Defer programmatic actions until async config has resolved.**
+  When a feature toggle controls how an interactive element should
+  behave on first render, don't ship a default behavior that fires
+  before the config arrives. Either gate render on `configLoaded`
+  or use a `useEffect` that only acts after config is known. The
+  alternative is a brief moment where the wrong behavior is
+  visible — usually worse than waiting half a second.
+
 ### 2026-05-09 — Sprint 8.7: kiosk lock — block system keyboard on staff login
 
 For shared tablet/kiosk deployments the staff are often not tech-savvy

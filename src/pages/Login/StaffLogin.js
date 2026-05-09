@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { TENANT } from '../../config/tenant';
@@ -109,11 +109,16 @@ const StaffLogin = () => {
   const [loading,     setLoading]     = useState(false);
   const [kbMode,      setKbMode]      = useState('numbers'); // 'numbers' | 'letters'
   const [caps,        setCaps]        = useState(false);
-  // Sprint 8.7: when admin enables `block_system_keyboard`, the inputs go
-  // readOnly and inputMode='none' so the device's built-in keyboard never
-  // pops up — kiosk staff who don't know how to dismiss it can't trip it
-  // accidentally. Our on-screen keypad still drives input via setState.
-  const [lockKbd,     setLockKbd]     = useState(false);
+  // Sprint 8.7 / 8.7.1: when admin enables `block_system_keyboard`, the
+  // inputs become non-interactive (pointer-events:none, tabIndex=-1) and
+  // the wrapping `.login-field` captures the tap to set activeField
+  // instead. The input never receives focus, so iOS Safari / Android
+  // Chrome don't get the chance to pop the system keyboard.
+  // (8.7's readOnly + inputMode="none" wasn't enough — both browsers
+  // still focused the input on tap and showed their default keyboard.)
+  const [lockKbd,      setLockKbd]      = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const idInputRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/public-config')
@@ -121,8 +126,19 @@ const StaffLogin = () => {
       .then(data => {
         if (data?.success) setLockKbd(!!data.config?.block_system_keyboard);
       })
-      .catch(() => { /* fall through to default (system keyboard allowed) */ });
+      .catch(() => { /* fall through to default (system keyboard allowed) */ })
+      .finally(() => setConfigLoaded(true));
   }, []);
+
+  // Programmatic auto-focus: only fires when config is loaded AND lock is
+  // off. With autoFocus on the JSX, the input would focus on first render
+  // (before the fetch completes) and the system keyboard could appear
+  // before lockKbd flips true.
+  useEffect(() => {
+    if (configLoaded && !lockKbd && idInputRef.current) {
+      idInputRef.current.focus();
+    }
+  }, [configLoaded, lockKbd]);
 
   // Auto-advance to PIN once a valid identifier is entered and the server
   // already told us PIN is required.
@@ -197,10 +213,14 @@ const StaffLogin = () => {
         </p>
 
         <form onSubmit={submit} className="login-form">
-          <div className={`login-field ${activeField === 'id' ? 'is-active' : ''}`}>
+          <div
+            className={`login-field ${activeField === 'id' ? 'is-active' : ''} ${lockKbd ? 'is-kbd-locked' : ''}`}
+            onClick={lockKbd ? () => setActive('id') : undefined}
+          >
             <label htmlFor="identifier">Phone, employee ID, or username</label>
             <input
               id="identifier"
+              ref={idInputRef}
               className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
               type="text"
               autoComplete="username"
@@ -212,14 +232,18 @@ const StaffLogin = () => {
               onChange={onIdentifierChange}
               onFocus={() => setActive('id')}
               placeholder="10-digit phone · 4–6 digit ID · username"
-              autoFocus
               readOnly={lockKbd}
               inputMode={lockKbd ? 'none' : 'text'}
+              tabIndex={lockKbd ? -1 : 0}
+              aria-readonly={lockKbd || undefined}
             />
           </div>
 
           {needsPin && (
-            <div className={`login-field ${activeField === 'pin' ? 'is-active' : ''}`}>
+            <div
+              className={`login-field ${activeField === 'pin' ? 'is-active' : ''} ${lockKbd ? 'is-kbd-locked' : ''}`}
+              onClick={lockKbd ? () => setActive('pin') : undefined}
+            >
               <label htmlFor="pin">PIN</label>
               <input
                 id="pin"
@@ -232,6 +256,8 @@ const StaffLogin = () => {
                 onFocus={() => setActive('pin')}
                 placeholder="• • • •"
                 readOnly={lockKbd}
+                tabIndex={lockKbd ? -1 : 0}
+                aria-readonly={lockKbd || undefined}
               />
             </div>
           )}
