@@ -171,7 +171,7 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
   }
 
   return (
-    <div className="day-view" style={{ viewTransitionName: `sched-day-${dateStr}` }}>
+    <div className="day-view">
       {/* Week strip — clickable, current cursor highlighted */}
       <div className="day-week-strip">
         {weekDays.map((d, i) => {

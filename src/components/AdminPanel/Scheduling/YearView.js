@@ -68,7 +68,6 @@ const YearView = ({ year, schedules, loading, onSelectMonth }) => {
             key={m}
             type="button"
             className="year-month-tile"
-            style={{ viewTransitionName: `sched-month-${m}` }}
             onClick={() => onSelectMonth(m)}
           >
             <div className={`year-month-title ${today.year === year && today.month === m ? 'is-current' : ''}`}>

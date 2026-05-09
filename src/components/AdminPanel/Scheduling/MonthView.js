@@ -62,7 +62,7 @@ const MonthView = ({ year, month, schedules, departments, loading, onSelectDay }
   if (loading) return <div className="sched-loading">Loading schedule…</div>;
 
   return (
-    <div className="month-view" style={{ viewTransitionName: `sched-month-${month}` }}>
+    <div className="month-view">
       <div className="month-grid">
         {DAY_HEADERS.map(d => (
           <div key={d} className="month-day-header">{d}</div>
@@ -85,7 +85,6 @@ const MonthView = ({ year, month, schedules, departments, loading, onSelectDay }
               ].join(' ').trim()}
               onClick={() => item.current && onSelectDay(item.date)}
               disabled={!item.current}
-              style={item.current ? { viewTransitionName: `sched-day-${dateStr}` } : undefined}
             >
               <span className={`month-day-num${isToday ? ' month-day-num-today' : ''}`}>
                 {item.date.getDate()}

@@ -733,6 +733,80 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.5.4: drop inner view-transition-names, canvas-only animation
+
+After three iterations of layered View Transitions tweaks (8.5, 8.5.1,
+8.5.2, 8.5.3) the user kept reporting that Year/Month prev/next and
+Year↔Month / Day↔Month zooms either failed or fired only randomly. The
+animations that *did* work consistently were Day prev/next and Week
+prev/next — the two views without a forest of inner
+`view-transition-name`s.
+
+Pattern was clear: **every broken case involved a view with multiple
+internal named layers**. YearView had 12 (`sched-month-0..11`),
+MonthView had ~32 (1 container + 31 day cells). DayView had 1 named
+container; WeekView had none. Browser FLIP behavior with many shared/
+unshared name pairs was inconsistent, the universal `*` selector
+support was uneven, and the named layers' default cross-fade often
+masked the canvas slide behind them.
+
+**Decision: give up the iOS-Calendar tile-to-page FLIP** and rely
+purely on the canvas (`.sched-content` named `sched-canvas`) for all
+schedule animation. This loses the "tile expands into a full page"
+visual we'd been chasing across 8.0 → 8.5.3, but gains 100% reliable,
+predictable animation across every view transition. Reliability beats
+aesthetic ambition at this point.
+
+**What's left named:**
+- `.sched-content` → `sched-canvas` (animates: canvas slide on prev/
+  next, canvas zoom on view-changes).
+- `.bottom-nav` → `app-bottom-nav` (pinned, `animation: none` during
+  scheduling transitions so it stays stable through the canvas
+  motion).
+- `.sidebar` → `app-sidebar` (same).
+
+**What's *not* named (was, before 8.5.4):**
+- MonthView's `.month-view` container (was `sched-month-N`).
+- MonthView's day cells (were `sched-day-YYYY-MM-DD`).
+- YearView's tiles (were `sched-month-0..11`).
+- DayView's `.day-view` container (was `sched-day-YYYY-MM-DD`).
+
+With those gone, the universal slide rule from 8.5.3 effectively only
+slides `sched-canvas`; the static app-* layers are explicitly excluded
+via `animation: none`. Zoom-in/out animates only the canvas.
+
+**Canvas zoom restored to the dramatic range.** With no inner FLIP to
+compete, the canvas is the animation, so the 8.5.2-era loud range is
+the right choice. Reverted: `0.95↔1.05 → 0.85↔1.18`. Page visibly
+grows/shrinks on every view-change.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/MonthView.js` — dropped
+  `viewTransitionName` from `.month-view` and from each in-month
+  day cell.
+- `src/components/AdminPanel/Scheduling/YearView.js` — dropped
+  `viewTransitionName` from each year tile.
+- `src/components/AdminPanel/Scheduling/DayView.js` — dropped
+  `viewTransitionName` from `.day-view`.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` —
+  `sched-zoom-*` keyframes' scale range bumped back to 0.85↔1.18.
+
+**Conventions added:**
+- **When inconsistent FLIPs become a debugging time-sink, drop the
+  FLIPs.** View Transitions API behavior with many shared / unshared
+  name pairs depends on browser version, layer count, render
+  timing, etc. If you're three sprints deep and still chasing why
+  certain transitions fire and others don't, the architecture
+  itself is fragile. Step back to a single named "canvas" layer
+  and accept the simpler animation. You can re-introduce per-
+  element FLIPs later when you have a specific use case that
+  justifies the complexity.
+- **Page-level animation always wins reliability over per-
+  element animation.** A whole-canvas scale/slide is one named
+  layer with one animation; per-element FLIP is N layers with N
+  animations and pairwise matching. The single layer is what
+  every browser handles consistently.
+
 ### 2026-05-08 — Sprint 8.5.3: universal slide on prev/next + tone down canvas zoom + Week gap
 
 Three follow-up fixes after 8.5.2 still left some animations missing.
