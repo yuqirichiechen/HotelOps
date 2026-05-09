@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { flushSync } from 'react-dom';
 import { useAuth, apiFetch } from '../../auth';
 import ClockWidget from '../../components/TimeClock/ClockWidget';
 import AutoSignoutBanner from '../../components/shared/AutoSignoutBanner';
@@ -92,7 +93,22 @@ const Home = () => {
   const handleAutoSignout = async () => {
     setAutoSignout(false);
     await logout();
-    nav('/login/staff', { replace: true });
+    // Sprint 8.6.2: animate the page swap. The login page's `.login-card`
+    // already has its own slide-in animation; this gives the *outer* page
+    // a deliberate fade-out + scale-down via the [data-signing-out]
+    // selector in AutoSignoutBanner.css. Falls back to instant nav on
+    // browsers without the View Transitions API.
+    if (typeof document !== 'undefined' && document.startViewTransition) {
+      document.documentElement.dataset.signingOut = 'true';
+      const t = document.startViewTransition(() => {
+        flushSync(() => nav('/login/staff', { replace: true }));
+      });
+      t.finished.finally(() => {
+        delete document.documentElement.dataset.signingOut;
+      });
+    } else {
+      nav('/login/staff', { replace: true });
+    }
   };
 
   const handleClockIn = async () => {
@@ -156,13 +172,21 @@ const Home = () => {
             {/* Front — ready to clock in */}
             <div className="home-clock-face">
               <ClockWidget />
-              <button
-                className="home-clock-action in"
-                onClick={handleClockIn}
-                disabled={busy || loading}
-              >
-                {busy ? '…' : 'Clock In'}
-              </button>
+              {autoSignout ? (
+                <AutoSignoutBanner
+                  seconds={data?.autoSignoutSeconds || 3}
+                  onCancel={() => setAutoSignout(false)}
+                  onSignOut={handleAutoSignout}
+                />
+              ) : (
+                <button
+                  className="home-clock-action in"
+                  onClick={handleClockIn}
+                  disabled={busy || loading}
+                >
+                  {busy ? '…' : 'Clock In'}
+                </button>
+              )}
             </div>
 
             {/* Back — clocked in */}
@@ -176,13 +200,21 @@ const Home = () => {
                   Started at {clockInTime ? formatTime(clockInTime) : '—'}
                 </div>
               </div>
-              <button
-                className="home-clock-action out"
-                onClick={handleClockOut}
-                disabled={busy}
-              >
-                {busy ? '…' : 'Clock Out'}
-              </button>
+              {autoSignout ? (
+                <AutoSignoutBanner
+                  seconds={data?.autoSignoutSeconds || 3}
+                  onCancel={() => setAutoSignout(false)}
+                  onSignOut={handleAutoSignout}
+                />
+              ) : (
+                <button
+                  className="home-clock-action out"
+                  onClick={handleClockOut}
+                  disabled={busy}
+                >
+                  {busy ? '…' : 'Clock Out'}
+                </button>
+              )}
             </div>
 
           </div>
@@ -229,14 +261,6 @@ const Home = () => {
           </ul>
         )}
       </section>
-
-      {autoSignout && (
-        <AutoSignoutBanner
-          seconds={data?.autoSignoutSeconds || 3}
-          onCancel={() => setAutoSignout(false)}
-          onSignOut={handleAutoSignout}
-        />
-      )}
 
     </div>
   );

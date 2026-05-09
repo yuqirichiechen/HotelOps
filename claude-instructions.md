@@ -733,6 +733,73 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.6.2: banner moves inline; sign-out gets a transition
+
+Two issues with the 8.6 banner once the user lived with it:
+
+**1. Overlap.** The fixed/bottom-banner positioning overlapped the
+recent-shifts list on mobile. User pointed at the existing gap *between
+the clock display and the action button* in the clock card and asked
+to integrate the banner there instead. Done — the banner now renders
+inline inside the clock face, taking the action button's position
+when active. When `autoSignout` is true, the Clock In / Clock Out
+button is replaced by the banner; canceling restores the button.
+
+This makes the auto-signout feel like a contextual continuation of the
+clock action that just happened, not a floating overlay anchored to
+the screen. The fixed-position CSS variants (top-right toast / bottom
+banner) are gone — the inline placement works on all viewports and
+doesn't fight with anything below the clock card.
+
+**2. No animation on the actual sign-out.** When the timer hit 0 the
+nav was an instant `nav('/login/staff', { replace: true })` — felt
+abrupt. Wrapped the navigation in `document.startViewTransition` +
+`flushSync`, mirroring the Sprint 7.4 pattern:
+```js
+document.documentElement.dataset.signingOut = 'true';
+const t = document.startViewTransition(() => {
+  flushSync(() => nav('/login/staff', { replace: true }));
+});
+t.finished.finally(() => {
+  delete document.documentElement.dataset.signingOut;
+});
+```
+CSS hooks the `[data-signing-out]` attribute to apply a fade-out +
+scale-down on the old page (`signout-old`: opacity → 0, scale → 0.96)
+and a fade-in + scale-down-from on the new page (`signout-new`:
+opacity 0→1, scale 1.04→1). The login card's existing slide-up
+animation rides on top via its `view-transition-name: login-card`.
+Reduced-motion respected.
+
+**Files modified:**
+- `src/pages/Home/index.js` — banner moved inside both clock faces
+  (replacing the action button when `autoSignout`); removed the
+  page-bottom render. `handleAutoSignout` now sets
+  `data-signing-out` on `<html>`, runs the nav inside a view
+  transition, clears the dataset on completion.
+- `src/components/shared/AutoSignoutBanner.css` — removed the
+  desktop / mobile fixed-position blocks. Replaced with a single
+  inline layout (`position: relative`, full-width inside its
+  parent). Added `[data-signing-out]::view-transition-old/new(root)`
+  rules for the page-level sign-out animation.
+
+**Conventions added:**
+- **Inline contextual UI beats overlay UI when the action is still
+  on-screen.** A floating banner that comments on what just happened
+  is fine for non-spatial actions (toast for "settings saved").
+  When the action *has* a UI position (a Clock In button just
+  pressed), put the follow-up affordance *there*, replacing or
+  augmenting the original control. The user's eye is already there;
+  no extra scan needed.
+- **Page-level navigation deserves a transition just like view-
+  level changes do.** Even when there's no shared element to FLIP,
+  a fade + subtle scale on the document root reads as deliberate
+  vs. an instant cut. Use the same
+  `document.startViewTransition + flushSync` pattern, set a
+  data-attribute on `<html>` for the duration, hook CSS off of
+  `::view-transition-old/new(root)` and the data-attribute. Cheap
+  to add to any logout / nav-on-action flow.
+
 ### 2026-05-08 — Sprint 8.6.1: fix stuck countdown on AutoSignoutBanner
 
 Bug from 8.6: the countdown displayed `Signing out in 3s` and stayed at

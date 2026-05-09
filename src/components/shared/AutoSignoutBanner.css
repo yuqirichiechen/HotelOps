@@ -1,55 +1,38 @@
-/* Sprint 8.6: AutoSignoutBanner — dual-position responsive layout.
-   Desktop (≥720px): top-right toast.
-   Mobile  (<720px):  bottom banner, sits above the bottom-nav (which is
-                      64px tall + safe-area-inset-bottom). */
+/* Sprint 8.6.2: AutoSignoutBanner is now an *inline* element rendered
+   inside the clock card, in place of the Clock In / Clock Out action
+   button when active. The previous fixed-position variants (top-right
+   toast on desktop, bottom banner on mobile) overlapped the recent-
+   shifts list — moving inline keeps everything contained in the clock
+   surface where the action just happened. */
 
 .auto-signout-banner {
-  position: fixed;
-  z-index: 200;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 12px 14px;
+  border: 1.5px solid var(--brand-bg);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 10px rgba(26, 54, 93, 0.10);
   font-family: 'TiemposText', Georgia, serif;
+  width: 100%;
+  box-sizing: border-box;
+  /* Slide down + fade in so the swap from action button → banner has
+     visual continuity. The button's exit is instant since React swaps
+     the element; the banner's entrance is animated. */
+  animation: auto-signout-fade-in 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
-/* Desktop: top-right toast, slides down from above the viewport. */
-@media (min-width: 720px) {
-  .auto-signout-banner {
-    top: 20px;
-    right: 20px;
-    width: 320px;
-    animation: auto-signout-slide-down 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  }
-  @keyframes auto-signout-slide-down {
-    from { transform: translateY(-110%); opacity: 0; }
-    to   { transform: translateY(0);     opacity: 1; }
-  }
-}
-
-/* Mobile: bottom banner above the 64px-tall bottom-nav (+ safe-area).
-   Slides up from below. */
-@media (max-width: 719px) {
-  .auto-signout-banner {
-    left: 12px;
-    right: 12px;
-    bottom: calc(64px + env(safe-area-inset-bottom) + 12px);
-    animation: auto-signout-slide-up 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
-  }
-  @keyframes auto-signout-slide-up {
-    from { transform: translateY(120%); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-  }
+@keyframes auto-signout-fade-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .auto-signout-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex: 1 1 auto;
   cursor: pointer;
   /* Tapping the info area also cancels — see banner.js — so make the whole
@@ -59,7 +42,7 @@
 .auto-signout-text { flex: 1 1 auto; min-width: 0; }
 .auto-signout-title {
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
@@ -116,7 +99,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 700;
-  padding: 9px 14px;
+  padding: 10px 14px;
   border: 1px solid var(--brand-bg);
   border-radius: 9px;
   background: var(--brand-bg);
@@ -129,12 +112,37 @@
 .auto-signout-stay:hover { background: var(--brand-hover); }
 
 @media (max-width: 380px) {
-  .auto-signout-stay { font-size: 12px; padding: 8px 10px; }
-  .auto-signout-title { font-size: 12px; }
-  .auto-signout-sub { font-size: 11px; }
+  .auto-signout-banner { gap: 10px; padding: 12px 12px; }
+  .auto-signout-stay   { font-size: 12px; padding: 9px 11px; }
+  .auto-signout-title  { font-size: 13px; }
+  .auto-signout-sub    { font-size: 11px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auto-signout-banner { animation-duration: 1ms; }
+  .auto-signout-banner        { animation-duration: 1ms; }
   .auto-signout-ring-progress { transition: none; }
+}
+
+/* ── Sprint 8.6.2: page transition when auto sign-out fires ──────────────
+   Wraps the navigation in document.startViewTransition (see Home's
+   handleAutoSignout). The default cross-fade is augmented with a subtle
+   fade-out + scale-down on the old page so the sign-out reads as a
+   deliberate transition rather than a hard cut. */
+html[data-signing-out]::view-transition-old(root) {
+  animation: signout-old 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html[data-signing-out]::view-transition-new(root) {
+  animation: signout-new 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes signout-old {
+  to { opacity: 0; transform: scale(0.96); }
+}
+@keyframes signout-new {
+  from { opacity: 0; transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-signing-out]::view-transition-old(root),
+  html[data-signing-out]::view-transition-new(root) {
+    animation-duration: 1ms;
+  }
 }
