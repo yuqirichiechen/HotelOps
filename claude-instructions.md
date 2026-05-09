@@ -733,6 +733,62 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-09 — Sprint 8.7.2: stop rendering an input at all when locked
+
+After 8.7 (`readOnly` + `inputMode="none"`) and 8.7.1 (`pointer-events:
+none` + tap-on-wrapper) both failed in production, the user's
+diagnosis nailed it: **the password autofill / credential manager
+flow** in iOS Safari can summon the keyboard even when the input
+itself is uninteractive. The browser detects "this looks like a
+password field" and offers an autofill UI that brings the keyboard
+along with it.
+
+**The fix is to not have an input element at all** when locked. When
+`lockKbd` is true, render a `<div role="textbox" aria-readonly="true">`
+that displays the current state. No `<input>` ⇒ no field for the
+browser to autofill ⇒ no credential manager ⇒ no keyboard. Period.
+
+The on-screen keypad still drives state via `setIdentifier` /
+`setPin` (it never depended on the input's `onChange` anyway). The
+wrapper continues to capture taps and update `activeField`. The div
+is styled identically to the input so visually nothing changes —
+the user can't tell whether they're looking at an input or a div.
+
+**For the PIN field** (which used `type="password"` to mask digits),
+the display div manually masks: `'•'.repeat(pin.length)` when there's
+content, falls back to the placeholder `• • • •` when empty. This
+loses the native password-toggle affordance, which is fine on a
+kiosk where staff aren't going to copy-paste the PIN.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js` — both fields now branch on
+  `lockKbd`. When true: render `<div className="is-keypad
+  login-display ...">` with the current value or placeholder span.
+  When false: the original `<input>` (unchanged from 8.7.1).
+- `src/pages/Login/Login.css` — `.login-display` styled to match
+  `.login-field input` (same padding, border, radius, font, height).
+  `.login-field.is-active .login-display` mirrors the input's
+  `:focus` glow since the div itself never receives focus. Existing
+  `.is-keypad` / `.is-keypad.is-numeric` rules extended to apply to
+  both `input` and `.login-display`. `.login-display-placeholder`
+  styled with `var(--text-faint)` to match the input placeholder.
+
+**Conventions added:**
+- **If the platform won't suppress its keyboard, remove the input.**
+  Browsers are heuristic about `<input>` elements — they autofill,
+  autocomplete, suggest, surface keyboards, manage credentials.
+  Spec attributes like `inputMode="none"` / `readOnly` /
+  `autoComplete="off"` are advisory and OS keyboards routinely
+  override them. The only 100% reliable suppression is to not
+  render an `<input>` at all. Use a `<div role="textbox"
+  aria-readonly="true">` and drive its content with JS state.
+- **Visual identity > element identity.** A div styled like an
+  input reads as "an input" to the user. They tap it, type via the
+  keypad, see characters appear — all the same affordances. The
+  underlying element doesn't matter for the user; it matters
+  hugely for the browser's heuristics. Pick the element that gives
+  you the behavior you want and use CSS to make it look right.
+
 ### 2026-05-09 — Sprint 8.7.1: actually block the keyboard (pointer-events trick)
 
 8.7's `readOnly` + `inputMode="none"` combo is what the spec says

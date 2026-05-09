@@ -218,25 +218,38 @@ const StaffLogin = () => {
             onClick={lockKbd ? () => setActive('id') : undefined}
           >
             <label htmlFor="identifier">Phone, employee ID, or username</label>
-            <input
-              id="identifier"
-              ref={idInputRef}
-              className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
-              type="text"
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={16}
-              value={identifier}
-              onChange={onIdentifierChange}
-              onFocus={() => setActive('id')}
-              placeholder="10-digit phone · 4–6 digit ID · username"
-              readOnly={lockKbd}
-              inputMode={lockKbd ? 'none' : 'text'}
-              tabIndex={lockKbd ? -1 : 0}
-              aria-readonly={lockKbd || undefined}
-            />
+            {/* Sprint 8.7.2: when locked, swap the <input> entirely for a
+                display-only <div>. No input element ⇒ no password manager,
+                no autofill prompt, no system keyboard. The on-screen
+                keypad still drives state via setIdentifier. */}
+            {lockKbd ? (
+              <div
+                className={`is-keypad login-display ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
+                role="textbox"
+                aria-readonly="true"
+                aria-label="Phone, employee ID, or username"
+              >
+                {identifier
+                  ? identifier
+                  : <span className="login-display-placeholder">10-digit phone · 4–6 digit ID · username</span>}
+              </div>
+            ) : (
+              <input
+                id="identifier"
+                ref={idInputRef}
+                className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={16}
+                value={identifier}
+                onChange={onIdentifierChange}
+                onFocus={() => setActive('id')}
+                placeholder="10-digit phone · 4–6 digit ID · username"
+              />
+            )}
           </div>
 
           {needsPin && (
@@ -245,20 +258,32 @@ const StaffLogin = () => {
               onClick={lockKbd ? () => setActive('pin') : undefined}
             >
               <label htmlFor="pin">PIN</label>
-              <input
-                id="pin"
-                className="is-keypad is-numeric"
-                type="password"
-                inputMode={lockKbd ? 'none' : 'numeric'}
-                maxLength={4}
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                onFocus={() => setActive('pin')}
-                placeholder="• • • •"
-                readOnly={lockKbd}
-                tabIndex={lockKbd ? -1 : 0}
-                aria-readonly={lockKbd || undefined}
-              />
+              {/* Sprint 8.7.2: same div-swap for PIN. Mask the value as
+                  dots manually since we no longer have type=password. */}
+              {lockKbd ? (
+                <div
+                  className="is-keypad is-numeric login-display"
+                  role="textbox"
+                  aria-readonly="true"
+                  aria-label="PIN"
+                >
+                  {pin.length > 0
+                    ? '•'.repeat(pin.length)
+                    : <span className="login-display-placeholder">• • • •</span>}
+                </div>
+              ) : (
+                <input
+                  id="pin"
+                  className="is-keypad is-numeric"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={pin}
+                  onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onFocus={() => setActive('pin')}
+                  placeholder="• • • •"
+                />
+              )}
             </div>
           )}
 

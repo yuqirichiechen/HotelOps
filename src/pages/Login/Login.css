@@ -105,7 +105,8 @@
   text-transform: uppercase;
 }
 
-.login-field input {
+.login-field input,
+.login-field .login-display {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 16px;
   padding: 12px 14px;
@@ -120,6 +121,33 @@
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+/* Sprint 8.7.2: when the wrapper is the active field, give the display
+   div the same focus glow the input would get. We use the wrapper's
+   .is-active class because the display itself never receives focus. */
+.login-field.is-active .login-display {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+/* The display div mimics the input layout — single line, no wrap, baseline
+   alignment, min-height equal to the input's natural height (16px font +
+   2*12px padding ≈ 44px). */
+.login-field .login-display {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-display-placeholder {
+  color: var(--text-faint);
+  font-weight: 400;
 }
 
 .login-error {
@@ -195,16 +223,19 @@
   box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
-.login-field input.is-keypad {
+.login-field input.is-keypad,
+.login-field .login-display.is-keypad {
   text-align: center;
   caret-color: transparent;
+  justify-content: center;
 }
 
 /* Wide letter-spacing only when the input is purely numeric (phone /
    employee ID / PIN). For usernames and the long placeholder hint
    ("10-digit phone · 4–6 digit ID · username"), normal spacing keeps
    the text fitting inside the input. */
-.login-field input.is-keypad.is-numeric {
+.login-field input.is-keypad.is-numeric,
+.login-field .login-display.is-keypad.is-numeric {
   letter-spacing: 0.18em;
   font-variant-numeric: tabular-nums;
 }
