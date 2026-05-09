@@ -94,8 +94,10 @@ const SchedulingManager = () => {
       };
     }
     if (view === 'week') {
+      // Sprint 8.5.1: Week view shows a 4-week summary anchored on the
+      // cursor's week, so pull 28 days of schedules (last day inclusive).
       const ws = startOfWeek(cursor);
-      const we = new Date(ws); we.setDate(we.getDate() + 6);
+      const we = new Date(ws); we.setDate(we.getDate() + 27);
       return { start: fmtDate(ws), end: fmtDate(we) };
     }
     // day
@@ -209,10 +211,23 @@ const SchedulingManager = () => {
   };
 
   // ── Navigation helpers (animated via View Transitions API) ──────────────
-  const zoomTo = (nextView, nextCursor) => runWithTransition(() => {
-    if (nextCursor) setCursor(nextCursor);
-    setView(nextView);
-  });
+  // Sprint 8.5.1: classify the view change as a zoom-in (going deeper —
+  // year→month, month→day) or zoom-out (year backwards). Used by CSS to
+  // apply a subtle scale animation on the canvas so view-to-view switches
+  // have a visible animation even when no inner element name matches
+  // between the two views (e.g. switching to Week from Day via the toggle).
+  const zoomTo = (nextView, nextCursor) => {
+    const levels = { year: 1, month: 2, week: 3, day: 4 };
+    const oldLevel = levels[view] ?? 0;
+    const newLevel = levels[nextView] ?? 0;
+    const dir = newLevel > oldLevel ? 'zoom-in'
+              : newLevel < oldLevel ? 'zoom-out'
+              : null;
+    runWithTransition(() => {
+      if (nextCursor) setCursor(nextCursor);
+      setView(nextView);
+    }, dir);
+  };
 
   const goPrev = () => runWithTransition(() => {
     const d = new Date(cursor);
@@ -242,6 +257,10 @@ const SchedulingManager = () => {
   });
 
   // ── Header label depending on view ──────────────────────────────────────
+  // Sprint 8.5.1: Day view label was breaking onto two lines and pushing the
+  // segmented control to its own row in narrow widths. Use a "Weekday | Mon
+  // D, YYYY" format with a thin separator instead of a comma — reads at a
+  // glance and saves enough horizontal space that the controls fit.
   const headerLabel = (() => {
     if (view === 'year')  return `${cursor.getFullYear()}`;
     if (view === 'month') return `${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`;
@@ -249,7 +268,9 @@ const SchedulingManager = () => {
       const ws = startOfWeek(cursor);
       return `${MONTH_NAMES[ws.getMonth()]} ${ws.getFullYear()}`;
     }
-    return cursor.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const wd  = cursor.toLocaleDateString([], { weekday: 'long' });
+    const md  = cursor.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${wd} │ ${md}`;
   })();
 
   // Back-arrow target depending on current view (mirrors iOS Calendar):
@@ -258,6 +279,10 @@ const SchedulingManager = () => {
 
   return (
     <div className="sched-manager">
+      {/* Sprint 8.5.1: header row is now just back + title. View toggle and
+          "+" button moved down to share the nav-bar row with prev/today/next.
+          Frees horizontal space on mobile so the segmented control no
+          longer wraps to its own line on long Day labels. */}
       <div className="sched-header">
         <div className="sched-header-left">
           {backTarget ? (
@@ -269,31 +294,29 @@ const SchedulingManager = () => {
           )}
           <h2 className="sched-title">{headerLabel}</h2>
         </div>
-        <div className="sched-header-right">
-          <div className="sched-view-toggle">
-            {['year','month','week','day'].map(v => (
-              <button
-                key={v}
-                className={`view-btn${view === v ? ' active' : ''}`}
-                onClick={() => zoomTo(v)}
-              >
-                {v[0].toUpperCase() + v.slice(1)}
-              </button>
-            ))}
-          </div>
-          <button
-            className="sched-add-btn"
-            aria-label="Assign shifts"
-            title="Assign shifts"
-            onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
-          >＋</button>
-        </div>
       </div>
 
       <div className="sched-nav-bar">
         <button className="nav-arrow" onClick={goPrev} aria-label="Previous">‹</button>
         <button className="nav-today" onClick={goToday}>Today</button>
         <button className="nav-arrow" onClick={goNext} aria-label="Next">›</button>
+        <div className="sched-view-toggle">
+          {['year','month','week','day'].map(v => (
+            <button
+              key={v}
+              className={`view-btn${view === v ? ' active' : ''}`}
+              onClick={() => zoomTo(v)}
+            >
+              {v[0].toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
+        <button
+          className="sched-add-btn"
+          aria-label="Assign shifts"
+          title="Assign shifts"
+          onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
+        >＋</button>
       </div>
 
       <div className="sched-content" style={{ viewTransitionName: 'sched-canvas' }}>

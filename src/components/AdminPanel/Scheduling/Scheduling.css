@@ -67,12 +67,17 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Navigation bar */
+/* Navigation bar — Sprint 8.5.1: also holds the view toggle + "+" button
+   that previously lived in the header. flex-wrap so anything that doesn't
+   fit drops to a new line. The toggle uses margin-left: auto to anchor
+   the right-side group. */
 .sched-nav-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
+.sched-nav-bar .sched-view-toggle { margin-left: auto; }
 
 .nav-arrow {
   width: 36px;
@@ -1636,6 +1641,29 @@
   animation: sched-slide-in-left 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
+/* Sprint 8.5.1: zoom-in / zoom-out animations on the canvas for view-to-
+   view switches (Year ↔ Month ↔ Week ↔ Day). Subtle scale + fade so the
+   inner-element FLIP (when present, e.g. Year→Month tile expansion) reads
+   on top, while view changes without shared inner names still get a
+   visible animation. zoom-in = going deeper; zoom-out = going shallower. */
+@keyframes sched-zoom-old-shrink { to   { transform: scale(0.92); opacity: 0; } }
+@keyframes sched-zoom-new-grow   { from { transform: scale(1.08); opacity: 0; } }
+@keyframes sched-zoom-old-grow   { to   { transform: scale(1.08); opacity: 0; } }
+@keyframes sched-zoom-new-shrink { from { transform: scale(0.92); opacity: 0; } }
+
+[data-sched-dir="zoom-in"]::view-transition-old(sched-canvas) {
+  animation: sched-zoom-old-shrink 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+[data-sched-dir="zoom-in"]::view-transition-new(sched-canvas) {
+  animation: sched-zoom-new-grow 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+[data-sched-dir="zoom-out"]::view-transition-old(sched-canvas) {
+  animation: sched-zoom-old-grow 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+[data-sched-dir="zoom-out"]::view-transition-new(sched-canvas) {
+  animation: sched-zoom-new-shrink 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
 /* ── Sprint 8.5: WeekView Timeline mode (7 day cols × 24h vertical) ────── */
 
 .week-tl-wrap {
@@ -1780,6 +1808,163 @@
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
+}
+
+/* ── Sprint 8.5.1: Week summary table (4-week hours-by-employee view) ──── */
+
+.week-summary-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.week-summary {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'TiemposText', Georgia, serif;
+}
+
+.week-summary thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  z-index: 2;
+}
+
+.week-summary-name-col {
+  text-align: left !important;
+  position: sticky;
+  left: 0;
+  background: var(--bg-surface);
+  z-index: 3 !important;  /* sit above other thead cells when scrolling */
+  min-width: 160px;
+}
+
+.week-summary-week-col.is-current {
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+}
+.week-summary-week-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: -0.01em;
+}
+.week-summary-week-col.is-current .week-summary-week-num { color: var(--accent-alt); }
+.week-summary-week-range {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.week-summary-total-col {
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface-alt);
+}
+
+.week-summary-dept-row td {
+  background: var(--bg-base);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.week-summary-row td {
+  border-bottom: 1px solid var(--border-light);
+  padding: 10px 14px;
+  vertical-align: middle;
+}
+.week-summary-row:last-child td { border-bottom: none; }
+
+.week-summary-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: sticky;
+  left: 0;
+  background: var(--bg-surface);
+  z-index: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  min-width: 160px;
+}
+
+.week-summary-initial {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.week-summary-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-summary-cell {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.week-summary-cell.is-zero { color: var(--text-faint); font-weight: 400; }
+.week-summary-cell.is-over-ot {
+  /* Amber, mirroring the conflict-warning palette from Sprint 8.3. */
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.week-summary-total-cell {
+  background: var(--bg-surface-alt);
+  border-left: 1px solid var(--border);
+}
+
+.week-summary-empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+@media (max-width: 720px) {
+  .week-summary thead th { padding: 10px 8px; font-size: 10px; }
+  .week-summary-week-num { font-size: 12px; }
+  .week-summary-week-range { font-size: 9px; }
+  .week-summary-row td { padding: 8px 10px; }
+  .week-summary-name-cell { min-width: 130px; gap: 8px; font-size: 12px; }
+  .week-summary-initial { width: 22px; height: 22px; font-size: 10px; }
+  .week-summary-cell { font-size: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

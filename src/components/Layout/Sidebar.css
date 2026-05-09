@@ -120,6 +120,14 @@
 
 /* ── Mobile bottom tab bar ───────────────────────────────────────────────── */
 
+/* Sprint 8.5.1: pin the bottom nav (and the desktop sidebar) into their
+   own view-transition layer so they stay visually fixed during scheduling
+   page transitions. Without a name, both end up in the root layer and
+   cross-fade with the page content — which made the bottom nav appear to
+   blink out for a frame on mobile while the canvas slid. */
+.bottom-nav { view-transition-name: app-bottom-nav; }
+.sidebar    { view-transition-name: app-sidebar; }
+
 .bottom-nav {
   display: none;
 }

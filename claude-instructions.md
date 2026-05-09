@@ -733,6 +733,120 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.5.1: animation polish + Week repurposed as hours summary
+
+Four problems from real use of 8.5: bottom nav blinking on mobile during
+view transitions, Week was redundant with the docked + button, day↔week
+view-changes had no perceived animation, and the header would wrap on
+long Day labels.
+
+**8.5.1A — pin the bottom nav (and sidebar).** During a View
+Transitions API navigation, anything without a `view-transition-name`
+gets folded into the *root* layer, which cross-fades by default.
+`.bottom-nav` (mobile) and `.sidebar` (desktop) being unnamed meant
+they were captured into the cross-fading root snapshot — visible as
+"the bottom bar disappears for a frame" on mobile during the slide.
+Fix: name them via CSS:
+```css
+.bottom-nav { view-transition-name: app-bottom-nav; }
+.sidebar    { view-transition-name: app-sidebar; }
+```
+With names, each gets its own transition layer that cross-fades from
+itself to itself — invisible because nothing changes. Stays solid
+through the canvas transition.
+
+**8.5.1B — zoom-direction flag for view-to-view changes.** Slide-left/
+right was wired in 8.5 for prev/next within a single view. View
+*changes* (Day → Week via the toggle, etc.) used `runWithTransition`
+without a direction, falling back to default cross-fade — barely
+perceptible. `zoomTo()` now classifies the change as `zoom-in`
+(deeper: year → month → week → day) or `zoom-out` (shallower) by
+comparing view-level integers, and CSS animates the canvas with a
+subtle scale + fade on each direction:
+```css
+@keyframes sched-zoom-old-shrink { to   { transform: scale(0.92); opacity: 0; } }
+@keyframes sched-zoom-new-grow   { from { transform: scale(1.08); opacity: 0; } }
+@keyframes sched-zoom-old-grow   { to   { transform: scale(1.08); opacity: 0; } }
+@keyframes sched-zoom-new-shrink { from { transform: scale(0.92); opacity: 0; } }
+```
+The inner FLIPs (sched-month-N, sched-day-X via shared names) ride on
+top — when present, the targeted tile still expands/contracts as
+before; when not (Day↔Week, no shared name), the canvas-level zoom
+gives the user a perceived animation.
+
+**8.5.1C — header restructured to free a row on mobile.** The Day
+label `cursor.toLocaleDateString('long', ...)` rendered as
+`Wednesday, May 8, 2026` and pushed the segmented Year/Month/Week/Day
+toggle to wrap to a second line. Two changes:
+- Day label now uses `Weekday │ Mon D, YYYY` (thin pipe vertical
+  bar instead of full comma + long month name) — saves enough px
+  that the toggle fits.
+- The view toggle and `+` button moved out of `.sched-header-right`
+  into the `.sched-nav-bar` row alongside `‹ Today ›`. Single
+  controls row, more horizontal real estate per item. The
+  `.sched-view-toggle` carries `margin-left: auto` so it anchors
+  to the right of the nav bar, with `+` after it.
+
+**8.5.1D — Week view repurposed as a 4-week hours summary.** The
+docked Assign Shifts panel from 8.1 made the staff×days assign-grid
+on Week mostly redundant. Instead of removing Week, repurpose it as
+the *aggregate* view between Month (calendar) and Day (timeline):
+- 4 columns = 4 consecutive weeks anchored on the cursor's Monday.
+- Rows = staff, dept-grouped (subtle dept header rows).
+- Cells = total scheduled hours for that staff in that week,
+  computed client-side from the loaded `schedules` slice.
+- Cells over the OT threshold (40h, project default) get an amber
+  tint matching the Sprint 8.3 conflict-warning palette.
+- Trailing **Total** column with the 4-week sum per staff.
+- Sticky left name column + sticky header row so the table stays
+  navigable when scrolled.
+
+The fetch range for Week now pulls 28 days (`+27` from cursor's
+Monday) instead of 7. Existing cursor stepping (`goPrev`/`goNext`
+moves by 7 days in Week) gives a sliding-window feel — admin can
+shift the 4-week window one week at a time.
+
+**Files modified:**
+- `src/components/Layout/Sidebar.css` — added
+  `view-transition-name` declarations for `.bottom-nav` and
+  `.sidebar`.
+- `src/components/AdminPanel/Scheduling/index.js` — `zoomTo`
+  classifies view-level deltas; header restructured (toggle + add
+  moved to the nav-bar row); Day label format pipe; Week fetch
+  range bumped to 28 days.
+- `src/components/AdminPanel/Scheduling/Scheduling.css` —
+  `@keyframes sched-zoom-*` + `[data-sched-dir="zoom-in/out"]`
+  selectors; `.sched-nav-bar` flex-wrap + `margin-left: auto` on
+  the toggle; full `.week-summary-*` table styles with sticky
+  name column + amber `is-over-ot` cells.
+- `src/components/AdminPanel/Scheduling/WeekView.js` — completely
+  rewritten as a `<table>`-based hours-by-week summary. All the
+  prior assign-grid + drag-and-drop + timeline-mode complexity
+  removed (lives in MonthView/DayView/AssignPanel now).
+
+**Conventions added:**
+- **Pin static layout chrome with view-transition-name.** When any
+  ancestor element triggers a View Transitions API transition, any
+  static layout chrome (sidebars, top bars, bottom nav) needs its
+  own `view-transition-name`. Without one it gets swept into the
+  root layer and cross-fades, which on mobile reads as a flicker.
+  The name doesn't even need an associated animation — just having
+  it puts the element into its own stable layer. Cheap fix.
+- **Repurpose redundant views, don't delete them.** When a feature
+  (the docked Assign panel) makes a sibling view redundant in its
+  current shape (the Week assign-grid), look for an aggregate
+  level the view *can* fill. Year shows 12 months; Month shows 1
+  month of days; Day shows 1 day of hours; Week is the natural
+  level for "weekly aggregates over a month." Reuses the existing
+  navigation structure instead of leaving a dead view.
+- **Zoom-direction inferred from a level integer.** When views
+  form a hierarchy (year/month/week/day), encode them as integers
+  in a single map and infer zoom direction via subtraction:
+  `newLevel > oldLevel ? 'in' : newLevel < oldLevel ? 'out' : null`.
+  Beats spelling out every transition pair, and adds a new view
+  level by inserting one entry instead of editing every transition
+  rule.
+
 ### 2026-05-08 — Sprint 8.5: directional slide animations + Week chassis adoption + Day extra detail
 
 Two big rolls into one sprint: the missing animations on prev/next and
