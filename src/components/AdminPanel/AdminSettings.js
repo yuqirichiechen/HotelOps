@@ -31,6 +31,7 @@ const AdminSettings = () => {
   const [otHours,    setOtHours]    = useState('40');
   const [otMins,     setOtMins]     = useState('10');
   const [baseline,   setBaseline]   = useState('self');
+  const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
@@ -45,6 +46,7 @@ const AdminSettings = () => {
           setOtHours   (data.settings.overtime_threshold_hours  || '40');
           setOtMins    (data.settings.on_time_tolerance_minutes || '10');
           setBaseline  (data.settings.compare_baseline          || 'self');
+          setAutoSign  (data.settings.auto_signout_seconds      || '3');
         }
         setLoading(false);
       });
@@ -62,6 +64,7 @@ const AdminSettings = () => {
         overtime_threshold_hours:  otHours,
         on_time_tolerance_minutes: otMins,
         compare_baseline:          baseline,
+        auto_signout_seconds:      autoSign,
       }),
     });
     const data = await res.json();
@@ -213,6 +216,40 @@ const AdminSettings = () => {
                   What the percentage delta on each performance card compares against.
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Sprint 8.6: Staff auto sign-out section */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">⏱️</div>
+              <div>
+                <div className="settings-section-title">Staff auto sign-out</div>
+                <div className="settings-section-desc">
+                  How many seconds after a successful clock-in or clock-out before staff are automatically signed out.
+                  A "Stay signed in" button gives them a chance to cancel. Set to 0 to disable.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-perf-grid">
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Timer</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    step="1"
+                    value={autoSign}
+                    onChange={e => { setAutoSign(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">seconds</span>
+                </span>
+                <span className="settings-perf-help">
+                  Default 3s. Useful on shared kiosk/tablet setups so the next staff member doesn't inherit the previous session.
+                </span>
+              </label>
             </div>
           </div>
 

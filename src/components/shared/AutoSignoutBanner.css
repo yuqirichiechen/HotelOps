@@ -1,0 +1,140 @@
+/* Sprint 8.6: AutoSignoutBanner — dual-position responsive layout.
+   Desktop (≥720px): top-right toast.
+   Mobile  (<720px):  bottom banner, sits above the bottom-nav (which is
+                      64px tall + safe-area-inset-bottom). */
+
+.auto-signout-banner {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 12px 14px;
+  font-family: 'TiemposText', Georgia, serif;
+}
+
+/* Desktop: top-right toast, slides down from above the viewport. */
+@media (min-width: 720px) {
+  .auto-signout-banner {
+    top: 20px;
+    right: 20px;
+    width: 320px;
+    animation: auto-signout-slide-down 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+  @keyframes auto-signout-slide-down {
+    from { transform: translateY(-110%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+  }
+}
+
+/* Mobile: bottom banner above the 64px-tall bottom-nav (+ safe-area).
+   Slides up from below. */
+@media (max-width: 719px) {
+  .auto-signout-banner {
+    left: 12px;
+    right: 12px;
+    bottom: calc(64px + env(safe-area-inset-bottom) + 12px);
+    animation: auto-signout-slide-up 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+  @keyframes auto-signout-slide-up {
+    from { transform: translateY(120%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+}
+
+.auto-signout-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  cursor: pointer;
+  /* Tapping the info area also cancels — see banner.js — so make the whole
+     surface feel pressable. */
+}
+
+.auto-signout-text { flex: 1 1 auto; min-width: 0; }
+.auto-signout-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.auto-signout-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ring: 44×44 wrapper, 18r circle, brand-tinted progress over a faint
+   track. Number sits centered. */
+.auto-signout-ring {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.auto-signout-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.auto-signout-ring-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 4;
+}
+.auto-signout-ring-progress {
+  fill: none;
+  stroke: var(--brand-bg);
+  stroke-width: 4;
+  stroke-linecap: round;
+  /* dashoffset transitions for smooth fill animation between ticks */
+  transition: stroke-dashoffset 100ms linear;
+}
+.auto-signout-ring-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Stay signed in" — the primary action. Big enough to be tappable
+   without precise aim. */
+.auto-signout-stay {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 14px;
+  border: 1px solid var(--brand-bg);
+  border-radius: 9px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.auto-signout-stay:hover { background: var(--brand-hover); }
+
+@media (max-width: 380px) {
+  .auto-signout-stay { font-size: 12px; padding: 8px 10px; }
+  .auto-signout-title { font-size: 12px; }
+  .auto-signout-sub { font-size: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-signout-banner { animation-duration: 1ms; }
+  .auto-signout-ring-progress { transition: none; }
+}

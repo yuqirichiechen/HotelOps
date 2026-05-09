@@ -545,6 +545,16 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       hours:          Math.round(parseFloat(e.hours) * 10) / 10,
     }));
 
+    // Sprint 8.6: auto-signout timer (seconds) — staff Home reads this from
+    // every /me/hours response so the banner timeout reflects the latest
+    // admin setting without an extra fetch. 0 means the feature is off.
+    const cfgRow = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'auto_signout_seconds'`
+    );
+    const autoSignoutSeconds = cfgRow.rows[0]?.value !== undefined
+      ? parseInt(cfgRow.rows[0].value, 10)
+      : 3;
+
     return res.json({
       success:             true,
       weekStart,
@@ -555,6 +565,7 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       entries:             weekEntries,
       currentlyClockedIn:  !!open,
       openClockInTime:     open ? open.clock_in_time : null,
+      autoSignoutSeconds,
     });
   } catch (err) {
     console.error(err);
@@ -1641,6 +1652,11 @@ app.put('/api/admin/settings', async (req, res) => {
     overtime_threshold_hours:   v => /^\d+(\.\d+)?$/.test(String(v)) && parseFloat(v) > 0 && parseFloat(v) <= 168,
     on_time_tolerance_minutes:  v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 0 && parseInt(v, 10) <= 240,
     compare_baseline:           v => ['self', 'department', 'all'].includes(v),
+    // Sprint 8.6: seconds before auto sign-out after a successful clock-in
+    // or clock-out. 0 disables the feature; max 60 to avoid stale-session
+    // territory. Read by /api/me/hours so staff Home page can pick it up
+    // without an admin endpoint.
+    auto_signout_seconds:       v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 0 && parseInt(v, 10) <= 60,
   };
   const updates = req.body || {};
   if (Object.keys(updates).length === 0) {

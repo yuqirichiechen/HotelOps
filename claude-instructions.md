@@ -733,6 +733,92 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.6: post-clock auto sign-out banner (configurable)
+
+QoL feature unrelated to the Sprint 8 scheduling rebuild — for shared
+kiosk/tablet setups the same staff session was staying open after the
+person clocked in/out and walked away. Added a non-blocking countdown
+banner that auto-signs the user out unless they tap "Stay signed in".
+Per-tenant configurable (admin-controlled timer length).
+
+**Flow.** After a successful clock-in or clock-out:
+1. The existing 2.2s success notif (`home-notif`) plays as before.
+2. After it ends, the **AutoSignoutBanner** slides in.
+3. The banner counts down from `auto_signout_seconds` (default 3,
+   admin-configurable 0–60). At 0, the user is logged out and routed
+   to `/login/staff`.
+4. Tapping "Stay signed in" or the banner background cancels the timer.
+
+The post-success-then-banner sequence is intentional — the user needs
+to *see* the success state before being asked about staying signed in.
+Stacking the two would dilute both messages.
+
+**Banner design (HCI):**
+- Big, visually obvious "Stay signed in" button — the user's primary
+  action, sized so a glancing tap can hit it.
+- Circular SVG progress ring (radius 18, stroke 4) that depletes from
+  full to empty as the timer ticks. Numeric seconds-remaining inside
+  the ring as a fallback for users who don't read animation.
+- Tapping anywhere on the info-area also cancels (large-target
+  forgiveness).
+- Position: **bottom banner above the bottom-nav** on mobile (<720px,
+  uses `env(safe-area-inset-bottom)` for notch-safe phones), **top-
+  right toast** on desktop. Both slide in.
+
+**Server side.**
+- New `auto_signout_seconds` key in the `app_settings` table, validator
+  in the existing `PUT /api/admin/settings` ALLOWED map (range 0–60,
+  digits only).
+- `GET /api/me/hours` already runs on Home page load; piggybacked the
+  setting into its response (`autoSignoutSeconds`) so staff don't need
+  a dedicated endpoint and the value is fresh on every refresh.
+- `0` disables the feature entirely — `triggerAutoSignout()` early-
+  returns when seconds ≤ 0.
+
+**Admin control.** New section in AdminSettings between Performance
+Thresholds and Account, matching the existing grid styling. Just one
+control: a number input (0–60, default 3) with help text explaining
+the kiosk/tablet use case.
+
+**Files added:**
+- `src/components/shared/AutoSignoutBanner.js` — countdown component
+  with SVG ring + Stay-signed-in CTA. Tick interval is 100ms so the
+  ring animates smoothly even at 3-second total.
+- `src/components/shared/AutoSignoutBanner.css` — responsive
+  positioning (bottom-banner < 720px / top-right toast ≥ 720px),
+  slide-in keyframes, ring-progress styling, reduced-motion fallback.
+
+**Files modified:**
+- `server/server.js` — `auto_signout_seconds` added to settings
+  ALLOWED map; `/api/me/hours` returns `autoSignoutSeconds`.
+- `src/components/AdminPanel/AdminSettings.js` — new state +
+  fetch/save for `autoSign`; new section with the seconds input.
+- `src/pages/Home/index.js` — imported `AutoSignoutBanner` and
+  `useNavigate`; added `autoSignout` state and
+  `triggerAutoSignout()` helper that fires post-notif (2.2s
+  setTimeout); `handleClockIn` and `handleClockOut` call it on
+  success; `handleAutoSignout()` performs the logout + nav back to
+  `/login/staff`. Banner rendered at the end of the JSX.
+
+**Conventions added:**
+- **Sequence post-success affordances; don't stack them.** When a
+  success state and a follow-up affordance both want screen time
+  (here: "Clocked in!" toast and the auto-sign-out banner), pick a
+  primary moment for each and chain them rather than overlap. The
+  user reads one message at a time. The chain duration becomes the
+  effective minimum interaction cost — design accordingly.
+- **Read tenant config piggyback on existing endpoints.** When a new
+  staff-facing setting is needed, look for an endpoint the staff
+  already calls on every page load (here: `/api/me/hours` on Home).
+  Add the setting to its response instead of building a dedicated
+  read endpoint. Keeps the latency budget flat and the value fresh
+  on every refresh.
+- **Big-target forgiveness on time-critical buttons.** When a button
+  needs to be hit within a short window (the 3-second cancel here),
+  the *whole* visible region around it should accept the tap, not
+  just the button's pixel-perfect rectangle. Easier to hit when
+  glancing, especially on touch.
+
 ### 2026-05-08 — Sprint 8.5.4: drop inner view-transition-names, canvas-only animation
 
 After three iterations of layered View Transitions tweaks (8.5, 8.5.1,

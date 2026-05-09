@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth, apiFetch } from '../../auth';
 import ClockWidget from '../../components/TimeClock/ClockWidget';
+import AutoSignoutBanner from '../../components/shared/AutoSignoutBanner';
 import '../../components/TimeClock/TimeClock.css'; // for .clock-widget styles
 import './Home.css';
 
@@ -40,13 +42,18 @@ const getMondayISO = (d = new Date()) => {
 };
 
 const Home = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
 
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [busy,      setBusy]      = useState(false);
   const [elapsed,   setElapsed]   = useState(0);
   const [notif,     setNotif]     = useState(null);
+  // Sprint 8.6: auto sign-out banner — shown post-success-notif on
+  // clock-in/out. The notif itself runs for 2.2s (existing); we trigger
+  // the banner after that so they don't stack visually.
+  const [autoSignout, setAutoSignout] = useState(false);
 
   const refresh = useCallback(async () => {
     const { data } = await apiFetch(`/me/hours?weekStart=${getMondayISO()}`);
@@ -73,6 +80,21 @@ const Home = () => {
     setTimeout(() => setNotif(null), 2200);
   };
 
+  // Sprint 8.6: chain — success → wait for the existing 2.2s notif to
+  // finish → show the auto-signout banner. If the admin set the timer to
+  // 0 the banner is skipped entirely (feature disabled).
+  const triggerAutoSignout = () => {
+    const seconds = data?.autoSignoutSeconds;
+    if (!seconds || seconds <= 0) return;
+    setTimeout(() => setAutoSignout(true), 2200);
+  };
+
+  const handleAutoSignout = async () => {
+    setAutoSignout(false);
+    await logout();
+    nav('/login/staff', { replace: true });
+  };
+
   const handleClockIn = async () => {
     setBusy(true);
     const { ok, data: res } = await apiFetch('/clock-in-self', { method: 'POST' });
@@ -80,6 +102,7 @@ const Home = () => {
     if (ok && res?.success) {
       showNotif('success', 'Clocked in!');
       refresh();
+      triggerAutoSignout();
     } else {
       showNotif('error', res?.message || 'Clock in failed');
     }
@@ -92,6 +115,7 @@ const Home = () => {
     if (ok && res?.success) {
       showNotif('success', 'Clocked out!');
       refresh();
+      triggerAutoSignout();
     } else {
       showNotif('error', res?.message || 'Clock out failed');
     }
@@ -205,6 +229,14 @@ const Home = () => {
           </ul>
         )}
       </section>
+
+      {autoSignout && (
+        <AutoSignoutBanner
+          seconds={data?.autoSignoutSeconds || 3}
+          onCancel={() => setAutoSignout(false)}
+          onSignOut={handleAutoSignout}
+        />
+      )}
 
     </div>
   );
