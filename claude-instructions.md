@@ -733,6 +733,68 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.5.3: universal slide on prev/next + tone down canvas zoom + Week gap
+
+Three follow-up fixes after 8.5.2 still left some animations missing.
+
+**8.5.3A — universal slide on prev/next, nav excluded.** The slide CSS
+from 8.5 only targeted `sched-canvas`. That worked for views whose
+content has no inner `view-transition-name` (Week's summary table,
+Day's contents inside the named container), but Year and Month each
+have *additional* named layers that defaulted to cross-fade in place:
+- YearView has 12 month tiles each named `sched-month-0..11`.
+- MonthView's container is named `sched-month-N` and ~30 day cells
+  are named `sched-day-YYYY-MM-DD`.
+
+Those named layers stayed put while the canvas slid behind, so the
+user perceived "no animation" on Year and Month prev/next. Fix:
+universal `::view-transition-old/new(*)` slide rule for prev/next
+directions — every named layer slides together. Static chrome
+(`app-bottom-nav`, `app-sidebar`) is *explicitly* excluded with
+`animation: none` on both group and old/new pseudos so the nav stays
+pinned (the Sprint 8.5.2 z-index pin alone wasn't enough — the
+universal slide would have caught the nav too without the override).
+
+**8.5.3B — tone down canvas zoom so inner FLIP isn't masked.** Year↔
+Month and Day↔Month read as un-animated even though the inner FLIPs
+were firing. Theory: the strong canvas zoom from 8.5.2 (scale 0.85↔
+1.18) was visually competing with the FLIP — the user perceived the
+big page-grow/shrink as the only animation, missing the smaller FLIP
+between tile/cell and container. Toned the canvas back to 0.95↔1.05
+so the FLIP is the prominent animation; the canvas remains a
+perceptual fallback for view-changes that don't share names (Day↔
+Week, Week↔Year).
+
+**8.5.3C — gap between Week's controls and the summary table.** Week
+view used `.week-view` as a layout class but no CSS rules attached, so
+day-controls' border-bottom rendered flush against the summary table's
+top border. Added `display: flex; flex-direction: column; gap: 14px;`
+to `.week-view` to match the rhythm Day uses.
+
+**Files modified:**
+- `src/components/AdminPanel/Scheduling/Scheduling.css` —
+  prev/next slide rules expanded from `sched-canvas` to universal `*`,
+  with `animation: none` overrides for `app-bottom-nav` and
+  `app-sidebar`. `sched-zoom-*` keyframes' scale endpoints narrowed
+  back to 0.95/1.05. `.week-view` gets the same flex-column gap
+  rhythm as `.day-view`.
+
+**Conventions added:**
+- **Universal slide with explicit static-chrome exclusions.** When
+  multiple sibling layers should all participate in a slide
+  transition (canvas, named content layers), use the universal
+  `::view-transition-old/new(*)` rule rather than enumerating
+  every name. Then explicitly cancel the animation for layers that
+  must stay static (sticky chrome, bottom nav) via `animation: none`
+  on both the group and the old/new pseudos. Cleaner than trying to
+  list every animatable name and forgetting to add new ones later.
+- **Don't make the canvas-level animation too dramatic when an inner
+  FLIP is present.** Subtle wins. A bold canvas zoom can mask the
+  more meaningful inner element FLIP (tile to container, cell to
+  page). Reserve loud canvas animation for cases where there's no
+  inner FLIP to anchor the eye. Around 5% scale change is enough to
+  signal "something happened" without competing.
+
 ### 2026-05-08 — Sprint 8.5.2: view-transition-group duration + canvas zoom prominence + nav z-index
 
 Three follow-ups from real use of 8.5.1's animations.
