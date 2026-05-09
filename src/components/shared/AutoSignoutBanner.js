@@ -17,6 +17,16 @@ const AutoSignoutBanner = ({ seconds, onCancel, onSignOut }) => {
   const [remaining, setRemaining] = useState(seconds);
   const intervalRef = useRef(null);
 
+  // Sprint 8.6.1: hold onSignOut in a ref so we can call the latest version
+  // without it being a useEffect dep. The previous shape included
+  // `onSignOut` in the deps; Home re-renders every 1s while clocked in
+  // (live elapsed timer), so onSignOut got a new identity each time, the
+  // effect re-ran, and `start = Date.now()` reset — perpetually showing
+  // "3s" until the elapsed timer happened to pause and the countdown
+  // finally ran uninterrupted.
+  const onSignOutRef = useRef(onSignOut);
+  useEffect(() => { onSignOutRef.current = onSignOut; }, [onSignOut]);
+
   useEffect(() => {
     // Tick every 100ms so the ring animates smoothly even at low total
     // durations (3s would be 3 ticks otherwise — we want a continuous
@@ -28,11 +38,11 @@ const AutoSignoutBanner = ({ seconds, onCancel, onSignOut }) => {
       setRemaining(next);
       if (next <= 0) {
         clearInterval(intervalRef.current);
-        onSignOut();
+        onSignOutRef.current();
       }
     }, 100);
     return () => clearInterval(intervalRef.current);
-  }, [seconds, onSignOut]);
+  }, [seconds]);
 
   // Stop the timer + invoke the user's cancel handler.
   const cancel = () => {

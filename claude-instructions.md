@@ -733,6 +733,59 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-08 — Sprint 8.6.1: fix stuck countdown on AutoSignoutBanner
+
+Bug from 8.6: the countdown displayed `Signing out in 3s` and stayed at
+3 — the auto-signout *eventually* fired, but the ring never animated
+and the seconds counter never ticked.
+
+**Root cause: stale-closure dependency on a re-rendering parent.** The
+banner's `useEffect` had `onSignOut` in its dep list:
+```jsx
+useEffect(() => { ...interval... }, [seconds, onSignOut]);
+```
+`onSignOut` was `handleAutoSignout`, defined inline in `Home`. Home
+re-renders every 1 second while clocked in because of the live elapsed
+timer (`setElapsed` interval that drives the on-the-clock display).
+Each re-render → new `handleAutoSignout` reference → useEffect's deps
+change → effect re-runs → previous interval cleared, *new* interval
+started with a fresh `start = Date.now()`. The displayed `remaining`
+got reset just before it visibly changed, so it appeared stuck at 3.
+The auto-signout finally fired when something stopped the elapsed
+timer (e.g. data refresh after clock-out toggling `currentlyClockedIn`
+to false), letting the countdown run an uninterrupted 3 seconds.
+
+**Fix.** Hold `onSignOut` in a ref so its identity changes don't
+re-trigger the effect:
+```jsx
+const onSignOutRef = useRef(onSignOut);
+useEffect(() => { onSignOutRef.current = onSignOut; }, [onSignOut]);
+
+useEffect(() => {
+  ... onSignOutRef.current(); ...
+}, [seconds]);
+```
+The countdown effect now only re-runs when `seconds` changes (rare —
+the admin would need to update the setting mid-banner). Every tick
+calls `onSignOutRef.current()` which always reads the latest
+`onSignOut` without needing it in deps.
+
+**Files modified:**
+- `src/components/shared/AutoSignoutBanner.js` — added `onSignOutRef`
+  + ref-update effect; removed `onSignOut` from the countdown
+  effect's dep array.
+
+**Conventions added:**
+- **Use a ref for callbacks consumed inside long-running effects.**
+  When a `useEffect` sets up a timer, subscription, or anything that
+  outlives a single render, and the callback prop's identity isn't
+  stable, hold it in a ref and read `ref.current` from inside.
+  Otherwise every parent re-render that produces a new callback
+  reference will tear down and restart the effect — which silently
+  resets timers, drops in-flight subscriptions, etc. The ref pattern
+  is the standard React idiom for "I want the latest value but I
+  don't want to re-run the effect."
+
 ### 2026-05-08 — Sprint 8.6: post-clock auto sign-out banner (configurable)
 
 QoL feature unrelated to the Sprint 8 scheduling rebuild — for shared
