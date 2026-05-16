@@ -153,9 +153,9 @@ const StaffDetail = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    // ≥1 of phone / username / employee ID — same rule as create.
-    if (!form.phone && !form.username && !form.employeeCode) {
-      setError('Provide at least one of phone, username, or employee ID');
+    // Sprint 9.1: birthday counts as a first-class identifier here too.
+    if (!form.phone && !form.username && !form.employeeCode && !form.birthday) {
+      setError('Provide at least one of phone, username, employee ID, or birthday');
       return;
     }
     setSaving(true);

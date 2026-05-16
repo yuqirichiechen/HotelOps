@@ -71,7 +71,7 @@ CREATE TABLE users (
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   CONSTRAINT users_at_least_one_identifier CHECK (
-    phone_number IS NOT NULL OR username IS NOT NULL OR employee_code IS NOT NULL
+    phone_number IS NOT NULL OR username IS NOT NULL OR employee_code IS NOT NULL OR birthday IS NOT NULL
   ),
   CONSTRAINT users_employee_code_format CHECK (
     employee_code IS NULL OR employee_code ~ '^[0-9]{4,6}$'

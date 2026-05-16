@@ -32,7 +32,7 @@ const AdminSettings = () => {
   const [otMins,     setOtMins]     = useState('10');
   const [baseline,   setBaseline]   = useState('self');
   const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
-  const [blockKbd,   setBlockKbd]   = useState(false); // Sprint 8.7: lock to on-screen keypad
+  const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
   // Sprint 9: which staff login methods are enabled. Stored as a CSV in
   // app_settings; treated as a Set in the UI for cheap toggle handling.
   const [loginMethods, setLoginMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
@@ -51,7 +51,7 @@ const AdminSettings = () => {
           setOtMins    (data.settings.on_time_tolerance_minutes || '10');
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
-          setBlockKbd  (data.settings.block_system_keyboard === 'true');
+          setHideAbc   (data.settings.hide_abc_keyboard === 'true');
           if (data.settings.enabled_login_methods) {
             const parts = String(data.settings.enabled_login_methods).split(',').map(s => s.trim()).filter(Boolean);
             if (parts.length > 0) setLoginMethods(new Set(parts));
@@ -88,7 +88,7 @@ const AdminSettings = () => {
         on_time_tolerance_minutes: otMins,
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
-        block_system_keyboard:     blockKbd ? 'true' : 'false',
+        hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
         enabled_login_methods:     [...loginMethods].join(','),
       }),
     });
@@ -318,16 +318,21 @@ const AdminSettings = () => {
             </div>
           </div>
 
-          {/* Sprint 8.7: kiosk keypad lock */}
+          {/* Sprint 9.1: hide ABC keyboard. Replaces Sprint 8.7's
+              block_system_keyboard, which iOS Safari ignored anyway via
+              password autofill. New toggle controls only the in-app
+              ABC switcher + letters keyboard — useful when staff
+              identifiers are all digits (phone, ID, birthday) and the
+              letters keyboard is just visual noise. */}
           <div className="settings-section">
             <div className="settings-section-header">
               <div className="settings-section-icon">⌨️</div>
               <div>
-                <div className="settings-section-title">Lock staff login to on-screen keypad</div>
+                <div className="settings-section-title">Hide ABC keyboard on staff login</div>
                 <div className="settings-section-desc">
-                  Suppresses the device's built-in keyboard on the staff login page so only the in-app keypad is usable.
-                  Recommended for shared kiosks/tablets where staff aren't tech-savvy enough to dismiss a system
-                  keyboard if it accidentally appears.
+                  Removes the ABC switcher button and the letters keyboard from the staff sign-in page.
+                  The numeric keypad fills the freed-up space with bigger buttons — easier to hit on shared tablets/kiosks.
+                  If username login is also enabled, staff would type usernames via the device's own keyboard (we can't block that reliably).
                 </div>
               </div>
             </div>
@@ -336,14 +341,14 @@ const AdminSettings = () => {
               <input
                 type="checkbox"
                 className="hop-check"
-                checked={blockKbd}
-                onChange={e => { setBlockKbd(e.target.checked); setSaved(false); }}
+                checked={hideAbc}
+                onChange={e => { setHideAbc(e.target.checked); setSaved(false); }}
               />
               <div className="settings-toggle-text">
-                <div className="settings-toggle-label">{blockKbd ? 'On — only the in-app keypad accepts input' : 'Off — both system keyboard and in-app keypad work'}</div>
+                <div className="settings-toggle-label">{hideAbc ? 'On — only the numeric keypad shows on staff login' : 'Off — staff can switch between number / ABC keyboards'}</div>
                 <div className="settings-toggle-help">
-                  When on, the input fields are read-only and `inputMode="none"` so tapping them won't summon
-                  the device keyboard. Our on-screen keypad still drives input as usual.
+                  Independent of the Staff Login Methods toggles above — but they interact:
+                  disabling Username already hides ABC, so this toggle only adds value when Username stays on.
                 </div>
               </div>
             </label>

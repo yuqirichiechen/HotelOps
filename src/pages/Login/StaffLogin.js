@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
@@ -121,38 +121,37 @@ const StaffLogin = () => {
   const [loading,     setLoading]     = useState(false);
   const [kbMode,      setKbMode]      = useState('numbers'); // 'numbers' | 'letters'
   const [caps,        setCaps]        = useState(false);
-  // Sprint 8.7 / 8.7.1: when admin enables `block_system_keyboard`, the
-  // inputs become non-interactive (pointer-events:none, tabIndex=-1) and
-  // the wrapping `.login-field` captures the tap to set activeField
-  // instead. The input never receives focus, so iOS Safari / Android
-  // Chrome don't get the chance to pop the system keyboard.
-  // (8.7's readOnly + inputMode="none" wasn't enough — both browsers
-  // still focused the input on tap and showed their default keyboard.)
-  const [lockKbd,      setLockKbd]      = useState(false);
   // Sprint 9: which login-method types this tenant accepts. Drives keypad
-  // adaptation (no ABC if username is off) and isValidIdentifier gating.
+  // adaptation and isValidIdentifier gating.
   const [enabledMethods, setEnabledMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
-  const [configLoaded, setConfigLoaded] = useState(false);
-  const idInputRef = useRef(null);
+  // Sprint 9.1: replaces Sprint 8.7's block_system_keyboard (which iOS
+  // Safari ignored via password autofill — see 8.7.2 log for the saga).
+  // When true, the ABC switcher + letters keyboard are hidden on the
+  // staff login. Independent toggle from the username login-method
+  // setting so admins can still allow username login but force a
+  // numeric-only on-screen keypad (relying on the system keyboard for
+  // the username input).
+  const [hideAbc,        setHideAbc]        = useState(false);
 
   useEffect(() => {
     fetch('/api/public-config')
       .then(r => r.json())
       .then(data => {
         if (data?.success) {
-          setLockKbd(!!data.config?.block_system_keyboard);
+          setHideAbc(!!data.config?.hide_abc_keyboard);
           const list = data.config?.enabled_login_methods;
           if (Array.isArray(list) && list.length > 0) setEnabledMethods(new Set(list));
         }
       })
-      .catch(() => { /* fall through to default (system keyboard allowed) */ })
-      .finally(() => setConfigLoaded(true));
+      .catch(() => { /* fall through to defaults */ });
   }, []);
 
-  // Whether the on-screen keyboard should offer the letters mode at all.
-  // If the tenant has disabled username login, there's no point in
-  // showing ABC — there's nothing letters do.
-  const lettersAvailable = enabledMethods.has('username');
+  // Letters are available iff username login is enabled AND the admin
+  // didn't explicitly hide ABC. Disabling username already implies "no
+  // letters" since there's nothing for them to type; the explicit toggle
+  // covers the case where username stays enabled but the admin wants a
+  // cleaner numeric-only on-screen keypad.
+  const lettersAvailable = enabledMethods.has('username') && !hideAbc;
 
   // Sprint 9: dynamic label + placeholder. Compose them from the enabled
   // methods so disabled options never appear in user-facing copy.
@@ -173,16 +172,6 @@ const StaffLogin = () => {
     const last = items.pop();
     return `Sign in with your ${items.join(', ')}, or ${last}.`;
   })();
-
-  // Programmatic auto-focus: only fires when config is loaded AND lock is
-  // off. With autoFocus on the JSX, the input would focus on first render
-  // (before the fetch completes) and the system keyboard could appear
-  // before lockKbd flips true.
-  useEffect(() => {
-    if (configLoaded && !lockKbd && idInputRef.current) {
-      idInputRef.current.focus();
-    }
-  }, [configLoaded, lockKbd]);
 
   // Auto-advance to PIN once a valid identifier is entered and the server
   // already told us PIN is required.
@@ -257,77 +246,44 @@ const StaffLogin = () => {
         <p className="login-sub">{subSentence}</p>
 
         <form onSubmit={submit} className="login-form">
-          <div
-            className={`login-field ${activeField === 'id' ? 'is-active' : ''} ${lockKbd ? 'is-kbd-locked' : ''}`}
-            onClick={lockKbd ? () => setActive('id') : undefined}
-          >
-            <label htmlFor="identifier">{fieldLabel.charAt(0).toUpperCase() + fieldLabel.slice(1)}</label>
-            {/* Sprint 8.7.2: when locked, swap the <input> entirely for a
-                display-only <div>. No input element ⇒ no password manager,
-                no autofill prompt, no system keyboard. The on-screen
-                keypad still drives state via setIdentifier. */}
-            {lockKbd ? (
-              <div
-                className={`is-keypad login-display ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
-                role="textbox"
-                aria-readonly="true"
-                aria-label={fieldLabel}
-              >
-                {identifier
-                  ? identifier
-                  : <span className="login-display-placeholder">{fieldPlaceholder}</span>}
-              </div>
-            ) : (
-              <input
-                id="identifier"
-                ref={idInputRef}
-                className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
-                type="text"
-                autoComplete="username"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                maxLength={16}
-                value={identifier}
-                onChange={onIdentifierChange}
-                onFocus={() => setActive('id')}
-                placeholder={fieldPlaceholder}
-              />
-            )}
+          {/* Sprint 9.1: removed the duplicate visible <label> — the
+              .login-sub above already describes what to type. Keeping an
+              aria-label on the input means screen readers still get a
+              proper announcement without sighted users seeing the same
+              copy twice. */}
+          <div className={`login-field ${activeField === 'id' ? 'is-active' : ''}`}>
+            <input
+              id="identifier"
+              className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={16}
+              value={identifier}
+              onChange={onIdentifierChange}
+              onFocus={() => setActive('id')}
+              placeholder={fieldPlaceholder}
+              aria-label={fieldLabel}
+              autoFocus
+            />
           </div>
 
           {needsPin && (
-            <div
-              className={`login-field ${activeField === 'pin' ? 'is-active' : ''} ${lockKbd ? 'is-kbd-locked' : ''}`}
-              onClick={lockKbd ? () => setActive('pin') : undefined}
-            >
-              <label htmlFor="pin">PIN</label>
-              {/* Sprint 8.7.2: same div-swap for PIN. Mask the value as
-                  dots manually since we no longer have type=password. */}
-              {lockKbd ? (
-                <div
-                  className="is-keypad is-numeric login-display"
-                  role="textbox"
-                  aria-readonly="true"
-                  aria-label="PIN"
-                >
-                  {pin.length > 0
-                    ? '•'.repeat(pin.length)
-                    : <span className="login-display-placeholder">• • • •</span>}
-                </div>
-              ) : (
-                <input
-                  id="pin"
-                  className="is-keypad is-numeric"
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pin}
-                  onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  onFocus={() => setActive('pin')}
-                  placeholder="• • • •"
-                />
-              )}
+            <div className={`login-field ${activeField === 'pin' ? 'is-active' : ''}`}>
+              <input
+                id="pin"
+                className="is-keypad is-numeric"
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={pin}
+                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onFocus={() => setActive('pin')}
+                placeholder="• • • •"
+                aria-label="PIN"
+              />
             </div>
           )}
 

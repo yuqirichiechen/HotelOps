@@ -129,12 +129,11 @@ function validateIdentifiers({ phoneNumber, username, employeeCode, birthday }, 
   if (has(username))     { const r = validateUsername(username);         if (!r.ok) return { ok: false, message: r.message }; out.username     = r.value; }
   if (has(employeeCode)) { const r = validateEmployeeCode(employeeCode); if (!r.ok) return { ok: false, message: r.message }; out.employeeCode = r.value; }
   if (has(birthday))     { const r = validateBirthday(birthday);         if (!r.ok) return { ok: false, message: r.message }; out.birthday     = r.value; }
-  // Sprint 9: birthday is supplemental — at least one of the *unique*
-  // identifiers (phone / username / employee_code) is still required so
-  // every staff record has a guaranteed-unambiguous way to log in. Birthday
-  // is a convenience layer on top.
-  if (requireAtLeastOne && !out.phoneNumber && !out.username && !out.employeeCode) {
-    return { ok: false, message: 'At least one of phone, username, or employee ID is required' };
+  // Sprint 9.1: birthday is now a first-class identifier and counts toward
+  // the at-least-one requirement (per GM feedback — equal weight across
+  // all four methods).
+  if (requireAtLeastOne && !out.phoneNumber && !out.username && !out.employeeCode && !out.birthday) {
+    return { ok: false, message: 'At least one of phone, username, employee ID, or birthday is required' };
   }
   return { ok: true, normalized: out };
 }
@@ -1709,16 +1708,16 @@ app.get('/api/shifts/daily', async (req, res) => {
 app.get('/api/public-config', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT key, value FROM app_settings WHERE key IN ('block_system_keyboard','enabled_login_methods')`
+      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods')`
     );
     const out = {
-      block_system_keyboard: false,
+      hide_abc_keyboard: false,
       // Sprint 9: default to all four methods enabled if the setting hasn't
       // been written yet. New tenants get the full menu out of the box.
       enabled_login_methods: ['phone', 'username', 'employee_code', 'birthday'],
     };
     rows.forEach(r => {
-      if (r.key === 'block_system_keyboard') out.block_system_keyboard = r.value === 'true';
+      if (r.key === 'hide_abc_keyboard') out.hide_abc_keyboard = r.value === 'true';
       if (r.key === 'enabled_login_methods') {
         out.enabled_login_methods = String(r.value || '').split(',').map(s => s.trim()).filter(Boolean);
       }
@@ -1756,13 +1755,15 @@ app.put('/api/admin/settings', async (req, res) => {
     // territory. Read by /api/me/hours so staff Home page can pick it up
     // without an admin endpoint.
     auto_signout_seconds:       v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 0 && parseInt(v, 10) <= 60,
-    // Sprint 8.7: kiosk lock — when 'true', the staff login inputs become
-    // readOnly with inputMode='none' so the system keyboard never pops up.
-    // Tablets / kiosks often have non-tech-savvy staff who don't know how
-    // to dismiss a system keyboard once it appears. Our on-screen keypad
-    // still drives input via setState. Read by /api/public-config so the
-    // login page can fetch it before authenticating.
-    block_system_keyboard:      v => v === 'true' || v === 'false',
+    // Sprint 9.1: replaces Sprint 8.7's block_system_keyboard (which
+    // browsers ignored via password autofill). When 'true', the on-screen
+    // ABC switcher + letters keyboard are hidden on the staff login page —
+    // numeric keypad fills the available area with bigger buttons. The
+    // system keyboard is unaffected (we can't reliably block it); admins
+    // who want to fully ditch letters should *also* disable the username
+    // login method in the staff_login_methods toggles so a system keyboard
+    // can't reach a useful login.
+    hide_abc_keyboard:          v => v === 'true' || v === 'false',
     // Sprint 9: which staff login methods are enabled for this tenant.
     // CSV of {phone,username,employee_code,birthday}. At least one must be
     // present. Used at login time to gate the identifier classifier and at

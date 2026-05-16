@@ -70,6 +70,10 @@
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
+  /* Sprint 9.1: visual breathing room so the error strip doesn't sit
+     flush against the save button when it appears between form body
+     and form-actions. */
+  margin-bottom: 12px;
 }
 
 /* ── Login page ──────────────────────────────────────────────────────────── */

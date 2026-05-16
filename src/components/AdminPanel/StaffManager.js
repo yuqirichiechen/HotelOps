@@ -101,10 +101,10 @@ const StaffManager = () => {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    // Sprint 7: at least one of phone / username / employee ID is required.
-    // Server enforces too — this is just a friendlier early bail.
-    if (!form.phone && !form.username && !form.employeeCode) {
-      setFormError('Provide at least one of phone, username, or employee ID');
+    // Sprint 9.1: birthday now counts as a first-class identifier (per GM
+    // feedback). Server enforces too — this is just a friendlier early bail.
+    if (!form.phone && !form.username && !form.employeeCode && !form.birthday) {
+      setFormError('Provide at least one of phone, username, employee ID, or birthday');
       return;
     }
     setFormLoading(true);

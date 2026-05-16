@@ -733,6 +733,105 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-16 — Sprint 9.1: birthday-as-equal-identifier + keyboard toggle pivot + login UI polish
+
+Four bug fixes from immediate GM/use feedback on 9.0.
+
+**1. Birthday-only signup now works.** 9.0 treated birthday as
+*supplemental* — the at-least-one constraint still required one of the
+unique identifiers (phone/username/employee_code). The GM expected
+birthday to count, and the form rejected "birthday alone" inputs with
+"Provide at least one of phone, username, or employee ID." Fixed at
+three layers:
+- DB: migration 010 drops/recreates `users_at_least_one_identifier`
+  to include birthday.
+- Server `validateIdentifiers`: birthday now satisfies the
+  `requireAtLeastOne` check; error message updated to list all four.
+- Client (StaffManager + StaffDetail): client-side early-bail check
+  includes birthday.
+
+Birthday-only staff still face the multi-match login fallback if two
+of them share the date — that's documented behavior, admin's job to
+provide a backup identifier per staff if collisions are a risk.
+
+**2. Gap between admin error strip and the save button.** `.admin-error`
+sat flush against `.add-form-actions`. Added `margin-bottom: 12px` so
+the strip has breathing room before the button.
+
+**3. Login page label dedup.** Sub-sentence said "Sign in with your
+phone number, employee ID, birthday, or username" and the field's
+`<label>` underneath said the same thing again ("Phone number /
+employee ID / birthday / username"). Removed the visible `<label>`;
+moved the same text to `aria-label` on the input so screen readers
+still announce it but sighted users only see the sub-sentence. Both
+copy lines were dynamic (rebuilt from `enabledMethods`) so disabling
+methods cascades correctly to the single remaining caption.
+
+**4. `block_system_keyboard` → `hide_abc_keyboard`.** Sprint 8.7's
+attempt to block the iOS system keyboard never worked reliably
+(password autofill bypass). Replaced it with a simpler, fully
+within-our-control toggle: when on, the on-screen ABC switcher +
+letters keyboard are hidden, leaving a bigger numeric keypad. The
+system keyboard is no longer blocked at all — if username login is
+enabled and the user wants letters, they use whatever keyboard the OS
+gives them.
+
+`lettersAvailable` in StaffLogin now combines both:
+```js
+const lettersAvailable = enabledMethods.has('username') && !hideAbc;
+```
+Disabling username already implies "no letters." The explicit
+`hide_abc_keyboard` toggle covers the case where username stays
+enabled but the admin still wants a numeric-only on-screen UI.
+
+Dropped along with the old feature: the `lockKbd` state, the
+display-div fallback (`.login-display`), the programmatic-focus
+useEffect, `idInputRef`, `useRef` import. Cleaner StaffLogin.js.
+
+**Files added:**
+- `database/migrations/010_birthday_in_constraint.sql`.
+
+**Files modified:**
+- `database/schema.sql` — at-least-one CHECK now includes birthday.
+- `server/server.js` — `validateIdentifiers` includes birthday in
+  the at-least-one check; ALLOWED settings swap
+  `block_system_keyboard` → `hide_abc_keyboard`; `/api/public-config`
+  returns `hide_abc_keyboard` instead.
+- `src/components/AdminPanel/AdminSettings.js` — state
+  `blockKbd → hideAbc`; section title/copy rewritten;
+  saved key renamed accordingly.
+- `src/components/AdminPanel/AdminPanel.css` — `.admin-error` gets
+  `margin-bottom: 12px`.
+- `src/components/AdminPanel/StaffManager.js` /
+  `StaffDetail.js` — ≥1 check now includes birthday in condition
+  and error copy.
+- `src/pages/Login/StaffLogin.js` — dropped `lockKbd` / display-div /
+  programmatic focus; reads `hide_abc_keyboard` from public-config;
+  `lettersAvailable` combines username-enabled + !hideAbc; removed
+  the visible field `<label>` (kept `aria-label`); removed `useRef`
+  import.
+
+**Conventions added:**
+- **Equal-citizen identifiers if you'd be embarrassed to reject
+  one of them.** When a user expects four options to be peers
+  ("any of these works"), they should all satisfy whatever
+  "must provide at least one" check exists. Tiering an identifier
+  as "supplemental" creates a UX trap where someone provides the
+  one they prefer and the form rejects it.
+- **Replace failed features instead of leaving them.** When a
+  feature doesn't work reliably (block_system_keyboard's
+  password-autofill bypass), don't leave a broken toggle in the
+  admin UI hoping it might work for some user. Repurpose the
+  surface area for a related feature that *does* work
+  (hide_abc_keyboard), and document the pivot in the
+  iteration log. Half-broken settings are worse than absent ones.
+- **Don't duplicate copy between the sub-instructions and the
+  field label.** If a sentence above the field already tells the
+  user what to type, the field label is redundant. Move the label
+  to `aria-label` to keep accessibility without doubling up the
+  visible copy — sighted users get one clean instruction,
+  screen-reader users still get a proper field announcement.
+
 ### 2026-05-16 — Sprint 9.0: birthday login + per-tenant login methods + URL slug
 
 GM feedback session at the hotel. Three real-world things to land before
