@@ -733,6 +733,95 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-16 — Sprint 9.1.2: responsive login layout + save-button repositioning
+
+Two follow-ups from running 9.1.1 on a laptop.
+
+**1. Login card overflowed on wider screens.** The Sprint 9 "numbers-
+only" mode bumped the keypad button sizing aggressively at ≥720px
+(padding 26px, font-size 32px). At the existing card max-width of
+420px and 5 keypad rows, the card was running ~700-800px tall — fine
+on a phone but tall enough to force vertical scroll on a 13" laptop
+screen. The user wanted a desktop-style two-column layout instead of
+keeping the form skinny and growing the keypad downward.
+
+**Fix: two-column layout at ≥1024px.** Form fields stay in the left
+column; the keypad relocates to a right column. Card max-width
+grows to 880px, keypad column locks at ~380px (so buttons stay
+sensible size regardless of viewport width). The huge-button rule
+from 9.0G now only fires in the 720–1023 band (iPad portrait + large
+phone landscape, where the single-column tall keypad makes sense).
+Above 1024 the keypad gets its own column and doesn't need the
+oversized buttons to fill space.
+
+CSS sketch:
+```css
+@media (min-width: 1024px) {
+  .login-card  { max-width: 880px; }
+  .login-form  {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+    column-gap: 32px;
+    row-gap: 14px;
+    align-items: start;
+  }
+  .login-form > .login-field,
+  .login-form > .login-error,
+  .login-form > .login-submit { grid-column: 1; }
+  .login-form > .login-kb-area {
+    grid-column: 2;
+    grid-row: 1 / 100;
+    margin-top: 0;
+  }
+}
+```
+
+The keypad spans all 100 rows of the grid so it stays vertically
+aligned with the form regardless of how many input rows are showing
+(the PIN field appears conditionally after the server signals
+pin_required). JSX is untouched — same hierarchy, CSS just reflows it.
+
+**2. Save button moved to the AdminSettings topbar.** The button sat
+inside the Shifts Board Visibility section, which read as "save just
+this section." Admins were toggling other settings, walking away, and
+on return everything was reverted — they'd missed the save button
+because they didn't look back at the first section. Moved it to the
+right side of the topbar where it's visible regardless of which
+section the admin is editing. State transitions ("Save settings" →
+"Saving…" → "✓ Saved") preserved; the in-section variant of the
+button is gone.
+
+**Files modified:**
+- `src/pages/Login/Login.css` — capped the huge-button override at
+  `(max-width: 1023px)`; new `@media (min-width: 1024px)` block
+  with two-column form grid + card max-width bump.
+- `src/components/AdminPanel/AdminSettings.js` — removed the
+  in-section save button; added `.settings-topbar-actions` block
+  with the new top-anchored save button and an inline error
+  surface.
+- `src/components/AdminPanel/AdminPanel.css` — styling for
+  `.settings-topbar-actions`, `.settings-topbar-error`,
+  `.settings-save-top` (+`is-saved` variant).
+
+**Conventions added:**
+- **Two-column responsive split with CSS-only restructuring.** When
+  you want the same JSX to render as a single-column form on
+  mobile and a two-column layout on desktop, use CSS grid with
+  `grid-template-columns` at the wide breakpoint and assign
+  children to columns via class-based `grid-column`. The keypad's
+  `grid-row: 1 / 100` trick (span absurdly many rows) handles the
+  case where the column-1 content has a variable number of rows
+  (conditional PIN field). No JSX change required.
+- **Primary actions live at the page level, not the section
+  level.** When a single endpoint commits multiple sections worth
+  of state, the save button belongs in the page chrome (topbar,
+  fixed footer, etc.) — not nested inside one section's body.
+  Section-local saves are appropriate only when each section
+  hits its own endpoint independently. If they all hit
+  `/api/admin/settings`, there's one save action and it belongs at
+  the page level so the admin doesn't have to remember which
+  section "owns" it.
+
 ### 2026-05-16 — Sprint 9.1.1: migration deploy-blocker + settings save resilience + tenant picker
 
 Three real-world fixes from running 9.1 in production.

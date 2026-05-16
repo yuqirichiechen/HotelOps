@@ -114,6 +114,23 @@ const AdminSettings = () => {
           <button className="btn-back" onClick={() => nav('/admin')}>← Home</button>
           <h2>Settings</h2>
         </div>
+        {/* Sprint 9.1.2: save button moved to the topbar as the
+            top-level commit action. Previously sat inside the Shifts
+            Board Visibility section, which read as "save just this
+            section" — admins saved other settings, walked away thinking
+            they'd persisted, and on return everything was reverted. */}
+        <div className="settings-topbar-actions">
+          {error && <span className="settings-topbar-error">{error}</span>}
+          <button
+            className={`settings-save-top${saved ? ' is-saved' : ''}`}
+            onClick={handleSave}
+            disabled={saving || loading}
+            aria-label="Save settings"
+            title="Save settings"
+          >
+            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save settings'}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -157,15 +174,6 @@ const AdminSettings = () => {
               ))}
             </div>
 
-            {error && <div className="admin-error" style={{ marginTop: 12 }}>{error}</div>}
-
-            <button
-              className={`settings-save-btn${saved ? ' settings-save-btn-saved' : ''}`}
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Settings'}
-            </button>
           </div>
 
           {/* Performance section (Sprint 6B) */}

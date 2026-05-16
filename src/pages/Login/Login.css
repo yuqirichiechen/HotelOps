@@ -372,9 +372,46 @@
   .login-kb-area.is-numbers-only .lk-btn { padding: 18px 0; font-size: 24px; border-radius: 12px; }
 }
 
-@media (min-width: 720px) {
+/* Sprint 9.1.2: keep the "huge buttons at ≥720" sizing only for the
+   tablet-portrait band. Above 1024 the layout switches to two-column
+   (form left, keypad right) — buttons stay the default size in that
+   ~380px keypad column. Without this cap, the card grows so tall on
+   laptops it forces page scroll. */
+@media (min-width: 720px) and (max-width: 1023px) {
   .login-kb-area.is-numbers-only .login-keypad { gap: 14px; }
   .login-kb-area.is-numbers-only .lk-btn { padding: 26px 0; font-size: 32px; }
+}
+
+/* Sprint 9.1.2: laptop / landscape-iPad layout. Form fields on the left
+   column, keypad on the right column, both inside a wider card. Keypad
+   spans every row of the form's grid so it stays vertically aligned
+   regardless of how many input rows are visible (the PIN field appears
+   only after the server signals pin_required). */
+@media (min-width: 1024px) {
+  .login-card {
+    max-width: 880px;
+  }
+  .login-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+    column-gap: 32px;
+    row-gap: 14px;
+    align-items: start;
+  }
+  .login-form > .login-field,
+  .login-form > .login-error,
+  .login-form > .login-submit {
+    grid-column: 1;
+  }
+  .login-form > .login-kb-area {
+    grid-column: 2;
+    grid-row: 1 / 100;       /* span all current + future rows of column 1 */
+    margin-top: 0;            /* default margin-top is for the stacked layout */
+    align-self: start;
+  }
+  /* Submit button no longer needs a top margin in this layout — grid
+     row-gap handles the spacing. */
+  .login-submit { margin-top: 0; }
 }
 
 /* Sprint 7.1: QWERTY letter keyboard. Three rows of letters + a switcher
