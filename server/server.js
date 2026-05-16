@@ -35,25 +35,47 @@ pool.query('SELECT NOW()').then(() => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// ── Login identifier helpers (Sprint 7) ──────────────────────────────────────
-// Staff log in via any of {phone_number, username, employee_code}. The login
-// endpoint accepts a single `identifier` and auto-detects the type:
+// ── Login identifier helpers (Sprint 7 / Sprint 9) ───────────────────────────
+// Staff log in via any of {phone_number, username, employee_code, birthday}.
+// The login endpoint accepts a single `identifier` and auto-detects the type:
+//   - all digits, length 8   → birthday (MMDDYYYY → real date)        [Sprint 9]
 //   - all digits, length 10  → phone_number
 //   - all digits, length 4-6 → employee_code
 //   - has a letter           → username (case-insensitive lookup)
 //   - anything else          → invalid
 // Username must contain at least one letter (enforced at signup + DB CHECK)
-// so an all-digit username cannot shadow an employee_code.
+// so an all-digit username cannot shadow an employee_code or birthday.
+// Length boundaries are tight (4-6 / 8 / 10) so the three digit ranges
+// don't collide.
 
 const PHONE_RE    = /^[0-9]{10}$/;
 const CODE_RE     = /^[0-9]{4,6}$/;
+const BDAY_RE     = /^[0-9]{8}$/;
 const USERNAME_RE = /^[A-Za-z0-9._-]{3,16}$/;
 const HAS_LETTER  = /[A-Za-z]/;
+
+// Parse an 8-digit MMDDYYYY into a real Date and back into YYYY-MM-DD.
+// Returns null if the digits don't form a valid calendar date (e.g. Feb 30).
+function birthdayToIso(s) {
+  if (!BDAY_RE.test(s)) return null;
+  const mm = parseInt(s.slice(0, 2), 10);
+  const dd = parseInt(s.slice(2, 4), 10);
+  const yyyy = parseInt(s.slice(4, 8), 10);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || yyyy < 1900 || yyyy > 2100) return null;
+  const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) return null;
+  return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
 
 function classifyIdentifier(raw) {
   if (typeof raw !== 'string') return null;
   const v = raw.trim();
   if (!v) return null;
+  if (BDAY_RE.test(v)) {
+    const iso = birthdayToIso(v);
+    if (iso) return { kind: 'birthday', value: iso };
+    return null; // 8 digits but not a valid date
+  }
   if (PHONE_RE.test(v))                                    return { kind: 'phone',    value: v };
   if (CODE_RE.test(v))                                     return { kind: 'code',     value: v };
   if (USERNAME_RE.test(v) && HAS_LETTER.test(v))           return { kind: 'username', value: v };
@@ -78,17 +100,39 @@ function validateEmployeeCode(raw) {
   return { ok: true, value: v };
 }
 
+// Sprint 9: birthday accepts YYYY-MM-DD (from <input type="date">) and is
+// stored as a real DATE in Postgres. Range-limited to a plausible person.
+// Not unique — collisions handled at login time.
+function validateBirthday(raw) {
+  const v = String(raw || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    return { ok: false, message: 'Birthday must be a valid date (YYYY-MM-DD)' };
+  }
+  const [yyyy, mm, dd] = v.split('-').map(Number);
+  if (yyyy < 1900 || yyyy > 2100) return { ok: false, message: 'Birthday year out of range' };
+  const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) {
+    return { ok: false, message: 'Birthday is not a valid date' };
+  }
+  return { ok: true, value: v };
+}
+
 // Validates the three identifier fields for create/update. Returns
 // { ok, normalized: { phoneNumber, username, employeeCode } } or
 // { ok: false, message }. requireAtLeastOne guards create-time inserts;
 // updates may pass false if the caller wants to allow clearing all three
 // (we don't, but the option exists).
-function validateIdentifiers({ phoneNumber, username, employeeCode }, { requireAtLeastOne = true } = {}) {
-  const out = { phoneNumber: null, username: null, employeeCode: null };
+function validateIdentifiers({ phoneNumber, username, employeeCode, birthday }, { requireAtLeastOne = true } = {}) {
+  const out = { phoneNumber: null, username: null, employeeCode: null, birthday: null };
   const has = (v) => v !== undefined && v !== null && String(v).trim() !== '';
   if (has(phoneNumber))  { const r = validatePhone(phoneNumber);         if (!r.ok) return { ok: false, message: r.message }; out.phoneNumber  = r.value; }
   if (has(username))     { const r = validateUsername(username);         if (!r.ok) return { ok: false, message: r.message }; out.username     = r.value; }
   if (has(employeeCode)) { const r = validateEmployeeCode(employeeCode); if (!r.ok) return { ok: false, message: r.message }; out.employeeCode = r.value; }
+  if (has(birthday))     { const r = validateBirthday(birthday);         if (!r.ok) return { ok: false, message: r.message }; out.birthday     = r.value; }
+  // Sprint 9: birthday is supplemental — at least one of the *unique*
+  // identifiers (phone / username / employee_code) is still required so
+  // every staff record has a guaranteed-unambiguous way to log in. Birthday
+  // is a convenience layer on top.
   if (requireAtLeastOne && !out.phoneNumber && !out.username && !out.employeeCode) {
     return { ok: false, message: 'At least one of phone, username, or employee ID is required' };
   }
@@ -111,19 +155,46 @@ app.post('/api/auth/staff/login', async (req, res) => {
   const raw = (req.body?.identifier ?? req.body?.phone ?? '').toString();
   const { pin } = req.body || {};
   const id = classifyIdentifier(raw);
-  if (!id) return res.status(400).json({ success: false, message: 'Enter your phone, username, or employee ID' });
+  if (!id) return res.status(400).json({ success: false, message: 'Enter your phone, employee ID, birthday, or username' });
+
+  // Sprint 9: enforce the admin's enabled-login-methods toggle. If the
+  // identifier kind is currently disabled, reject before hitting the DB.
+  try {
+    const cfg = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'enabled_login_methods'`
+    );
+    if (cfg.rows.length) {
+      const enabled = new Set(String(cfg.rows[0].value || '').split(',').map(s => s.trim()).filter(Boolean));
+      // map classifier kind → setting name
+      const settingByKind = { phone: 'phone', code: 'employee_code', username: 'username', birthday: 'birthday' };
+      const needed = settingByKind[id.kind];
+      if (needed && enabled.size > 0 && !enabled.has(needed)) {
+        return res.status(400).json({ success: false, message: 'That login method is disabled for this property' });
+      }
+    }
+  } catch (_e) { /* if settings table is unavailable, fall through to legacy behavior */ }
 
   try {
     const where = id.kind === 'phone'    ? 'phone_number = $1'
                 : id.kind === 'code'     ? 'employee_code = $1'
+                : id.kind === 'birthday' ? 'birthday = $1'
                 :                          'LOWER(username) = LOWER($1)';
     const { rows } = await pool.query(
-      `SELECT user_id, name, phone_number, username, employee_code, role, department_id,
+      `SELECT user_id, name, phone_number, username, employee_code, birthday, role, department_id,
               pin_hash, pin_required, pin_must_set
        FROM users WHERE ${where} AND active = true`,
       [id.value]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+
+    // Sprint 9: birthdays aren't unique. If we got >1 match, ask the user
+    // to disambiguate with a phone number or employee ID instead.
+    if (rows.length > 1 && id.kind === 'birthday') {
+      return res.status(409).json({
+        success: false,
+        message: 'More than one employee shares that birthday — sign in with your phone number or employee ID instead.',
+      });
+    }
     const user = rows[0];
 
     // PIN required: must verify. Skip during the post-reset window (pin_must_set).
@@ -687,7 +758,7 @@ app.get('/api/admin/employees', async (req, res) => {
          GROUP BY user_id
        )
        SELECT
-         u.user_id, u.name, u.phone_number, u.username, u.employee_code,
+         u.user_id, u.name, u.phone_number, u.username, u.employee_code, u.birthday,
          u.role, u.hire_date,
          u.base_hourly_rate, u.active, u.department_id, d.name AS department,
          u.pin_required, u.pin_must_set,
@@ -723,7 +794,7 @@ app.get('/api/admin/employees', async (req, res) => {
 app.get('/api/admin/employees/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code,
+      `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code, u.birthday,
               u.role, u.hire_date,
               u.base_hourly_rate, u.active, u.department_id, d.name AS department,
               u.pin_required, u.pin_must_set,
@@ -743,18 +814,18 @@ app.get('/api/admin/employees/:id', async (req, res) => {
 
 app.post('/api/admin/employees', async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
-          phoneNumber, username, employeeCode } = req.body;
+          phoneNumber, username, employeeCode, birthday } = req.body;
   if (!name || !hireDate) {
     return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
-  const v = validateIdentifiers({ phoneNumber, username, employeeCode });
+  const v = validateIdentifiers({ phoneNumber, username, employeeCode, birthday });
   if (!v.ok) return res.status(400).json({ success: false, message: v.message });
   try {
     const { rows } = await pool.query(
-      `INSERT INTO users (name, phone_number, username, employee_code,
+      `INSERT INTO users (name, phone_number, username, employee_code, birthday,
                           role, hire_date, department_id, base_hourly_rate)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode, v.normalized.birthday,
        role || 'employee', hireDate, departmentId || null, baseHourlyRate || null]
     );
     return res.json({ success: true, employee: rows[0] });
@@ -782,18 +853,18 @@ app.patch('/api/admin/employees/:id/status', async (req, res) => {
 
 app.put('/api/admin/employees/:id', async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
-          phoneNumber, username, employeeCode } = req.body;
+          phoneNumber, username, employeeCode, birthday } = req.body;
   if (!name || !hireDate) {
     return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
-  const v = validateIdentifiers({ phoneNumber, username, employeeCode });
+  const v = validateIdentifiers({ phoneNumber, username, employeeCode, birthday });
   if (!v.ok) return res.status(400).json({ success: false, message: v.message });
   try {
     const { rows } = await pool.query(
-      `UPDATE users SET name=$1, phone_number=$2, username=$3, employee_code=$4,
-                        role=$5, hire_date=$6, department_id=$7, base_hourly_rate=$8
-       WHERE user_id=$9 RETURNING *`,
-      [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode,
+      `UPDATE users SET name=$1, phone_number=$2, username=$3, employee_code=$4, birthday=$5,
+                        role=$6, hire_date=$7, department_id=$8, base_hourly_rate=$9
+       WHERE user_id=$10 RETURNING *`,
+      [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode, v.normalized.birthday,
        role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
@@ -1638,11 +1709,19 @@ app.get('/api/shifts/daily', async (req, res) => {
 app.get('/api/public-config', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT key, value FROM app_settings WHERE key IN ('block_system_keyboard')`
+      `SELECT key, value FROM app_settings WHERE key IN ('block_system_keyboard','enabled_login_methods')`
     );
-    const out = { block_system_keyboard: false };
+    const out = {
+      block_system_keyboard: false,
+      // Sprint 9: default to all four methods enabled if the setting hasn't
+      // been written yet. New tenants get the full menu out of the box.
+      enabled_login_methods: ['phone', 'username', 'employee_code', 'birthday'],
+    };
     rows.forEach(r => {
       if (r.key === 'block_system_keyboard') out.block_system_keyboard = r.value === 'true';
+      if (r.key === 'enabled_login_methods') {
+        out.enabled_login_methods = String(r.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      }
     });
     return res.json({ success: true, config: out });
   } catch (err) {
@@ -1684,6 +1763,16 @@ app.put('/api/admin/settings', async (req, res) => {
     // still drives input via setState. Read by /api/public-config so the
     // login page can fetch it before authenticating.
     block_system_keyboard:      v => v === 'true' || v === 'false',
+    // Sprint 9: which staff login methods are enabled for this tenant.
+    // CSV of {phone,username,employee_code,birthday}. At least one must be
+    // present. Used at login time to gate the identifier classifier and at
+    // the staff login UI to hide irrelevant keypads.
+    enabled_login_methods:      v => {
+      const allowed = ['phone', 'username', 'employee_code', 'birthday'];
+      const parts = String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length === 0) return false;
+      return parts.every(p => allowed.includes(p));
+    },
   };
   const updates = req.body || {};
   if (Object.keys(updates).length === 0) {

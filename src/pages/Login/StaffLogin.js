@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
-import { TENANT } from '../../config/tenant';
+import { resolveTenant, TENANT } from '../../config/tenant';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
 
@@ -19,13 +19,19 @@ import './Login.css';
 
 // Mirrors the server's classifier (server.js: classifyIdentifier). Used here
 // to gate the submit button — final auth happens server-side.
+// Sprint 9: birthday (8 digits) joins phone (10), employee_code (4-6),
+// username (has letter). Submit-validity is also gated by which methods
+// the admin has enabled for this tenant — see isValidIdentifier(v, enabled).
 const PHONE_RE    = /^[0-9]{10}$/;
 const CODE_RE     = /^[0-9]{4,6}$/;
+const BDAY_RE     = /^[0-9]{8}$/;
 const USERNAME_RE = /^[A-Za-z0-9._-]{3,16}$/;
 const HAS_LETTER  = /[A-Za-z]/;
-const isValidIdentifier = (v) => {
-  if (PHONE_RE.test(v) || CODE_RE.test(v)) return true;
-  if (USERNAME_RE.test(v) && HAS_LETTER.test(v)) return true;
+const isValidIdentifier = (v, enabled) => {
+  if (enabled.has('phone')         && PHONE_RE.test(v))    return true;
+  if (enabled.has('employee_code') && CODE_RE.test(v))     return true;
+  if (enabled.has('birthday')      && BDAY_RE.test(v))     return true;
+  if (enabled.has('username')      && USERNAME_RE.test(v) && HAS_LETTER.test(v)) return true;
   return false;
 };
 
@@ -100,6 +106,12 @@ const StaffLogin = () => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
+  // Sprint 9: optional /:tenant prefix on the URL. Look up the slug in the
+  // tenant registry — unknown slugs fall through to the default tenant
+  // rather than 404'ing, so a typo in the URL still gives the user a way
+  // in. (We could 404 instead, but on a kiosk that's strictly worse.)
+  const { tenant: tenantSlug } = useParams();
+  const tenant = resolveTenant(tenantSlug) || TENANT;
 
   const [identifier,  setIdentifier]  = useState('');
   const [pin,         setPin]         = useState('');
@@ -117,6 +129,9 @@ const StaffLogin = () => {
   // (8.7's readOnly + inputMode="none" wasn't enough — both browsers
   // still focused the input on tap and showed their default keyboard.)
   const [lockKbd,      setLockKbd]      = useState(false);
+  // Sprint 9: which login-method types this tenant accepts. Drives keypad
+  // adaptation (no ABC if username is off) and isValidIdentifier gating.
+  const [enabledMethods, setEnabledMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
   const [configLoaded, setConfigLoaded] = useState(false);
   const idInputRef = useRef(null);
 
@@ -124,11 +139,40 @@ const StaffLogin = () => {
     fetch('/api/public-config')
       .then(r => r.json())
       .then(data => {
-        if (data?.success) setLockKbd(!!data.config?.block_system_keyboard);
+        if (data?.success) {
+          setLockKbd(!!data.config?.block_system_keyboard);
+          const list = data.config?.enabled_login_methods;
+          if (Array.isArray(list) && list.length > 0) setEnabledMethods(new Set(list));
+        }
       })
       .catch(() => { /* fall through to default (system keyboard allowed) */ })
       .finally(() => setConfigLoaded(true));
   }, []);
+
+  // Whether the on-screen keyboard should offer the letters mode at all.
+  // If the tenant has disabled username login, there's no point in
+  // showing ABC — there's nothing letters do.
+  const lettersAvailable = enabledMethods.has('username');
+
+  // Sprint 9: dynamic label + placeholder. Compose them from the enabled
+  // methods so disabled options never appear in user-facing copy.
+  const methodLabels = {
+    phone:         { full: 'phone number',  short: '10-digit phone' },
+    employee_code: { full: 'employee ID',   short: '4–6 digit ID' },
+    birthday:      { full: 'birthday',      short: 'birthday MMDDYYYY' },
+    username:      { full: 'username',      short: 'username' },
+  };
+  const orderedMethods = ['phone', 'employee_code', 'birthday', 'username']
+    .filter(m => enabledMethods.has(m));
+  const fieldLabel = orderedMethods.map(m => methodLabels[m].full).join(' / ');
+  const fieldPlaceholder = orderedMethods.map(m => methodLabels[m].short).join(' · ');
+  const subSentence = (() => {
+    if (orderedMethods.length === 0) return 'Sign in to start your shift.';
+    if (orderedMethods.length === 1) return `Sign in with your ${methodLabels[orderedMethods[0]].full}.`;
+    const items = orderedMethods.map(m => methodLabels[m].full);
+    const last = items.pop();
+    return `Sign in with your ${items.join(', ')}, or ${last}.`;
+  })();
 
   // Programmatic auto-focus: only fires when config is loaded AND lock is
   // off. With autoFocus on the JSX, the input would focus on first render
@@ -143,10 +187,10 @@ const StaffLogin = () => {
   // Auto-advance to PIN once a valid identifier is entered and the server
   // already told us PIN is required.
   useEffect(() => {
-    if (isValidIdentifier(identifier) && needsPin && activeField === 'id') {
+    if (isValidIdentifier(identifier, enabledMethods) && needsPin && activeField === 'id') {
       setActive('pin');
     }
-  }, [identifier, needsPin, activeField]);
+  }, [identifier, needsPin, activeField, enabledMethods]);
 
   // Append a key to whichever field is active. Numbers keypad emits digits
   // and the special tokens 'clear' / 'back'. Letters keyboard emits a single
@@ -192,11 +236,13 @@ const StaffLogin = () => {
     setErr(res.message || 'Sign-in failed');
   };
 
-  const canSubmit = isValidIdentifier(identifier) && (!needsPin || pin.length === 4);
+  const canSubmit = isValidIdentifier(identifier, enabledMethods) && (!needsPin || pin.length === 4);
 
   // PIN field always uses the numeric keypad. For the identifier field, the
   // user toggles between letters and numbers via the bottom switcher.
-  const showLetters = activeField === 'id' && kbMode === 'letters';
+  // Sprint 9: only show letters if username login is enabled. If it isn't,
+  // there's no value letters can express — drop ABC entirely.
+  const showLetters = lettersAvailable && activeField === 'id' && kbMode === 'letters';
 
   return (
     <div className="login-page">
@@ -205,19 +251,17 @@ const StaffLogin = () => {
           <span className="login-brand-icon">🏨</span>
           <span className="login-brand-name">HotelOps</span>
         </div>
-        <div className="login-tenant">{TENANT.name}</div>
+        <div className="login-tenant">{tenant.name}</div>
 
         <h1 className="login-title">Welcome back</h1>
-        <p className="login-sub">
-          Sign in with your phone number, employee ID, or username.
-        </p>
+        <p className="login-sub">{subSentence}</p>
 
         <form onSubmit={submit} className="login-form">
           <div
             className={`login-field ${activeField === 'id' ? 'is-active' : ''} ${lockKbd ? 'is-kbd-locked' : ''}`}
             onClick={lockKbd ? () => setActive('id') : undefined}
           >
-            <label htmlFor="identifier">Phone, employee ID, or username</label>
+            <label htmlFor="identifier">{fieldLabel.charAt(0).toUpperCase() + fieldLabel.slice(1)}</label>
             {/* Sprint 8.7.2: when locked, swap the <input> entirely for a
                 display-only <div>. No input element ⇒ no password manager,
                 no autofill prompt, no system keyboard. The on-screen
@@ -227,11 +271,11 @@ const StaffLogin = () => {
                 className={`is-keypad login-display ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
                 role="textbox"
                 aria-readonly="true"
-                aria-label="Phone, employee ID, or username"
+                aria-label={fieldLabel}
               >
                 {identifier
                   ? identifier
-                  : <span className="login-display-placeholder">10-digit phone · 4–6 digit ID · username</span>}
+                  : <span className="login-display-placeholder">{fieldPlaceholder}</span>}
               </div>
             ) : (
               <input
@@ -247,7 +291,7 @@ const StaffLogin = () => {
                 value={identifier}
                 onChange={onIdentifierChange}
                 onFocus={() => setActive('id')}
-                placeholder="10-digit phone · 4–6 digit ID · username"
+                placeholder={fieldPlaceholder}
               />
             )}
           </div>
@@ -295,19 +339,26 @@ const StaffLogin = () => {
               doesn't shift the page layout. The numeric keypad happens to be
               the taller of the two (5 rows vs 4), so the letters keyboard
               leaves a small bottom gap — accepted as the better tradeoff. */}
-          <div className="login-kb-area">
+          {/* Sprint 9: letters keyboard only renders when the tenant has
+              the username login method enabled. If not, the ABC/123 switcher
+              on the numeric keypad is also hidden — no value letters can
+              express here. The locked-height grid auto-sizes to the only
+              remaining child (numbers keypad). */}
+          <div className={`login-kb-area ${!lettersAvailable ? 'is-numbers-only' : ''}`}>
             <KeypadNumbers
               onKey={onKey}
-              onSwitch={activeField === 'id' ? () => setKbMode('letters') : null}
+              onSwitch={lettersAvailable && activeField === 'id' ? () => setKbMode('letters') : null}
               hidden={showLetters}
             />
-            <KeyboardLetters
-              onKey={onKey}
-              caps={caps}
-              onCaps={() => setCaps(c => !c)}
-              onSwitch={() => setKbMode('numbers')}
-              hidden={!showLetters}
-            />
+            {lettersAvailable && (
+              <KeyboardLetters
+                onKey={onKey}
+                caps={caps}
+                onCaps={() => setCaps(c => !c)}
+                onSwitch={() => setKbMode('numbers')}
+                hidden={!showLetters}
+              />
+            )}
           </div>
 
           <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
@@ -316,7 +367,9 @@ const StaffLogin = () => {
         </form>
 
         <div className="login-switch">
-          <TransitionLink to="/login/admin">Manager sign-in →</TransitionLink>
+          <TransitionLink to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}>
+            Manager sign-in →
+          </TransitionLink>
         </div>
       </div>
     </div>

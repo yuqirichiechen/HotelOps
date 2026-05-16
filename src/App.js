@@ -66,10 +66,23 @@ const App = () => {
       <AuthProvider>
         <Routes>
           {/* ── Public login routes ─────────────────────────────────────── */}
+          {/* Sprint 9: each login route also accepts an optional /:tenant
+              slug prefix (e.g. /snoqualmieinn/login/staff). The slug is
+              looked up against KNOWN_TENANTS in src/config/tenant.js for
+              branding — the backend is still single-tenant-per-deployment
+              under one DATABASE_URL. Future tenants get a deployment of
+              their own pointing at their own Postgres DB on the same
+              shared server. */}
           <Route path="/login/staff" element={
             <RedirectIfAuthed><StaffLogin /></RedirectIfAuthed>
           } />
+          <Route path="/:tenant/login/staff" element={
+            <RedirectIfAuthed><StaffLogin /></RedirectIfAuthed>
+          } />
           <Route path="/login/admin" element={
+            <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>
+          } />
+          <Route path="/:tenant/login/admin" element={
             <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>
           } />
 

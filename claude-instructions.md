@@ -491,7 +491,7 @@ sidebar slot to "Timesheet" (placeholder) — Sprint 4 will fill it.
 **Files added:**
 - `src/pages/Timesheet/{index.js, Timesheet.css}` — blank "Coming soon"
   placeholder.
-
+https://distinguished-sheba-testing-only-438302ff.koyeb.app/login/staff
 **Files modified:**
 - `src/components/Layout/Sidebar.js` — `STAFF_NAV` reshuffled. Old
   `/timeclock` → "Time Clock" replaced by `/timesheet` → "Timesheet"
@@ -732,6 +732,117 @@ hour override + audit logging; moved sign-out to Settings on both sides.
   multiple timezones, might need a tenant-level timezone config.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
+
+### 2026-05-16 — Sprint 9.0: birthday login + per-tenant login methods + URL slug
+
+GM feedback session at the hotel. Three real-world things to land before
+the system is usable in production — and the project's first nod toward
+"this could run for other properties someday."
+
+**1. Birthday as a fourth login identifier.** 8-digit MMDDYYYY joins
+the auto-detect classifier:
+- 8 digits → birthday (validated as a real calendar date)
+- 10 digits → phone
+- 4–6 digits → employee_code
+- has-letter → username
+
+Length boundaries are tight (4–6 / 8 / 10) so the digit ranges don't
+overlap. Username's "must contain a letter" rule (Sprint 7) keeps
+usernames out of the digit-only space. **Birthdays aren't unique** —
+collisions are rare but possible. Server detects multi-match
+(`rows.length > 1 && id.kind === 'birthday'`) and returns 409 + "use
+phone or employee ID instead". Admin gets a warning in the add form
+when typing a birthday already present on an active staff.
+
+**Birthday is supplemental.** At create time, admin still must provide
+at least one of phone/username/employee_code. Birthday is a convenience
+layer; the unique identifiers are the guaranteed-disambiguable ones.
+
+**2. Per-tenant enabled login methods.** Admin can now toggle each of
+the four methods on/off in Settings (at least one must stay on). The
+`enabled_login_methods` setting (CSV) drives:
+- **Server**: `/api/auth/staff/login` rejects disabled identifier kinds
+  before hitting the DB. 400 + "that method is disabled for this
+  property".
+- **Login UI**: fetches the list via `/api/public-config`. Dynamic
+  label, placeholder, sub-sentence all rebuild from the enabled list.
+  Disabled methods never appear in user-facing copy.
+- **On-screen keypad**: if username is off, the ABC switcher button
+  disappears AND the letters keyboard doesn't render. The locked-
+  height grid auto-sizes to just the numeric keypad.
+
+**3. Bigger numeric keypad when ABC is off.** Per GM feedback ("buttons
+are too small"), `.login-kb-area.is-numbers-only .lk-btn` lifts padding
+to `22px 0` and font-size to `28px` (phone) / `32px` (≥720). Bigger
+gap too. Only kicks in when the letters keyboard is absent, so other
+tenants keeping ABC see the existing compact size.
+
+**4. Multi-tenant URL slug (cosmetic).** Login routes accept an
+optional `/:tenant` prefix: `/snoqualmieinn/login/staff` works the same
+as `/login/staff`. Slug is looked up against `KNOWN_TENANTS` in
+`src/config/tenant.js` for branding (the `.login-tenant` line).
+Unknown slugs fall through to the default tenant rather than 404'ing —
+better UX on a kiosk than a wall.
+
+This is NOT real multi-tenancy. Each deployment is still single-DB; the
+slug is purely URL identity / branding. When a second property
+onboards: own deployment pointing at own Postgres DB on the same
+server. Adding a new tenant slug is a single line in `KNOWN_TENANTS`.
+Internal navigation (`/admin/...`, `/`) stays unprefixed; the slug-
+aware routes are only the public login pages.
+
+**DB migration 009 required before deploy:**
+`psql "$DATABASE_URL?sslmode=require" -f database/migrations/009_birthday_login.sql`
+— adds `birthday DATE` (nullable, not unique) and an index.
+
+**Files added:**
+- `database/migrations/009_birthday_login.sql`
+
+**Files modified:**
+- `database/schema.sql` — birthday column + idx mirror.
+- `server/server.js` — birthday classifier (`BDAY_RE`,
+  `birthdayToIso()`), `validateBirthday()`, `validateIdentifiers`
+  accepts birthday, staff login gate against `enabled_login_methods`
+  + birthday multi-match handler, admin POST/PUT/GET employee
+  endpoints carry birthday, `enabled_login_methods` in ALLOWED
+  validator and `/api/public-config` response.
+- `src/components/AdminPanel/AdminSettings.js` — `loginMethods` Set
+  state + toggle handler that refuses to disable the last method;
+  new "Staff login methods" section using `.settings-method-grid`.
+- `src/components/AdminPanel/AdminPanel.css` —
+  `.settings-method-grid/row/text/label/hint` styling;
+  `.admin-field-hint` + `.admin-field-warn`.
+- `src/components/AdminPanel/StaffManager.js` — birthday input in
+  add form + dup-warning banner.
+- `src/components/AdminPanel/StaffDetail.js` — birthday in edit form
+  + read-only info grid.
+- `src/pages/Login/StaffLogin.js` — `enabledMethods` state, dynamic
+  copy generation, `lettersAvailable` gates letters keyboard + ABC
+  switcher, tenant slug via `useParams`.
+- `src/pages/Login/AdminLogin.js` — tenant slug treatment.
+- `src/pages/Login/Login.css` — `.login-kb-area.is-numbers-only`
+  bigger-button overrides at phone / desktop / tablet breakpoints.
+- `src/App.js` — `/:tenant/login/staff` and `/:tenant/login/admin`
+  route aliases alongside the originals.
+- `src/config/tenant.js` — `KNOWN_TENANTS` registry, `resolveTenant()`
+  helper, `DEFAULT_TENANT_SLUG`.
+
+**Conventions added:**
+- **Tight length boundaries partition digit-only identifier space.**
+  When you have multiple digit-only identifier types, design their
+  length constraints so no two ranges overlap. Phone is 10, code is
+  4–6, birthday is 8 exactly — the classifier needs no context-
+  passing because the digit length alone disambiguates.
+- **Soft fallback for unknown tenant slugs.** A URL slug that
+  doesn't resolve falls through to the default tenant rather than
+  404'ing. On a kiosk the user can't navigate away — a 404 is a
+  dead end. The slug is branding affordance, not a security
+  boundary.
+- **Supplemental vs. primary identifiers.** Some identifiers
+  (birthday) are convenience layers — not unique, not the primary
+  way an account is found. Keep "≥1 required" scoped to the
+  *unique* identifiers so every record stays unambiguously
+  addressable regardless of convenience layers on top.
 
 ### 2026-05-09 — Sprint 8.7.2: stop rendering an input at all when locked
 

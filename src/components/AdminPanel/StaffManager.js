@@ -9,7 +9,7 @@ import { apiFetch } from '../../auth';
 const ROLES     = ['employee', 'front_desk', 'admin'];
 const today     = () => new Date().toISOString().split('T')[0];
 const emptyForm = () => ({
-  name: '', phone: '', username: '', employeeCode: '', role: 'employee',
+  name: '', phone: '', username: '', employeeCode: '', birthday: '', role: 'employee',
   departmentId: '', hireDate: today(), baseHourlyRate: '',
 });
 
@@ -117,6 +117,7 @@ const StaffManager = () => {
         phoneNumber:    form.phone        || null,
         username:       form.username     || null,
         employeeCode:   form.employeeCode || null,
+        birthday:       form.birthday     || null,
         role:           form.role,
         hireDate:       form.hireDate,
         departmentId:   form.departmentId || null,
@@ -552,6 +553,20 @@ const StaffManager = () => {
                   onChange={e => setForm(f => ({ ...f, employeeCode: e.target.value.replace(/\D/g,'').slice(0,6) }))}
                   placeholder="4–6 digits"
                 />
+              </div>
+              <div className="admin-field">
+                <label>Birthday</label>
+                <input
+                  type="date"
+                  value={form.birthday}
+                  onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))}
+                />
+                {form.birthday && employees.some(e => e.birthday === form.birthday && e.active !== false) && (
+                  <span className="admin-field-warn">
+                    ⚠ Another staff member already has this birthday — they'll share the birthday login method
+                    (the server will ask the staff to use a phone/ID instead at sign-in).
+                  </span>
+                )}
               </div>
             </div>
             {formError && <div className="admin-error">{formError}</div>}

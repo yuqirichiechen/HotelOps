@@ -308,6 +308,34 @@
   .login-kb-area { margin-top: 14px; }
 }
 
+/* Sprint 9: numbers-only mode (username login disabled). With no
+   letters keyboard taking up half the rendering responsibility, give
+   the number buttons more breathing room — bigger touch targets, more
+   vertical air. Responsive: bigger still on tablets, biggest on
+   desktop. */
+.login-kb-area.is-numbers-only .login-keypad {
+  gap: 12px;
+  margin-top: 4px;
+}
+.login-kb-area.is-numbers-only .lk-btn {
+  padding: 22px 0;
+  font-size: 28px;
+  border-radius: 14px;
+}
+.login-kb-area.is-numbers-only .lk-btn.lk-aux {
+  font-size: 15px;
+}
+
+@media (max-width: 480px) {
+  .login-kb-area.is-numbers-only .login-keypad { gap: 8px; }
+  .login-kb-area.is-numbers-only .lk-btn { padding: 18px 0; font-size: 24px; border-radius: 12px; }
+}
+
+@media (min-width: 720px) {
+  .login-kb-area.is-numbers-only .login-keypad { gap: 14px; }
+  .login-kb-area.is-numbers-only .lk-btn { padding: 26px 0; font-size: 32px; }
+}
+
 /* Sprint 7.1: QWERTY letter keyboard. Three rows of letters + a switcher
    row, mirroring iOS keyboard rhythm. Row 2 is slightly indented; row 3
    frames the letters between a Caps modifier and a Backspace modifier. */

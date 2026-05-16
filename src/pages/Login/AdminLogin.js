@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
-import { TENANT } from '../../config/tenant';
+import { resolveTenant, TENANT } from '../../config/tenant';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
 
 const AdminLogin = () => {
   const { loginAdmin } = useAuth();
   const nav = useNavigate();
+  // Sprint 9: same /:tenant slug treatment as StaffLogin.
+  const { tenant: tenantSlug } = useParams();
+  const tenant = resolveTenant(tenantSlug) || TENANT;
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -35,7 +38,7 @@ const AdminLogin = () => {
           <span className="login-brand-icon">⚙️</span>
           <span className="login-brand-name">HotelOps</span>
         </div>
-        <div className="login-tenant">{TENANT.name}</div>
+        <div className="login-tenant">{tenant.name}</div>
 
         <h1 className="login-title">Manager sign-in</h1>
         <p className="login-sub">
@@ -75,7 +78,9 @@ const AdminLogin = () => {
         </form>
 
         <div className="login-switch">
-          <TransitionLink to="/login/staff">Staff sign-in →</TransitionLink>
+          <TransitionLink to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}>
+            Staff sign-in →
+          </TransitionLink>
         </div>
       </div>
     </div>

@@ -33,6 +33,9 @@ const AdminSettings = () => {
   const [baseline,   setBaseline]   = useState('self');
   const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
   const [blockKbd,   setBlockKbd]   = useState(false); // Sprint 8.7: lock to on-screen keypad
+  // Sprint 9: which staff login methods are enabled. Stored as a CSV in
+  // app_settings; treated as a Set in the UI for cheap toggle handling.
+  const [loginMethods, setLoginMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
@@ -49,10 +52,28 @@ const AdminSettings = () => {
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
           setBlockKbd  (data.settings.block_system_keyboard === 'true');
+          if (data.settings.enabled_login_methods) {
+            const parts = String(data.settings.enabled_login_methods).split(',').map(s => s.trim()).filter(Boolean);
+            if (parts.length > 0) setLoginMethods(new Set(parts));
+          }
         }
         setLoading(false);
       });
   }, []);
+
+  const toggleLoginMethod = (method) => {
+    setSaved(false);
+    setLoginMethods(prev => {
+      const next = new Set(prev);
+      if (next.has(method)) {
+        if (next.size === 1) return prev; // never let the last method get disabled
+        next.delete(method);
+      } else {
+        next.add(method);
+      }
+      return next;
+    });
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -68,6 +89,7 @@ const AdminSettings = () => {
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
         block_system_keyboard:     blockKbd ? 'true' : 'false',
+        enabled_login_methods:     [...loginMethods].join(','),
       }),
     });
     const data = await res.json();
@@ -253,6 +275,46 @@ const AdminSettings = () => {
                   Default 3s. Useful on shared kiosk/tablet setups so the next staff member doesn't inherit the previous session.
                 </span>
               </label>
+            </div>
+          </div>
+
+          {/* Sprint 9: which login methods staff can use */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">🔑</div>
+              <div>
+                <div className="settings-section-title">Staff login methods</div>
+                <div className="settings-section-desc">
+                  Which identifier types your staff can use to sign in. Hidden methods are also dropped from the on-screen keypad,
+                  so disabling Username (for example) hides the ABC keyboard entirely and makes the number buttons bigger.
+                  At least one method must stay enabled.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-method-grid">
+              {[
+                { key: 'phone',         label: 'Phone number',  hint: '10 digits' },
+                { key: 'employee_code', label: 'Employee ID',   hint: '4–6 digits' },
+                { key: 'birthday',      label: 'Birthday',      hint: '8 digits — MMDDYYYY' },
+                { key: 'username',      label: 'Username',      hint: '3–16 chars, has a letter' },
+              ].map(m => {
+                const on = loginMethods.has(m.key);
+                return (
+                  <label key={m.key} className={`settings-method-row ${on ? 'is-on' : ''}`}>
+                    <input
+                      type="checkbox"
+                      className="hop-check"
+                      checked={on}
+                      onChange={() => toggleLoginMethod(m.key)}
+                    />
+                    <div className="settings-method-text">
+                      <div className="settings-method-label">{m.label}</div>
+                      <div className="settings-method-hint">{m.hint}</div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
 

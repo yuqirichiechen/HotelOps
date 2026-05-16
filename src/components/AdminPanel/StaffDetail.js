@@ -139,6 +139,7 @@ const StaffDetail = () => {
       phone:          emp.phone_number  || '',
       username:       emp.username      || '',
       employeeCode:   emp.employee_code || '',
+      birthday:       emp.birthday ? emp.birthday.split('T')[0] : '',
       role:           emp.role,
       departmentId:   emp.department_id || '',
       hireDate:       emp.hire_date ? emp.hire_date.split('T')[0] : '',
@@ -167,6 +168,7 @@ const StaffDetail = () => {
         phoneNumber:    form.phone        || null,
         username:       form.username     || null,
         employeeCode:   form.employeeCode || null,
+        birthday:       form.birthday     || null,
         role:           form.role,
         hireDate:       form.hireDate,
         departmentId:   form.departmentId || null,
@@ -519,6 +521,17 @@ const StaffDetail = () => {
                 placeholder="4–6 digits"
               />
             </div>
+            <div className="admin-field">
+              <label>Birthday</label>
+              <input
+                type="date"
+                value={form.birthday}
+                onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))}
+              />
+              <span className="admin-field-hint">
+                Optional. Staff can sign in by entering MMDDYYYY at the keypad if the property allows the birthday login method.
+              </span>
+            </div>
           </div>
           <div className="add-form-actions" style={{ gap: '10px' }}>
             <button type="button" className="btn-logout" onClick={cancelEdit}>Cancel</button>
@@ -530,6 +543,7 @@ const StaffDetail = () => {
           <div className="detail-info-row"><span className="detail-info-lbl">Phone</span><span className="detail-info-val">{fmt(emp.phone_number)}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Username</span><span className="detail-info-val">{fmt(emp.username)}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Employee ID</span><span className="detail-info-val">{fmt(emp.employee_code)}</span></div>
+          <div className="detail-info-row"><span className="detail-info-lbl">Birthday</span><span className="detail-info-val">{emp.birthday ? new Date(emp.birthday).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Role</span><span className="detail-info-val" style={{ textTransform: 'capitalize' }}>{emp.role.replace('_',' ')}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Department</span><span className="detail-info-val">{deptName()}</span></div>
           <div className="detail-info-row"><span className="detail-info-lbl">Hire Date</span><span className="detail-info-val">{fmtDate(emp.hire_date)}</span></div>
