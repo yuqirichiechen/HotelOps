@@ -1708,18 +1708,25 @@ app.get('/api/shifts/daily', async (req, res) => {
 app.get('/api/public-config', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods')`
+      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods','staff_login_layout')`
     );
     const out = {
       hide_abc_keyboard: false,
       // Sprint 9: default to all four methods enabled if the setting hasn't
       // been written yet. New tenants get the full menu out of the box.
       enabled_login_methods: ['phone', 'username', 'employee_code', 'birthday'],
+      // Sprint 9.1.3: default to 'hardcode' so behavior matches prior
+      // sprints. Admin can opt into 'fluid' for clamp()-based continuous
+      // sizing if breakpoint behavior doesn't fit their hardware.
+      staff_login_layout: 'hardcode',
     };
     rows.forEach(r => {
       if (r.key === 'hide_abc_keyboard') out.hide_abc_keyboard = r.value === 'true';
       if (r.key === 'enabled_login_methods') {
         out.enabled_login_methods = String(r.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (r.key === 'staff_login_layout' && (r.value === 'fluid' || r.value === 'hardcode')) {
+        out.staff_login_layout = r.value;
       }
     });
     return res.json({ success: true, config: out });
@@ -1764,6 +1771,14 @@ app.put('/api/admin/settings', async (req, res) => {
     // login method in the staff_login_methods toggles so a system keyboard
     // can't reach a useful login.
     hide_abc_keyboard:          v => v === 'true' || v === 'false',
+    // Sprint 9.1.3: choose how the staff login page handles sizing.
+    //   'hardcode' — fixed breakpoints (current behavior), buttons step
+    //                at each width threshold.
+    //   'fluid'    — continuous via clamp() keyed off vh/vw, scales
+    //                smoothly with both viewport dimensions at once.
+    // 'hardcode' is default for predictability; admins on big monitors
+    // or with weird aspect ratios can opt into 'fluid' from settings.
+    staff_login_layout:         v => v === 'fluid' || v === 'hardcode',
     // Sprint 9: which staff login methods are enabled for this tenant.
     // CSV of {phone,username,employee_code,birthday}. At least one must be
     // present. Used at login time to gate the identifier classifier and at

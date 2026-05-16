@@ -382,36 +382,107 @@
   .login-kb-area.is-numbers-only .lk-btn { padding: 26px 0; font-size: 32px; }
 }
 
-/* Sprint 9.1.2: laptop / landscape-iPad layout. Form fields on the left
-   column, keypad on the right column, both inside a wider card. Keypad
-   spans every row of the form's grid so it stays vertically aligned
-   regardless of how many input rows are visible (the PIN field appears
-   only after the server signals pin_required). */
+/* Sprint 9.1.2 / 9.1.3: laptop / landscape-iPad two-column layout.
+   Sprint 9.1.3 fix: previous implementation used `grid-row: 1 / 100` to
+   make the keypad span "all rows." With only ~4 col-1 items, the grid
+   distributed the keypad's intrinsic height across 99 phantom rows,
+   ballooning the form vertically and leaving Manager-sign-in stranded
+   far below the visible content.
+   New approach: `.login-form` gets `display: contents` so its children
+   become direct grid children of `.login-card`. Then keypad with
+   `grid-row: 1 / -1` spans *exactly* the rows the card has (one per
+   col-1 item — brand, tenant, title, sub, fields, submit, switch).
+   No phantom rows; height of the form area matches the keypad's
+   intrinsic height. */
 @media (min-width: 1024px) {
-  .login-card {
+  .login-page.login-layout-hardcode .login-card {
     max-width: 880px;
-  }
-  .login-form {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
     column-gap: 32px;
     row-gap: 14px;
     align-items: start;
   }
-  .login-form > .login-field,
-  .login-form > .login-error,
-  .login-form > .login-submit {
+  /* All direct children of card default to col 1 (brand, tenant, title,
+     sub, switch). */
+  .login-page.login-layout-hardcode .login-card > * { grid-column: 1; }
+  /* Form acts as a transparent wrapper — its children participate in
+     the card's grid directly. */
+  .login-page.login-layout-hardcode .login-form { display: contents; }
+  .login-page.login-layout-hardcode .login-form > .login-field,
+  .login-page.login-layout-hardcode .login-form > .login-error,
+  .login-page.login-layout-hardcode .login-form > .login-submit {
     grid-column: 1;
   }
-  .login-form > .login-kb-area {
+  .login-page.login-layout-hardcode .login-form > .login-kb-area {
     grid-column: 2;
-    grid-row: 1 / 100;       /* span all current + future rows of column 1 */
-    margin-top: 0;            /* default margin-top is for the stacked layout */
+    grid-row: 1 / -1;    /* span exactly the rows in col 1, no phantom rows */
+    margin-top: 0;
     align-self: start;
   }
-  /* Submit button no longer needs a top margin in this layout — grid
-     row-gap handles the spacing. */
-  .login-submit { margin-top: 0; }
+  .login-page.login-layout-hardcode .login-submit { margin-top: 0; }
+}
+
+/* Sprint 9.1.3: fluid layout. Uses clamp() with viewport-height (vh) +
+   viewport-width (vw) units so every sized element scales continuously
+   as either dimension changes. The 1024px breakpoint for two-column
+   shape is preserved (layout-shape changes are still discrete) but
+   everything inside each shape sizes continuously. min-height on the
+   card caps how tiny things can get; if the viewport is genuinely
+   smaller than that, the card scrolls internally rather than pushing
+   the page tall. */
+.login-page.login-layout-fluid .login-card {
+  max-width: clamp(360px, 92vw, 880px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+.login-page.login-layout-fluid .login-title {
+  font-size: clamp(20px, 3vh, 32px);
+}
+.login-page.login-layout-fluid .login-sub {
+  font-size: clamp(12px, 1.6vh, 16px);
+}
+.login-page.login-layout-fluid .login-field input,
+.login-page.login-layout-fluid .login-field .login-display {
+  font-size: clamp(14px, 1.8vh, 18px);
+  padding: clamp(10px, 1.4vh, 14px) clamp(10px, 1.4vw, 14px);
+}
+.login-page.login-layout-fluid .login-kb-area.is-numbers-only .lk-btn {
+  padding: clamp(12px, 2.4vh, 28px) 0;
+  font-size: clamp(20px, 3.2vh, 36px);
+  border-radius: clamp(8px, 1.2vh, 14px);
+}
+.login-page.login-layout-fluid .login-kb-area.is-numbers-only .lk-btn.lk-aux {
+  font-size: clamp(11px, 1.4vh, 15px);
+}
+.login-page.login-layout-fluid .login-kb-area.is-numbers-only .login-keypad {
+  gap: clamp(6px, 1.2vh, 14px);
+}
+
+/* Two-column in fluid mode kicks in at the same breakpoint, but inner
+   sizing remains continuous. */
+@media (min-width: 1024px) {
+  .login-page.login-layout-fluid .login-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, clamp(320px, 30vw, 420px));
+    column-gap: clamp(20px, 2.5vw, 40px);
+    row-gap: clamp(10px, 1.4vh, 16px);
+    align-items: start;
+  }
+  .login-page.login-layout-fluid .login-card > * { grid-column: 1; }
+  .login-page.login-layout-fluid .login-form { display: contents; }
+  .login-page.login-layout-fluid .login-form > .login-field,
+  .login-page.login-layout-fluid .login-form > .login-error,
+  .login-page.login-layout-fluid .login-form > .login-submit {
+    grid-column: 1;
+  }
+  .login-page.login-layout-fluid .login-form > .login-kb-area {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    margin-top: 0;
+    align-self: start;
+  }
+  .login-page.login-layout-fluid .login-submit { margin-top: 0; }
 }
 
 /* Sprint 7.1: QWERTY letter keyboard. Three rows of letters + a switcher

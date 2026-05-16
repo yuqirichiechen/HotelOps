@@ -132,6 +132,10 @@ const StaffLogin = () => {
   // numeric-only on-screen keypad (relying on the system keyboard for
   // the username input).
   const [hideAbc,        setHideAbc]        = useState(false);
+  // Sprint 9.1.3: layout sizing strategy — 'hardcode' (breakpoint steps,
+  // default) or 'fluid' (clamp()-based continuous scaling). Admin
+  // configures via Settings. Class on .login-page drives CSS selection.
+  const [layoutMode,     setLayoutMode]     = useState('hardcode');
 
   useEffect(() => {
     fetch('/api/public-config')
@@ -141,6 +145,9 @@ const StaffLogin = () => {
           setHideAbc(!!data.config?.hide_abc_keyboard);
           const list = data.config?.enabled_login_methods;
           if (Array.isArray(list) && list.length > 0) setEnabledMethods(new Set(list));
+          if (data.config?.staff_login_layout === 'fluid' || data.config?.staff_login_layout === 'hardcode') {
+            setLayoutMode(data.config.staff_login_layout);
+          }
         }
       })
       .catch(() => { /* fall through to defaults */ });
@@ -234,7 +241,7 @@ const StaffLogin = () => {
   const showLetters = lettersAvailable && activeField === 'id' && kbMode === 'letters';
 
   return (
-    <div className="login-page">
+    <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
         <div className="login-brand">
           <span className="login-brand-icon">🏨</span>

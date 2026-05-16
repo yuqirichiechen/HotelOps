@@ -33,6 +33,7 @@ const AdminSettings = () => {
   const [baseline,   setBaseline]   = useState('self');
   const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
   const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
+  const [loginLayout, setLoginLayout] = useState('hardcode'); // Sprint 9.1.3
   // Sprint 9: which staff login methods are enabled. Stored as a CSV in
   // app_settings; treated as a Set in the UI for cheap toggle handling.
   const [loginMethods, setLoginMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
@@ -52,6 +53,9 @@ const AdminSettings = () => {
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
           setHideAbc   (data.settings.hide_abc_keyboard === 'true');
+          if (data.settings.staff_login_layout === 'fluid' || data.settings.staff_login_layout === 'hardcode') {
+            setLoginLayout(data.settings.staff_login_layout);
+          }
           if (data.settings.enabled_login_methods) {
             const parts = String(data.settings.enabled_login_methods).split(',').map(s => s.trim()).filter(Boolean);
             if (parts.length > 0) setLoginMethods(new Set(parts));
@@ -89,6 +93,7 @@ const AdminSettings = () => {
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
+        staff_login_layout:        loginLayout,
         enabled_login_methods:     [...loginMethods].join(','),
       }),
     });
@@ -360,6 +365,32 @@ const AdminSettings = () => {
                 </div>
               </div>
             </label>
+
+            {/* Sprint 9.1.3: layout mode for staff login. Hardcode = fixed
+                breakpoints (current default). Fluid = clamp()-based sizing
+                that scales continuously with both viewport dimensions. */}
+            <div className="settings-perf-field" style={{ marginTop: 16 }}>
+              <span className="settings-perf-label">Staff login layout</span>
+              <div className="settings-mode-toggle">
+                {[
+                  { v: 'hardcode', label: 'Hardcode',  desc: 'Buttons step at fixed breakpoints. Predictable, easier to test.' },
+                  { v: 'fluid',    label: 'Fluid',     desc: 'Buttons scale continuously with viewport width and height. Better on irregular screens.' },
+                ].map(opt => (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    className={`settings-mode-btn ${loginLayout === opt.v ? 'is-active' : ''}`}
+                    onClick={() => { setLoginLayout(opt.v); setSaved(false); }}
+                  >
+                    <div className="settings-mode-btn-label">{opt.label}</div>
+                    <div className="settings-mode-btn-desc">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+              <span className="settings-perf-help">
+                Hardcode is the safer default. Switch to Fluid if your kiosk has an unusual aspect ratio or you're seeing buttons jump in size at certain widths.
+              </span>
+            </div>
           </div>
 
           {/* Account / Sign out section */}

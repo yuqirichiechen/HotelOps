@@ -733,6 +733,110 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-16 — Sprint 9.1.3: fluid-vs-hardcode layout toggle + fix the 99-row phantom bug
+
+Two interconnected things — fix the visible regression from 9.1.2 *and*
+expose a layout-mode choice in admin settings so future kiosk variants
+can opt into truly fluid sizing without touching code.
+
+**The bug.** 9.1.2's two-column layout used `grid-row: 1 / 100` on
+the keypad to "span all current and future rows" of the form's grid.
+That sounded clever and was wrong: CSS grid distributes a multi-row
+item's intrinsic height across all spanned rows. With only ~4 col-1
+items occupying rows 1–4 and 95 *phantom* rows 5–99, the keypad's
+~400px content height got distributed across all 99 rows. Net result:
+the form's height stretched well beyond what the keypad actually
+needed; the .login-card became absurdly tall on laptops, and the
+Manager-sign-in link landed hundreds of pixels below the keypad with
+empty space in between. User screenshot showed exactly this.
+
+**The fix.** Replace the spanning trick with `display: contents` on
+`.login-form`. With `display: contents`, the form element loses its
+own layout box and its children become *direct children* of
+`.login-card`. The card is the grid container now, with all the
+"left column" items (brand, tenant, title, sub, fields, error,
+submit, switch) auto-placing in col 1 and the keypad pinned to col 2
+with `grid-row: 1 / -1` — which spans *exactly* the rows that exist,
+no phantom rows. The form keeps its submit semantics; the layout
+collapses to the keypad's actual height.
+
+```css
+.login-page.login-layout-hardcode .login-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  /* ... */
+}
+.login-page.login-layout-hardcode .login-card > * { grid-column: 1; }
+.login-page.login-layout-hardcode .login-form { display: contents; }
+.login-page.login-layout-hardcode .login-form > .login-kb-area {
+  grid-column: 2;
+  grid-row: 1 / -1;
+}
+```
+
+**The layout-mode toggle.** New admin setting
+`staff_login_layout` ('hardcode' | 'fluid', default 'hardcode').
+StaffLogin reads it from `/api/public-config` and applies
+`.login-layout-hardcode` or `.login-layout-fluid` to `.login-page`.
+
+- **Hardcode** (default): everything sizes at fixed breakpoints
+  (the current behavior). Predictable, easier to test at known
+  widths.
+- **Fluid**: button padding/font-size, card max-width, gaps, and
+  field font-size all use `clamp(min, vh+vw expression, max)` so
+  the page scales continuously with both viewport dimensions at
+  once. `max-height: 100vh - 24px` + `overflow-y: auto` on the
+  card means truly tiny viewports scroll *internally* rather than
+  pushing the page tall. The 1024px breakpoint for the two-column
+  *shape* change is preserved — layout-shape switches are still
+  discrete — but sizing inside each shape is continuous.
+
+Admin section: a two-button card-style selector under the existing
+keyboard section, since layout sizing is tied to keypad behavior.
+Help text walks through when each mode is better.
+
+**Files modified:**
+- `server/server.js` — `staff_login_layout` in settings ALLOWED
+  + `/api/public-config` response (default 'hardcode').
+- `src/components/AdminPanel/AdminSettings.js` — `loginLayout`
+  state, fetch / save wiring, new two-button mode toggle in the
+  hide-abc section.
+- `src/components/AdminPanel/AdminPanel.css` — `.settings-mode-*`
+  classes for the layout-mode toggle (card-style buttons with
+  label + description; responsive grid).
+- `src/pages/Login/StaffLogin.js` — `layoutMode` state from
+  public-config; `.login-page` className interpolates the mode.
+- `src/pages/Login/Login.css` — replaced 9.1.2's at-1024 rules
+  with mode-scoped versions; hardcode mode uses `display:
+  contents` + `grid-row: 1 / -1`; fluid mode uses clamp()-based
+  sizing throughout + same two-column layout at ≥1024.
+
+**Conventions added:**
+- **Never use `grid-row: 1 / 100` to span a variable-row column.**
+  CSS grid distributes a multi-row item's height across all
+  spanned rows, including phantom ones. If the spanned rows are
+  mostly empty (because the *other* column has fewer items), the
+  layout stretches absurdly. Use `display: contents` on the inner
+  container so children become direct grid children of the outer
+  container, then `grid-row: 1 / -1` spans the *actual* rows that
+  exist.
+- **clamp(min, vh+vw, max) for two-axis continuous scaling.**
+  When a UI needs to feel responsive in both directions
+  simultaneously (login pages, kiosk UIs, anything where the
+  viewport's aspect ratio varies), `clamp(min, X * vh + Y * vw,
+  max)` gives smooth scaling without JS measurement. Min/max
+  bounds prevent extreme values; the vh/vw expression interpolates
+  the rest. Pair with `max-height: 100vh` + `overflow: auto` on
+  the container so tiny viewports scroll instead of overflowing
+  the page.
+- **Mode toggles for layout strategies, not just feature flags.**
+  When two different layout approaches each serve a real
+  audience (hardcode = predictable, fluid = adaptive), expose
+  *both* through a setting rather than picking one as the only
+  blessed implementation. The cost is a class on the root and
+  some duplicate CSS blocks; the benefit is admins can pick the
+  fit for their hardware without code changes.
+
 ### 2026-05-16 — Sprint 9.1.2: responsive login layout + save-button repositioning
 
 Two follow-ups from running 9.1.1 on a laptop.

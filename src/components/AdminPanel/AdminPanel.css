@@ -1758,6 +1758,46 @@
   line-height: 1.45;
 }
 
+/* Sprint 9.1.3: two-option button-style segmented control for the login
+   layout mode (Hardcode vs Fluid). Each button is a card with a label
+   and a one-line description. Active state mirrors the chip is-active
+   palette. */
+.settings-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 6px;
+}
+.settings-mode-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.settings-mode-btn:hover { border-color: var(--text-muted); }
+.settings-mode-btn.is-active {
+  border-color: var(--brand-bg);
+  background: var(--accent-bg);
+}
+.settings-mode-btn-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.settings-mode-btn-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+@media (max-width: 600px) {
+  .settings-mode-toggle { grid-template-columns: 1fr; }
+}
+
 /* Sprint 9: grid of login-method checkboxes. Two columns on desktop,
    single column on narrow screens. Each row is a boxed checkbox + label
    pair, light-tinted when enabled to communicate state at a glance. */
