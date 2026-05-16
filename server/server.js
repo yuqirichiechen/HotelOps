@@ -1779,12 +1779,27 @@ app.put('/api/admin/settings', async (req, res) => {
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ success: false, message: 'No settings provided' });
   }
+  // Sprint 9.1.1: be lenient on *unknown* keys — silently skip them rather
+  // than bailing out of the whole batch. Without this, a client/server
+  // version mismatch (e.g. browser still shipping the old
+  // `block_system_keyboard` key from a stale build) makes every save fail
+  // with "Unknown setting" and the user sees "settings won't save." Still
+  // strict on known keys with invalid values — those reject the batch as
+  // before because that signals a real bug or attack, not version drift.
+  const writes = [];
   for (const [k, v] of Object.entries(updates)) {
-    if (!(k in ALLOWED))   return res.status(400).json({ success: false, message: `Unknown setting: ${k}` });
-    if (!ALLOWED[k](v))    return res.status(400).json({ success: false, message: `Invalid value for ${k}` });
+    if (!(k in ALLOWED)) {
+      console.warn(`[settings PUT] ignoring unknown key: ${k}`);
+      continue;
+    }
+    if (!ALLOWED[k](v)) return res.status(400).json({ success: false, message: `Invalid value for ${k}` });
+    writes.push([k, v]);
+  }
+  if (writes.length === 0) {
+    return res.status(400).json({ success: false, message: 'No recognized settings in request' });
   }
   try {
-    for (const [k, v] of Object.entries(updates)) {
+    for (const [k, v] of writes) {
       await pool.query(
         `INSERT INTO app_settings (key, value)
          VALUES ($1, $2)

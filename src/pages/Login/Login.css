@@ -199,6 +199,47 @@
 
 .login-switch a:hover { text-decoration: underline; }
 
+/* Sprint 9.1.1: TenantPicker — list of properties shown when the user
+   hits a bare /login/staff or /login/admin URL with no /:tenant slug. */
+.tenant-picker-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tenant-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-family: 'TiemposText', Georgia, serif;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
+  cursor: pointer;
+}
+.tenant-picker-row:hover {
+  background: var(--bg-raised);
+  border-color: var(--text-muted);
+}
+.tenant-picker-row:active { transform: translateY(1px); }
+.tenant-picker-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.tenant-picker-arrow {
+  font-size: 20px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
 /* ── Sprint 8.7.1: kiosk-keyboard lock ──────────────────────────────────
    When the admin enables block_system_keyboard, the .login-field wrapper
    carries .is-kbd-locked. Disable interaction on the actual <input> and

@@ -6,6 +6,7 @@ import ShiftsView from './components/ShiftsView';
 import ShiftNotes from './components/ShiftNotes';
 import StaffLogin from './pages/Login/StaffLogin';
 import AdminLogin from './pages/Login/AdminLogin';
+import TenantPicker from './pages/Login/TenantPicker';
 import Home from './pages/Home';
 import Timesheet from './pages/Timesheet';
 import Settings from './pages/Settings';
@@ -66,21 +67,22 @@ const App = () => {
       <AuthProvider>
         <Routes>
           {/* ── Public login routes ─────────────────────────────────────── */}
-          {/* Sprint 9: each login route also accepts an optional /:tenant
-              slug prefix (e.g. /snoqualmieinn/login/staff). The slug is
-              looked up against KNOWN_TENANTS in src/config/tenant.js for
-              branding — the backend is still single-tenant-per-deployment
-              under one DATABASE_URL. Future tenants get a deployment of
-              their own pointing at their own Postgres DB on the same
-              shared server. */}
+          {/* Sprint 9 / 9.1.1: bare /login/* hits the TenantPicker (a list
+              of registered properties). Only /:tenant/login/* shows the
+              actual branded login. This prevents the bare URL from
+              auto-branding as the first/default tenant, which surprised
+              the GM ("why does this hotel's URL show our name without
+              the slug?"). Single-property deploys can short-circuit the
+              picker via DNS/Nginx redirecting bare /login/* to their
+              slug. */}
           <Route path="/login/staff" element={
-            <RedirectIfAuthed><StaffLogin /></RedirectIfAuthed>
+            <RedirectIfAuthed><TenantPicker kind="staff" /></RedirectIfAuthed>
+          } />
+          <Route path="/login/admin" element={
+            <RedirectIfAuthed><TenantPicker kind="admin" /></RedirectIfAuthed>
           } />
           <Route path="/:tenant/login/staff" element={
             <RedirectIfAuthed><StaffLogin /></RedirectIfAuthed>
-          } />
-          <Route path="/login/admin" element={
-            <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>
           } />
           <Route path="/:tenant/login/admin" element={
             <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>

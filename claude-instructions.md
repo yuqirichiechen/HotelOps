@@ -733,6 +733,109 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-16 — Sprint 9.1.1: migration deploy-blocker + settings save resilience + tenant picker
+
+Three real-world fixes from running 9.1 in production.
+
+**1. DB constraint still rejects birthday-only inserts.** The user
+deployed 9.1 server + client but didn't run migration 010 on the live
+Postgres. The 8.x-era `users_at_least_one_identifier` constraint is
+still in place, rejecting any row where phone_number / username /
+employee_code are all NULL — including birthday-only rows. The
+constraint failed at row insert time with code 23514. **No code
+change resolves this — `psql "$DATABASE_URL?sslmode=require" -f
+database/migrations/010_birthday_in_constraint.sql` MUST run on every
+deployed environment before birthday-only signups will work.** The
+migration is idempotent (DROP IF EXISTS + ADD CONSTRAINT) so re-runs
+are safe.
+
+If a future maintainer hits this same shape, the symptom is:
+```
+error: new row for relation "users" violates check constraint
+  "users_at_least_one_identifier"
+code: '23514'
+```
+…and the "Failing row contains (..., null, null, null, 2004-02-26)"
+detail shows phone/username/code all NULL with birthday set. The fix
+is always to run the relevant migration on the live DB. Application-
+layer validation (`validateIdentifiers`) is *complementary* to DB
+constraints — it gives nice error messages but doesn't replace the
+constraint that Postgres enforces.
+
+**2. Settings PUT silently fails on unknown keys.** Symptom: admin
+toggles login-method checkboxes / Hide ABC, clicks save, the page
+shows "Saved" briefly, then on reload everything reverts. Root
+cause: `/api/admin/settings` PUT iterated all keys in the request and
+returned 400 if *any* key wasn't in the ALLOWED map. A client-server
+version mismatch (stale browser cache shipping the old
+`block_system_keyboard` key after we renamed to `hide_abc_keyboard`)
+would make every single save fail with "Unknown setting:
+block_system_keyboard" — even though all the *new* keys were valid.
+Worse, the 400 came back as an error not visible to the user; the
+client interpreted the failure ambiguously.
+
+Fix: skip unknown keys with a `console.warn` and continue. Still
+strict on known keys with invalid values — those abort the batch
+because they signal a real bug. Net effect: stale clients sending
+deprecated keys + valid-new-keys actually save the new keys.
+
+**3. Bare `/login/staff` defaulted to the first tenant.** The GM saw
+`example.com/login/staff` (no slug) render with "Snoqualmie Inn"
+branding — surprising because no slug should mean no specific tenant.
+Replaced the bare-URL default-tenant fallback with a **TenantPicker**
+page: lists all `KNOWN_TENANTS`, click → `/{slug}/login/{kind}`.
+
+The auto-default was useful for single-tenant deployments (the GM
+expects his URL to just work without typing the slug), but it leaks
+tenant identity at the platform root. Single-tenant deploys can
+still get the no-friction experience by configuring DNS/Nginx to
+redirect bare `/login/*` to `/{their-slug}/login/*` — the redirect
+happens before the picker renders. The picker is the right default
+when more than one property is in the registry.
+
+**Files modified:**
+- `server/server.js` — PUT /api/admin/settings: skip unknown keys
+  with warning instead of bailing the whole batch. Still strict on
+  invalid values of known keys. Returns 400 only if *no* recognized
+  keys were in the request.
+- `src/App.js` — `/login/staff` and `/login/admin` now route to
+  `TenantPicker`; the `/:tenant/login/*` aliases still route to the
+  branded login pages.
+
+**Files added:**
+- `src/pages/Login/TenantPicker.js` — card-based property list, each
+  row a `TransitionLink` to `/{slug}/login/{kind}`.
+
+**Files modified (CSS):**
+- `src/pages/Login/Login.css` — `.tenant-picker-*` list styling.
+
+**Conventions added:**
+- **Ignore-unknown-fields beats strict-validate on bulk PUTs.**
+  When a single endpoint accepts many fields and you control both
+  client and server, you can be strict. When you don't (stale
+  caches, third-party clients, version drift), be lenient about
+  *unknown* keys — they're not security-relevant — and strict only
+  about *invalid values of known keys*. A bulk save that drops a
+  forwards-incompatible field is better than one that fails the
+  whole batch.
+- **Auto-default at the platform root leaks tenant identity.**
+  When the URL has no tenant prefix and the system has multiple
+  tenants, prefer a picker page to silently selecting one. Even if
+  the *intended* deployment is single-tenant, a missing redirect
+  config will expose the default tenant to anyone hitting bare
+  URLs — that's a privacy/branding leak you can avoid with one
+  picker page. Single-tenant deploys configure DNS/Nginx to skip
+  the picker.
+- **Database constraints are not optional.** Application-layer
+  validation gives friendly errors; database constraints
+  *guarantee* the schema rule. When validateX() lets a value
+  through, you're trusting your code; when the DB CHECK accepts
+  it, you're trusting the schema. Both layers are necessary. When
+  a constraint needs to change to match new validation rules,
+  there's a migration — and the migration must actually be run on
+  the deployed DB. Document that explicitly in the iteration log
+  ("MUST run X before Y works").
+
 ### 2026-05-16 — Sprint 9.1: birthday-as-equal-identifier + keyboard toggle pivot + login UI polish
 
 Four bug fixes from immediate GM/use feedback on 9.0.
