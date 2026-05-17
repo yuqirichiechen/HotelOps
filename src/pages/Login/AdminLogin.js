@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
+import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
+import '../../components/shared/HotelOpsLogo.css';
 
 const AdminLogin = () => {
   const { loginAdmin } = useAuth();
@@ -34,11 +36,17 @@ const AdminLogin = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-brand">
-          <span className="login-brand-icon">⚙️</span>
-          <span className="login-brand-name">HotelOps</span>
+        {/* Sprint 9.2: tenant logo + name as primary brand (same as
+            staff login). HotelOps wordmark moved to the small
+            attribution at the bottom of the card. */}
+        <div className="login-tenant-brand">
+          {tenant.logoUrl && (
+            <span className="login-tenant-logo-wrap">
+              <img src={tenant.logoUrl} alt="" className="login-tenant-logo" />
+            </span>
+          )}
+          <span className="login-tenant-name">{tenant.name}</span>
         </div>
-        <div className="login-tenant">{tenant.name}</div>
 
         <h1 className="login-title">Manager sign-in</h1>
         <p className="login-sub">
@@ -81,6 +89,10 @@ const AdminLogin = () => {
           <TransitionLink to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}>
             Staff sign-in →
           </TransitionLink>
+        </div>
+
+        <div className="login-attribution">
+          <HotelOpsLogo size="sm" wordmark />
         </div>
       </div>
     </div>

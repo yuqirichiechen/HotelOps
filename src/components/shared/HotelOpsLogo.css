@@ -1,0 +1,55 @@
+/* Sprint 9.2: HotelOps logo (dual-SVG, theme-aware via CSS only).
+   Both SVGs are rendered; CSS shows only the one that matches the
+   active theme. This avoids the FOUC where a JS-detected theme would
+   show the wrong logo for a frame on first paint. */
+
+.hotelops-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--brand-text);
+}
+
+.hotelops-logo-img {
+  display: block;
+  width: auto;
+  height: auto;
+  flex-shrink: 0;
+}
+
+/* Size variants */
+.hotelops-logo-xl { gap: 14px; font-size: 32px; }
+.hotelops-logo-xl .hotelops-logo-img { height: 56px; }
+
+.hotelops-logo-lg { gap: 12px; font-size: 22px; }
+.hotelops-logo-lg .hotelops-logo-img { height: 40px; }
+
+.hotelops-logo-md { gap: 10px; font-size: 18px; }
+.hotelops-logo-md .hotelops-logo-img { height: 28px; }
+
+.hotelops-logo-sm { gap: 8px; font-size: 13px; opacity: 0.7; }
+.hotelops-logo-sm .hotelops-logo-img { height: 18px; }
+
+/* Theme-driven variant swap. Default state (no data-theme on <html>)
+   matches OS preference via prefers-color-scheme; data-theme="light"
+   and data-theme="dark" override. */
+
+/* Dark variant (dark-colored shape) shows on light themes. */
+.hotelops-logo-img-light { display: none; }
+.hotelops-logo-img-dark  { display: block; }
+
+@media (prefers-color-scheme: dark) {
+  .hotelops-logo-img-light { display: block; }
+  .hotelops-logo-img-dark  { display: none; }
+}
+
+/* Explicit theme overrides via <html data-theme="..."> beat the
+   media-query fallback so the in-app theme toggle works regardless of
+   OS preference. */
+html[data-theme="light"] .hotelops-logo-img-light { display: none; }
+html[data-theme="light"] .hotelops-logo-img-dark  { display: block; }
+html[data-theme="dark"]  .hotelops-logo-img-light { display: block; }
+html[data-theme="dark"]  .hotelops-logo-img-dark  { display: none; }

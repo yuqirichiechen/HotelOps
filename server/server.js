@@ -1708,7 +1708,7 @@ app.get('/api/shifts/daily', async (req, res) => {
 app.get('/api/public-config', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods','staff_login_layout')`
+      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods','staff_login_layout','tenant_logo_dark_strategy')`
     );
     const out = {
       hide_abc_keyboard: false,
@@ -1719,6 +1719,10 @@ app.get('/api/public-config', async (req, res) => {
       // sprints. Admin can opt into 'fluid' for clamp()-based continuous
       // sizing if breakpoint behavior doesn't fit their hardware.
       staff_login_layout: 'hardcode',
+      // Sprint 9.2: default to white-card backdrop — safest for colored
+      // tenant logos. Dev can switch to invert or force-light per tenant
+      // in the Dev Panel.
+      tenant_logo_dark_strategy: 'card',
     };
     rows.forEach(r => {
       if (r.key === 'hide_abc_keyboard') out.hide_abc_keyboard = r.value === 'true';
@@ -1727,6 +1731,9 @@ app.get('/api/public-config', async (req, res) => {
       }
       if (r.key === 'staff_login_layout' && (r.value === 'fluid' || r.value === 'hardcode')) {
         out.staff_login_layout = r.value;
+      }
+      if (r.key === 'tenant_logo_dark_strategy' && ['card', 'invert', 'force-light'].includes(r.value)) {
+        out.tenant_logo_dark_strategy = r.value;
       }
     });
     return res.json({ success: true, config: out });
@@ -1779,6 +1786,14 @@ app.put('/api/admin/settings', async (req, res) => {
     // 'hardcode' is default for predictability; admins on big monitors
     // or with weird aspect ratios can opt into 'fluid' from settings.
     staff_login_layout:         v => v === 'fluid' || v === 'hardcode',
+    // Sprint 9.2: how tenant logos render in dark mode when the tenant
+    // only provides a light-mode asset (e.g. a colored PNG).
+    //   'card'        — wrap the logo in a white rounded backdrop (default)
+    //   'invert'      — apply CSS filter: invert(1) hue-rotate(180deg)
+    //                   (only safe for monochrome logos)
+    //   'force-light' — keep the page in light theme for this tenant
+    // Set via the Dev Panel; reachable from the bare /login/dev URL.
+    tenant_logo_dark_strategy:  v => ['card', 'invert', 'force-light'].includes(v),
     // Sprint 9: which staff login methods are enabled for this tenant.
     // CSV of {phone,username,employee_code,birthday}. At least one must be
     // present. Used at login time to gate the identifier classifier and at

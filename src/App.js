@@ -7,6 +7,8 @@ import ShiftNotes from './components/ShiftNotes';
 import StaffLogin from './pages/Login/StaffLogin';
 import AdminLogin from './pages/Login/AdminLogin';
 import TenantPicker from './pages/Login/TenantPicker';
+import DevLogin from './pages/Login/DevLogin';
+import DevPanel from './pages/Dev/DevPanel';
 import Home from './pages/Home';
 import Timesheet from './pages/Timesheet';
 import Settings from './pages/Settings';
@@ -87,6 +89,11 @@ const App = () => {
           <Route path="/:tenant/login/admin" element={
             <RedirectIfAuthed><AdminLogin /></RedirectIfAuthed>
           } />
+
+          {/* Sprint 9.2: Dev sign-in + panel. Dev auth is client-side
+              (hardcoded dev/dev), not server-backed for this sprint. */}
+          <Route path="/login/dev" element={<DevLogin />} />
+          <Route path="/dev"       element={<DevPanel />} />
 
           {/* ── Set-PIN interstitial (auth required, no sidebar) ────────── */}
           <Route path="/set-pin" element={

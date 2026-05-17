@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
+import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
+import '../../components/shared/HotelOpsLogo.css';
 
 // Sprint 7.1: built-in QWERTY keyboard alongside the existing numeric
 // keypad. Tablet/kiosk deployments can't always rely on the OS keyboard
@@ -148,6 +150,16 @@ const StaffLogin = () => {
           if (data.config?.staff_login_layout === 'fluid' || data.config?.staff_login_layout === 'hardcode') {
             setLayoutMode(data.config.staff_login_layout);
           }
+          // Sprint 9.2: apply the dev-chosen tenant-logo dark-mode strategy.
+          // 'card' (default) — CSS handles it via the .login-tenant-logo-wrap
+          // white background. 'invert' — set data attr so the invert filter
+          // rule kicks in. 'force-light' — pin the page's theme to light
+          // so the tenant logo never has to deal with dark mode at all.
+          const strat = data.config?.tenant_logo_dark_strategy;
+          if (strat === 'invert' || strat === 'force-light' || strat === 'card') {
+            document.documentElement.dataset.tenantLogoStrategy = strat;
+            if (strat === 'force-light') document.documentElement.dataset.theme = 'light';
+          }
         }
       })
       .catch(() => { /* fall through to defaults */ });
@@ -243,11 +255,17 @@ const StaffLogin = () => {
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
-        <div className="login-brand">
-          <span className="login-brand-icon">🏨</span>
-          <span className="login-brand-name">HotelOps</span>
+        {/* Sprint 9.2: tenant logo + name is the primary brand on the
+            post-pick login page. The HotelOps wordmark shrinks to a
+            small attribution at the bottom of the card. */}
+        <div className="login-tenant-brand">
+          {tenant.logoUrl && (
+            <span className="login-tenant-logo-wrap">
+              <img src={tenant.logoUrl} alt="" className="login-tenant-logo" />
+            </span>
+          )}
+          <span className="login-tenant-name">{tenant.name}</span>
         </div>
-        <div className="login-tenant">{tenant.name}</div>
 
         <h1 className="login-title">Welcome back</h1>
         <p className="login-sub">{subSentence}</p>
@@ -333,6 +351,13 @@ const StaffLogin = () => {
           <TransitionLink to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}>
             Manager sign-in →
           </TransitionLink>
+        </div>
+
+        {/* Sprint 9.2: HotelOps wordmark as small attribution below the
+            tenant brand. Frame matters: the property is the brand the
+            staff member is signing into; we're the platform underneath. */}
+        <div className="login-attribution">
+          <HotelOpsLogo size="sm" wordmark />
         </div>
       </div>
     </div>

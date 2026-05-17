@@ -40,15 +40,59 @@
   }
 }
 
+/* Sprint 9.2: tenant brand block — the property's logo + name as the
+   primary identity on the post-pick login pages. The HotelOps wordmark
+   is no longer at the top; it sits as a small attribution at the
+   bottom (.login-attribution). */
+.login-tenant-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.login-tenant-logo-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.login-tenant-logo {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+.login-tenant-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+/* Sprint 9.2: HotelOps attribution at the foot of the card. Small,
+   muted — emphasizes that the property is the brand the user is
+   signing into, with HotelOps providing the platform. */
+.login-attribution {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Legacy classes kept in case any older login layout references them
+   directly. New login pages should use .login-tenant-brand instead. */
 .login-brand {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 4px;
 }
-
 .login-brand-icon { font-size: 22px; }
-
 .login-brand-name {
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 18px;
@@ -56,7 +100,6 @@
   color: var(--brand-text);
   letter-spacing: -0.01em;
 }
-
 .login-tenant {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
@@ -199,8 +242,17 @@
 
 .login-switch a:hover { text-decoration: underline; }
 
-/* Sprint 9.1.1: TenantPicker — list of properties shown when the user
-   hits a bare /login/staff or /login/admin URL with no /:tenant slug. */
+/* Sprint 9.1.1 / 9.2: TenantPicker — full-page property selector.
+   Card hosts the HotelOps platform logo at top, a row per property
+   below, and a dev sign-in link at the bottom. */
+.tenant-picker-card { /* inherits .login-card base */ }
+
+.tenant-picker-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
 .tenant-picker-list {
   list-style: none;
   padding: 0;
@@ -212,7 +264,7 @@
 .tenant-picker-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 14px;
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -228,9 +280,57 @@
   border-color: var(--text-muted);
 }
 .tenant-picker-row:active { transform: translateY(1px); }
-.tenant-picker-name {
+
+/* Sprint 9.2: tenant logo lives inside a white-card backdrop so colored
+   PNGs render correctly in dark mode without per-tenant dark assets.
+   Dev panel can override via the tenant_logo_dark_strategy setting
+   (card | invert | force-light); 'card' is the default. */
+.tenant-picker-logo-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.tenant-picker-logo {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+.tenant-picker-logo-empty {
+  background: var(--bg-raised);
+  color: var(--text-muted);
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 15px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* Dark mode strategy overrides (driven by data-tenant-logo-strategy on
+   <html>, default 'card'). 'invert' drops the white backdrop and flips
+   the logo with a CSS filter — only safe for monochrome / two-tone
+   tenant logos. 'force-light' is handled in JS (the staff/admin login
+   page sets data-theme="light" on <html>) so no extra CSS rules are
+   needed for it here. Covers both the picker thumbnails and the larger
+   logo on the post-pick login pages. */
+html[data-tenant-logo-strategy="invert"] .tenant-picker-logo,
+html[data-tenant-logo-strategy="invert"] .login-tenant-logo {
+  filter: invert(1) hue-rotate(180deg);
+}
+html[data-tenant-logo-strategy="invert"] .tenant-picker-logo-wrap,
+html[data-tenant-logo-strategy="invert"] .login-tenant-logo-wrap {
+  background: transparent;
+  box-shadow: none;
+}
+
+.tenant-picker-name {
+  flex: 1 1 auto;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -238,7 +338,21 @@
   font-size: 20px;
   color: var(--text-muted);
   line-height: 1;
+  flex-shrink: 0;
 }
+
+.tenant-picker-dev {
+  margin-top: 16px;
+  text-align: center;
+}
+.tenant-picker-dev-link {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+.tenant-picker-dev-link:hover { text-decoration: underline; }
 
 /* ── Sprint 8.7.1: kiosk-keyboard lock ──────────────────────────────────
    When the admin enables block_system_keyboard, the .login-field wrapper
@@ -541,3 +655,88 @@
   .login-kb-letters { gap: 5px; margin-top: 14px; }
   .login-kb-row { gap: 4px; }
 }
+
+/* ── Sprint 9.2: Dev panel ──────────────────────────────────────────────
+   Reuses the login-card shell so the dev surface visually matches the
+   rest of the login family (same width, same card chrome). The pieces
+   below are the panel-specific bits: a labelled section, a vertical
+   list of radio strategies with a label + description per row, and a
+   muted sign-out link. */
+.dev-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg-surface);
+}
+.dev-section-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.dev-section-desc {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+
+.dev-strategy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dev-strategy-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-base);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.dev-strategy-row:hover {
+  background: var(--bg-raised);
+  border-color: var(--text-muted);
+}
+.dev-strategy-row.is-active {
+  border-color: var(--brand-bg);
+  background: var(--brand-tint, var(--bg-raised));
+}
+.dev-strategy-row .hop-radio {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.dev-strategy-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dev-strategy-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.dev-strategy-desc {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.dev-signout {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dev-signout:hover { text-decoration: underline; }

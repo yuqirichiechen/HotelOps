@@ -733,7 +733,193 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
-### 2026-05-16 — Sprint 9.1.3: fluid-vs-hardcode layout toggle + fix the 99-row phantom bug
+### 2026-05-07 — Sprint 9.2: real logos, tenant-as-brand login, minimal dev gate
+
+The pre-9.2 login surface used `🏨 HotelOps` as the brand and `{tenant.name}`
+as a small subtitle. That had the visual hierarchy backwards: staff at
+Snoqualmie Inn aren't signing into HotelOps, they're signing into
+Snoqualmie Inn (HotelOps is the platform underneath). 9.2 inverts that
+hierarchy — the tenant logo + name is the primary identity; HotelOps
+shrinks to a small footer attribution. It also introduces a minimal dev
+gate so a single platform-wide knob (tenant logo dark-mode strategy)
+isn't sitting in the per-tenant admin settings where every property
+manager could flip it.
+
+**Assets.** Designer dropped three files in `/logo/`:
+`logo_light.svg` (light theme, has a `#fefefe` background plate as
+layer-0), `logo_dark.svg` (dark theme, has a `#01112a` background
+plate as layer-2), and `snoqualmieinn.png` (tenant logo, no dark
+variant). Strip the SVG background plates so the logos sit cleanly on
+any card. The SVGs are line-structured with each layer as a contiguous
+`<g>` block — strip via awk line filter, not regex:
+
+```sh
+# light: keep header (1–2), skip layer-0 (3–73), keep rest (74+)
+awk 'NR==1 || NR==2 || NR>=74' logo/logo_light.svg > public/hotelops-light.svg
+# dark: keep header (1–2), skip layer-2 background, keep </svg> (158)
+awk 'NR==1 || NR==2 || (NR>=3 && NR<=87) || NR==158' logo/logo_dark.svg > public/hotelops-dark.svg
+cp logo/snoqualmieinn.png public/snoqualmieinn.png
+```
+
+(One trap: first attempt kept line 157, which is the closing `</g>` of
+the dropped layer, not the file's `</svg>`. Result was a broken SVG.
+Verify with `tail -3 public/hotelops-dark.svg` after — last line must
+be `</svg>`.)
+
+**HotelOpsLogo component.** Theme swap via stacked `<img>` tags toggled
+by CSS, not via JS-conditional `src`. Both images render to the DOM;
+CSS `display: none` hides the wrong-theme one. This avoids FOUC and
+re-fetch when the user toggles theme. Files:
+- `src/components/shared/HotelOpsLogo.{js,css}` — new. Size variants
+  `xl`/`lg`/`md`/`sm`; optional wordmark span.
+- The theme selector chain: `@media (prefers-color-scheme: dark)` as
+  the OS default, then `html[data-theme="light|dark"]` overrides for
+  the user's explicit toggle (set by App.js's existing theme switcher).
+
+**TenantPicker rewrite.** Full-page layout (matches the staff-login
+card dimensions). HotelOps `xl` logo at the top. Each property is a
+row showing the tenant's logo + name. New Dev sign-in link at the
+bottom (muted, small — not a workflow staff or managers should see).
+
+```jsx
+<TransitionLink to={`/${t.slug}/login/${kind}`} className="tenant-picker-row">
+  <span className="tenant-picker-logo-wrap">
+    <img src={t.logoUrl} alt="" className="tenant-picker-logo" />
+  </span>
+  <span className="tenant-picker-name">{t.name}</span>
+  <span className="tenant-picker-arrow" aria-hidden>›</span>
+</TransitionLink>
+```
+
+Empty-logo fallback uses the tenant's first character (`.tenant-picker-logo-empty`)
+so the layout doesn't collapse if `logoUrl` is null.
+
+**Post-pick login pages (Staff + Admin).** Replace
+`<div className="login-brand">🏨 HotelOps</div>` +
+`<div className="login-tenant">{tenant.name}</div>` with a single
+`.login-tenant-brand` block: tenant logo (64px, white-card backdrop)
++ tenant name in 22px Tiempos Headline. HotelOps shrinks to a small
+attribution at the foot of the card via `<HotelOpsLogo size="sm" wordmark />`
+inside `.login-attribution`.
+
+**The dark-mode logo problem (HCI call).** Snoqualmie's logo only ships
+in colored PNG — no dark variant. Three options surfaced; admin picks
+per-deployment via `tenant_logo_dark_strategy`:
+- `card` (default) — wrap logo in a white-backdrop pill. Works for any
+  colored logo. Some visual mismatch with a fully dark page, but the
+  logo always renders correctly.
+- `invert` — drop the backdrop, apply `filter: invert(1) hue-rotate(180deg)`.
+  Looks best for monochrome / two-tone logos. **Wrong for colored
+  logos** (Snoqualmie's would look like a photo negative).
+- `force-light` — pin the login pages to light theme regardless of the
+  user's preference. Heavy-handed but bulletproof if the tenant
+  absolutely won't tolerate any dark-mode rendering of their brand.
+  Implemented by setting `document.documentElement.dataset.theme =
+  'light'` in the login pages' public-config effect.
+
+Default to `card` because it works for *any* logo without per-tenant
+dark assets. `invert` and `force-light` are escape hatches the dev
+flips if a particular tenant pushes back.
+
+**Strategy plumbing.** CSS rules already key on `html[data-tenant-logo-strategy="invert"]`,
+so the JS only needs to set that dataset. Done in two places:
+- `TenantPicker.js` — picks up strategy on mount so the picker
+  thumbnails honor it before the user picks a tenant.
+- `StaffLogin.js` — re-applies on the per-tenant page (handles
+  deep-links that skip the picker via DNS shortcuts; admin deep-links
+  also work via picker → admin path).
+
+Both pages call `fetch('/api/public-config')` and apply:
+```js
+if (strat === 'invert' || strat === 'force-light' || strat === 'card') {
+  document.documentElement.dataset.tenantLogoStrategy = strat;
+  if (strat === 'force-light') document.documentElement.dataset.theme = 'light';
+}
+```
+
+Strategy CSS covers both `.tenant-picker-logo` (small picker
+thumbnails) and `.login-tenant-logo` (the big 64px post-pick logo).
+
+**Minimal dev gate.** `dev` / `dev` hardcoded client-side login at
+`/login/dev`. Auth is just a `'hotelops-dev-auth' = 'true'` localStorage
+flag — not server-backed. Intentionally minimal: dev work the property
+admins shouldn't touch is currently just one knob; a real dev role can
+ship in a later sprint if the surface grows. `DevPanel` at `/dev`
+gates on `isDevAuthed()` (Navigate to `/login/dev` if not) and exposes
+the strategy as three radio cards.
+
+**Files added:**
+- `public/hotelops-light.svg`, `public/hotelops-dark.svg`,
+  `public/snoqualmieinn.png` — processed assets.
+- `src/components/shared/HotelOpsLogo.{js,css}` — theme-aware logo
+  with size variants.
+- `src/pages/Login/DevLogin.js` — hardcoded dev/dev gate. Exports
+  `isDevAuthed()` and `clearDevAuth()` for use by DevPanel and any
+  future dev-gated route.
+- `src/pages/Dev/DevPanel.js` — single section (strategy radios), save
+  + saved-toast + sign-out.
+
+**Files modified:**
+- `src/config/tenant.js` — `KNOWN_TENANTS` now carries `logoUrl` and
+  `darkLogoUrl` per tenant. New `HOTELOPS_LOGOS = { light, dark }` map
+  consumed by `HotelOpsLogo`. `resolveTenant(slug)` unchanged — still
+  returns null for unknown slugs so the routes can 404 cleanly.
+- `src/pages/Login/TenantPicker.js` — full rewrite per above.
+- `src/pages/Login/StaffLogin.js` — `.login-brand` + `.login-tenant`
+  replaced by `.login-tenant-brand`. Added `<HotelOpsLogo size="sm">`
+  attribution at card foot. Public-config effect picks up
+  `tenant_logo_dark_strategy`.
+- `src/pages/Login/AdminLogin.js` — same brand + attribution treatment.
+- `src/pages/Login/Login.css` — added `.login-tenant-brand`,
+  `.login-tenant-logo`, `.login-tenant-logo-wrap`, `.login-attribution`,
+  `.tenant-picker-*` (header / list / row / logo / dev link),
+  `.dev-section` / `.dev-strategy-*` / `.dev-signout`. Dark-mode
+  strategy block targets both picker thumbnails and post-pick logo.
+- `src/App.js` — added routes `/login/dev` → `DevLogin` and `/dev` →
+  `DevPanel`. Both unauthenticated (dev auth is client-side).
+- `server/server.js` — added `tenant_logo_dark_strategy` to settings
+  ALLOWED validator (`['card', 'invert', 'force-light']`) and to
+  `/api/public-config` defaults + SELECT + parse path.
+
+**Conventions added:**
+- **Tenant brand > platform brand on login pages.** The property's
+  logo + name is the primary identity; HotelOps is small attribution
+  at the foot. Reverse this only if there's a deliberate reason
+  (e.g. a generic SaaS landing surface).
+- **White-card backdrop is the default dark-mode strategy for tenant
+  logos.** Works for any colored logo, no per-tenant dark asset
+  required. `invert` and `force-light` exist for the rare tenant who
+  needs them; dev panel flips between them.
+- **Theme swap via stacked imgs, not src toggling.** Both variants
+  ship to the DOM, CSS hides the wrong one. Avoids FOUC and re-fetch
+  on theme toggle. Pattern in `HotelOpsLogo.css`.
+- **SVG background-plate stripping is line-filter awk, not regex
+  surgery.** Identify the layer ranges (each layer is a contiguous
+  `<g>...</g>`), keep header (`<?xml`, `<svg>`), drop the bg layer's
+  lines, keep `</svg>` close. Verify with `tail -3`.
+- **Dev gate is client-side localStorage, not a server role.** Until
+  the dev surface grows beyond a single knob, the simpler gate is
+  enough. Don't bake `dev` as a role into the JWT / RequireRole
+  scheme yet.
+
+**Notes for next iteration:**
+- AdminLogin doesn't fetch public-config on its own — strategy
+  application relies on TenantPicker having run first. Works for the
+  picker → login flow; would break for a direct deep-link to
+  `/:tenant/login/admin`. If that becomes a real path, add the same
+  fetch effect there.
+- Dev auth uses a single shared `dev`/`dev` credential — fine for
+  one-developer capstone scope. SaaS roll-out should replace with a
+  server-issued JWT and a real dev role.
+- The HotelOps logo's wordmark uses the existing TiemposHeadline
+  stack; if branding diverges from Tiempos in the future, swap the
+  font in `.hotelops-logo-word`.
+- `force-light` pins theme via `dataset.theme = 'light'` on the login
+  pages only; once the user lands in the app the user's stored
+  preference takes over again. Acceptable for the login surface;
+  revisit if the strategy should also pin in-app pages.
+
+
 
 Two interconnected things — fix the visible regression from 9.1.2 *and*
 expose a layout-mode choice in admin settings so future kiosk variants
