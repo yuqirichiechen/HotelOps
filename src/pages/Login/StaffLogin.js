@@ -255,15 +255,31 @@ const StaffLogin = () => {
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
-        {/* Sprint 9.2 / 9.2.1: tenant logo is the primary brand on the
-            post-pick login page — a banner-style rectangle on top.
-            The PNG has the property name baked in, so the separate
-            text fallback only renders when no logoUrl is configured.
-            HotelOps shrinks to a small attribution at card foot. */}
+        {/* Sprint 9.2.2: small HotelOps badge in the top-right corner.
+            On arrival from the picker, View Transitions morphs the
+            picker's big centered HotelOps logo into this badge — the
+            "Rakuten-style" settle-into-corner effect. The badge is
+            purely decorative (pointer-events: none) so it doesn't
+            intercept taps near the corner. */}
+        <div className="login-hotelops-badge">
+          <HotelOpsLogo size="sm" />
+        </div>
+
+        {/* Sprint 9.2 / 9.2.1 / 9.2.2: tenant logo as banner-style
+            primary brand. The `viewTransitionName` on the img matches
+            the picker-row thumbnail for this tenant, so View
+            Transitions morphs the small picker thumb directly into
+            this big banner during navigation. The fallback name span
+            only renders when no logoUrl is configured. */}
         <div className="login-tenant-brand">
           {tenant.logoUrl ? (
             <span className="login-tenant-logo-wrap">
-              <img src={tenant.logoUrl} alt={tenant.name} className="login-tenant-logo" />
+              <img
+                src={tenant.logoUrl}
+                alt={tenant.name}
+                className="login-tenant-logo"
+                style={{ viewTransitionName: `tenant-brand-${tenant.slug}` }}
+              />
             </span>
           ) : (
             <span className="login-tenant-name">{tenant.name}</span>
@@ -356,12 +372,8 @@ const StaffLogin = () => {
           </TransitionLink>
         </div>
 
-        {/* Sprint 9.2 / 9.2.1: HotelOps attribution at card foot. The
-            PNG has the wordmark baked in; <HotelOpsLogo /> just sizes
-            it small + slightly muted via .hotelops-logo-sm. */}
-        <div className="login-attribution">
-          <HotelOpsLogo size="sm" />
-        </div>
+        {/* Sprint 9.2.2: HotelOps brand moved from card foot to the
+            top-right corner badge (see .login-hotelops-badge above). */}
       </div>
     </div>
   );

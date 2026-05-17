@@ -58,7 +58,16 @@ const TenantPicker = ({ kind }) => {
               <TransitionLink to={`/${t.slug}/login/${kind}`} className="tenant-picker-row">
                 {t.logoUrl ? (
                   <span className="tenant-picker-logo-wrap">
-                    <img src={t.logoUrl} alt="" className="tenant-picker-logo" />
+                    {/* Sprint 9.2.2: per-tenant view-transition-name so
+                        the row's thumbnail morphs directly into the
+                        post-pick page's big tenant banner. Other rows'
+                        thumbs (different names) just fade out. */}
+                    <img
+                      src={t.logoUrl}
+                      alt=""
+                      className="tenant-picker-logo"
+                      style={{ viewTransitionName: `tenant-brand-${t.slug}` }}
+                    />
                   </span>
                 ) : (
                   <span className="tenant-picker-logo-wrap tenant-picker-logo-empty">

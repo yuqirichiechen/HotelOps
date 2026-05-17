@@ -36,13 +36,21 @@ const AdminLogin = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        {/* Sprint 9.2 / 9.2.1: tenant logo as banner-style primary
-            brand. PNG has the property name baked in, so the text
-            fallback only renders when no logoUrl is configured. */}
+        {/* Sprint 9.2.2: see StaffLogin for the rationale on the corner
+            HotelOps badge + view-transition tenant-brand morph. */}
+        <div className="login-hotelops-badge">
+          <HotelOpsLogo size="sm" />
+        </div>
+
         <div className="login-tenant-brand">
           {tenant.logoUrl ? (
             <span className="login-tenant-logo-wrap">
-              <img src={tenant.logoUrl} alt={tenant.name} className="login-tenant-logo" />
+              <img
+                src={tenant.logoUrl}
+                alt={tenant.name}
+                className="login-tenant-logo"
+                style={{ viewTransitionName: `tenant-brand-${tenant.slug}` }}
+              />
             </span>
           ) : (
             <span className="login-tenant-name">{tenant.name}</span>
@@ -92,9 +100,7 @@ const AdminLogin = () => {
           </TransitionLink>
         </div>
 
-        <div className="login-attribution">
-          <HotelOpsLogo size="sm" />
-        </div>
+        {/* HotelOps brand lives in the corner badge above (9.2.2). */}
       </div>
     </div>
   );

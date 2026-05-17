@@ -2,11 +2,54 @@
 
 .login-page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-base);
   padding: 24px;
+}
+
+/* Sprint 9.2.2: on phones, the login surface should be a single, fixed
+   "kiosk" screen — staff are clocking in, not scrolling. Lock the page
+   to the dynamic viewport height and clip overflow so URL-bar
+   show/hide and on-screen keyboards can't push the keypad off-screen
+   or introduce rubber-band scroll. The card's own padding + size
+   shrink below to keep all content inside the lock; if a property
+   ever needs longer fields, raise the breakpoint deliberately rather
+   than re-enable scroll silently. */
+@media (max-width: 768px) {
+  .login-page {
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    padding: 12px;
+  }
+  .login-card {
+    padding: 18px 16px 16px;
+    max-height: 100%;
+    overflow: hidden;
+  }
+  .login-tenant-brand {
+    margin-bottom: 12px;
+    gap: 6px;
+  }
+  .login-tenant-logo-wrap {
+    max-width: 230px;  /* clearance for the corner badge on phones */
+    height: 80px;
+    padding: 8px 14px;
+  }
+  .login-title { font-size: 22px; margin-bottom: 2px; }
+  .login-sub   { font-size: 13px; margin-bottom: 14px; }
+  .login-form  { gap: 10px; }
+  .login-hotelops-badge {
+    top: 10px;
+    right: 10px;
+  }
+  .login-hotelops-badge .hotelops-logo-sm .hotelops-logo-img {
+    height: 30px;
+  }
 }
 
 .login-card {
@@ -17,6 +60,7 @@
   box-shadow: var(--shadow-md);
   padding: 36px 32px 28px;
   border: 1px solid var(--border);
+  position: relative;  /* anchor for .login-hotelops-badge (9.2.2) */
   /* Sprint 7.4: tags this element for the View Transitions API. When a
      navigation between staff <-> admin login is wrapped in
      `document.startViewTransition` (see TransitionLink.js), the browser
@@ -57,7 +101,11 @@
 }
 .login-tenant-logo-wrap {
   width: 100%;
-  max-width: 320px;
+  /* Sprint 9.2.2: capped at 280 (was 320) so the corner HotelOps
+     badge has clearance from the centered banner — the badge sits
+     ~14px from the card's right edge, so banner needs ~60px of
+     margin on each side to not visually overlap. */
+  max-width: 280px;
   height: 120px;
   border-radius: 14px;
   background: #ffffff;
@@ -84,13 +132,27 @@
   text-align: center;
 }
 
-/* Sprint 9.2: HotelOps attribution at the foot of the card. Small,
-   muted — emphasizes that the property is the brand the user is
-   signing into, with HotelOps providing the platform. */
-.login-attribution {
-  margin-top: 14px;
-  display: flex;
-  justify-content: center;
+/* Sprint 9.2 → 9.2.2: HotelOps "attribution at the foot" is replaced
+   by a small badge in the top-right corner of the login card. The
+   change is partly visual (frees a chunk of vertical space, which we
+   needed for the mobile non-scroll lock) and partly choreographic:
+   the picker page shows a big HotelOps logo at the top center; when
+   the user taps a property, View Transitions morphs that big logo
+   into this corner badge (see .tenant-picker-header / .login-hotelops-badge
+   view-transition-name rules below). Inspired by the Rakuten extension
+   pattern — brand "settles" into the corner rather than sitting at
+   the foot apologetically.
+
+   Class is kept defined (no styling) so any legacy reference doesn't
+   throw a missing-selector warning during the transition. */
+.login-attribution { display: none; }
+
+.login-hotelops-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  pointer-events: none;  /* purely decorative — don't intercept taps */
 }
 
 /* Legacy classes kept in case any older login layout references them
@@ -260,6 +322,32 @@
   display: flex;
   justify-content: center;
   margin-bottom: 24px;
+}
+
+/* Sprint 9.2.2: tag the picker-page HotelOps logo and the post-pick
+   corner badge with the same view-transition-name so the browser
+   morphs the big-center logo into the small-corner badge when the
+   user taps a property. Target the inner .hotelops-logo (not the
+   wrapping container) so the morph is the logo's actual bounding
+   box, not the wrapper's wider/shorter envelope.
+
+   We tune duration to 500ms — longer than the existing .login-card
+   morph (320ms) — so the eye reads the "collision and settle" as
+   the visual focus during the page transition. */
+.tenant-picker-header .hotelops-logo,
+.login-hotelops-badge .hotelops-logo {
+  view-transition-name: hotelops-mark;
+}
+::view-transition-old(hotelops-mark),
+::view-transition-new(hotelops-mark) {
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(hotelops-mark),
+  ::view-transition-new(hotelops-mark) {
+    animation-duration: 1ms;
+  }
 }
 
 .tenant-picker-list {
@@ -487,8 +575,11 @@ html[data-tenant-logo-strategy="invert"] .login-tenant-logo-wrap {
 }
 
 @media (max-width: 480px) {
-  .login-kb-area.is-numbers-only .login-keypad { gap: 8px; }
-  .login-kb-area.is-numbers-only .lk-btn { padding: 18px 0; font-size: 24px; border-radius: 12px; }
+  /* Sprint 9.2.2: tighter than the prior 9.1.x values so the whole
+     login fits in iPhone-SE viewport (667px) without scroll. Touch
+     target stays ≥48px tall (14 padding × 2 + 22 line ≈ 54px). */
+  .login-kb-area.is-numbers-only .login-keypad { gap: 6px; }
+  .login-kb-area.is-numbers-only .lk-btn { padding: 14px 0; font-size: 22px; border-radius: 12px; }
 }
 
 /* Sprint 9.1.2: keep the "huge buttons at ≥720" sizing only for the

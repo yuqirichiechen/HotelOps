@@ -733,6 +733,183 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 9.2.2: Rakuten-style HotelOps badge morph + mobile non-scroll lock
+
+Two pieces — a brand-identity upgrade and a mobile fit-and-finish bug.
+
+**The Rakuten-inspired morph.** 9.2.1 left a small HotelOps wordmark
+at the *foot* of the post-pick login card as an "attribution." It
+felt apologetic — and it was eating ~54px of vertical space we needed
+for the mobile non-scroll lock. The cleaner pattern is the one Rakuten
+uses when activating a deal: their badge swoops onto the page, briefly
+"collides" with the site brand, then settles into a small corner
+indicator. We're stealing exactly that shape:
+
+- **Picker page** — HotelOps logo big, centered at the top
+  (`<HotelOpsLogo size="xl" />` inside `.tenant-picker-header`).
+- **Post-pick login page** — same logo as a small badge in the top-right
+  corner of the card (`.login-hotelops-badge` → `<HotelOpsLogo size="sm" />`),
+  *plus* the tenant's banner logo centered on top.
+
+The morph is pure View Transitions. Both the picker-page logo and
+the corner badge get the *same* `view-transition-name`:
+
+```css
+.tenant-picker-header .hotelops-logo,
+.login-hotelops-badge .hotelops-logo {
+  view-transition-name: hotelops-mark;
+}
+::view-transition-old(hotelops-mark),
+::view-transition-new(hotelops-mark) {
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
+
+Because `TransitionLink` wraps the navigation in
+`document.startViewTransition`, when the user taps a property the
+browser snapshots both pages and morphs the named element's bounding
+box from "big center" to "small corner" over 500ms. No JS choreography
+required — the "collide and settle" is just the geometry interpolation.
+
+We do the same trick for the **tenant logo**: each picker row's
+thumbnail gets `viewTransitionName: \`tenant-brand-${slug}\`` via
+inline style, and the post-pick page's banner logo gets the same name
+keyed off `tenant.slug`. The browser pairs the names, so only the
+*picked* tenant's thumbnail morphs into the post-pick banner; the
+other rows' thumbs just fade out (default behaviour for elements
+present only in the old snapshot). The picked thumbnail visually
+"flies up and grows" into the banner while HotelOps "settles" into
+the corner — both in the same 500ms window.
+
+Inline style is used (rather than a static class) because the
+view-transition-name has to be unique per visible element, but we
+don't know which tenant the user will tap. Pre-assigning a
+slug-derived unique name to every row means the matching name on the
+destination is *always* there for whichever row gets picked.
+
+`.login-hotelops-badge` is `position: absolute; top: 14; right: 14;
+pointer-events: none` (decorative, doesn't intercept taps). The card
+got `position: relative` to anchor it. The badge is inside `.login-card`
+rather than at page level so it participates in the card's view
+transition — important because the card itself morphs (already has
+`view-transition-name: login-card` from 9.1.x).
+
+Banner clearance: with the corner badge eating ~14+40px of the card's
+right edge, the centered banner needs at least that much margin or it
+visually overlaps the badge. Default `.login-tenant-logo-wrap`
+`max-width` dropped from 320 → 280, mobile capped at 230. Snoqualmie's
+2:1 lockup still fits the wrap with breathing room.
+
+The `.login-attribution` class is kept but `display: none`d — there
+are likely still callsites in DevLogin / DevPanel that reference it
+(plus any future page reusing the login chrome), and dropping the
+class with no warning would leave dangling `<div>`s with empty
+semantics. Foot attribution still gets dropped at the JSX layer in
+StaffLogin / AdminLogin / DevPanel (the CSS rule belt-and-braces it).
+
+**Mobile non-scroll lock.** User reported the staff login was
+scrollable on phones. For a kiosk-style clock-in surface, that's a
+real bug — staff are tapping numbers and submit, not navigating.
+Mobile-browser URL-bar show/hide compounds this by triggering rubber-
+band scroll whenever the viewport "jumps."
+
+Fix uses `100dvh` (dynamic viewport height) so URL-bar transitions
+don't change the lock target, plus `overflow: hidden` at the page
+level so even if content does slightly exceed the lock the page
+refuses to scroll. The "if content overflows" case is then a
+tightening problem on the card, not a UX bug:
+
+```css
+@media (max-width: 768px) {
+  .login-page { height: 100dvh; max-height: 100dvh; overflow: hidden; padding: 12px; }
+  .login-card { padding: 18px 16px 16px; max-height: 100%; overflow: hidden; }
+  .login-tenant-logo-wrap { max-width: 230px; height: 80px; padding: 8px 14px; }
+  .login-title { font-size: 22px; margin-bottom: 2px; }
+  .login-sub   { font-size: 13px; margin-bottom: 14px; }
+  .login-form  { gap: 10px; }
+}
+@media (max-width: 480px) {
+  .login-kb-area.is-numbers-only .login-keypad { gap: 6px; }
+  .login-kb-area.is-numbers-only .lk-btn { padding: 14px 0; font-size: 22px; border-radius: 12px; }
+}
+```
+
+Keypad button touch target stays ≥48px tall after the squeeze
+(`padding: 14px × 2 + 22px line ≈ 54px`), well above Material's 44px
+guideline. Banner shrinks from 120 → 80px on phones; card padding
+goes 36/32/28 → 18/16/16; sub margin tightens. Cumulative savings
+~150px — fits the iPhone-SE viewport (667px) with room to spare,
+even with the on-screen keypad always rendered. If a future deploy
+needs longer fields (e.g. an extra signed-attestation), raise the
+768px breakpoint deliberately rather than re-enable scroll silently.
+
+The 9.2.2 attribution removal (~54px savings) is what pushed the
+math from "barely fits" to "fits with room." Without that, the
+mobile rules would have to be tighter still and the keypad buttons
+would dip below the 48px touch-target floor.
+
+**Files modified:**
+- `src/pages/Login/Login.css`:
+  - `.login-card` → `position: relative` (anchor for badge).
+  - `.login-attribution` → `display: none`. New `.login-hotelops-badge`
+    (absolute, top-right, pointer-events none).
+  - `.tenant-picker-header .hotelops-logo, .login-hotelops-badge
+    .hotelops-logo` → `view-transition-name: hotelops-mark`;
+    `::view-transition-old/new(hotelops-mark)` tuned to 500ms.
+  - `.login-tenant-logo-wrap` → `max-width: 280` (was 320) for badge
+    clearance.
+  - New `@media (max-width: 768px)` block: 100dvh lock + tightened
+    sizes. Existing `@media (max-width: 480px)` keypad block
+    tightened further (padding 14 / font 22 / gap 6).
+- `src/pages/Login/StaffLogin.js`, `AdminLogin.js`:
+  - Added `.login-hotelops-badge` div with `<HotelOpsLogo size="sm" />`
+    at the top of the card.
+  - Removed `.login-attribution` foot block.
+  - Tenant logo `<img>` got `style={{ viewTransitionName:
+    \`tenant-brand-${tenant.slug}\` }}` for the morph pair.
+- `src/pages/Login/TenantPicker.js`:
+  - Each picker-row tenant logo `<img>` got matching
+    `viewTransitionName` per row.
+- `src/pages/Dev/DevPanel.js`:
+  - Removed `.login-attribution` foot block (HotelOps is already the
+    main lockup on dev pages — no tenant means nothing to attribute).
+
+**Conventions reinforced/added:**
+- **Use View Transitions for cross-page brand choreography.** Pair
+  `view-transition-name` on the matching element in the old and new
+  pages and let the browser handle the morph. Cheaper and smoother
+  than JS animation timelines.
+- **Per-instance view-transition names go via inline style.** A
+  static class won't work when the name depends on a runtime value
+  (the picked tenant's slug); inline style is the clean escape hatch.
+- **Pre-assign unique names to *every* candidate origin element.**
+  We don't know which picker row the user will tap, so all rows get
+  `tenant-brand-{slug}` names. Only the one that matches the
+  destination morphs; the others fade.
+- **Kiosk-style mobile login locks the viewport.** Use `100dvh` +
+  `overflow: hidden` at the page level. If the card content needs
+  to grow past the lock, tighten the card sizes — don't re-enable
+  scroll silently. Document the breakpoint where the squeeze stops
+  fitting so the next person knows the constraint.
+
+**Notes for next iteration:**
+- Badge uses the full PNG (icon + wordmark stacked square) sized 40px
+  on desktop / 30px on mobile. The wordmark at 30px is barely
+  legible; if it bothers anyone, ship an icon-only HotelOps PNG and
+  swap it in for the badge use specifically — keep the wordmark
+  variant for the picker page hero.
+- The hardcoded 768px breakpoint for the non-scroll lock matches the
+  tablet-portrait boundary roughly; on a landscape phone or small
+  tablet it might leave more room than necessary. Acceptable for
+  now; revisit if a tablet-portrait kiosk deploy complains.
+- `tenant-brand-{slug}` per-row names work but they're only one
+  morph per navigation. If we ever ship a "compare two properties"
+  flow it'll need a different pairing model. Out of scope for now.
+- `.login-attribution { display: none }` is a defensive shim. After
+  one cycle of confidence in the 9.2.2 layout, remove the class
+  entirely and any remaining references.
+
 ### 2026-05-07 — Sprint 9.2.1: PNG logos + banner tenant lockup + role-toggle relocation + wide-screen gap fix
 
 Four follow-ups to 9.2 that surfaced from a real screen-test:

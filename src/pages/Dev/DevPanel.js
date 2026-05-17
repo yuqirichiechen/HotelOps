@@ -127,9 +127,8 @@ const DevPanel = () => {
           <button type="button" className="dev-signout" onClick={handleSignOut}>Sign out of Dev →</button>
         </div>
 
-        <div className="login-attribution">
-          <HotelOpsLogo size="sm" />
-        </div>
+        {/* HotelOps brand is already the main lockup at the top of the
+            dev card (no tenant on dev pages), so no foot attribution. */}
       </div>
     </div>
   );
