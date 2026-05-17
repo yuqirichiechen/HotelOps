@@ -78,7 +78,7 @@ const DevPanel = () => {
     <div className="login-page login-layout-hardcode">
       <div className="login-card">
         <div className="login-tenant-brand">
-          <HotelOpsLogo size="lg" wordmark />
+          <HotelOpsLogo size="lg" />
         </div>
 
         <h1 className="login-title">Dev panel</h1>
@@ -128,7 +128,7 @@ const DevPanel = () => {
         </div>
 
         <div className="login-attribution">
-          <HotelOpsLogo size="sm" wordmark />
+          <HotelOpsLogo size="sm" />
         </div>
       </div>
     </div>

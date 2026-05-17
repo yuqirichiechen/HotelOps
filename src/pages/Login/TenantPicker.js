@@ -1,24 +1,32 @@
 import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { KNOWN_TENANTS } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 
-// Sprint 9.2: revamped TenantPicker. Full-page layout matching staff
-// login dimensions. HotelOps platform logo at the top (theme-aware via
-// the dual-SVG selector). One row per property in KNOWN_TENANTS, each
-// row showing the tenant's logo and name — the user clicks the actual
-// brand they're picking, not just a name. Dev sign-in link at the
-// bottom for platform maintenance.
+// Sprint 9.2 / 9.2.1: TenantPicker — full-page property selector.
+// HotelOps platform logo at the top, one row per property in
+// KNOWN_TENANTS with the tenant's logo + name.
+//
+// 9.2.1 dropped the Staff↔Manager toggle from this page: which login
+// roles a property supports is a per-tenant decision (some properties
+// might not even have managers signing in here), so we don't surface
+// the toggle before the user has picked a property. The role choice
+// lives on the post-pick login page instead, where the tenant has
+// been selected and any tenant-specific role visibility can apply.
+//
+// Dev sign-in remains as the only secondary link, styled like the
+// post-pick "Manager sign-in" / "Staff sign-in" link so the visual
+// language stays consistent across the login family.
 
 const TenantPicker = ({ kind }) => {
   const tenants = Object.values(KNOWN_TENANTS);
 
-  // Sprint 9.2: apply the dev-chosen tenant-logo dark-mode strategy so
-  // the picker row thumbnails honor it too (not just the post-pick
-  // login page). 'card' is the CSS default and needs no JS work.
+  // Apply the dev-chosen tenant-logo dark-mode strategy so the picker
+  // row thumbnails honor it (and so the strategy is set before the
+  // user lands on the post-pick login). 'card' is the CSS default and
+  // needs no JS work.
   useEffect(() => {
     fetch('/api/public-config')
       .then(r => r.json())
@@ -36,7 +44,7 @@ const TenantPicker = ({ kind }) => {
     <div className="login-page login-layout-hardcode">
       <div className="login-card tenant-picker-card">
         <div className="tenant-picker-header">
-          <HotelOpsLogo size="xl" wordmark />
+          <HotelOpsLogo size="xl" />
         </div>
 
         <h1 className="login-title">Select your property</h1>
@@ -64,19 +72,10 @@ const TenantPicker = ({ kind }) => {
           ))}
         </ul>
 
+        {/* Sprint 9.2.1: only Dev sign-in here. Manager/Staff toggle
+            moves to the post-pick login pages where it belongs. */}
         <div className="login-switch">
-          <TransitionLink to={`/login/${kind === 'admin' ? 'staff' : 'admin'}`}>
-            {kind === 'admin' ? 'Staff sign-in →' : 'Manager sign-in →'}
-          </TransitionLink>
-        </div>
-
-        {/* Sprint 9.2: dev sign-in — minimal entry point for platform
-            maintenance settings (currently just dark-mode strategy for
-            tenant logos). Hidden link, not styled as a primary action,
-            because dev isn't a workflow staff or managers should care
-            about. */}
-        <div className="tenant-picker-dev">
-          <Link to="/login/dev" className="tenant-picker-dev-link">Dev sign-in</Link>
+          <TransitionLink to="/login/dev">Dev sign-in →</TransitionLink>
         </div>
       </div>
     </div>

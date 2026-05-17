@@ -1,34 +1,37 @@
 import React from 'react';
 import { HOTELOPS_LOGOS } from '../../config/tenant';
 
-// Sprint 9.2: two-variant logo selector. The light SVG (dark shape) is for
-// light themes; the dark SVG (light shape) is for dark themes. We use a
-// stacked <img> trick — both render, CSS hides one per theme — instead
-// of JS-detecting the theme. That dodges the FOUC where the wrong logo
-// flashes for one frame before useEffect runs, and it lets the user's
-// system-preference dark/light + the app's own theme toggle both
-// transparently swap the logo at the CSS layer.
+// Sprint 9.2 / 9.2.1: HotelOps logo, theme-aware via CSS only. Both
+// theme variants render as <img>s and CSS hides whichever one doesn't
+// match the active theme. That avoids the FOUC where a JS-detected
+// theme would show the wrong logo for one frame on first paint.
 //
-// `size` ('xl' | 'lg' | 'md' | 'sm') maps to a CSS class for the wrapper.
-// `wordmark` controls whether the "HotelOps" wordmark is rendered next
-// to the icon — true on the picker page (where this is the page title)
-// and false on the login footer (where it's a smaller attribution).
+// 9.2.1 swapped the SVGs for PNGs whose backgrounds intentionally
+// match the app's `--bg-base` color in each theme — so the logo's
+// edges disappear into the page rather than sitting in a visible card
+// shape. PNG naming follows TARGET THEME, not content color:
+//   light = for light theme, dark = for dark theme.
+//
+// The "HotelOps" wordmark is baked into the PNG, so this component
+// no longer renders a separate text span. The `wordmark` prop is
+// kept for source-compat but ignored.
+//
+// `size` ('xl' | 'lg' | 'md' | 'sm') maps to a CSS class on the
+// wrapper that picks the image height.
 
-const HotelOpsLogo = ({ size = 'md', wordmark = true }) => (
+const HotelOpsLogo = ({ size = 'md' /* , wordmark — ignored, baked into PNG */ }) => (
   <div className={`hotelops-logo hotelops-logo-${size}`}>
     <img
       className="hotelops-logo-img hotelops-logo-img-light"
       src={HOTELOPS_LOGOS.light}
-      alt={wordmark ? '' : 'HotelOps'}
-      aria-hidden={wordmark || undefined}
+      alt=""
+      aria-hidden="true"
     />
     <img
       className="hotelops-logo-img hotelops-logo-img-dark"
       src={HOTELOPS_LOGOS.dark}
-      alt={wordmark ? '' : 'HotelOps'}
-      aria-hidden={wordmark || undefined}
+      alt="HotelOps"
     />
-    {wordmark && <span className="hotelops-logo-word">HotelOps</span>}
   </div>
 );
 

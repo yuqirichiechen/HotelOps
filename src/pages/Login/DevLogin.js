@@ -43,7 +43,7 @@ const DevLogin = () => {
     <div className="login-page login-layout-hardcode">
       <div className="login-card">
         <div className="login-tenant-brand">
-          <HotelOpsLogo size="lg" wordmark />
+          <HotelOpsLogo size="lg" />
         </div>
 
         <h1 className="login-title">Dev sign-in</h1>

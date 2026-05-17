@@ -733,6 +733,178 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-07 — Sprint 9.2.1: PNG logos + banner tenant lockup + role-toggle relocation + wide-screen gap fix
+
+Four follow-ups to 9.2 that surfaced from a real screen-test:
+
+**1. SVGs → PNGs, with theme-matching backgrounds.** The 9.2 SVGs had
+their background plates stripped so they could overlay any card. Two
+problems: the icon was rendering tiny in practice (`height: 18px-56px`
+across size variants — fine in isolation but barely legible against
+the card chrome), and the theme variant swap CSS was inverted relative
+to the file naming convention. Pivot: the user supplied
+`logo/logo_light.png` + `logo/logo_dark.png` (square 1254x1254) whose
+backgrounds *exactly match the app's themed `--bg-base` colors*. So
+the PNG sits on the page and its edges disappear into the page —
+no need for background stripping, no card-shape artifact.
+
+```sh
+cp logo/logo_light.png public/hotelops-light.png
+cp logo/logo_dark.png  public/hotelops-dark.png
+```
+
+PNG naming convention is **target theme**, not content color:
+`hotelops-light.png` is the version designed for *light* theme
+(dark mark + wordmark on white background). The 9.2 CSS swap had this
+backwards (it was naming by content color), so default light theme
+was showing the dark-theme PNG. Fix in `HotelOpsLogo.css`:
+```css
+.hotelops-logo-img-light { display: block; }  /* default = light theme */
+.hotelops-logo-img-dark  { display: none; }
+@media (prefers-color-scheme: dark) { /* swap */ }
+html[data-theme="light"] /* explicit override beats media query */
+```
+
+Also: the PNG has the "HotelOps" wordmark *baked in* (square layout:
+H/D mark over the wordmark). So `<HotelOpsLogo />` no longer renders
+a separate text span. The `wordmark` prop is kept for source-compat
+but ignored. Size variants got much bigger to match the new
+self-contained logo: `xl: 140px`, `lg: 96px`, `md: 56px`, `sm: 40px`
+(sm gets `opacity: 0.75` for the attribution use).
+
+**2. Banner-style tenant logo on post-pick login.** The 9.2 layout put
+the tenant logo in a 64x64 white-card square next to the tenant name.
+That worked for square logos but Snoqualmie's lockup is a wide
+horizontal banner (1774×887, ~2:1) and got letterboxed into a thin
+strip inside the square. 9.2.1 makes `.login-tenant-logo-wrap` a wide
+rectangle (max-width 320px, height 120px, padded 14×20) centered at
+the top of the card, and `.login-tenant-brand` becomes a flex column
+so the logo banner stacks above any fallback content. The separate
+`<span className="login-tenant-name">` only renders when no `logoUrl`
+is configured — the PNG carries the property name already, so showing
+"Snoqualmie Inn" *next to* a logo that already says "Snoqualmie Inn"
+is redundant. Pattern in `StaffLogin.js`, `AdminLogin.js`:
+
+```jsx
+<div className="login-tenant-brand">
+  {tenant.logoUrl ? (
+    <span className="login-tenant-logo-wrap">
+      <img src={tenant.logoUrl} alt={tenant.name} className="login-tenant-logo" />
+    </span>
+  ) : (
+    <span className="login-tenant-name">{tenant.name}</span>
+  )}
+</div>
+```
+
+Same `.tenant-picker-logo-wrap` widened to 110×56 so the row
+thumbnails accommodate horizontal lockups too.
+
+**3. Role toggle (Manager↔Staff) leaves the picker, lives only on the
+post-pick login.** 9.2's TenantPicker had a `.login-switch` "Manager
+sign-in →" / "Staff sign-in →" link at the bottom. Wrong place to
+expose role choice: which roles a property supports is a *per-tenant*
+decision (some hotels might not even let managers sign in here), so
+the role toggle has to come *after* the user has chosen a tenant.
+The picker now shows only the Dev sign-in link (the one secondary
+action that genuinely belongs platform-wide). The post-pick StaffLogin
+/ AdminLogin pages already had the role toggle — no changes needed
+there. Side benefit: the picker page is now visually quieter (one
+secondary link instead of two), and the dev link uses the same
+`.login-switch` styling as the post-pick toggles for visual
+consistency. The bespoke `.tenant-picker-dev` / `.tenant-picker-dev-link`
+classes from 9.2 are removed.
+
+**4. Wide-screen two-column gap bug.** The screenshot
+(user-supplied) showed the brand at top-left, a ~250px empty gap, then
+the Welcome-back / form / sign-in clustered toward the bottom of col
+1 — while the right column held the keypad starting from the top.
+Root cause: CSS Grid's `align-content` defaults to `stretch` (via
+`normal`) for grid containers. With the keypad spanning all rows on
+the right (`grid-row: 1 / -1`), the col-1 rows got stretched evenly
+to fill the keypad's intrinsic height — distributing the ~100px of
+excess across 7 col-1 rows as ~14px extra per row, *plus* the
+14px row-gap, doubling the perceived gap between every item.
+
+Fix is one CSS property: `align-content: start` on both two-col
+grids (hardcode + fluid). Col-1 stack stays compact at the top; any
+extra height in the keypad cell shows as whitespace below the form
+— visually fine because the form is what staff actually interact
+with, and the keypad already sits aligned to the top of the card.
+
+**Files added:**
+- `public/hotelops-light.png`, `public/hotelops-dark.png` — copied
+  from `logo/`. The 9.2 SVGs are left on disk as legacy fallbacks
+  in case anything still references them; nothing in the React app
+  does after 9.2.1.
+
+**Files modified:**
+- `src/config/tenant.js` — `HOTELOPS_LOGOS` paths now `.png`; comment
+  block updated to reflect the target-theme naming convention.
+- `src/components/shared/HotelOpsLogo.js` — dropped the
+  `<span className="hotelops-logo-word">` wordmark. `wordmark` prop
+  kept as a no-op for source compat. Both `<img>`s still render;
+  CSS hides whichever doesn't match the active theme.
+- `src/components/shared/HotelOpsLogo.css` — variant-swap fixed to
+  match target-theme naming (light PNG shows in light theme).
+  Size variants enlarged: xl=140px, lg=96px, md=56px, sm=40px;
+  sm also has opacity 0.75 for the attribution use.
+- `src/pages/Login/TenantPicker.js` — dropped the role toggle.
+  Removed `Link` import (using `TransitionLink` for the dev link).
+  HotelOps logo is `xl` now (was already xl, but visually much bigger
+  thanks to the resized CSS variant).
+- `src/pages/Login/StaffLogin.js`, `AdminLogin.js` — tenant brand now
+  renders logo OR fallback name (not both). `<HotelOpsLogo>` calls
+  drop the `wordmark` prop.
+- `src/pages/Login/DevLogin.js`, `src/pages/Dev/DevPanel.js` — drop
+  `wordmark` prop on both `<HotelOpsLogo>` instances.
+- `src/pages/Login/Login.css`:
+  - `.login-tenant-brand` → flex-column (was flex-row), centered.
+  - `.login-tenant-logo-wrap` → wide rectangle (max-width 320, h 120,
+    padded). `.login-tenant-logo` uses object-fit contain so square
+    *or* rectangular logos fit.
+  - `.tenant-picker-logo-wrap` → wider rectangle (110×56) for
+    horizontal lockups.
+  - `.tenant-picker-dev` / `-link` rules removed; explanatory note
+    kept where they used to live.
+  - Both `@media (min-width: 1024px)` two-col blocks (hardcode and
+    fluid) get `align-content: start` on the grid container.
+
+**Conventions reinforced/added:**
+- **Match the logo's PNG background to the page's `--bg-base` per
+  theme.** Simpler than background-stripping SVGs and avoids the
+  card-shape artifact entirely. Naming convention: file name = target
+  theme (`logo_light.png` is for light theme). Keep this consistent
+  if more tenant or platform logos get added.
+- **Wordmark baked into the brand asset; don't recreate it in HTML.**
+  Designing the wordmark in the PNG means font + spacing + color
+  match the rest of the brand asset automatically. Sizing the asset
+  via `height: …px` and `width: auto` covers all aspect ratios.
+- **Role choice belongs after tenant choice.** Don't expose Staff /
+  Manager toggle before the user has picked a property — different
+  properties can have different role configurations, and the toggle
+  options aren't even meaningful until a tenant is selected. Picker
+  surface stays focused on its one job.
+- **CSS Grid + spanning cell ⇒ explicit `align-content: start`.**
+  Default `align-content: stretch` distributes extra spanning-cell
+  height across non-spanning rows, ballooning gaps. Pin to `start`
+  whenever a single cell spans the entire row track and other rows
+  should stay content-sized. Pattern in `Login.css` two-col blocks.
+
+**Notes for next iteration:**
+- `.login-tenant-logo-wrap` keeps the white backdrop unconditionally
+  (the strategy CSS at `html[data-tenant-logo-strategy="invert"]` can
+  still remove it). If a property ever supplies a logo with its own
+  matching dark variant, add a `darkLogoUrl` to `KNOWN_TENANTS` and
+  extend the brand block to render `<picture>` or theme-swap CSS
+  like `HotelOpsLogo` does.
+- The 9.2 SVGs in `public/` are unreferenced now. Safe to delete next
+  sweep; left in for one cycle in case a backup branch still uses
+  them.
+- The `wordmark` prop on `<HotelOpsLogo>` is a no-op for source-compat
+  but adds noise. After one cycle of confidence in the PNG layout,
+  delete the prop entirely from the component signature + callsites.
+
 ### 2026-05-07 — Sprint 9.2: real logos, tenant-as-brand login, minimal dev gate
 
 The pre-9.2 login surface used `🏨 HotelOps` as the brand and `{tenant.name}`

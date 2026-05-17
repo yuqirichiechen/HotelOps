@@ -29,14 +29,17 @@ export const DEFAULT_TENANT_SLUG = 'snoqualmieinn';
 
 export const TENANT = KNOWN_TENANTS[DEFAULT_TENANT_SLUG];
 
-// HotelOps platform logos (light = for use on dark backgrounds → light
-// theme; dark = for use on light backgrounds → dark theme). The SVGs
-// live in /public with their backgrounds stripped so they layer over
-// any background. Use them via the <HotelOpsLogo /> component which
-// picks the right one based on the active theme.
+// HotelOps platform logos. Sprint 9.2.1 switched from background-stripped
+// SVGs to PNGs whose background colors match the app's themed page
+// backgrounds. Naming follows TARGET THEME (not content color):
+//   - `light` → designed for light theme; its background matches the
+//     light-theme `--bg-base`, so it visually blends into the page.
+//   - `dark` → designed for dark theme; background matches dark-theme
+//     `--bg-base`. The HotelOps wordmark is baked into both PNGs;
+//     <HotelOpsLogo /> doesn't render a separate text span.
 export const HOTELOPS_LOGOS = {
-  light: '/hotelops-light.svg',  // light shape — visible on dark backgrounds
-  dark:  '/hotelops-dark.svg',   // dark shape — visible on light backgrounds
+  light: '/hotelops-light.png',  // for light theme (dark navy mark on white)
+  dark:  '/hotelops-dark.png',   // for dark theme (white mark on dark navy)
 };
 
 // Resolve a slug from the URL (or fall back to default) to a tenant config.

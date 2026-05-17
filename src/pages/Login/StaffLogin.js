@@ -255,16 +255,19 @@ const StaffLogin = () => {
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
-        {/* Sprint 9.2: tenant logo + name is the primary brand on the
-            post-pick login page. The HotelOps wordmark shrinks to a
-            small attribution at the bottom of the card. */}
+        {/* Sprint 9.2 / 9.2.1: tenant logo is the primary brand on the
+            post-pick login page — a banner-style rectangle on top.
+            The PNG has the property name baked in, so the separate
+            text fallback only renders when no logoUrl is configured.
+            HotelOps shrinks to a small attribution at card foot. */}
         <div className="login-tenant-brand">
-          {tenant.logoUrl && (
+          {tenant.logoUrl ? (
             <span className="login-tenant-logo-wrap">
-              <img src={tenant.logoUrl} alt="" className="login-tenant-logo" />
+              <img src={tenant.logoUrl} alt={tenant.name} className="login-tenant-logo" />
             </span>
+          ) : (
+            <span className="login-tenant-name">{tenant.name}</span>
           )}
-          <span className="login-tenant-name">{tenant.name}</span>
         </div>
 
         <h1 className="login-title">Welcome back</h1>
@@ -353,11 +356,11 @@ const StaffLogin = () => {
           </TransitionLink>
         </div>
 
-        {/* Sprint 9.2: HotelOps wordmark as small attribution below the
-            tenant brand. Frame matters: the property is the brand the
-            staff member is signing into; we're the platform underneath. */}
+        {/* Sprint 9.2 / 9.2.1: HotelOps attribution at card foot. The
+            PNG has the wordmark baked in; <HotelOpsLogo /> just sizes
+            it small + slightly muted via .hotelops-logo-sm. */}
         <div className="login-attribution">
-          <HotelOpsLogo size="sm" wordmark />
+          <HotelOpsLogo size="sm" />
         </div>
       </div>
     </div>
