@@ -50,11 +50,19 @@ const Home = () => {
   const [loading,   setLoading]   = useState(true);
   const [busy,      setBusy]      = useState(false);
   const [elapsed,   setElapsed]   = useState(0);
+  // Notif is now only used for ERRORS (the success "Clocked in!" /
+  // "Clocked out!" moved into the This Week card's back face via
+  // clockEvent — see Sprint 9.3 notes below).
   const [notif,     setNotif]     = useState(null);
-  // Sprint 8.6: auto sign-out banner — shown post-success-notif on
-  // clock-in/out. The notif itself runs for 2.2s (existing); we trigger
-  // the banner after that so they don't stack visually.
-  const [autoSignout, setAutoSignout] = useState(false);
+  // Sprint 9.3: a clock event drives the bottom-card flip. When set,
+  // This Week flips to show "Clocked in/out!" (replaces the old top
+  // notification banner) and Recent flips to host the auto-signout
+  // countdown + "Keep signed in" button. Tapping Keep signed in
+  // clears clockEvent → both cards flip back.
+  //   clockEvent: { type: 'in' | 'out', seconds: number } | null
+  // `seconds` is the auto-signout countdown if enabled; if 0/disabled,
+  // we keep the cards flipped for a short ack window then clear.
+  const [clockEvent, setClockEvent] = useState(null);
 
   const refresh = useCallback(async () => {
     const { data } = await apiFetch(`/me/hours?weekStart=${getMondayISO()}`);
@@ -81,17 +89,24 @@ const Home = () => {
     setTimeout(() => setNotif(null), 2200);
   };
 
-  // Sprint 8.6: chain — success → wait for the existing 2.2s notif to
-  // finish → show the auto-signout banner. If the admin set the timer to
-  // 0 the banner is skipped entirely (feature disabled).
-  const triggerAutoSignout = () => {
-    const seconds = data?.autoSignoutSeconds;
-    if (!seconds || seconds <= 0) return;
-    setTimeout(() => setAutoSignout(true), 2200);
+  // Sprint 9.3: a successful clock event flips both bottom cards.
+  // `seconds` carries the auto-signout duration; AutoSignoutBanner
+  // mounts inside the Recent back-face only when seconds > 0. If
+  // auto-signout is disabled (seconds <= 0) we still flip This Week
+  // for the confirmation visual, and auto-clear after a short ack
+  // window so the user gets their week summary back.
+  const triggerClockEvent = (type) => {
+    const seconds = data?.autoSignoutSeconds || 0;
+    setClockEvent({ type, seconds });
+    if (seconds <= 0) {
+      setTimeout(() => setClockEvent(null), 4000);
+    }
   };
 
+  const handleKeepSignedIn = () => setClockEvent(null);
+
   const handleAutoSignout = async () => {
-    setAutoSignout(false);
+    setClockEvent(null);
     await logout();
     // Sprint 8.6.2: animate the page swap. The login page's `.login-card`
     // already has its own slide-in animation; this gives the *outer* page
@@ -116,9 +131,8 @@ const Home = () => {
     const { ok, data: res } = await apiFetch('/clock-in-self', { method: 'POST' });
     setBusy(false);
     if (ok && res?.success) {
-      showNotif('success', 'Clocked in!');
       refresh();
-      triggerAutoSignout();
+      triggerClockEvent('in');
     } else {
       showNotif('error', res?.message || 'Clock in failed');
     }
@@ -129,9 +143,8 @@ const Home = () => {
     const { ok, data: res } = await apiFetch('/clock-out-self', { method: 'POST' });
     setBusy(false);
     if (ok && res?.success) {
-      showNotif('success', 'Clocked out!');
       refresh();
-      triggerAutoSignout();
+      triggerClockEvent('out');
     } else {
       showNotif('error', res?.message || 'Clock out failed');
     }
@@ -163,7 +176,10 @@ const Home = () => {
         </h1>
       </div>
 
-      {/* Clock In/Out — flip card */}
+      {/* Clock In/Out — flip card. Sprint 9.3 moves the auto-signout
+          countdown out of this card into the Recent card's back face,
+          so the action buttons always live here (clearer affordance
+          for "I want to clock the other way RIGHT NOW"). */}
       <section className="home-clock-section">
         <h2 className="home-section-title">Clock</h2>
         <div className="home-clock-flip-container">
@@ -172,21 +188,13 @@ const Home = () => {
             {/* Front — ready to clock in */}
             <div className="home-clock-face">
               <ClockWidget />
-              {autoSignout ? (
-                <AutoSignoutBanner
-                  seconds={data?.autoSignoutSeconds || 3}
-                  onCancel={() => setAutoSignout(false)}
-                  onSignOut={handleAutoSignout}
-                />
-              ) : (
-                <button
-                  className="home-clock-action in"
-                  onClick={handleClockIn}
-                  disabled={busy || loading}
-                >
-                  {busy ? '…' : 'Clock In'}
-                </button>
-              )}
+              <button
+                className="home-clock-action in"
+                onClick={handleClockIn}
+                disabled={busy || loading}
+              >
+                {busy ? '…' : 'Clock In'}
+              </button>
             </div>
 
             {/* Back — clocked in */}
@@ -200,66 +208,94 @@ const Home = () => {
                   Started at {clockInTime ? formatTime(clockInTime) : '—'}
                 </div>
               </div>
-              {autoSignout ? (
-                <AutoSignoutBanner
-                  seconds={data?.autoSignoutSeconds || 3}
-                  onCancel={() => setAutoSignout(false)}
-                  onSignOut={handleAutoSignout}
-                />
-              ) : (
-                <button
-                  className="home-clock-action out"
-                  onClick={handleClockOut}
-                  disabled={busy}
-                >
-                  {busy ? '…' : 'Clock Out'}
-                </button>
-              )}
+              <button
+                className="home-clock-action out"
+                onClick={handleClockOut}
+                disabled={busy}
+              >
+                {busy ? '…' : 'Clock Out'}
+              </button>
             </div>
 
           </div>
         </div>
       </section>
 
-      {/* This week */}
-      <section className="home-hero">
-        <div className="home-hero-eyebrow">This week</div>
-        <div className="home-hero-num">{formatHours(total)}</div>
-        <div className="home-hero-meta">
-          {recent.length > 0
-            ? `${recent.length} recent shift${recent.length === 1 ? '' : 's'} below.`
-            : 'No shifts logged yet.'}
+      {/* This week — Sprint 9.3 flip card. Front = week summary.
+          Back = clock-event confirmation (replaces the old top
+          notification banner). Flips on successful clock-in/out;
+          flips back when the user taps "Keep signed in" on the
+          Recent card OR after the auto-clear window when auto-
+          signout is disabled. */}
+      <section className="home-flip-container">
+        <div className={`home-flip-card ${clockEvent ? 'flipped' : ''}`}>
+          <div className="home-flip-face home-hero">
+            <div className="home-hero-eyebrow">This week</div>
+            <div className="home-hero-num">{formatHours(total)}</div>
+            <div className="home-hero-meta">
+              {recent.length > 0
+                ? `${recent.length} recent shift${recent.length === 1 ? '' : 's'} below.`
+                : 'No shifts logged yet.'}
+            </div>
+          </div>
+          <div className="home-flip-face home-flip-face-back home-hero-event">
+            <div className={`home-hero-event-icon ${clockEvent?.type || ''}`}>✓</div>
+            <div className="home-hero-event-title">
+              {clockEvent?.type === 'out' ? 'Clocked out!' : 'Clocked in!'}
+            </div>
+            <div className="home-hero-event-sub">
+              {clockEvent?.type === 'out' ? 'Have a good one' : 'You’re on the clock'}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Recent shifts */}
-      <section className="home-recent">
-        <h2 className="home-recent-title">Recent</h2>
-        {loading && <div className="home-empty">Loading…</div>}
-        {!loading && recent.length === 0 && (
-          <div className="home-empty">No shifts yet.</div>
-        )}
-        {!loading && recent.length > 0 && (
-          <ul className="home-recent-list">
-            {recent.map(s => (
-              <li key={s.entry_id} className="home-recent-row">
-                <div className="home-recent-date">
-                  {new Date(s.clock_in_time).toLocaleDateString([], {
-                    weekday: 'short', month: 'short', day: 'numeric',
-                  })}
-                </div>
-                <div className="home-recent-times">
-                  {formatTime(s.clock_in_time)} – {s.clock_out_time
-                    ? formatTime(s.clock_out_time)
-                    : <span className="home-recent-open">in progress</span>}
-                </div>
-                <div className="home-recent-hours">
-                  {s.clock_out_time ? formatHours(s.hours) : '—'}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      {/* Recent shifts — Sprint 9.3 flip card. Front = the last few
+          shifts. Back = the auto-signout countdown (only flips when
+          auto-signout is enabled). Embeds AutoSignoutBanner stripped
+          of its own border via .home-recent-event-banner. */}
+      <section className="home-flip-container">
+        <div className={`home-flip-card ${clockEvent && clockEvent.seconds > 0 ? 'flipped' : ''}`}>
+          <div className="home-flip-face home-recent">
+            <h2 className="home-recent-title">Recent</h2>
+            {loading && <div className="home-empty">Loading…</div>}
+            {!loading && recent.length === 0 && (
+              <div className="home-empty">No shifts yet.</div>
+            )}
+            {!loading && recent.length > 0 && (
+              <ul className="home-recent-list">
+                {recent.map(s => (
+                  <li key={s.entry_id} className="home-recent-row">
+                    <div className="home-recent-date">
+                      {new Date(s.clock_in_time).toLocaleDateString([], {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                      })}
+                    </div>
+                    <div className="home-recent-times">
+                      {formatTime(s.clock_in_time)} – {s.clock_out_time
+                        ? formatTime(s.clock_out_time)
+                        : <span className="home-recent-open">in progress</span>}
+                    </div>
+                    <div className="home-recent-hours">
+                      {s.clock_out_time ? formatHours(s.hours) : '—'}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="home-flip-face home-flip-face-back home-recent-event">
+            {clockEvent && clockEvent.seconds > 0 && (
+              <div className="home-recent-event-banner">
+                <AutoSignoutBanner
+                  seconds={clockEvent.seconds}
+                  onCancel={handleKeepSignedIn}
+                  onSignOut={handleAutoSignout}
+                />
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
     </div>

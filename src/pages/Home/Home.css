@@ -200,6 +200,121 @@
 .home-clock-action.out       { background: var(--danger); box-shadow: 0 4px 18px rgba(229, 62, 62, 0.30); }
 .home-clock-action.out:hover { background: var(--danger-hover); }
 
+/* ── Sprint 9.3: generic flip card (used by This Week + Recent) ───────────
+   Reuses the same rotateY transform pattern as .home-clock-flip-card.
+   Each instance has its own min-height (set on the front-face child via
+   the existing .home-hero / .home-recent rules) — the container takes
+   whichever face is taller. backface-visibility hides the away-facing
+   side so the two faces don't bleed through during rotation.
+
+   When a clock event fires, the parent React component toggles the
+   `.flipped` class on .home-flip-card; transition handles the animation. */
+.home-flip-container {
+  perspective: 1400px;
+  position: relative;
+}
+.home-flip-card {
+  position: relative;
+  width: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.home-flip-card.flipped {
+  transform: rotateY(180deg);
+}
+/* First face takes its natural height; second face is absolutely
+   positioned over it. They share the bounding box. */
+.home-flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.home-flip-face-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-flip-card { transition: none; }
+}
+
+/* Sprint 9.3: keep the front faces at a known min-height so the
+   absolute-positioned back face always fits without clipping. Without
+   these, the front's natural content height could be shorter than
+   the back's needs and the bottom of the back would get cut off. */
+.home-hero  { min-height: 130px; }
+.home-recent { min-height: 160px; }
+
+/* Back face content — clock-event confirmation (This Week side). Big
+   centered checkmark, headline mirrors the old top-notif copy. The
+   `.in` vs `.out` modifier just swaps the icon background color to
+   match the action's semantics (success green for clock-in, brand
+   navy for clock-out — neither is an error). */
+.home-hero-event {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  background: linear-gradient(180deg, var(--bg-surface), var(--accent-bg));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 22px;
+  box-shadow: var(--shadow-sm);
+}
+.home-hero-event-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--success);
+  color: white;
+  font-weight: 700;
+  font-size: 26px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+}
+.home-hero-event-icon.out { background: var(--brand-bg); }
+.home-hero-event-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.home-hero-event-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Back face content — auto-signout countdown (Recent side). The
+   `.home-recent-event` is the back-face card chrome; the inner
+   .home-recent-event-banner strips the embedded AutoSignoutBanner of
+   its own border/shadow so it doesn't double up with the card's
+   chrome. The banner's countdown ring + "Stay signed in" button
+   (here labelled by the embedded component as "Stay signed in") sit
+   centered. */
+.home-recent-event {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 22px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-recent-event-banner .auto-signout-banner {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  background: transparent;
+  animation: none;  /* the card flip is the entrance animation now */
+}
+
 /* ── Hero card (this week) ───────────────────────────────────────────────── */
 
 .home-hero {
@@ -363,8 +478,14 @@
   .home-clock-face .clock-digital { font-size: 16px; }
   .home-active-elapsed          { font-size: 46px; }
   .home-clock-action            { padding: 12px 28px; font-size: 15px; }
-  .home-hero                    { padding: 14px 18px; }
+  .home-hero                    { padding: 14px 18px; min-height: 116px; }
   .home-hero-num                { font-size: 40px; }
-  .home-recent                  { padding: 14px 18px; }
+  .home-recent                  { padding: 14px 18px; min-height: 150px; }
   .home-recent-row              { grid-template-columns: 1fr 1.2fr 50px; gap: 8px; padding: 8px 0; }
+  /* Sprint 9.3: tighten the flip back-faces on phones so the back
+     content stays inside the (smaller) front-face footprint. */
+  .home-hero-event              { padding: 14px 18px; gap: 6px; }
+  .home-hero-event-icon         { width: 44px; height: 44px; font-size: 22px; }
+  .home-hero-event-title        { font-size: 19px; }
+  .home-recent-event            { padding: 14px 18px; }
 }

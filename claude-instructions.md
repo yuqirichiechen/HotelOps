@@ -733,6 +733,178 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.3: HotelOps brand hover matches role-switch; clock-event drives bottom-card flip
+
+Two threads on opposite ends of the app:
+
+**HotelOps hover matches the role-switch (small).** 9.2.4 made
+HotelOps clickable but left its hover at "opacity 0.85" — soft, easy
+to miss. GM noted the Manager/Staff icon button "looks more
+clickable" than the brand mark itself. Fixed by giving
+`.login-topbar-brand` the same outlined-button chrome the
+`.login-role-switch` already has: `border: 1px solid var(--border);
+background: var(--bg-surface); border-radius: 14px; padding: 6px 10px`,
+with hover swapping to `bg-raised` + `text-muted` border. Both
+elements now read as obviously interactable, and the topbar feels
+intentional rather than "logo + button" mixed metaphor.
+
+**Clock-event flip on This Week + Recent cards.** Bigger UX shift.
+Pre-9.3, a successful clock-in/out showed a small toast at the top
+of the screen ("Clocked in!") for 2.2s, then the auto-signout banner
+slid in inside the *clock card* itself, replacing the Clock In/Out
+button. Two problems with that:
+
+1. The top toast was easy to miss on a phone (small, fixed-position,
+   competing with the page chrome).
+2. The auto-signout banner ate the clock card's primary action,
+   leaving no obvious way to clock the other direction if you'd
+   tapped the wrong one — you had to wait for the timer or tap
+   "Stay signed in" then re-find Clock Out.
+
+9.3 reshapes the dashboard so the **two bottom cards** (This Week +
+Recent shifts) flip on clock events. The clock card itself stays a
+clean Clock In ↔ Clock Out toggle, no banner. Layout post clock-in:
+
+```
+┌─────────────────────────────────┐
+│  Clock card (Clock Out shown)   │
+└─────────────────────────────────┘
+┌─────────────────────────────────┐
+│   [✓]    Clocked in!            │   ← This Week, flipped
+│          You're on the clock    │
+└─────────────────────────────────┘
+┌─────────────────────────────────┐
+│  Stay signed in    [ring] 9     │   ← Recent, flipped
+└─────────────────────────────────┘
+```
+
+Tap **Keep signed in** (the embedded AutoSignoutBanner's "Stay
+signed in" button) → `clockEvent` is cleared → both cards flip
+back to their resting content (week total, recent shifts). The
+countdown completing fires the existing `handleAutoSignout` —
+unchanged, still navigates to `/login/staff` via a view-transition.
+
+**State model.** A single `clockEvent` drives both flips:
+
+```js
+const [clockEvent, setClockEvent] = useState(null);
+// shape: { type: 'in' | 'out', seconds: number } | null
+```
+
+`seconds` is `data?.autoSignoutSeconds || 0`. If 0 (admin disabled
+auto-signout) we still flip This Week for the confirmation visual,
+but skip the Recent flip (no countdown to show) and auto-clear
+`clockEvent` after a 4s ack window so the user gets their summary
+back. If > 0, the Recent card flips and hosts the existing
+`AutoSignoutBanner` component — stripped of its own border via a
+`.home-recent-event-banner` wrapper since the card already provides
+the chrome.
+
+The 9.2.x `triggerAutoSignout` (`success → 2.2s wait → show banner`)
+chain is gone. Both flips happen the moment the API call succeeds:
+This Week confirms ("Clocked in!"), Recent presents the countdown +
+"Stay signed in" — staff see confirmation *and* the time-sensitive
+choice in the same scan.
+
+**Generic flip CSS.** The clock card had its own
+`.home-clock-flip-*` rules; rather than duplicate, the bottom cards
+get a generic `.home-flip-container` / `.home-flip-card` /
+`.home-flip-face` triple that any card can opt into by wrapping its
+content. Front face = absolute layout (in-flow); back face =
+`position: absolute; inset: 0; transform: rotateY(180deg)` over the
+front. `backface-visibility: hidden` on both prevents bleed-through
+during rotation. `min-height` on the front (`.home-hero` 130px,
+`.home-recent` 160px) keeps the back from clipping when it's
+naturally taller than the front content.
+
+Back-face visuals:
+- `.home-hero-event` — gradient bg-surface→accent-bg, big circle
+  icon (52px) with `✓` glyph, headline ("Clocked in!" / "Clocked
+  out!"), sub ("You're on the clock" / "Have a good one"). `.in` vs
+  `.out` modifier swaps the icon background between `var(--success)`
+  and `var(--brand-bg)`.
+- `.home-recent-event` — flex-centered card hosting
+  `<AutoSignoutBanner />` inside `.home-recent-event-banner`. The
+  banner's own border/shadow/animation are zeroed out by the wrapper
+  selector so the card's chrome owns the visual frame.
+
+`prefers-reduced-motion` zeroes the flip transition. Mobile @media
+tightens back-face padding and shrinks the hero-event icon to 44px
+(was 52px) so the back fits in the tighter front-face min-height
+(116px on phones, was 130px on desktop).
+
+The top `.home-notif` overlay is still present but **only renders
+for error cases now** — clock-in/out *success* doesn't trigger it
+anymore (the card flip is the success signal). Errors still toast
+at the top.
+
+**Files modified:**
+- `src/pages/Home/index.js`:
+  - Removed `autoSignout` state (`useState(false)`), `triggerAutoSignout`
+    function, and the in-clock-card `AutoSignoutBanner` usages.
+  - Added `clockEvent` state, `triggerClockEvent(type)` helper,
+    `handleKeepSignedIn` cancel handler.
+  - `handleClockIn` / `handleClockOut`: success branch swaps from
+    `showNotif('success', …) + triggerAutoSignout()` to
+    `triggerClockEvent('in' | 'out')`. Errors still use `showNotif`.
+  - Restructured JSX: clock card back to plain front/back faces (no
+    banner). `<section className="home-hero">` and
+    `<section className="home-recent">` wrapped in
+    `home-flip-container` → `home-flip-card.flipped?` toggling on
+    `clockEvent`. Back-face JSX added for both cards.
+- `src/pages/Home/Home.css`:
+  - New generic `.home-flip-container/-card/-face/-face-back`
+    rules (perspective, rotateY, backface-visibility).
+  - `.home-hero { min-height: 130px }` and
+    `.home-recent { min-height: 160px }` so back faces don't clip.
+  - `.home-hero-event` (back face) + `.home-hero-event-icon` (with
+    `.in` / `.out` color modifiers) + `.home-hero-event-title/-sub`.
+  - `.home-recent-event` (back face) + `.home-recent-event-banner
+    .auto-signout-banner` overrides (no border, no shadow, no own
+    animation — the card's flip is the entrance).
+  - Mobile @media tightening for back-face sizes.
+
+**Files unchanged but reused:**
+- `src/components/shared/AutoSignoutBanner.{js,css}` — embedded
+  as-is on the Recent back face. Inherited 8.6.x behavior
+  (countdown ring + ticking + cancel callback) is exactly what 9.3
+  needed, no fork.
+
+**Conventions reinforced/added:**
+- **Match hover/active language for siblings in the same role.**
+  Two top-bar elements that are both interactable should look the
+  same — don't mix "subtle opacity hover" with "outlined-button
+  hover" in the same row.
+- **Use the dashboard's cheap real estate for the time-sensitive
+  thing.** The bottom-row cards display passive data 99% of the
+  time. When something urgent happens (auto-signout countdown), put
+  it on the biggest unused space, not a small fixed toast that
+  competes with page chrome.
+- **One state variable can drive multiple coordinated UI changes.**
+  `clockEvent` drives the bottom-card flip AND determines the
+  countdown's existence. Don't proliferate state per coordinated
+  effect — one source of truth, multiple readers.
+- **Reuse an existing component, override its frame from outside.**
+  `AutoSignoutBanner` already had the right behavior; wrapping
+  selector zeroed its border/shadow/animation so the parent's
+  chrome owns the visual. Cheaper than forking the component.
+
+**Notes for next iteration:**
+- The flip cards have no entrance animation for clockEvent → set,
+  just the rotateY. If the GM later wants the back-face content
+  itself to slide in (e.g., the icon scales up after the flip),
+  add a keyframe gated on `.home-flip-card.flipped .home-hero-event`.
+- The `home-notif` toast is only used for errors now. After a cycle
+  of confidence we could remove the success-color CSS and the
+  positive icon variant; or keep them as a defensive shim.
+- `min-height` on `.home-hero` / `.home-recent` is a guard against
+  the back-face overflow. If the back content grows (e.g., a new
+  countdown UI variant), bump those numbers — there's no automatic
+  size matching.
+- `clockEvent.type` carries 'in' / 'out' so the icon can color-
+  differentiate. If a future event type appears (e.g., 'break-
+  start'), extend the union and add a third icon-color modifier.
+
 ### 2026-05-19 — Sprint 9.2.4: HotelOps is bigger AND clickable (back to picker); real role-icon PNGs
 
 Three quick tightenings on top of the 9.2.3 top-bar.
