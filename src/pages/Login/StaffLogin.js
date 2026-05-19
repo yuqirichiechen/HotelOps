@@ -233,6 +233,17 @@ const StaffLogin = () => {
     setLoading(false);
 
     if (res.success) {
+      // Sprint 9.3.2: persist the tenant slug so post-session
+      // navigation (auto-signout from Home, manual sign-out from
+      // Settings) can route back to this property's login page
+      // instead of the bare /login/staff picker. `tenant.slug` is
+      // always present (resolveTenant falls back to the default
+      // tenant when the URL slug is missing or unknown). Logout
+      // only clears `hotelops-token`, so this value survives across
+      // sessions and acts as a "last property used" hint.
+      if (tenant?.slug) {
+        localStorage.setItem('hotelops-tenant-slug', tenant.slug);
+      }
       const next = res.user.pin_must_set
         ? '/set-pin'
         : (loc.state?.from?.pathname || '/');

@@ -733,6 +733,120 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.3.2: clock-card height fits the bigger widget; auto-signout routes to the *tenant*'s login
+
+Two follow-ups on 9.3.x.
+
+**Clock card overflow.** 9.3.1 made the clock widget `flex: 1` and
+bumped analog 130 → 180 / digital 18 → 26 / date 11 → 13. Problem:
+the natural cluster height (180 + 26 + 13 + 2×10 internal gap = 239px)
+exceeded the widget's allocated space inside the 320px card. The
+math:
+
+```
+card    320 - padding 36 = 284 inner
+button         ~47 tall
+gap (face)     10
+widget         284 - 47 - 10 = 227 available
+cluster        239 needed
+```
+
+The widget's content overflowed by 12px, which pushed the Clock In
+button *out the bottom* of the card. Screenshot showed the button's
+bottom edge + green box-shadow extending past the card border.
+
+Fix: bump card height — desktop 320 → 380, mobile 310 → 340. That
+gives the widget 287px (desktop) / 270px (mobile) to host the cluster
+with ~48 / ~70px of comfortable breathing, plus the back face
+(elapsed timer) gets more breathing room as a side effect.
+
+**Auto sign-out routed to the picker, not the tenant.** Pre-9.3.2
+`handleAutoSignout` (in `Home/index.js`) navigated to `/login/staff`
+— the property *picker* — after the countdown fired. Same with
+`handleSignOut` in `Settings/index.js` (the manual button) and
+`AdminSettings.js`. Wrong destination: a user signing out of
+Snoqualmie should land at `/snoqualmieinn/login/staff`, ready to
+sign back in on the same property, not back at "pick a property."
+
+The slug was already in the URL when StaffLogin / AdminLogin ran,
+but it didn't persist into the post-login session. Fix: persist the
+resolved `tenant.slug` to `localStorage` on successful sign-in
+under the key `hotelops-tenant-slug`, then read it back in the
+signout helpers:
+
+```js
+// StaffLogin.js (and AdminLogin.js mirror) — on res.success
+if (tenant?.slug) {
+  localStorage.setItem('hotelops-tenant-slug', tenant.slug);
+}
+
+// Home.handleAutoSignout, Settings.handleSignOut,
+// AdminSettings.handleSignOut — same pattern:
+const slug = localStorage.getItem('hotelops-tenant-slug');
+const loginPath = slug ? `/${slug}/login/staff` : '/login/staff';
+nav(loginPath, { replace: true });
+```
+
+The slug is read *before* `await logout()` so any future logout
+flow that clears more state doesn't strand us. The bare-path
+fallback (`/login/staff` → picker) covers the edge cases where the
+slug isn't set: old sessions from before 9.3.2, fresh installs,
+manual localStorage clears, etc.
+
+`logout()` currently only removes `hotelops-token` (see
+`src/auth/index.js`) so `hotelops-tenant-slug` persists across
+sessions and acts as a "last property used" hint. That's
+intentional — on a shared kiosk it means the next staff member
+lands on the same property's login without having to re-pick.
+
+**Files modified:**
+- `src/pages/Home/Home.css`:
+  - `.home-clock-flip-card { height: 320 → 380 }` desktop;
+    mobile @media `.home-clock-flip-card { height: 310 → 340 }`.
+- `src/pages/Login/StaffLogin.js`:
+  - `res.success` branch persists `tenant.slug` to
+    `localStorage['hotelops-tenant-slug']` before nav.
+- `src/pages/Login/AdminLogin.js`:
+  - Same persistence on successful admin sign-in.
+- `src/pages/Home/index.js`:
+  - `handleAutoSignout` reads `hotelops-tenant-slug` and builds
+    `loginPath = /{slug}/login/staff` (fallback `/login/staff`),
+    both branches of the View-Transitions/no-VT split use it.
+- `src/pages/Settings/index.js`:
+  - `handleSignOut` mirrors the read + path build.
+- `src/components/AdminPanel/AdminSettings.js`:
+  - `handleSignOut` mirrors with `/{slug}/login/admin`.
+
+**Conventions reinforced:**
+- **`flex: 1` on a content block is great for filling whitespace,
+  *as long as the cluster's natural size fits inside the
+  flex-allocated space*.** Otherwise it overflows downstream
+  siblings instead of shrinking. When you bump cluster sizes,
+  bump the container too.
+- **Last-used tenant slug lives in localStorage, not URL/state.**
+  Survives the auth token's lifecycle so post-session navigation
+  is deterministic. Logout that wants to clear it can do so
+  explicitly; the default "keep it" is the right hint for shared
+  kiosks.
+- **Read persistent state *before* destructive operations.** Don't
+  call `await logout()` then read state that logout *might* have
+  cleared — read first, mutate second. Robust to future logout
+  semantics changes.
+
+**Notes for next iteration:**
+- If a future flow wants "fully forget this device" (e.g., a "switch
+  property" admin tool), it should explicitly
+  `localStorage.removeItem('hotelops-tenant-slug')`. Right now no
+  flow needs that.
+- If multi-tenant managers ever sign in to multiple properties on
+  the same device, the single-slug model breaks. Address then —
+  not yet a real case.
+- The 380px clock-card height is generous on the back face
+  (elapsed-timer mode). If staff complain about "too much
+  whitespace below the timer" we can either bump
+  `.home-active-elapsed` to 64–72px or move the Clock Out button
+  up. Out of scope for 9.3.2.
+
 ### 2026-05-19 — Sprint 9.3.1: oval-checkmark fix + bigger Clock widget that fills the front face
 
 Two visual cleanups against 9.3 screenshots.

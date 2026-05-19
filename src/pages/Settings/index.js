@@ -56,8 +56,15 @@ const Settings = ({ theme, onToggleTheme }) => {
   };
 
   const handleSignOut = async () => {
+    // Sprint 9.3.2: route back to the user's tenant login (not the
+    // bare picker) using the slug persisted by StaffLogin on the
+    // last successful sign-in. Mirrors Home's auto-signout flow.
+    const slug = typeof window !== 'undefined'
+      ? localStorage.getItem('hotelops-tenant-slug')
+      : null;
+    const loginPath = slug ? `/${slug}/login/staff` : '/login/staff';
     await logout();
-    nav('/login/staff', { replace: true });
+    nav(loginPath, { replace: true });
   };
 
   return (

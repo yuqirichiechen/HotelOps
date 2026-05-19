@@ -29,6 +29,12 @@ const AdminLogin = () => {
     setLoading(false);
 
     if (res.success) {
+      // Sprint 9.3.2: persist tenant slug — same rationale as
+      // StaffLogin (auto-signout / manual-signout should return to
+      // this property's login page, not the picker).
+      if (tenant?.slug) {
+        localStorage.setItem('hotelops-tenant-slug', tenant.slug);
+      }
       nav('/admin', { replace: true });
       return;
     }

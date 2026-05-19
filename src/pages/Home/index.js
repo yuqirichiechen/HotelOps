@@ -107,6 +107,14 @@ const Home = () => {
 
   const handleAutoSignout = async () => {
     setClockEvent(null);
+    // Sprint 9.3.2: read the persisted tenant slug *before* logout
+    // (logout shouldn't touch this key today, but reading early is
+    // robust to future logout flows that clear more state). If the
+    // slug is missing for any reason — old session, fresh install —
+    // fall back to the bare `/login/staff` picker so the user can
+    // pick again instead of hitting a broken URL.
+    const slug = localStorage.getItem('hotelops-tenant-slug');
+    const loginPath = slug ? `/${slug}/login/staff` : '/login/staff';
     await logout();
     // Sprint 8.6.2: animate the page swap. The login page's `.login-card`
     // already has its own slide-in animation; this gives the *outer* page
@@ -116,13 +124,13 @@ const Home = () => {
     if (typeof document !== 'undefined' && document.startViewTransition) {
       document.documentElement.dataset.signingOut = 'true';
       const t = document.startViewTransition(() => {
-        flushSync(() => nav('/login/staff', { replace: true }));
+        flushSync(() => nav(loginPath, { replace: true }));
       });
       t.finished.finally(() => {
         delete document.documentElement.dataset.signingOut;
       });
     } else {
-      nav('/login/staff', { replace: true });
+      nav(loginPath, { replace: true });
     }
   };
 

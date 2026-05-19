@@ -108,8 +108,14 @@ const AdminSettings = () => {
   };
 
   const handleSignOut = async () => {
+    // Sprint 9.3.2: route back to the user's tenant login (not the
+    // bare picker). Mirrors Staff Settings + Home auto-signout.
+    const slug = typeof window !== 'undefined'
+      ? localStorage.getItem('hotelops-tenant-slug')
+      : null;
+    const loginPath = slug ? `/${slug}/login/admin` : '/login/admin';
     await logout();
-    nav('/login/admin', { replace: true });
+    nav(loginPath, { replace: true });
   };
 
   return (
