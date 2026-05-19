@@ -44,27 +44,8 @@ const AdminLogin = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        {/* Sprint 9.2.3 / 9.2.4: top bar — HotelOps lg + clickable
-            back to picker; role-switch uses the new staff PNG icon.
-            See StaffLogin for the full rationale. */}
-        <div className="login-topbar">
-          <TransitionLink
-            to="/login/admin"
-            className="login-topbar-brand"
-            aria-label="HotelOps — back to property selection"
-            title="Back to property selection"
-          >
-            <HotelOpsLogo size="lg" />
-          </TransitionLink>
-          <TransitionLink
-            to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}
-            className="login-role-switch"
-            aria-label="Staff sign-in"
-            title="Staff sign-in"
-          >
-            <RoleIcon role="staff" alt="Staff sign-in" />
-          </TransitionLink>
-        </div>
+        {/* Sprint 9.3.4: brand + role-switch moved into the headline
+            row (see below). See StaffLogin for the full rationale. */}
 
         <div className="login-tenant-brand">
           {tenant.logoUrl ? (
@@ -81,10 +62,32 @@ const AdminLogin = () => {
           )}
         </div>
 
-        <h1 className="login-title">Manager sign-in</h1>
-        <p className="login-sub">
-          Admin access for staff management, scheduling, and operations.
-        </p>
+        <div className="login-headline-row">
+          <div className="login-headline-text">
+            <h1 className="login-title">Manager sign-in</h1>
+            <p className="login-sub">
+              Admin access for staff management, scheduling, and operations.
+            </p>
+          </div>
+          <div className="login-headline-actions">
+            <TransitionLink
+              to="/login/admin"
+              className="login-topbar-brand"
+              aria-label="HotelOps — back to property selection"
+              title="Back to property selection"
+            >
+              <HotelOpsLogo size="lg" />
+            </TransitionLink>
+            <TransitionLink
+              to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}
+              className="login-role-switch"
+              aria-label="Staff sign-in"
+              title="Staff sign-in"
+            >
+              <RoleIcon role="staff" alt="Staff sign-in" />
+            </TransitionLink>
+          </div>
+        </div>
 
         <form onSubmit={submit} className="login-form">
           <div className="login-field">

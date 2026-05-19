@@ -733,6 +733,160 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.3.4: login layout — HotelOps + role-switch slide beside the headline; universal height-based lock
+
+User screenshot at a tablet-portrait viewport (~810×~1080) showed
+the staff login still requiring scroll. Two diagnoses:
+
+1. The 9.2.2 lock was scoped to `@media (max-width: 768px)` — tablet
+   portraits sat *above* that breakpoint, so no lock applied and
+   content (banner + topbar + form + keypad) exceeded 100dvh.
+2. The old topbar row (`.login-topbar` with HotelOps left + role-
+   switch right) ate ~90px of vertical real estate that the layout
+   couldn't spare. GM's proposal: move both icons to the right side
+   of the welcome-headline text block, reclaiming the topbar row.
+
+**Headline-row layout.** Restructured the post-pick card:
+
+```
+[Tenant banner]                          ← centered, top
+[Welcome back        ] [HotelOps] [Adm]  ← headline-row
+[Sign in with...     ]                   ← (sub line wraps below in row)
+[form…]
+```
+
+JSX:
+```jsx
+<div className="login-headline-row">
+  <div className="login-headline-text">
+    <h1 className="login-title">Welcome back</h1>
+    <p className="login-sub">{subSentence}</p>
+  </div>
+  <div className="login-headline-actions">
+    <TransitionLink to="/login/staff" className="login-topbar-brand">
+      <HotelOpsLogo size="lg" />
+    </TransitionLink>
+    <TransitionLink to={…admin…} className="login-role-switch">
+      <RoleIcon role="manager" />
+    </TransitionLink>
+  </div>
+</div>
+```
+
+The icon buttons keep their existing classes (`.login-topbar-brand`
+/ `.login-role-switch`) — only the *parent* changed. So the
+`.login-topbar-brand .hotelops-logo` view-transition-name selector
+still pairs the picker's centered HotelOps morph with the new
+inline button. Geometry change only.
+
+Buttons sized down for the inline context: 52×52 (was 60×60 in
+9.3) with the HotelOps PNG inside at `height: 40` (was 96 at lg).
+On mobile they shrink further to 44×44 with HotelOps img at 32 so
+the title text on the left has room without forcing the sub line
+into excessive wraps.
+
+Net vertical saved: ~90px on desktop, ~70px on mobile (no separate
+topbar row, no topbar margin-bottom). That brought the card height
+under 100dvh on standard tablet portrait viewports.
+
+**Universal height-based lock.** The lock moved from a width-based
+`@media (max-width: 768px)` rule to a height-based
+`@media (min-height: 640px)` rule:
+
+```css
+@media (min-height: 640px) {
+  .login-page {
+    height: 100dvh; min-height: 100dvh; max-height: 100dvh;
+    overflow: hidden;
+  }
+  .login-card { max-height: 100%; overflow: hidden; }
+}
+```
+
+Now *every* viewport with ≥640px vertical room pins to 100dvh —
+phones, tablets in portrait, tablets in landscape (typically ≥640),
+desktop windows. Below 640 (landscape phones, weird embedded
+panels), the page falls back to scroll since the content can't
+fit anyway.
+
+The mobile-width tightening block (`@media (max-width: 768px)`)
+stays in place but no longer carries the `height: 100dvh /
+overflow: hidden` rules (the height-based block handles those
+universally). Mobile-width-specific rules are now just paddings,
+font sizes, and headline-actions button shrink.
+
+**Tablet keypad squeeze.** With the lock now active at tablet
+widths, the existing `@media (min-width: 720px) and (max-width:
+1023px)` rule's huge keypad buttons (`padding: 26px / font: 32px`)
+push the card past viewport. Added a combined-band override:
+
+```css
+@media (min-height: 640px) and (min-width: 720px) and (max-width: 1023px) {
+  .login-kb-area.is-numbers-only .login-keypad { gap: 10px; }
+  .login-kb-area.is-numbers-only .lk-btn { padding: 18px 0; font-size: 26px; }
+}
+```
+
+Button height drops from ~78 to ~57 (≥48px touch-target floor
+still met). Keypad saves ~80px in this band, which combined with
+the headline-row saving makes the layout fit ≥800px tablet
+viewports comfortably.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js`:
+  - Removed the `<div className="login-topbar">` block above tenant
+    banner.
+  - Wrapped `<h1>` + `<p>` in `<div className="login-headline-row">`
+    with the headline-text + headline-actions sub-blocks; the two
+    TransitionLinks (HotelOps + manager role-switch) moved into
+    `.login-headline-actions`.
+- `src/pages/Login/AdminLogin.js`:
+  - Same restructuring (with the role-switch routing to staff
+    login + the staff RoleIcon).
+- `src/pages/Login/Login.css`:
+  - Lock moved from `@media (max-width: 768px)` to
+    `@media (min-height: 640px)`. Mobile-width block now scopes
+    only paddings + sizes.
+  - New `.login-headline-row` / `.login-headline-text` /
+    `.login-headline-actions` rules.
+  - `.login-headline-actions .login-topbar-brand` / `.login-role-
+    switch` overrides for compact 52×52 buttons; HotelOps img
+    inside dropped to 40px.
+  - Mobile @media block: `.login-headline-actions .login-topbar-
+    brand, .login-role-switch { 44×44, padding: 4 }` plus a 32px
+    img-height override for the HotelOps inside.
+  - New combined-band `@media (min-height: 640px) and (min-width:
+    720px) and (max-width: 1023px)` rule shrinks the keypad
+    `.is-numbers-only` buttons (padding 18, font 26, gap 10).
+  - Legacy `.login-topbar` rule kept (display: flex chrome) as a
+    defensive guard for any orphan reference.
+
+**Conventions reinforced/added:**
+- **Lock by viewport-height, tighten by viewport-width.** "Should
+  this fit in one screen?" is a height question. "How dense should
+  the content be?" is a width question. Splitting the two-axis
+  media queries makes each rule readable on its own.
+- **Move secondary actions into whitespace next to the primary
+  text.** A solo topbar row is expensive on a non-scroll surface.
+  Right-aligned icon buttons next to the headline reclaim the
+  space without losing the affordance.
+- **Same class on a new parent = view-transition still works.**
+  The browser doesn't care about ancestor structure — it pairs by
+  `view-transition-name`. Restructuring children freely is safe as
+  long as the named element keeps its class/style.
+
+**Notes for next iteration:**
+- On very narrow phones (≤340px) the title's sub line might wrap
+  to 2 lines because the right-aligned icons eat horizontal room.
+  Acceptable; if not, drop the role-switch button on
+  `max-width: 340px` via display: none (the role-switch is rare
+  for staff anyway).
+- The legacy `.login-topbar` CSS rule has no JSX consumer after
+  9.3.4. Safe to delete next cleanup pass.
+- The combined-band keypad squeeze is one of several layered
+  keypad sizing rules. If we add a fourth band (e.g., a kiosk
+  variant), document why each existed before adding more.
+
 ### 2026-05-19 — Sprint 9.3.3: vertical no-scroll Home + sidebar lock + sign-out in sidebar footer
 
 Three structural cleanups across the staff dashboard and the app

@@ -10,26 +10,36 @@
   padding: 24px;
 }
 
-/* Sprint 9.2.2: on phones, the login surface should be a single, fixed
-   "kiosk" screen — staff are clocking in, not scrolling. Lock the page
-   to the dynamic viewport height and clip overflow so URL-bar
-   show/hide and on-screen keyboards can't push the keypad off-screen
-   or introduce rubber-band scroll. The card's own padding + size
-   shrink below to keep all content inside the lock; if a property
-   ever needs longer fields, raise the breakpoint deliberately rather
-   than re-enable scroll silently. */
-@media (max-width: 768px) {
+/* Sprint 9.2.2 → 9.3.4: non-scroll lock. The 9.2.2 rule was scoped to
+   `max-width: 768px` — only locked phones. Tablet portraits
+   (~810×1080) and small desktop windows had no lock and content
+   could overflow with scroll, which the GM (correctly) called out as
+   bad HCI for a clock-in surface.
+
+   9.3.4 splits the rules: a *universal* height-based lock applies
+   whenever the viewport has ≥640px vertical room (i.e., basically
+   always, except landscape phones), and the mobile-width tightening
+   stays as a separate block for padding/sizes specific to ≤768px.
+   Below 640vh, scroll is allowed since content can't physically fit. */
+@media (min-height: 640px) {
   .login-page {
     height: 100dvh;
     min-height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
+  }
+  .login-card {
+    max-height: 100%;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-page {
     padding: 12px;
   }
   .login-card {
     padding: 18px 16px 16px;
-    max-height: 100%;
-    overflow: hidden;
   }
   .login-tenant-brand {
     margin-bottom: 12px;
@@ -46,14 +56,21 @@
   .login-title { font-size: 22px; margin-bottom: 2px; }
   .login-sub   { font-size: 13px; margin-bottom: 14px; }
   .login-form  { gap: 10px; }
-  /* Sprint 9.2.3 → 9.2.4: shrink the topbar on phones — HotelOps lg
-     would be 96px, way too tall for the iPhone-SE lock. Override the
-     lg img height to ~68px on mobile (still bigger than the 9.2.3 md
-     of 56), and shrink the role-switch button proportionally so the
-     row stays balanced. */
-  .login-topbar { margin-bottom: 10px; }
-  .login-topbar-brand .hotelops-logo-lg .hotelops-logo-img { height: 68px; }
-  .login-role-switch { width: 56px; height: 56px; border-radius: 12px; padding: 5px; }
+  /* Sprint 9.3.4: shrink the headline-row icon buttons on phones so
+     the title text on the left has room without the sub line forced
+     into excessive wrapping. 44×44 hits the touch-target floor. */
+  .login-headline-row { margin-bottom: 12px; }
+  .login-headline-actions { gap: 6px; }
+  .login-headline-actions .login-topbar-brand,
+  .login-headline-actions .login-role-switch {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    padding: 4px;
+  }
+  .login-headline-actions .login-topbar-brand .hotelops-logo-lg .hotelops-logo-img {
+    height: 32px;
+  }
   /* Tighten the bigger submit button just slightly on phones so the
      iPhone-SE viewport math still works. Touch target stays well
      above the 44px floor. */
@@ -154,6 +171,61 @@
 .login-attribution { display: none; }
 .login-hotelops-badge { display: none; }
 
+/* Sprint 9.3.4: headline-row replaces the old .login-topbar. Title +
+   sub text on the left, HotelOps + role-switch icon buttons stacked
+   on the right side of the same row. Saves ~90px of vertical space
+   vs the prior "topbar above, headline below" stack, which the
+   tablet-portrait viewport needed to fit in 100dvh without scroll.
+
+   Buttons in this context are compact (52x52 vs the 9.3 era 60x60)
+   so they don't dominate next to the headline text. They keep the
+   `.login-topbar-brand` / `.login-role-switch` classes so the
+   view-transition selector (`.login-topbar-brand .hotelops-logo`)
+   still pairs with the picker's centered HotelOps mark. */
+.login-headline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.login-headline-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.login-headline-text .login-title { margin-bottom: 4px; }
+.login-headline-text .login-sub   { margin-bottom: 0; }
+
+.login-headline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Compact button sizes for the inline context. The HotelOps PNG
+   inside gets sized down via the size="lg" override (height 40 vs
+   the default lg 96) so the square button reads as an icon, not a
+   full hero lockup. */
+.login-headline-actions .login-topbar-brand {
+  width: 52px;
+  height: 52px;
+  padding: 6px;
+  border-radius: 12px;
+  justify-content: center;
+}
+.login-headline-actions .login-topbar-brand .hotelops-logo-lg .hotelops-logo-img {
+  height: 40px;
+}
+.login-headline-actions .login-role-switch {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  padding: 6px;
+}
+
+/* Legacy .login-topbar (still defined in case any orphan reference
+   lingers; new pages use .login-headline-row). */
 .login-topbar {
   display: flex;
   align-items: center;
@@ -653,6 +725,15 @@ html[data-tenant-logo-strategy="invert"] .login-tenant-logo-wrap {
 @media (min-width: 720px) and (max-width: 1023px) {
   .login-kb-area.is-numbers-only .login-keypad { gap: 14px; }
   .login-kb-area.is-numbers-only .lk-btn { padding: 26px 0; font-size: 32px; }
+}
+
+/* Sprint 9.3.4: when the universal lock is on AND we're in the
+   tablet-portrait band, the huge 9.1.2 button sizing pushes the card
+   past 100dvh. Squeeze the keypad in this combined band so all
+   content fits the locked viewport. */
+@media (min-height: 640px) and (min-width: 720px) and (max-width: 1023px) {
+  .login-kb-area.is-numbers-only .login-keypad { gap: 10px; }
+  .login-kb-area.is-numbers-only .lk-btn { padding: 18px 0; font-size: 26px; }
 }
 
 /* Sprint 9.1.2 / 9.1.3: laptop / landscape-iPad two-column layout.

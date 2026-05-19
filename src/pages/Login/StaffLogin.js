@@ -268,31 +268,14 @@ const StaffLogin = () => {
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
-        {/* Sprint 9.2.3 / 9.2.4: top bar — HotelOps on the left
-            (lg size, GM wanted the brand to feel like *ours*) and
-            the role-switch on the right (new dual-PNG manager icon
-            replaces the 9.2.3 emoji glyph). Tapping HotelOps now
-            navigates back to the property picker via TransitionLink
-            — view-transition morphs the lg lockup back to xl on the
-            picker, mirroring the picker → post-pick morph. */}
-        <div className="login-topbar">
-          <TransitionLink
-            to="/login/staff"
-            className="login-topbar-brand"
-            aria-label="HotelOps — back to property selection"
-            title="Back to property selection"
-          >
-            <HotelOpsLogo size="lg" />
-          </TransitionLink>
-          <TransitionLink
-            to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}
-            className="login-role-switch"
-            aria-label="Manager sign-in"
-            title="Manager sign-in"
-          >
-            <RoleIcon role="manager" alt="Manager sign-in" />
-          </TransitionLink>
-        </div>
+        {/* Sprint 9.2.3 → 9.3.4: HotelOps + role-switch moved from
+            their own top-bar row into the right side of the welcome
+            headline. The previous topbar ate ~90–100px of vertical
+            real estate the dashboard didn't have on tablet portrait
+            viewports; the headline-row layout (see JSX below) reuses
+            the whitespace next to the title/sub text instead.
+            View-transition selector still targets .login-topbar-brand
+            so the picker → post-pick morph works unchanged. */}
 
         {/* Sprint 9.2 / 9.2.1 / 9.2.2: tenant logo as banner-style
             primary brand. The `viewTransitionName` on the img matches
@@ -315,8 +298,30 @@ const StaffLogin = () => {
           )}
         </div>
 
-        <h1 className="login-title">Welcome back</h1>
-        <p className="login-sub">{subSentence}</p>
+        <div className="login-headline-row">
+          <div className="login-headline-text">
+            <h1 className="login-title">Welcome back</h1>
+            <p className="login-sub">{subSentence}</p>
+          </div>
+          <div className="login-headline-actions">
+            <TransitionLink
+              to="/login/staff"
+              className="login-topbar-brand"
+              aria-label="HotelOps — back to property selection"
+              title="Back to property selection"
+            >
+              <HotelOpsLogo size="lg" />
+            </TransitionLink>
+            <TransitionLink
+              to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}
+              className="login-role-switch"
+              aria-label="Manager sign-in"
+              title="Manager sign-in"
+            >
+              <RoleIcon role="manager" alt="Manager sign-in" />
+            </TransitionLink>
+          </div>
+        </div>
 
         <form onSubmit={submit} className="login-form">
           {/* Sprint 9.1: removed the duplicate visible <label> — the
