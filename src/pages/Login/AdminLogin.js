@@ -36,10 +36,22 @@ const AdminLogin = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        {/* Sprint 9.2.2: see StaffLogin for the rationale on the corner
-            HotelOps badge + view-transition tenant-brand morph. */}
-        <div className="login-hotelops-badge">
-          <HotelOpsLogo size="sm" />
+        {/* Sprint 9.2.3: top bar — HotelOps left, Staff-sign-in icon
+            on the right. See StaffLogin for the full rationale; this
+            page just uses the reverse role icon (person for staff
+            since this page is for managers). */}
+        <div className="login-topbar">
+          <div className="login-topbar-brand">
+            <HotelOpsLogo size="md" />
+          </div>
+          <TransitionLink
+            to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}
+            className="login-role-switch"
+            aria-label="Staff sign-in"
+            title="Staff sign-in"
+          >
+            <span className="login-role-switch-icon" aria-hidden>👤</span>
+          </TransitionLink>
         </div>
 
         <div className="login-tenant-brand">
@@ -94,13 +106,7 @@ const AdminLogin = () => {
           </button>
         </form>
 
-        <div className="login-switch">
-          <TransitionLink to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}>
-            Staff sign-in →
-          </TransitionLink>
-        </div>
-
-        {/* HotelOps brand lives in the corner badge above (9.2.2). */}
+        {/* Role-switch moved to the top-bar icon (9.2.3). */}
       </div>
     </div>
   );

@@ -733,6 +733,146 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.2.3: top-bar (HotelOps left, role-switch icon right), bigger sign-in, real non-scroll on mobile
+
+Three threads, one reshuffle.
+
+**Top-bar replaces the 9.2.2 corner badge.** 9.2.2's HotelOps "settle
+into the top-right corner" felt cute in the View Transition demo but
+in practice the resulting badge was *tiny* (30–40px) and competed
+weirdly with the centered tenant banner just below it. GM also wanted
+the role-switch (Manager ↔ Staff) more visible — it was a small text
+link at the foot of the card and easy to miss. 9.2.3 collapses both
+into one horizontal row at the top of the post-pick card:
+
+```
+[HotelOps logo md]                    [🔑 role-switch icon]
+       ┌──────────────────────────────────┐
+       │       [Tenant Banner Logo]       │
+       │           Welcome back           │
+       │   Sign in with your employee...  │
+       │   [______input______]             │
+       │   [ Big Sign in button ]          │
+       │   [keypad]                        │
+       └──────────────────────────────────┘
+```
+
+`.login-topbar` is `display: flex; justify-content: space-between;
+align-items: center; margin-bottom: 18px`. HotelOps gets `size="md"`
+(56px effective on desktop, 42px on mobile) — bigger than the badge
+ever was, *and* it's now actually balanced against another element on
+the right rather than floating alone in the corner. The role-switch
+on the right is a 48px square icon button (42px on phones) styled
+like a quieter `.lk-btn`: subtle outline, hover-raised, active-press
+scale. Glyph choice mirrors the page's destination role:
+
+- StaffLogin → Admin: `🔑` (manager / key concept).
+- AdminLogin → Staff: `👤` (staff / person concept).
+
+`aria-label` + `title` carry the text "Manager sign-in" / "Staff
+sign-in" so screen readers and tooltips still surface the
+destination. Emoji is consistent with how Sidebar.js renders nav
+icons elsewhere in the app — keeps the visual language coherent
+without dragging in an icon-library dependency.
+
+**View Transitions still works after the reshuffle.** Just retarget
+the named selector from `.login-hotelops-badge .hotelops-logo` to
+`.login-topbar-brand .hotelops-logo`. Picker's xl logo → top-bar md
+logo still morphs over the 500ms timing tuned in 9.2.2. Tenant-brand
+morph (per-row `tenant-brand-${slug}` inline style) is unchanged.
+
+**Bigger sign-in button.** GM said the prior 13px-padded / 15px-font
+button read as a hint, not a CTA. Bumped to:
+
+```css
+.login-submit {
+  font-size: 19px;
+  font-weight: 700;
+  padding: 16px;
+  border-radius: 12px;
+  letter-spacing: -0.01em;
+}
+```
+
+That's a ~52px tall target on desktop, well above tap-target
+guidelines. On phones (≤768px) we knock it back slightly (`17px/14px
+padding`) so the iPhone-SE math still works out post-9.2.3 — the
+button got bigger; the foot row got removed; net change is roughly
+neutral on vertical real estate.
+
+**Mobile non-scroll, for real this time.** 9.2.2's lock relied on
+mobile content fitting in 100dvh, but the bottom `.login-switch` row
+("Manager sign-in →") was 20px (link) + ~14px (margin) of vertical
+debt that we'd shaved card padding to barely accommodate. With the
+switch row deleted (icon moved into the top-bar) that debt is freed,
+and the bigger sign-in button only ate back ~12px of it — so we end
+up with ~22px of breathing room on iPhone SE. The `100dvh` lock from
+9.2.2 stays; `overflow: hidden` at page level stays. No more rubber-
+band scroll, no clipped keypad, no scroll bar reaching for the
+bottom-link that used to live outside the viewport.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js`:
+  - Replaced `.login-hotelops-badge` block with `.login-topbar`
+    containing `.login-topbar-brand` (HotelOps md) + `.login-role-switch`
+    (key emoji TransitionLink to AdminLogin).
+  - Deleted the foot `.login-switch` block entirely.
+- `src/pages/Login/AdminLogin.js`:
+  - Same swap with the inverse role-switch glyph (👤 → StaffLogin).
+  - Foot `.login-switch` deleted.
+- `src/pages/Login/Login.css`:
+  - `.login-hotelops-badge` → `display: none` (kept as legacy guard).
+  - New `.login-topbar` flex row, `.login-topbar-brand` flex anchor,
+    `.login-role-switch` icon button + hover/active states,
+    `.login-role-switch-icon` emoji sizing.
+  - View-transition selector retargeted from `.login-hotelops-badge
+    .hotelops-logo` to `.login-topbar-brand .hotelops-logo`.
+  - `.login-submit` bumped per GM ask (19px/700/16px pad/12px radius).
+  - Mobile @media block: topbar-specific shrink (`logo height 42px`,
+    `role-switch 42×42`, `icon 20px font`), tenant-logo-wrap
+    `max-width: 260` (was 230, no more corner badge competing),
+    `.login-submit` `17px/14px pad` to keep iPhone-SE viable.
+  - `.login-tenant-logo-wrap` default `max-width` back to 320 (was
+    280 for 9.2.2 corner clearance).
+
+**Conventions reinforced/added:**
+- **Brand mark belongs in a balanced layout slot, not floating in a
+  corner.** A solo top-corner badge reads as "afterthought." Pairing
+  it with another element on the opposite side (role-switch, here)
+  gives the page a real visual anchor at the top and lets the brand
+  mark be a useful size.
+- **Role-switch as an icon button at the top, not a text link at the
+  foot.** Bottom-of-card text links are easy to miss on a kiosk and
+  steal vertical space we need for the non-scroll lock. Top-bar
+  icon buttons are persistent, predictable, and don't fight the
+  primary CTA.
+- **Primary CTA pop > visual subtlety on a kiosk surface.** Staff
+  need to see "Sign in" without scanning. Bigger, bolder, slightly
+  taller than the rest of the form. Don't apologize for it.
+- **Mobile non-scroll lock requires accounting for every row.**
+  Bottom links cost ~30–40px each — they're the silent killer of
+  "fits in 100dvh." When adding rows, justify them against the
+  shrinking-margin tradeoff or accept the breakpoint will move.
+
+**Notes for next iteration:**
+- Emoji glyphs render slightly differently across platforms (iOS vs
+  Android vs Linux Chrome). Acceptable for now; if a property
+  complains, swap to inline SVG with the existing `.login-role-switch`
+  styling holding the layout.
+- `.login-hotelops-badge` + `.login-attribution` are both
+  `display: none` legacy guards. Safe to delete the rules and any
+  stale JSX after a cycle of confidence.
+- Top-bar HotelOps morph still works for `picker → post-pick` only.
+  Navigating from picker direct to dev (or dev → picker) won't morph
+  the HotelOps mark because the dev pages don't yet use the
+  `.login-topbar` pattern. Worth applying if dev evolves beyond a
+  one-knob panel.
+- The role-switch is a single icon button per page right now. If a
+  future tenant has a third role (housekeeping vs front-desk
+  separate from manager), the top-bar might need to grow into a
+  segmented control — design now favors that direction (already a
+  flex row).
+
 ### 2026-05-07 — Sprint 9.2.2: Rakuten-style HotelOps badge morph + mobile non-scroll lock
 
 Two pieces — a brand-identity upgrade and a mobile fit-and-finish bug.

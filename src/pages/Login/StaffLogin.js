@@ -255,14 +255,24 @@ const StaffLogin = () => {
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
-        {/* Sprint 9.2.2: small HotelOps badge in the top-right corner.
-            On arrival from the picker, View Transitions morphs the
-            picker's big centered HotelOps logo into this badge — the
-            "Rakuten-style" settle-into-corner effect. The badge is
-            purely decorative (pointer-events: none) so it doesn't
-            intercept taps near the corner. */}
-        <div className="login-hotelops-badge">
-          <HotelOpsLogo size="sm" />
+        {/* Sprint 9.2.3: top bar row — HotelOps on the left (bigger,
+            now a real brand mark instead of the tiny 9.2.2 corner
+            badge), and the role-switch icon on the right. View
+            Transitions still morphs the picker's xl HotelOps logo
+            into this slot via view-transition-name=hotelops-mark on
+            the inner .hotelops-logo. */}
+        <div className="login-topbar">
+          <div className="login-topbar-brand">
+            <HotelOpsLogo size="md" />
+          </div>
+          <TransitionLink
+            to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}
+            className="login-role-switch"
+            aria-label="Manager sign-in"
+            title="Manager sign-in"
+          >
+            <span className="login-role-switch-icon" aria-hidden>🔑</span>
+          </TransitionLink>
         </div>
 
         {/* Sprint 9.2 / 9.2.1 / 9.2.2: tenant logo as banner-style
@@ -366,14 +376,12 @@ const StaffLogin = () => {
           </button>
         </form>
 
-        <div className="login-switch">
-          <TransitionLink to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}>
-            Manager sign-in →
-          </TransitionLink>
-        </div>
-
-        {/* Sprint 9.2.2: HotelOps brand moved from card foot to the
-            top-right corner badge (see .login-hotelops-badge above). */}
+        {/* Sprint 9.2.3: Manager sign-in moved to the top-bar icon
+            above; bottom row removed. GM feedback wanted the primary
+            "Sign in" button bigger — easier with no link competing
+            below it — and removing the row fixes the mobile scroll
+            bug (the bottom link was the last pixel pushing over
+            iPhone-SE's viewport). */}
       </div>
     </div>
   );

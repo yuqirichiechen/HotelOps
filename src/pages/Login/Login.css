@@ -36,20 +36,27 @@
     gap: 6px;
   }
   .login-tenant-logo-wrap {
-    max-width: 230px;  /* clearance for the corner badge on phones */
+    /* No more corner badge clearance needed (9.2.3 moved HotelOps
+       into the top-bar row); banner can use the full card width again
+       minus a comfy horizontal margin. */
+    max-width: 260px;
     height: 80px;
     padding: 8px 14px;
   }
   .login-title { font-size: 22px; margin-bottom: 2px; }
   .login-sub   { font-size: 13px; margin-bottom: 14px; }
   .login-form  { gap: 10px; }
-  .login-hotelops-badge {
-    top: 10px;
-    right: 10px;
-  }
-  .login-hotelops-badge .hotelops-logo-sm .hotelops-logo-img {
-    height: 30px;
-  }
+  /* Sprint 9.2.3: shrink the topbar on phones — HotelOps logo smaller
+     (md → ~44px effective via the size class), role-switch icon
+     button shrinks proportionally. */
+  .login-topbar { margin-bottom: 12px; }
+  .login-topbar-brand .hotelops-logo-md .hotelops-logo-img { height: 42px; }
+  .login-role-switch { width: 42px; height: 42px; border-radius: 10px; }
+  .login-role-switch-icon { font-size: 20px; }
+  /* Tighten the bigger submit button just slightly on phones so the
+     iPhone-SE viewport math still works. Touch target stays well
+     above the 44px floor. */
+  .login-submit { font-size: 17px; padding: 14px; }
 }
 
 .login-card {
@@ -101,11 +108,10 @@
 }
 .login-tenant-logo-wrap {
   width: 100%;
-  /* Sprint 9.2.2: capped at 280 (was 320) so the corner HotelOps
-     badge has clearance from the centered banner — the badge sits
-     ~14px from the card's right edge, so banner needs ~60px of
-     margin on each side to not visually overlap. */
-  max-width: 280px;
+  /* Sprint 9.2.3: back to 320 (was 280 in 9.2.2 for corner-badge
+     clearance, no longer needed since HotelOps moved into the
+     top-bar row). */
+  max-width: 320px;
   height: 120px;
   border-radius: 14px;
   background: #ffffff;
@@ -132,27 +138,61 @@
   text-align: center;
 }
 
-/* Sprint 9.2 → 9.2.2: HotelOps "attribution at the foot" is replaced
-   by a small badge in the top-right corner of the login card. The
-   change is partly visual (frees a chunk of vertical space, which we
-   needed for the mobile non-scroll lock) and partly choreographic:
-   the picker page shows a big HotelOps logo at the top center; when
-   the user taps a property, View Transitions morphs that big logo
-   into this corner badge (see .tenant-picker-header / .login-hotelops-badge
-   view-transition-name rules below). Inspired by the Rakuten extension
-   pattern — brand "settles" into the corner rather than sitting at
-   the foot apologetically.
+/* Sprint 9.2 → 9.2.2 → 9.2.3: HotelOps "attribution at the foot"
+   became a corner badge in 9.2.2; 9.2.3 promotes it to a full top-bar
+   row so the brand is *bigger* (md size, ~56px) and balanced against
+   the new role-switch icon on the right. Layout is a flex row at the
+   top of the card; HotelOps left, role-switch right, tenant banner
+   centered immediately below. View Transitions still uses the
+   `hotelops-mark` name (now on .login-topbar-brand .hotelops-logo) so
+   the picker → post-pick morph keeps working — just lands in a
+   different x position than 9.2.2.
 
-   Class is kept defined (no styling) so any legacy reference doesn't
-   throw a missing-selector warning during the transition. */
+   Legacy classes from earlier sprints kept hidden so any orphaned
+   references don't render a stray element. */
 .login-attribution { display: none; }
+.login-hotelops-badge { display: none; }
 
-.login-hotelops-badge {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 2;
-  pointer-events: none;  /* purely decorative — don't intercept taps */
+.login-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.login-topbar-brand {
+  display: flex;
+  align-items: center;
+}
+
+/* Sprint 9.2.3: role-switch icon button. Square touch target (≥44px),
+   subtle outline so it reads as interactable but doesn't compete with
+   the primary Sign-in button. Uses an emoji glyph (🔑 manager / 👤
+   staff) sized big enough to be unambiguous at a glance. Hover/active
+   states mirror .lk-btn for consistency with the rest of the login
+   chrome. */
+.login-role-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
+  flex-shrink: 0;
+}
+.login-role-switch:hover {
+  background: var(--bg-raised);
+  border-color: var(--text-muted);
+}
+.login-role-switch:active { transform: scale(0.96); }
+.login-role-switch-icon {
+  font-size: 24px;
+  line-height: 1;
 }
 
 /* Legacy classes kept in case any older login layout references them
@@ -275,12 +315,18 @@
 }
 
 .login-submit {
+  /* Sprint 9.2.3: GM asked for a more obvious primary action — staff
+     were missing the "Sign in" button at the prior 13px/15px sizing.
+     Bumped to 18px/19px font with heavier weight; padding raised to
+     give a ≥52px tall target. Same brand color so the affordance
+     is otherwise unchanged. */
   font-family: 'TiemposText', Georgia, serif;
-  font-size: 15px;
-  font-weight: 600;
-  padding: 13px;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 16px;
+  letter-spacing: -0.01em;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--brand-bg);
   color: white;
   cursor: pointer;
@@ -324,18 +370,14 @@
   margin-bottom: 24px;
 }
 
-/* Sprint 9.2.2: tag the picker-page HotelOps logo and the post-pick
-   corner badge with the same view-transition-name so the browser
-   morphs the big-center logo into the small-corner badge when the
-   user taps a property. Target the inner .hotelops-logo (not the
-   wrapping container) so the morph is the logo's actual bounding
-   box, not the wrapper's wider/shorter envelope.
-
-   We tune duration to 500ms — longer than the existing .login-card
-   morph (320ms) — so the eye reads the "collision and settle" as
-   the visual focus during the page transition. */
+/* Sprint 9.2.2 → 9.2.3: View Transitions morphs the picker-page big
+   HotelOps logo into the post-pick top-bar logo. Both selectors
+   point at the inner .hotelops-logo so the morph operates on the
+   actual visual bounds, not the wider/shorter wrapper envelope.
+   500ms duration so the eye reads it as the focal animation during
+   the page transition. */
 .tenant-picker-header .hotelops-logo,
-.login-hotelops-badge .hotelops-logo {
+.login-topbar-brand   .hotelops-logo {
   view-transition-name: hotelops-mark;
 }
 ::view-transition-old(hotelops-mark),
