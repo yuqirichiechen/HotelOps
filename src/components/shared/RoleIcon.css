@@ -1,0 +1,34 @@
+/* Sprint 9.2.4: dual-PNG role icon, theme-aware via CSS. Same
+   target-theme naming + display swap as HotelOpsLogo (file name = the
+   theme it was designed for; PNG background matches that theme's
+   --bg-base so the seam is invisible against the page or against a
+   bg-surface button). */
+
+.role-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.role-icon-img {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Default (no explicit data-theme on <html>): assume light. */
+.role-icon-img-light { display: block; }
+.role-icon-img-dark  { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  .role-icon-img-light { display: none; }
+  .role-icon-img-dark  { display: block; }
+}
+
+/* Explicit theme overrides beat the OS media query. */
+html[data-theme="light"] .role-icon-img-light { display: block; }
+html[data-theme="light"] .role-icon-img-dark  { display: none; }
+html[data-theme="dark"]  .role-icon-img-light { display: none; }
+html[data-theme="dark"]  .role-icon-img-dark  { display: block; }

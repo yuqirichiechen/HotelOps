@@ -733,6 +733,139 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.2.4: HotelOps is bigger AND clickable (back to picker); real role-icon PNGs
+
+Three quick tightenings on top of the 9.2.3 top-bar.
+
+**HotelOps bigger and clickable.** 9.2.3's `size="md"` (~56px) read as
+"present but polite." GM wanted "this software is OURS" — bumped to
+`size="lg"` (~96px on desktop, ~68px override on mobile). And the
+brand mark is now wrapped in a `TransitionLink` that routes back to
+the property picker:
+
+```jsx
+<TransitionLink to="/login/staff" className="login-topbar-brand"
+                aria-label="HotelOps — back to property selection">
+  <HotelOpsLogo size="lg" />
+</TransitionLink>
+```
+
+Two reasons to make it clickable: (a) it matches the universal
+"brand-mark in the top-left goes home" pattern, so it's a
+discoverable escape hatch when staff pick the wrong property by
+mistake; (b) the View Transitions API already gives us a free
+animation back — `view-transition-name: hotelops-mark` morphs lg →
+xl as the user returns to the picker, mirroring the picker → post-
+pick morph in reverse. No extra JS, no extra CSS.
+
+`.login-topbar-brand` lost its `<div>` semantics and became the
+anchor itself. Reset the default anchor color/underline + add a
+subtle hover-opacity + active-scale so it reads as interactable.
+StaffLogin routes back to `/login/staff` (the staff-side picker);
+AdminLogin routes to `/login/admin`. Same picker page, just
+preserves the role context (the picker takes `kind` from the URL).
+
+**Real role-icon PNGs.** 9.2.3 used emoji glyphs (`🔑` manager, `👤`
+staff) — fine for a proof of concept, but emoji renders inconsistently
+across platforms (the iOS key emoji is the chunky 3D one; Android's
+is flat; Linux is something else again). GM supplied four PNGs:
+`logo/manager_light.png`, `manager_dark.png`, `staff_light.png`,
+`staff_dark.png`. Same target-theme naming convention as the
+HotelOps PNGs (file = target theme, background = that theme's
+`--bg-base`, so the icon's plate disappears into the role-switch
+button which is `bg-surface`).
+
+Same pattern as HotelOpsLogo for the theme swap, refactored into
+its own component since the logic was about to repeat:
+
+```jsx
+// src/components/shared/RoleIcon.js
+const SOURCES = {
+  manager: { light: '/manager-light.png', dark: '/manager-dark.png' },
+  staff:   { light: '/staff-light.png',   dark: '/staff-dark.png'   },
+};
+<span className="role-icon">
+  <img className="role-icon-img role-icon-img-light" src={src.light} alt="" aria-hidden />
+  <img className="role-icon-img role-icon-img-dark"  src={src.dark}  alt={alt || role} />
+</span>
+```
+
+`.role-icon-img-light` is the default `display: block`;
+`prefers-color-scheme: dark` and `html[data-theme="dark"]` swap to
+the `-dark` variant. One image carries the alt text (the visible
+one for the theme), the other is `aria-hidden` — screen readers get
+exactly one announcement of "Manager sign-in" or "Staff sign-in"
+regardless of theme.
+
+The role-switch button itself grew from 48px → 60px (12px → 14px
+border-radius) so the new image-icons have room to breathe. 56px on
+mobile to keep the iPhone-SE lock fitting.
+
+**Mobile math after the bump.** HotelOps lg at 96px would overflow
+the iPhone-SE viewport when stacked with the tenant banner + form +
+keypad. Mobile @media drops the lg img to 68px (still 22% bigger
+than 9.2.3's 56px md, so the brand-bigger goal is preserved on
+phones too) and tightens the role-switch to 56×56. Topbar
+`margin-bottom` clipped from 18 → 10px. Net: ~614px content height
+on iPhone SE, ~53px breathing room.
+
+**Files added:**
+- `public/manager-light.png`, `manager-dark.png`, `staff-light.png`,
+  `staff-dark.png` — copied from `logo/`.
+- `src/components/shared/RoleIcon.js`, `RoleIcon.css` — dual-PNG
+  theme-aware icon, analog to `HotelOpsLogo`.
+
+**Files modified:**
+- `src/pages/Login/StaffLogin.js`:
+  - `.login-topbar-brand` is now a `<TransitionLink to="/login/staff">`.
+  - HotelOpsLogo bumped from `md` → `lg`.
+  - Role-switch glyph swapped from `🔑` emoji to `<RoleIcon role="manager" />`.
+  - Imported `RoleIcon` + its CSS.
+- `src/pages/Login/AdminLogin.js`:
+  - Same swap pattern; `to="/login/admin"`, `role="staff"`.
+- `src/pages/Login/Login.css`:
+  - `.login-topbar-brand` styled as a link (color: inherit,
+    text-decoration: none, hover-opacity, active-scale).
+  - `.login-role-switch` enlarged (60×60, 14px radius, 6px padding).
+  - Mobile @media: `hotelops-logo-lg .hotelops-logo-img { height: 68 }`,
+    `.login-role-switch { 56×56, 12px radius }`,
+    `.login-topbar { margin-bottom: 10 }`.
+
+**Conventions reinforced/added:**
+- **Brand mark = home link.** When the user is inside a flow (picked
+  a property, on a login page), the brand mark in the top-left
+  should return to the flow's entry point. Match the universal
+  "click logo to go home" expectation and lean on `TransitionLink`
+  for the morph back.
+- **Use a component for image-pair theme swaps.** HotelOpsLogo had
+  this pattern; instead of duplicating the JSX/CSS for role icons,
+  factor it into `RoleIcon` and reuse. Future icon pairs follow the
+  same pattern (same `-light`/`-dark` naming, same CSS swap).
+- **Emoji is for prototypes; ship real assets for production
+  visuals.** Emoji rendering varies across platforms in ways the
+  designer can't control. Real PNG/SVG assets render identically
+  everywhere and respect brand color choices.
+- **Don't double-count alt text on themed image pairs.** One image
+  carries the alt; the other is `aria-hidden`. Screen readers
+  announce the role once, regardless of theme.
+
+**Notes for next iteration:**
+- HotelOps lg is 96px on desktop. If the GM later wants it *even*
+  bigger, we'd need to either add a new `xxl` size variant to
+  `HotelOpsLogo.css` or override the height directly per-page via
+  Login.css. The current variant ladder is xl=140 (picker hero) /
+  lg=96 / md=56 / sm=40.
+- Clicking HotelOps from StaffLogin → /login/staff. From AdminLogin
+  → /login/admin. Both land on the same picker rendered in the
+  appropriate role context. If we ever consolidate the picker into
+  a single `/login` route (no role kind), this can simplify to a
+  single href.
+- Role-icon button hosts 48×48-effective icon (60px button minus 6+6
+  padding). If the PNGs need clearer detail at small sizes, the
+  designer can ship a tighter crop without changing this component.
+- `.role-icon` styles live in `RoleIcon.css` (component-local).
+  `Login.css` adds the surrounding button chrome only.
+
 ### 2026-05-19 — Sprint 9.2.3: top-bar (HotelOps left, role-switch icon right), bigger sign-in, real non-scroll on mobile
 
 Three threads, one reshuffle.

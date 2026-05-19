@@ -3,9 +3,11 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
+import RoleIcon from '../../components/shared/RoleIcon';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
+import '../../components/shared/RoleIcon.css';
 
 // Sprint 7.1: built-in QWERTY keyboard alongside the existing numeric
 // keypad. Tablet/kiosk deployments can't always rely on the OS keyboard
@@ -255,23 +257,29 @@ const StaffLogin = () => {
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
       <div className="login-card">
-        {/* Sprint 9.2.3: top bar row — HotelOps on the left (bigger,
-            now a real brand mark instead of the tiny 9.2.2 corner
-            badge), and the role-switch icon on the right. View
-            Transitions still morphs the picker's xl HotelOps logo
-            into this slot via view-transition-name=hotelops-mark on
-            the inner .hotelops-logo. */}
+        {/* Sprint 9.2.3 / 9.2.4: top bar — HotelOps on the left
+            (lg size, GM wanted the brand to feel like *ours*) and
+            the role-switch on the right (new dual-PNG manager icon
+            replaces the 9.2.3 emoji glyph). Tapping HotelOps now
+            navigates back to the property picker via TransitionLink
+            — view-transition morphs the lg lockup back to xl on the
+            picker, mirroring the picker → post-pick morph. */}
         <div className="login-topbar">
-          <div className="login-topbar-brand">
-            <HotelOpsLogo size="md" />
-          </div>
+          <TransitionLink
+            to="/login/staff"
+            className="login-topbar-brand"
+            aria-label="HotelOps — back to property selection"
+            title="Back to property selection"
+          >
+            <HotelOpsLogo size="lg" />
+          </TransitionLink>
           <TransitionLink
             to={tenantSlug ? `/${tenantSlug}/login/admin` : '/login/admin'}
             className="login-role-switch"
             aria-label="Manager sign-in"
             title="Manager sign-in"
           >
-            <span className="login-role-switch-icon" aria-hidden>🔑</span>
+            <RoleIcon role="manager" alt="Manager sign-in" />
           </TransitionLink>
         </div>
 

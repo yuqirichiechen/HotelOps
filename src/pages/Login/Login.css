@@ -46,13 +46,14 @@
   .login-title { font-size: 22px; margin-bottom: 2px; }
   .login-sub   { font-size: 13px; margin-bottom: 14px; }
   .login-form  { gap: 10px; }
-  /* Sprint 9.2.3: shrink the topbar on phones — HotelOps logo smaller
-     (md → ~44px effective via the size class), role-switch icon
-     button shrinks proportionally. */
-  .login-topbar { margin-bottom: 12px; }
-  .login-topbar-brand .hotelops-logo-md .hotelops-logo-img { height: 42px; }
-  .login-role-switch { width: 42px; height: 42px; border-radius: 10px; }
-  .login-role-switch-icon { font-size: 20px; }
+  /* Sprint 9.2.3 → 9.2.4: shrink the topbar on phones — HotelOps lg
+     would be 96px, way too tall for the iPhone-SE lock. Override the
+     lg img height to ~68px on mobile (still bigger than the 9.2.3 md
+     of 56), and shrink the role-switch button proportionally so the
+     row stays balanced. */
+  .login-topbar { margin-bottom: 10px; }
+  .login-topbar-brand .hotelops-logo-lg .hotelops-logo-img { height: 68px; }
+  .login-role-switch { width: 56px; height: 56px; border-radius: 12px; padding: 5px; }
   /* Tighten the bigger submit button just slightly on phones so the
      iPhone-SE viewport math still works. Touch target stays well
      above the 44px floor. */
@@ -158,30 +159,47 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
-}
-.login-topbar-brand {
-  display: flex;
-  align-items: center;
+  margin-bottom: 14px;
 }
 
-/* Sprint 9.2.3: role-switch icon button. Square touch target (≥44px),
-   subtle outline so it reads as interactable but doesn't compete with
-   the primary Sign-in button. Uses an emoji glyph (🔑 manager / 👤
-   staff) sized big enough to be unambiguous at a glance. Hover/active
-   states mirror .lk-btn for consistency with the rest of the login
-   chrome. */
+/* Sprint 9.2.4: HotelOps in the topbar is now a TransitionLink back
+   to the property picker — same routing pattern as a brand-mark in
+   most apps' top-left ("logo goes home"). It uses size="lg" so the
+   brand reads as the page's primary owner (GM ask: "show this
+   software is OURS"). Reset link styles so the underlying anchor
+   doesn't add color/underline. The HotelOps PNG has its own
+   theme-matching background — clicking still keeps that mark
+   crisp, and the View Transitions API morphs it back to xl on
+   the picker. */
+.login-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: opacity 0.12s ease, transform 0.05s ease;
+}
+.login-topbar-brand:hover  { opacity: 0.85; }
+.login-topbar-brand:active { transform: scale(0.98); }
+
+/* Sprint 9.2.3 → 9.2.4: role-switch icon button. The 9.2.3 emoji
+   glyph (🔑 / 👤) is replaced by the real manager / staff PNG icons
+   from <RoleIcon />. Button stays a generous square touch target,
+   bigger now (60px) to host the icon comfortably and read as
+   intentional next to the bigger HotelOps mark. Hover/active states
+   mirror .lk-btn for consistency. */
 .login-role-switch {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
   color: var(--text-primary);
   text-decoration: none;
+  padding: 6px;
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
   flex-shrink: 0;
 }
@@ -190,10 +208,7 @@
   border-color: var(--text-muted);
 }
 .login-role-switch:active { transform: scale(0.96); }
-.login-role-switch-icon {
-  font-size: 24px;
-  line-height: 1;
-}
+.login-role-switch .role-icon { width: 100%; height: 100%; }
 
 /* Legacy classes kept in case any older login layout references them
    directly. New login pages should use .login-tenant-brand instead. */

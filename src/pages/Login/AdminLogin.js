@@ -3,9 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
+import RoleIcon from '../../components/shared/RoleIcon';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
+import '../../components/shared/RoleIcon.css';
 
 const AdminLogin = () => {
   const { loginAdmin } = useAuth();
@@ -36,21 +38,25 @@ const AdminLogin = () => {
   return (
     <div className="login-page">
       <div className="login-card">
-        {/* Sprint 9.2.3: top bar — HotelOps left, Staff-sign-in icon
-            on the right. See StaffLogin for the full rationale; this
-            page just uses the reverse role icon (person for staff
-            since this page is for managers). */}
+        {/* Sprint 9.2.3 / 9.2.4: top bar — HotelOps lg + clickable
+            back to picker; role-switch uses the new staff PNG icon.
+            See StaffLogin for the full rationale. */}
         <div className="login-topbar">
-          <div className="login-topbar-brand">
-            <HotelOpsLogo size="md" />
-          </div>
+          <TransitionLink
+            to="/login/admin"
+            className="login-topbar-brand"
+            aria-label="HotelOps — back to property selection"
+            title="Back to property selection"
+          >
+            <HotelOpsLogo size="lg" />
+          </TransitionLink>
           <TransitionLink
             to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}
             className="login-role-switch"
             aria-label="Staff sign-in"
             title="Staff sign-in"
           >
-            <span className="login-role-switch-icon" aria-hidden>👤</span>
+            <RoleIcon role="staff" alt="Staff sign-in" />
           </TransitionLink>
         </div>
 
