@@ -733,6 +733,140 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.3.5: Home dashboard — kill the This Week gap, fit clock at 640vh, lock on mobile too
+
+Three issues spotted from screenshots:
+
+1. **This Week card has a visible gap below "X recent shifts below"**
+   that doesn't change with viewport. Symptom of the 9.3.1
+   `min-height: 170px` defense plus the 9.3.3 lock's `height: 100%`
+   on the card — content sits at the top, padding stretches the
+   card downward, gap collects at the bottom.
+
+2. **Clock In button extends past the card at certain viewport
+   heights.** 9.3.3 sized the clock-cluster clamps for the *upper*
+   end of the lock range (1000+vh). At ~640–800vh the cluster
+   (analog 22vh + digital 2.8vh + date 1.4vh + 20 gap + button)
+   exceeds the flex-allocated card height by ~30px, pushing the
+   button past the card's bottom edge.
+
+3. **Lock skipped on mobile.** 9.3.3 had
+   `@media (min-height: 640px) and (min-width: 481px)`. The
+   `(min-width: 481px)` excluded phones, so even a tall portrait
+   phone scrolled the dashboard.
+
+**Fix 1: Center the card content, lower the min-heights.**
+
+```css
+.home-hero,
+.home-recent {
+  min-height: 140px;          /* was 170/160 — defense was redundant */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+```
+
+`justify-content: center` makes any extra height distribute *top +
+bottom* equally instead of accumulating as visible padding at the
+bottom. With the lock's `height: 100%` on top, the card grows with
+the flex share but the content stays vertically anchored in the
+middle of the card — no more visible "gap below the meta text."
+
+The 9.3.1 `min-height: 170` was originally a defense against the
+oval icon, but the icon's `flex-shrink: 0; aspect-ratio: 1` solves
+that directly. We can drop the defense down to 140 (just enough to
+host the back-face content) without re-introducing the oval.
+Mobile equivalent dropped 150 → 124.
+
+**Fix 2: Tighter clamp() minimums so 640vh fits.**
+
+Clamp mins lowered so the cluster fits inside the flex-allocated
+clock card area at the small end of the lock range:
+
+```css
+/* before (9.3.3) */         /* after (9.3.5) */
+analog-clock 22vh, min 120   16vh, min 80
+clock-digital 2.8vh, min 18  2.4vh, min 15
+clock-date 1.4vh, min 11     1.2vh, min 10
+clock-action padding 1.8vh, min 11   1.6vh, min 10
+clock-action font 1.9vh, min 15     1.9vh, min 14
+```
+
+At 640vh:
+- analog 102 (was 140) → saves 38
+- digital 15 (was 18) → saves 3
+- button padding 10 (was 11) → saves 2
+
+Cluster height drops from ~245 to ~190 — fits the ~210 inner card
+area at 640vh with breathing room. At taller viewports the vh
+formulas grow the sizes naturally, so the visual feel for laptop /
+desktop screens is unchanged.
+
+**Fix 3: Lock applies on mobile too, with bottom-nav clearance.**
+
+The `(min-width: 481px)` restriction dropped, so any viewport with
+≥640vh locks the page. Mobile widths get a second-pass override
+that subtracts the fixed `.bottom-nav` height (64px) from
+`100dvh` — otherwise the locked surface would extend behind the
+nav and hide ~64px of content:
+
+```css
+@media (min-height: 640px) and (max-width: 768px) {
+  .home-page {
+    height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
+    padding-top: 14px;
+    padding-bottom: 14px;
+    gap: 10px;
+  }
+}
+```
+
+`env(safe-area-inset-bottom)` accounts for iOS home-indicator
+space (typically 34px on Face-ID iPhones). Mobile padding-top/
+bottom + gap tightened from 20/24/12 → 14/14/10 to give the
+cards a touch more room inside the now-smaller locked surface.
+
+**Files modified:**
+- `src/pages/Home/Home.css`:
+  - `.home-hero, .home-recent` — now flex columns with
+    `justify-content: center`; `min-height: 170/160 → 140`.
+  - Mobile @media — `.home-hero/.home-recent` min-height 150 → 124.
+  - Lock `@media` selector — removed `(min-width: 481px)`.
+  - Clock cluster clamps — analog/digital/date/action all lowered.
+  - New `@media (min-height: 640px) and (max-width: 768px)` block
+    with calc()-based height for bottom-nav clearance.
+
+**Conventions reinforced/added:**
+- **If a card grows via flex distribution, center its content.**
+  Otherwise extra height stacks at the bottom as visible padding.
+  This is the inverse of the "if content overflows, clip it"
+  pattern — both come from flex's inability to know about your
+  semantic content distribution.
+- **Clamp() mins must fit the smallest target viewport.** Don't
+  size clamp anchors for the comfortable case — size them for the
+  edge. Comfortable cases get the vh formula's natural growth for
+  free.
+- **Lock = `100dvh - fixed-overlay-height`.** Whenever a fixed
+  element (bottom-nav, top-bar) eats viewport real estate, the
+  locked surface needs `calc(100dvh - that-overlay)` or it'll
+  extend behind. `env(safe-area-inset-bottom)` is the iOS
+  home-indicator equivalent; always include it in mobile calc.
+
+**Notes for next iteration:**
+- The new clamp mins are tuned for the staff Home page specifically.
+  If we add more sections (e.g., a "pending approvals" card for
+  shift workers), the flex distribution needs to re-balance.
+- `justify-content: center` on the front faces means very-tall
+  cards (1400+vh viewports) center their tiny content blocks in
+  a lot of whitespace. Acceptable today; if it becomes weird,
+  switch to `space-between` and pad explicitly per-element.
+- The hero-event icon's `flex-shrink: 0; aspect-ratio: 1` from
+  9.3.1 is now load-bearing. Don't remove it — the min-height
+  defense came down to 140 specifically because we trust the
+  icon constraints to hold up.
+
 ### 2026-05-19 — Sprint 9.3.4: login layout — HotelOps + role-switch slide beside the headline; universal height-based lock
 
 User screenshot at a tablet-portrait viewport (~810×~1080) showed
