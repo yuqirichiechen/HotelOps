@@ -733,6 +733,94 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.3.1: oval-checkmark fix + bigger Clock widget that fills the front face
+
+Two visual cleanups against 9.3 screenshots.
+
+**The oval checkmark.** 9.3 set the back-face icon to `width: 52px;
+height: 52px; border-radius: 50%`. It rendered as an *oval* on the
+screenshot. Cause: the parent `.home-hero-event` is a flex *column*
+(`flex-direction: column`); flex children default to
+`flex-shrink: 1`, which in column direction shrinks the
+*cross-axis-perpendicular* dimension — i.e., the height. With the
+parent's content sum exceeding the 130px `min-height` from 9.3,
+flex squeezed the icon vertically while leaving width at 52px →
+52w × ~40h oval.
+
+Fix is two lines plus a min-height bump:
+```css
+.home-hero-event-icon {
+  flex-shrink: 0;
+  aspect-ratio: 1;  /* belt-and-suspenders */
+}
+.home-hero  { min-height: 170px; }  /* was 130 — too tight for the back face stack */
+```
+
+`flex-shrink: 0` is the real fix; `aspect-ratio: 1` is a guard in
+case some future container also pinches a dimension. Mobile got the
+same treatment (min-height 116 → 150, icon classes inherit
+flex-shrink/aspect-ratio from the base rule).
+
+**The gappy clock card.** Pre-9.3.1 the front face had:
+analog (130px) + digital (18px) + date (11px) clustered at the top,
+then ~72px of dead space, then the Clock In button at the bottom.
+GM wanted the widget to "fill the space" — clock as the visual
+anchor, not a small thing floating above empty space.
+
+Two changes:
+1. **`.home-clock-face .clock-widget { flex: 1; justify-content:
+   center; }`** — the widget now stretches to fill the available
+   space between the card padding and the button, and its children
+   (analog/digital/date) center *within* that stretched height.
+   The "gap below the cluster" collapses because the widget
+   *consumes* it.
+2. **Bigger sizes** — analog `130 → 180`, digital `18 → 26`, date
+   `11 → 13` on desktop; analog `110 → 148`, digital `16 → 22`, date
+   `(unset) → 12` on mobile. Card height bumped mobile-only from
+   `290 → 310` so the bigger analog has room without crowding the
+   button.
+
+Inside-widget gap also bumped from 4 → 10 so analog/digital/date
+breathe at the new sizes without crowding each other.
+
+The back face (`On the clock` + elapsed timer + Clock Out) is
+unchanged — `.home-active` already has `flex: 1; justify-content:
+center` so it fills the space naturally. The 9.3.1 changes only
+affect the front face's `.clock-widget`.
+
+**Files modified:**
+- `src/pages/Home/Home.css`:
+  - `.home-clock-face .clock-widget` → `flex: 1; justify-content:
+    center; gap: 10` (was just chrome-strip + gap 4).
+  - `.home-clock-face .analog-clock` → 180×180 (was 130×130).
+  - `.home-clock-face .clock-digital` → 26px (was 18px).
+  - `.home-clock-face .clock-date` → 13px (was 11px).
+  - `.home-hero` min-height 130 → 170. Mobile equivalent 116 → 150.
+  - `.home-hero-event-icon` gained `flex-shrink: 0; aspect-ratio: 1`.
+  - Mobile @media: `.home-clock-flip-card` height 290 → 310; analog
+    110 → 148; digital 16 → 22; new date 12.
+
+**Conventions reinforced:**
+- **Pin both `flex-shrink: 0` AND an aspect-ratio (or explicit w/h)
+  on round icons inside flex columns.** Otherwise the implicit
+  shrink will squash one dimension while the other stays pinned,
+  producing an oval. Cheap to defend against once you've seen it
+  once.
+- **Use `flex: 1` on the "main content block" to absorb whitespace.**
+  If a card has a content cluster + a button-at-bottom and the gap
+  in between looks empty, the right fix is usually `flex: 1` +
+  `justify-content: center` on the cluster, not a fixed margin.
+  The cluster grows; the button stays anchored.
+
+**Notes for next iteration:**
+- The back face's elapsed timer (`.home-active-elapsed`) is still
+  56px on desktop. If we ever want to *also* make the back face
+  feel "fuller" (currently has lots of whitespace), bump that to
+  ~72px and add a more prominent eyebrow. Out of scope for 9.3.1.
+- `aspect-ratio: 1` is supported in all evergreen browsers but not
+  in older Safari (<15). If that ever matters, the `flex-shrink: 0`
+  + explicit width/height is the load-bearing fallback.
+
 ### 2026-05-19 — Sprint 9.3: HotelOps brand hover matches role-switch; clock-event drives bottom-card flip
 
 Two threads on opposite ends of the app:

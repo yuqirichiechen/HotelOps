@@ -101,26 +101,37 @@
   background: linear-gradient(180deg, var(--bg-surface), var(--accent-bg));
 }
 
-/* Strip the inner ClockWidget's own card chrome — it's nested in the face. */
+/* Sprint 9.3.1: ClockWidget inside the clock-face front. Strip its
+   own card chrome (nested inside the face) AND make it stretch to
+   fill the available space — `flex: 1` + `justify-content: center`
+   centers the analog/digital/date cluster vertically in the face's
+   upper region, eating the previously-empty gap between the
+   widget and the Clock In button. Combined with the bigger
+   analog/digital sizes below, the front face reads as "full" of
+   clock instead of "clock cluster + dead space + button". */
 .home-clock-face .clock-widget {
   background: transparent;
   box-shadow: none;
   padding: 0;
   border: none;
-  gap: 4px;
+  gap: 10px;
+  flex: 1;
+  justify-content: center;
 }
 
 .home-clock-face .analog-clock {
-  width: 130px;
-  height: 130px;
+  /* 9.3.1: 130 → 180. GM ask: clock should occupy the space, not
+     float small at the top. */
+  width: 180px;
+  height: 180px;
 }
 
 .home-clock-face .clock-digital {
-  font-size: 18px;
+  font-size: 26px;
 }
 
 .home-clock-face .clock-date {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 /* Back face content */
@@ -239,11 +250,14 @@
   .home-flip-card { transition: none; }
 }
 
-/* Sprint 9.3: keep the front faces at a known min-height so the
-   absolute-positioned back face always fits without clipping. Without
-   these, the front's natural content height could be shorter than
-   the back's needs and the bottom of the back would get cut off. */
-.home-hero  { min-height: 130px; }
+/* Sprint 9.3 → 9.3.1: keep the front faces at a known min-height so
+   the absolute-positioned back face always fits without clipping. The
+   hero min-height was 130px in 9.3 — too tight, the back-face flex
+   column shrank the checkmark icon vertically (width fixed at 52px,
+   height shrank to ~40px → an *oval*). 9.3.1 bumps to 170px so the
+   icon stays a true circle and the icon's `flex-shrink: 0` (below)
+   prevents the squeeze entirely as a belt-and-suspenders. */
+.home-hero  { min-height: 170px; }
 .home-recent { min-height: 160px; }
 
 /* Back face content — clock-event confirmation (This Week side). Big
@@ -276,6 +290,12 @@
   font-weight: 700;
   font-size: 26px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+  /* Sprint 9.3.1: pin the box-model so flex shrinking can't collapse
+     the height while the width stays at 52px (the bug in 9.3 was
+     exactly that — the icon rendered as a 52w×40h oval). aspect-ratio
+     is a second guard if any future container also pinches height. */
+  flex-shrink: 0;
+  aspect-ratio: 1;
 }
 .home-hero-event-icon.out { background: var(--brand-bg); }
 .home-hero-event-title {
@@ -472,18 +492,25 @@
 @media (max-width: 480px) {
   .home-page                    { padding: 16px 16px 24px; gap: 12px; }
   .home-greeting-title          { font-size: 22px; }
-  .home-clock-flip-card         { height: 290px; }
+  .home-clock-flip-card         { height: 310px; }
   .home-clock-face              { padding: 14px 16px; }
-  .home-clock-face .analog-clock { width: 110px; height: 110px; }
-  .home-clock-face .clock-digital { font-size: 16px; }
+  /* Sprint 9.3.1: bumped mobile clock sizes to match the desktop
+     "fill the space" direction. Card height grew slightly (290 →
+     310) to give the bigger analog room without crowding the
+     button. */
+  .home-clock-face .analog-clock { width: 148px; height: 148px; }
+  .home-clock-face .clock-digital { font-size: 22px; }
+  .home-clock-face .clock-date    { font-size: 12px; }
   .home-active-elapsed          { font-size: 46px; }
   .home-clock-action            { padding: 12px 28px; font-size: 15px; }
-  .home-hero                    { padding: 14px 18px; min-height: 116px; }
+  .home-hero                    { padding: 14px 18px; min-height: 150px; }
   .home-hero-num                { font-size: 40px; }
   .home-recent                  { padding: 14px 18px; min-height: 150px; }
   .home-recent-row              { grid-template-columns: 1fr 1.2fr 50px; gap: 8px; padding: 8px 0; }
-  /* Sprint 9.3: tighten the flip back-faces on phones so the back
-     content stays inside the (smaller) front-face footprint. */
+  /* Sprint 9.3 / 9.3.1: tighten the flip back-faces on phones so the
+     back content stays inside the (slightly smaller than desktop)
+     front-face footprint. Hero min-height bumped from 116 → 150 so
+     the circle icon doesn't get pinched into an oval. */
   .home-hero-event              { padding: 14px 18px; gap: 6px; }
   .home-hero-event-icon         { width: 44px; height: 44px; font-size: 22px; }
   .home-hero-event-title        { font-size: 19px; }
