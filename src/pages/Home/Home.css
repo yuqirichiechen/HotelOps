@@ -523,3 +523,79 @@
   .home-hero-event-title        { font-size: 19px; }
   .home-recent-event            { padding: 14px 18px; }
 }
+
+/* ── Sprint 9.3.3: vertical lock (no-scroll dashboard) above 640px ──────────
+   For a kiosk/clock-in dashboard, scrolling is friction — the user is
+   here to clock in/out, see today's hours, and leave. When the viewport
+   has at least 640px of vertical room (we tested fit for everything at
+   that height), the page locks to `100dvh` and the cards share the
+   remaining space via flex-grow + min-height-0. Below 640px (small
+   landscape phones, tiny windows), we *do* allow scroll — content
+   doesn't physically fit, and clipping is worse than scrolling.
+
+   Sibling sizes (analog clock, digital text, elapsed timer, hero icon)
+   scale with viewport via `clamp()` so the layout breathes between
+   640px and ~1200px+ without jumping discretely.
+
+   Note: this lock only applies *vertically* — the page still respects
+   `.home-page { max-width: 720px }` horizontally. */
+@media (min-height: 640px) and (min-width: 481px) {
+  .home-page {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    padding-top: 20px;
+    padding-bottom: 24px;
+    gap: 12px;
+    box-sizing: border-box;
+  }
+
+  /* Greeting + section titles stay natural; everything below them
+     splits the remaining height via flex-grow. Clock gets 2x weight
+     because its content (analog + digital + date) is denser. */
+  .home-greeting       { flex: 0 0 auto; }
+  .home-clock-section  {
+    flex: 2 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .home-clock-flip-container { flex: 1 1 0; min-height: 0; }
+  .home-clock-flip-card      { height: 100%; }  /* override 380 from 9.3.2 */
+
+  /* Bottom flip cards each take 1x of the remaining flex space. */
+  .home-flip-container { flex: 1 1 0; min-height: 0; }
+  .home-flip-card      { height: 100%; }
+  .home-hero, .home-recent { min-height: 0; height: 100%; }
+
+  /* Front-face content scales with viewport — analog clock between
+     120 and 220px depending on screen height; digital/date scale
+     with it. Anchored so 640vh keeps them readable (small but not
+     squashed). */
+  .home-clock-face .analog-clock {
+    width:  clamp(120px, 22vh, 220px);
+    height: clamp(120px, 22vh, 220px);
+  }
+  .home-clock-face .clock-digital { font-size: clamp(18px, 2.8vh, 28px); }
+  .home-clock-face .clock-date    { font-size: clamp(11px, 1.4vh, 14px); }
+  .home-clock-action              { padding: clamp(11px, 1.8vh, 16px) 36px; font-size: clamp(15px, 1.9vh, 17px); }
+
+  /* Back face (clocked-in state): the elapsed timer is the visual
+     anchor — let it scale up on tall screens. */
+  .home-active-elapsed { font-size: clamp(38px, 6vh, 72px); }
+
+  /* Hero / Recent front faces — make their padding scale a touch so
+     the flip-card faces feel balanced at small heights. */
+  .home-hero   { padding: clamp(14px, 2vh, 20px) clamp(16px, 2vw, 22px); }
+  .home-recent { padding: clamp(14px, 2vh, 20px) clamp(16px, 2vw, 22px); }
+  .home-hero-num { font-size: clamp(32px, 5vh, 52px); }
+
+  /* Hero back face (success confirmation): icon scales with viewport. */
+  .home-hero-event-icon  {
+    width:  clamp(40px, 6vh, 56px);
+    height: clamp(40px, 6vh, 56px);
+    font-size: clamp(20px, 3vh, 28px);
+  }
+  .home-hero-event-title { font-size: clamp(18px, 2.4vh, 24px); }
+  .home-hero-event-sub   { font-size: clamp(12px, 1.5vh, 14px); }
+}

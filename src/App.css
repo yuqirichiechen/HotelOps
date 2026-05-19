@@ -1,12 +1,28 @@
+/* Sprint 9.3.3: app shell is now `height: 100vh` (was `min-height`).
+   The old `min-height` let the shell grow when the right-side content
+   exceeded the viewport, which dragged the sidebar down with it —
+   sign-out / theme toggle ended up far below the fold on long admin
+   pages (Staff list, Scheduling, etc). With a fixed 100vh shell:
+   - .app-main's `overflow-y: auto` actually constrains, so the right
+     side scrolls *internally* with the sidebar locked.
+   - .sidebar `min-height: 100vh` (in Sidebar.css) inside a 100vh
+     parent = exactly viewport height. Footer stays at the bottom of
+     the viewport, never scrolls.
+   On mobile (<768px) the sidebar is `display: none` and the bottom
+   nav handles navigation, so this rule doesn't change phone
+   behavior. */
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .app-main {
   flex: 1;
   overflow-y: auto;
   background: var(--bg-base);
+  /* min-height: 0 lets flex-shrink work so the overflow-y can
+     actually clip + scroll instead of expanding the shell. */
+  min-height: 0;
 }
 
 @media (max-width: 768px) {

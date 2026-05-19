@@ -733,6 +733,181 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.3.3: vertical no-scroll Home + sidebar lock + sign-out in sidebar footer
+
+Three structural cleanups across the staff dashboard and the app
+shell.
+
+**Home: vertical no-scroll above 640px viewport.** The clock card is
+big (post-9.3.2 it's 380px tall) and combined with the two bottom
+flip cards it pushes the staff dashboard past viewport on most
+laptop screens, forcing scroll. For a *clock-in dashboard* that's
+backwards — staff are here to do one thing, not browse. New rule:
+
+```css
+@media (min-height: 640px) and (min-width: 481px) {
+  .home-page {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    /* … */
+  }
+  .home-clock-section  { flex: 2 1 0; min-height: 0; }
+  .home-flip-container { flex: 1 1 0; min-height: 0; }
+  .home-hero, .home-recent { min-height: 0; height: 100%; }
+  /* clock card overrides its fixed 380 from 9.3.2 → height: 100% */
+}
+```
+
+The clock section gets `flex: 2` so its dense content (analog +
+digital + date + button) gets twice the share of each bottom card.
+With `min-height: 0`, flex shrinking actually works and the cards
+share the available space cleanly.
+
+Inside the cards, sizes go fluid via `clamp()` so analog/digital/
+elapsed/icon all scale with `vh` between sensible mins (sized for
+640vh) and maxes (sized for ~1200vh+):
+
+```css
+.home-clock-face .analog-clock { width: clamp(120px, 22vh, 220px); … }
+.home-clock-face .clock-digital { font-size: clamp(18px, 2.8vh, 28px); }
+.home-active-elapsed { font-size: clamp(38px, 6vh, 72px); }
+.home-hero-event-icon { width: clamp(40px, 6vh, 56px); … }
+```
+
+The lock activates at `min-height: 640px AND min-width: 481px` —
+so mobile (≤480px) keeps its existing scroll behavior (the bottom
+nav + thumb-zone scroll is more familiar on phones). Sub-640px
+windows (rare landscape phones, weird embedded views) fall back to
+the default scroll so content can't physically clip.
+
+Anchor for the 640px choice: at 640vh, the math works —
+greeting ~36 + clock ~230 (with clamped analog at ~115) + 90 hero
++ 90 recent + 36 gaps + 44 padding = ~526px. Fits with ~110px
+breathing. Above 640 the clamp() values + flex-grow expand the
+cards proportionally.
+
+**Sidebar lock (desktop): `.app-shell` height becomes fixed.**
+
+Pre-9.3.3:
+```css
+.app-shell  { display: flex; min-height: 100vh; }
+.app-main   { flex: 1; overflow-y: auto; }
+.sidebar    { width: 220px; min-height: 100vh; /* in Sidebar.css */ }
+```
+
+`min-height: 100vh` lets the shell *grow* past the viewport when
+content is taller. `.app-main`'s `overflow-y: auto` then has no
+upper bound to clip against — content just makes everything taller
+in lockstep. Result: scrolling the right side dragged the sidebar
+down too, so the theme toggle / sign-out ended up far below the
+visible viewport.
+
+Fix is one keyword swap (and a small belt-and-suspenders):
+```css
+.app-shell { display: flex; height: 100vh; }       /* was min-height */
+.app-main  { flex: 1; overflow-y: auto; min-height: 0; }  /* min-h:0 for flex shrink */
+```
+
+`min-height: 0` on `.app-main` lets the flex shrink algorithm
+actually clip its content height to the shell's bounds, which is
+what unlocks the internal scroll. Sidebar's own `min-height: 100vh`
+inside the now-fixed 100vh shell behaves as a hard 100vh, so the
+sidebar footer stays anchored to the bottom of the viewport.
+
+Mobile (<768px) is unaffected: the sidebar is `display: none` there
+and `.bottom-nav` is `position: fixed` to the bottom — both
+sidesteped by the `.app-shell` height change.
+
+**Sign-out in sidebar footer, below the theme toggle.** GM wanted
+sign-out to live in the sidebar — visible from every page, no
+detour through Settings. Question was order: above or below the
+theme toggle. The user landed on *below* — theme toggle is the
+more frequent action (people flip dark mode), so it stays in the
+"natural reading order" position (above), and sign-out as the more
+destructive / occasional action sits at the very bottom.
+
+```jsx
+<div className="sidebar-footer">
+  <button className="theme-toggle" onClick={onToggleTheme}>…</button>
+  <button className="sidebar-signout" onClick={handleSignOut}>
+    <span className="sidebar-signout-icon">↩</span>
+    <span className="sidebar-signout-label">Sign out</span>
+  </button>
+</div>
+```
+
+The button uses the same row chrome as `.theme-toggle` (full-width
+flex row, transparent bg, 9×12 padding) but hover tints red
+(`rgba(244, 63, 94, 0.18)`) — destructive without being alarming.
+Glyph is `↩` (return arrow) which reads as "leaving this surface"
+without being as harsh as `⎋` (escape).
+
+`handleSignOut` mirrors 9.3.2's pattern — reads
+`hotelops-tenant-slug` from localStorage *before* `await logout()`,
+then routes to `/{slug}/login/{role}` based on whether the current
+user is admin or staff. Falls back to `/login/{role}` (the picker)
+if no slug is stored.
+
+Settings' own sign-out button stays — redundant but harmless,
+covers the case where someone navigated to Settings expecting it.
+
+**Files modified:**
+- `src/pages/Home/Home.css`:
+  - New `@media (min-height: 640px) and (min-width: 481px)` block
+    at the end. Locks `.home-page` to `100dvh`, makes the clock
+    section + two flip containers flex-grow with min-height-0, and
+    applies `clamp()` to analog/digital/elapsed/icon sizes.
+- `src/App.css`:
+  - `.app-shell { min-height → height: 100vh }`.
+  - `.app-main` gained `min-height: 0` so flex shrink works.
+- `src/components/Layout/Sidebar.js`:
+  - Added `useNavigate`, destructured `logout` from `useAuth`,
+    computed `role` and `handleSignOut` that mirrors Home's
+    tenant-aware redirect.
+  - Inserted `<button className="sidebar-signout">` below the
+    existing `<button className="theme-toggle">` in `.sidebar-footer`.
+- `src/components/Layout/Sidebar.css`:
+  - New `.sidebar-signout`, `.sidebar-signout-icon`,
+    `.sidebar-signout-label` rules mirroring `.theme-toggle`
+    chrome. Red-tinted hover for the destructive cue.
+
+**Conventions reinforced/added:**
+- **Lock the dashboard, not the app.** A clock-in/out surface
+  benefits from a fixed-viewport layout (no scroll to find the
+  primary action). Other pages — admin lists, scheduling, etc. —
+  *should* scroll. The opt-in is per-page (Home does it here;
+  admin pages do not).
+- **`min-height: 100vh` on a flex parent lets it grow.** If you
+  want a flex child's `overflow: auto` to actually clip, the parent
+  must have a fixed/max height the child can shrink under. The
+  classic pair is `height: 100vh` on the parent + `min-height: 0`
+  on the flex child.
+- **Sign-out below theme toggle.** Frequent / reversible action
+  above; rare / destructive action below. Same shape, different
+  hover tint to signal the difference.
+- **Read persistent state before destructive ops.** Already noted
+  in 9.3.2; reinforced here in `Sidebar.handleSignOut`. Reading
+  the tenant slug after `await logout()` would be fragile against
+  future logout cleanup work.
+
+**Notes for next iteration:**
+- The `clamp()` sizes inside the lock are tuned for a "640 → 1200
+  vh" range. On giant 4K vertical displays (1440+) the cards might
+  look stretched. If that becomes a real surface, add an upper
+  `max-height` cap on `.home-clock-flip-card` and the bottom
+  flip containers.
+- Settings still has its own `handleSignOut` for staff and
+  AdminSettings has one for admin. Redundant with the sidebar
+  button but cheap to keep — and the Settings card with "Account /
+  Sign Out" is a familiar pattern, so users searching there can
+  still find it.
+- Sub-640px viewport behavior is "scroll naturally" — no clamp
+  scaling. If we ever care about very-short windows specifically
+  (e.g., embedded kiosk panels at 600x800), worth adding a
+  `@media (max-height: 639px)` block to shrink the clock card to
+  fit a specific minimum.
+
 ### 2026-05-19 — Sprint 9.3.2: clock-card height fits the bigger widget; auto-signout routes to the *tenant*'s login
 
 Two follow-ups on 9.3.x.

@@ -1,11 +1,15 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import './Sidebar.css';
 
 // Two NAV sets: admins get an admin-focused sidebar (Home → Employees → ...)
 // when their role is 'admin'. Staff get the worker sidebar otherwise.
-// Sign-out lives in /settings (staff) and /admin/settings (admin) — not here.
+// Sprint 9.3.3: sign-out moved into the sidebar footer (under the theme
+// toggle) so it's reachable from every authed page without a detour to
+// Settings. Settings still hosts its own sign-out for redundancy. The
+// route lands on the user's *tenant*'s login (not the picker) via the
+// `hotelops-tenant-slug` localStorage hint from 9.3.2.
 
 const STAFF_NAV = [
   { to: '/',            label: 'Home',        icon: '🏠', live: true,  end: true },
@@ -27,9 +31,22 @@ const ADMIN_NAV = [
 const Sidebar = ({ theme, onToggleTheme }) => {
   const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const isDark = theme === 'dark' || (theme === null && osDark);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
 
   const NAV = user?.role === 'admin' ? ADMIN_NAV : STAFF_NAV;
+  const role = user?.role === 'admin' ? 'admin' : 'staff';
+
+  const handleSignOut = async () => {
+    // Read tenant slug BEFORE logout, then route to the per-tenant
+    // login page (or fall back to the picker if no slug is stored).
+    const slug = typeof window !== 'undefined'
+      ? localStorage.getItem('hotelops-tenant-slug')
+      : null;
+    const loginPath = slug ? `/${slug}/login/${role}` : `/login/${role}`;
+    await logout();
+    nav(loginPath, { replace: true });
+  };
 
   return (
     <>
@@ -58,6 +75,10 @@ const Sidebar = ({ theme, onToggleTheme }) => {
           <button className="theme-toggle" onClick={onToggleTheme} title="Toggle theme">
             <span className="theme-toggle-icon">{isDark ? '☀️' : '🌙'}</span>
             <span className="theme-toggle-label">{isDark ? 'Light mode' : 'Dark mode'}</span>
+          </button>
+          <button className="sidebar-signout" onClick={handleSignOut} title="Sign out">
+            <span className="sidebar-signout-icon" aria-hidden>↩</span>
+            <span className="sidebar-signout-label">Sign out</span>
           </button>
         </div>
       </nav>
