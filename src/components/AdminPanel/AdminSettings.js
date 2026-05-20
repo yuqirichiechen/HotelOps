@@ -32,6 +32,7 @@ const AdminSettings = () => {
   const [otMins,     setOtMins]     = useState('10');
   const [baseline,   setBaseline]   = useState('self');
   const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
+  const [payStartDay, setPayStartDay] = useState('0'); // Sprint 9.4: 0=Sun .. 6=Sat
   const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
   const [loginLayout, setLoginLayout] = useState('hardcode'); // Sprint 9.1.3
   // Sprint 9: which staff login methods are enabled. Stored as a CSV in
@@ -52,6 +53,9 @@ const AdminSettings = () => {
           setOtMins    (data.settings.on_time_tolerance_minutes || '10');
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
+          if (/^[0-6]$/.test(String(data.settings.pay_period_start_day))) {
+            setPayStartDay(String(data.settings.pay_period_start_day));
+          }
           setHideAbc   (data.settings.hide_abc_keyboard === 'true');
           if (data.settings.staff_login_layout === 'fluid' || data.settings.staff_login_layout === 'hardcode') {
             setLoginLayout(data.settings.staff_login_layout);
@@ -95,6 +99,7 @@ const AdminSettings = () => {
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
         staff_login_layout:        loginLayout,
         enabled_login_methods:     [...loginMethods].join(','),
+        pay_period_start_day:      payStartDay,
       }),
     });
     const data = await res.json();
@@ -258,6 +263,44 @@ const AdminSettings = () => {
                 </div>
                 <span className="settings-perf-help">
                   What the percentage delta on each performance card compares against.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Sprint 9.4: Payroll — pay-period start day. Drives the
+              biweekly range in the staff CSV/XLSX export and the
+              workweek boundary used for OT calculations. */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">💵</div>
+              <div>
+                <div className="settings-section-title">Payroll</div>
+                <div className="settings-section-desc">
+                  Day your biweekly pay period starts. Used by the Staff list export ("Biweekly" range) and to define the workweek boundary that drives overtime in payroll exports.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-perf-grid">
+              <div className="settings-perf-field">
+                <span className="settings-perf-label">Pay period starts on</span>
+                <div className="settings-perf-radio-group settings-pay-day-row">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, i) => (
+                    <label key={i} className="settings-perf-radio">
+                      <input
+                        type="radio"
+                        name="pay-period-start-day"
+                        value={String(i)}
+                        checked={String(i) === payStartDay}
+                        onChange={() => { setPayStartDay(String(i)); setSaved(false); }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+                <span className="settings-perf-help">
+                  Each biweekly cycle is 14 days starting on this weekday. "Biweekly" exports return the most recently completed cycle.
                 </span>
               </div>
             </div>

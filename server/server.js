@@ -1335,7 +1335,7 @@ app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res
     const { rows } = await pool.query(
       `SELECT te.entry_id, te.clock_in_time, te.clock_out_time, te.manual_entry, te.ot_approved,
               EXTRACT(EPOCH FROM (COALESCE(te.clock_out_time, NOW()) - te.clock_in_time)) / 3600.0 AS hours,
-              u.user_id, u.name, u.phone_number, u.role,
+              u.user_id, u.name, u.phone_number, u.role, u.base_hourly_rate,
               u.department_id, d.name AS department
        FROM time_entries te
        JOIN users u ON te.user_id = u.user_id
@@ -1353,6 +1353,10 @@ app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res
         name:           e.name,
         phone_number:   e.phone_number,
         role:           e.role,
+        // Sprint 9.4: surface base_hourly_rate so the XLSX export can
+        // compute Total Pay per employee. Null when not set; client
+        // shows the pay cell as blank in that case.
+        base_hourly_rate: e.base_hourly_rate != null ? parseFloat(e.base_hourly_rate) : null,
         department_id:  e.department_id,
         department:     e.department,
         clock_in_time:  e.clock_in_time,
@@ -1794,6 +1798,12 @@ app.put('/api/admin/settings', async (req, res) => {
     //   'force-light' — keep the page in light theme for this tenant
     // Set via the Dev Panel; reachable from the bare /login/dev URL.
     tenant_logo_dark_strategy:  v => ['card', 'invert', 'force-light'].includes(v),
+    // Sprint 9.4: day of the week (0=Sun, 6=Sat) on which biweekly
+    // pay periods reset. Used by the payroll-CSV/XLSX export to align
+    // the "biweekly" range to the most recently completed 14-day pay
+    // period, and by the OT computation to define the 7-day workweek
+    // boundary.
+    pay_period_start_day:       v => /^[0-6]$/.test(String(v)),
     // Sprint 9: which staff login methods are enabled for this tenant.
     // CSV of {phone,username,employee_code,birthday}. At least one must be
     // present. Used at login time to gate the identifier classifier and at

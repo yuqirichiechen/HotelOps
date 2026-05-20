@@ -1908,6 +1908,36 @@
 
 .settings-perf-radio input { cursor: pointer; }
 
+/* Sprint 9.4: pay-period day picker — seven horizontal pills (Sun..Sat)
+   instead of the default stacked radios. Tightens the row so all
+   seven fit on one line at typical admin widths. */
+.settings-pay-day-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-pay-day-row .settings-perf-radio {
+  flex: 1 1 0;
+  min-width: 56px;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  font-weight: 600;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.settings-pay-day-row .settings-perf-radio:hover {
+  background: var(--bg-raised);
+  border-color: var(--text-muted);
+}
+.settings-pay-day-row .settings-perf-radio input { display: none; }
+.settings-pay-day-row .settings-perf-radio:has(input:checked) {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  color: white;
+}
+
 /* ── Staff perf: OT pending/approved split + Approve button (Sprint 6.2) ── */
 
 .staff-perf-ot-split {
@@ -2640,6 +2670,43 @@
   color: var(--text-primary);
   box-shadow: var(--shadow-sm);
   font-weight: 600;
+}
+
+/* Sprint 9.4: custom date range — appears below the period chips when
+   "Custom" is selected. Two stacked date inputs + a help line about
+   the 365-day cap. */
+.staff-mgr-export-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.staff-mgr-export-custom-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.staff-mgr-export-custom-field > span {
+  flex: 0 0 36px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.staff-mgr-export-custom-field input[type="date"] {
+  flex: 1 1 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.staff-mgr-export-custom-help {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .staff-mgr-export-scope {

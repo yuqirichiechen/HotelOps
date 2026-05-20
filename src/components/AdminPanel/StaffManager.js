@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { apiFetch } from '../../auth';
 
 // List-as-dashboard pattern (Sprint 6.3): clickable stats banner drives the
@@ -26,26 +27,97 @@ const isoDay = (d) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-// Compute [from, to] (inclusive) for a named period — used by CSV export.
-const periodRange = (period) => {
+// Sprint 9.4: payroll-aligned period ranges. Options changed from
+// `today | week | month | year` to `today | biweekly | month | custom`.
+// `biweekly` is the most recently completed 14-day pay cycle, anchored
+// to `pay_period_start_day` (0=Sun .. 6=Sat) from app_settings. `custom`
+// uses caller-supplied from/to dates and the caller is responsible for
+// clamping to the 365-day max.
+const periodRange = (period, opts = {}) => {
   const now = new Date();
+  const payStartDay = opts.payStartDay != null
+    ? parseInt(opts.payStartDay, 10)
+    : 0;
+
   if (period === 'today') {
     const k = isoDay(now);
     return { from: k, to: k };
   }
-  if (period === 'week') {
-    const dow    = now.getDay() || 7;
-    const monday = new Date(now); monday.setDate(now.getDate() - (dow - 1));
-    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
-    return { from: isoDay(monday), to: isoDay(sunday) };
+  if (period === 'biweekly') {
+    // End of the just-ended cycle = day before the most recent
+    // pay-period-start-day (so the cycle is fully closed). Start =
+    // 13 days before that end (inclusive 14-day window).
+    const todayDOW = now.getDay();
+    const daysSinceStart = (todayDOW - payStartDay + 7) % 7;
+    const periodEnd = new Date(now);
+    periodEnd.setDate(now.getDate() - daysSinceStart - 1);
+    const periodStart = new Date(periodEnd);
+    periodStart.setDate(periodEnd.getDate() - 13);
+    return { from: isoDay(periodStart), to: isoDay(periodEnd) };
   }
   if (period === 'month') {
     const first = new Date(now.getFullYear(), now.getMonth(),     1);
     const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return { from: isoDay(first), to: isoDay(last) };
   }
-  // year
-  return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
+  if (period === 'custom') {
+    return {
+      from: opts.customFrom || isoDay(now),
+      to:   opts.customTo   || isoDay(now),
+    };
+  }
+  // Defensive fallback to today.
+  const k = isoDay(now);
+  return { from: k, to: k };
+};
+
+// Sprint 9.4: difference in days between two YYYY-MM-DD strings,
+// inclusive. Used to clamp the custom range to 365 days.
+const daysBetween = (fromIso, toIso) => {
+  const f = new Date(fromIso + 'T00:00:00');
+  const t = new Date(toIso   + 'T00:00:00');
+  return Math.round((t - f) / 86400000) + 1;
+};
+
+// Sprint 9.4: group entries by workweek (7-day window starting on
+// payStartDay) and split each week's hours into regular + overtime
+// against the threshold (default 40). Returns totals across all weeks
+// for one employee.
+const computeWorkweekTotals = (entries, payStartDay, threshold) => {
+  const byWeek = new Map();
+  entries.forEach(e => {
+    if (!e.clock_out_time || !e.hours) return;
+    const date = new Date(e.clock_in_time);
+    const dow = date.getDay();
+    const daysBack = (dow - payStartDay + 7) % 7;
+    const weekStart = new Date(date);
+    weekStart.setDate(date.getDate() - daysBack);
+    const key = isoDay(weekStart);
+    byWeek.set(key, (byWeek.get(key) || 0) + e.hours);
+  });
+  let totalHours = 0, regularHours = 0, overtimeHours = 0;
+  for (const hours of byWeek.values()) {
+    totalHours    += hours;
+    regularHours  += Math.min(hours, threshold);
+    overtimeHours += Math.max(0, hours - threshold);
+  }
+  return { totalHours, regularHours, overtimeHours };
+};
+
+// Sprint 9.4: Excel sheet names: max 31 chars, no []:*?/\, must be
+// unique within the workbook. Caller passes a Set to track names
+// already used and we suffix duplicates as "Name (2)", "Name (3)".
+const sanitizeSheetName = (name, used) => {
+  let base = String(name || 'Sheet').replace(/[[\]:*?/\\]/g, '').trim().slice(0, 31) || 'Sheet';
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate)) {
+    const suffix = ` (${n})`;
+    candidate = base.slice(0, 31 - suffix.length) + suffix;
+    n += 1;
+  }
+  used.add(candidate);
+  return candidate;
 };
 
 const StaffManager = () => {
@@ -67,11 +139,21 @@ const StaffManager = () => {
   const [statFilter,      setStatFilter]      = useState('all'); // 'all' | 'needs-ot' | 'recent-hires'
   const [includeInactive, setIncludeInactive] = useState(false);
 
-  // CSV export popover (Sprint 6.4)
+  // Export popover (Sprint 6.4 → 9.4). Renamed from "CSV" but state
+  // keys kept for diff-friendliness.
   const [csvOpen,    setCsvOpen]    = useState(false);
   const [csvBusy,    setCsvBusy]    = useState(false);
-  const [csvPeriod,  setCsvPeriod]  = useState('week');     // today | week | month | year
+  // Sprint 9.4: today | biweekly | month | custom (was today | week | month | year).
+  const [csvPeriod,  setCsvPeriod]  = useState('biweekly');
   const [csvScope,   setCsvScope]   = useState('all');      // all | department | filtered
+  // Sprint 9.4: custom range pickers — only used when csvPeriod === 'custom'.
+  const [customFrom, setCustomFrom] = useState(today());
+  const [customTo,   setCustomTo]   = useState(today());
+  // Sprint 9.4: cached settings for the export — pay-period start day
+  // (drives biweekly + workweek boundary) and overtime threshold.
+  // Fetched once when the export popover opens.
+  const [payStartDay,  setPayStartDay]  = useState('0');
+  const [otThreshold,  setOtThreshold]  = useState(40);
   const csvWrapRef = useRef(null);
 
   const reload = async () => {
@@ -97,6 +179,25 @@ const StaffManager = () => {
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [csvOpen]);
+
+  // Sprint 9.4: pull the pay-period start day + OT threshold when the
+  // export popover opens. Two values are admin-set in
+  // /admin/settings; this avoids stale defaults the first time the
+  // user exports after changing the setting.
+  useEffect(() => {
+    if (!csvOpen) return;
+    fetch('/api/admin/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (!data?.success) return;
+        if (/^[0-6]$/.test(String(data.settings.pay_period_start_day))) {
+          setPayStartDay(String(data.settings.pay_period_start_day));
+        }
+        const t = parseFloat(data.settings.overtime_threshold_hours);
+        if (!Number.isNaN(t) && t > 0) setOtThreshold(t);
+      })
+      .catch(() => { /* defaults are fine */ });
   }, [csvOpen]);
 
   const handleAdd = async (e) => {
@@ -187,10 +288,44 @@ const StaffManager = () => {
 
   const maxHours = Math.max(8, ...filtered.map(e => e.hours_this_week || 0));
 
-  // ── CSV export ────────────────────────────────────────────────────────────
+  // ── Export (Sprint 9.4: now XLSX, multi-sheet) ────────────────────────────
+  //
+  // Per-employee sheet layout:
+  //   Row 1: header (Name, Department, Date, Day, Clock In, Clock Out, Hours)
+  //   Rows 2..N: one row per time entry, sorted by clock-in time
+  //   blank row
+  //   Summary block (label | value pairs):
+  //     Total Hours, Regular Hours, Overtime Hours, Hourly Rate,
+  //     Total Pay, OT Pay (TBD)
+  // OT is computed per-workweek (7-day window starting on the
+  // pay_period_start_day) against `overtime_threshold_hours` —
+  // matches FLSA semantics and the existing dashboard math.
   const runExport = async () => {
     setCsvBusy(true);
-    const { from, to } = periodRange(csvPeriod);
+
+    // Resolve date range. Custom needs a 365-day cap so an accidental
+    // "2020 → today" range doesn't time out the server.
+    let from, to;
+    if (csvPeriod === 'custom') {
+      if (!customFrom || !customTo) {
+        setCsvBusy(false);
+        alert('Pick a start and end date.');
+        return;
+      }
+      if (customFrom > customTo) {
+        setCsvBusy(false);
+        alert('Start date must be before end date.');
+        return;
+      }
+      if (daysBetween(customFrom, customTo) > 365) {
+        setCsvBusy(false);
+        alert('Custom range can\'t exceed 365 days.');
+        return;
+      }
+      ({ from, to } = periodRange('custom', { customFrom, customTo }));
+    } else {
+      ({ from, to } = periodRange(csvPeriod, { payStartDay }));
+    }
 
     const params = new URLSearchParams({ from, to });
     let scopeLabel = 'all-staff';
@@ -217,34 +352,91 @@ const StaffManager = () => {
       return;
     }
 
-    const rows = [['Name', 'Department', 'Date', 'Day', 'Clock In', 'Clock Out', 'Hours', 'Manual', 'OT Approved']];
-    (data.entries || []).forEach(e => {
-      const start = new Date(e.clock_in_time);
-      rows.push([
-        e.name,
-        e.department || 'Unassigned',
-        isoDay(start),
-        start.toLocaleDateString([], { weekday: 'short' }),
-        start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        e.clock_out_time
-          ? new Date(e.clock_out_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-          : 'In progress',
-        e.clock_out_time ? e.hours.toFixed(2) : '',
-        e.manual_entry ? 'Yes' : '',
-        e.ot_approved  ? 'Yes' : '',
-      ]);
+    const entries = data.entries || [];
+    if (entries.length === 0) {
+      alert('No entries in this range — nothing to export.');
+      return;
+    }
+
+    // Group entries by employee. Server returns them sorted by name +
+    // clock_in_time, so the group order is stable.
+    const groups = new Map();
+    entries.forEach(e => {
+      if (!groups.has(e.user_id)) {
+        groups.set(e.user_id, {
+          user_id: e.user_id,
+          name: e.name,
+          department: e.department,
+          rate: e.base_hourly_rate,
+          rows: [],
+        });
+      }
+      groups.get(e.user_id).rows.push(e);
     });
 
-    const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `staff-${scopeLabel}-${csvPeriod}-${from}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const wb = XLSX.utils.book_new();
+    const usedSheetNames = new Set();
+    const payStartDayNum = parseInt(payStartDay, 10) || 0;
+
+    for (const group of groups.values()) {
+      const sheetData = [
+        ['Name', 'Department', 'Date', 'Day', 'Clock In', 'Clock Out', 'Hours'],
+      ];
+
+      group.rows.forEach(e => {
+        const start = new Date(e.clock_in_time);
+        sheetData.push([
+          e.name,
+          e.department || 'Unassigned',
+          isoDay(start),
+          start.toLocaleDateString([], { weekday: 'short' }),
+          start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          e.clock_out_time
+            ? new Date(e.clock_out_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+            : 'In progress',
+          e.clock_out_time ? Number(e.hours.toFixed(2)) : '',
+        ]);
+      });
+
+      // Summary block — calculated against the workweek boundary
+      // defined by pay_period_start_day so the OT splits match what
+      // payroll would actually owe.
+      const { totalHours, regularHours, overtimeHours } =
+        computeWorkweekTotals(group.rows, payStartDayNum, otThreshold);
+      const rate     = group.rate;
+      const totalPay = rate != null ? Number((regularHours * rate).toFixed(2)) : null;
+      // OT pay intentionally left as "TBD" — implementation deferred
+      // (typical FLSA: overtimeHours × rate × 1.5, but the user wants
+      // this revisited as its own decision).
+
+      sheetData.push([]);
+      sheetData.push(['Summary', `${from} → ${to}`]);
+      sheetData.push(['Total Hours',    Number(totalHours.toFixed(2))]);
+      sheetData.push(['Regular Hours',  Number(regularHours.toFixed(2))]);
+      sheetData.push(['Overtime Hours', Number(overtimeHours.toFixed(2))]);
+      sheetData.push(['Hourly Rate',    rate != null ? rate : '—']);
+      sheetData.push(['Total Pay',      totalPay != null ? totalPay : '—']);
+      sheetData.push(['OT Pay',         'TBD']);
+
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+      // Column widths — let the timestamps + names breathe.
+      ws['!cols'] = [
+        { wch: 22 }, // Name
+        { wch: 16 }, // Department
+        { wch: 12 }, // Date
+        { wch:  6 }, // Day
+        { wch: 10 }, // Clock In
+        { wch: 12 }, // Clock Out
+        { wch:  8 }, // Hours
+      ];
+
+      const sheetName = sanitizeSheetName(group.name, usedSheetNames);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    }
+
+    const filename = `staff-${scopeLabel}-${csvPeriod}-${from}.xlsx`;
+    XLSX.writeFile(wb, filename);
 
     setCsvOpen(false);
   };
@@ -392,16 +584,16 @@ const StaffManager = () => {
           </button>
           {csvOpen && (
             <div className="staff-mgr-export-menu" role="menu">
-              <div className="staff-mgr-export-title">Export CSV</div>
+              <div className="staff-mgr-export-title">Export payroll (XLSX)</div>
 
               <div className="staff-mgr-export-section">
                 <div className="staff-mgr-export-label">Period</div>
                 <div className="staff-mgr-export-period">
                   {[
-                    { v: 'today', label: 'Today' },
-                    { v: 'week',  label: 'Week'  },
-                    { v: 'month', label: 'Month' },
-                    { v: 'year',  label: 'Year'  },
+                    { v: 'today',    label: 'Today'    },
+                    { v: 'biweekly', label: 'Biweekly' },
+                    { v: 'month',    label: 'Month'    },
+                    { v: 'custom',   label: 'Custom'   },
                   ].map(p => (
                     <button
                       key={p.v}
@@ -413,6 +605,32 @@ const StaffManager = () => {
                     </button>
                   ))}
                 </div>
+                {csvPeriod === 'custom' && (
+                  <div className="staff-mgr-export-custom">
+                    <label className="staff-mgr-export-custom-field">
+                      <span>From</span>
+                      <input
+                        type="date"
+                        value={customFrom}
+                        max={customTo || undefined}
+                        onChange={e => setCustomFrom(e.target.value)}
+                      />
+                    </label>
+                    <label className="staff-mgr-export-custom-field">
+                      <span>To</span>
+                      <input
+                        type="date"
+                        value={customTo}
+                        min={customFrom || undefined}
+                        max={today()}
+                        onChange={e => setCustomTo(e.target.value)}
+                      />
+                    </label>
+                    <div className="staff-mgr-export-custom-help">
+                      Max range: 365 days.
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="staff-mgr-export-section">

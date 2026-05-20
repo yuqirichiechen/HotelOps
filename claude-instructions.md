@@ -733,6 +733,162 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.4: payroll export — biweekly + custom range, XLSX with one sheet per employee, OT summary
+
+Reworks the Staff list export end-to-end for payroll use.
+
+**Period options.** Old: `today | week | month | year`. New:
+`today | biweekly | month | custom`. `biweekly` is the *most recently
+completed* 14-day cycle, anchored to a new
+`pay_period_start_day` (0=Sun .. 6=Sat) admin setting. `month` =
+current calendar month. `custom` shows a pair of `<input
+type="date">` pickers and is capped at 365 days so a typo'd
+1990-01-01 doesn't time out the server.
+
+`periodRange()` was rewritten:
+
+```js
+periodRange('biweekly', { payStartDay: 0 })
+  // → most recent 14-day cycle ending the day before the next start day
+periodRange('custom', { customFrom: '...', customTo: '...' })
+  // → straight passthrough after validation
+```
+
+Biweekly math: take today's day-of-week, find days back to the most
+recent pay-period-start-day, subtract one more day to land on the
+just-ended cycle's last day, then back up 13 more days for the
+14-day window. Example with payStartDay = 0 (Sunday) and today = Tue
+May 19: most recent Sun = May 17 (today − 2), period end = May 16
+(Sat), period start = May 3 (Sun) → just-ended biweekly = May 3–16.
+
+**XLSX, not CSV.** Multi-sheet output was the headline ask, and CSV
+can't host tabs — switched to `xlsx` (sheetjs). One sheet per
+employee. Sheet names sanitized via `sanitizeSheetName(name, used)`
+that strips Excel-illegal chars (`[]:*?/\`), caps at 31 chars, and
+suffixes duplicates as `"Name (2)"`, `"Name (3)"`, …
+
+Per-sheet layout:
+```
+Row 1: Name | Department | Date | Day | Clock In | Clock Out | Hours
+Row 2..N: time entries (Hours blank for in-progress)
+blank
+Summary | from → to
+Total Hours    | …
+Regular Hours  | …  (sum of min(week, threshold) per workweek)
+Overtime Hours | …  (sum of max(0, week − threshold) per workweek)
+Hourly Rate    | rate or "—"
+Total Pay      | regularHours × rate, or "—" when rate is null
+OT Pay         | TBD (deferred — see notes below)
+```
+
+Workweek = 7-day window starting on `payStartDay`. So OT is split
+*by the actual weekly aggregate*, not per-entry — matches FLSA and
+the dashboard math. `overtime_threshold_hours` (default 40) is the
+boundary. `computeWorkweekTotals(entries, payStartDay, threshold)`
+returns `{ totalHours, regularHours, overtimeHours }`.
+
+**OT Pay deferred.** The user explicitly wanted OT pay revisited as
+its own decision (typical FLSA is `OT × rate × 1.5`, but the
+multiplier varies by state/contract). For 9.4 the cell is literal
+"TBD" so payroll knows it isn't computed yet, and `Total Pay` only
+sums *regular* hours × rate. When OT pay lands, the layout has the
+slot already.
+
+**Hourly rate.** `users.base_hourly_rate` already exists in the
+schema. `/api/admin/entries` now surfaces it on each entry row
+(parsed as `parseFloat`, null when unset). Sheet renders `—` for
+rate / pay when null so payroll sees "rate wasn't set" instead of
+"$0.00".
+
+**Pay-period-start-day setting + UI.** New row in the `ALLOWED`
+validator:
+
+```js
+pay_period_start_day: v => /^[0-6]$/.test(String(v)),
+```
+
+`AdminSettings` page got a new "Payroll" section with a horizontal
+day-of-week picker (Sun..Sat). The CSS `.settings-pay-day-row`
+arranges the seven `.settings-perf-radio` items inline as pill
+buttons and uses `:has(input:checked)` for the active state.
+(Modern Chromium/Safari/Firefox all support `:has` now; if we ever
+need to support older browsers, swap to a className-based active
+state.)
+
+**`/api/admin/entries`.** Added `u.base_hourly_rate` to the SELECT
+and the JSON response. No other endpoint changes.
+
+**Files modified:**
+- `server/server.js`:
+  - `ALLOWED` validator → added `pay_period_start_day`.
+  - `/api/admin/entries` SELECT + response → added
+    `base_hourly_rate`.
+- `src/components/AdminPanel/AdminSettings.js`:
+  - New `payStartDay` state + fetch + save key.
+  - New `<div className="settings-section">` for Payroll with the
+    7-day picker.
+- `src/components/AdminPanel/AdminPanel.css`:
+  - New `.settings-pay-day-row` rules (row layout, pill chrome,
+    `:has(input:checked)` active state).
+  - New `.staff-mgr-export-custom*` rules for the custom date
+    inputs inside the export popover.
+- `src/components/AdminPanel/StaffManager.js`:
+  - `import * as XLSX from 'xlsx'`.
+  - `periodRange()` rewritten (today / biweekly / month / custom).
+  - New `daysBetween`, `computeWorkweekTotals`, `sanitizeSheetName`
+    helpers.
+  - New state: `customFrom`, `customTo`, `payStartDay`,
+    `otThreshold`. Default period is `'biweekly'`.
+  - useEffect that fetches `/api/admin/settings` when the popover
+    opens (refreshes payStartDay + otThreshold).
+  - `runExport()` rewritten: groups entries by `user_id`, builds
+    per-employee sheet data with summary footer, writes XLSX via
+    `XLSX.writeFile(wb, filename.xlsx)`.
+  - JSX: period buttons updated, custom date inputs render when
+    `csvPeriod === 'custom'`.
+
+**Install step (one-time):**
+```
+npm install xlsx
+```
+The `xlsx` package (`~700KB minified + gzipped`) is now a runtime
+dependency. Until installed, `npm start` will fail to resolve the
+import.
+
+**Conventions reinforced/added:**
+- **Payroll math uses per-workweek aggregation.** OT split is
+  determined by *each week's* total against the threshold, not per
+  entry. Sum the per-week splits to get the period totals.
+- **Sheet name sanitize is a real concern.** Excel chokes on
+  reserved chars and 32+ char names. Always normalize via a helper
+  that also handles duplicates — never trust `employee.name`
+  blindly as a sheet ID.
+- **Defer pay logic that needs policy.** OT pay multiplier varies
+  by jurisdiction; ship the slot with "TBD" rather than guess. The
+  XLSX consumer (a payroll clerk) can compute it manually in the
+  meantime.
+- **Settings the export depends on are read at popover-open time.**
+  Avoids a stale cache if the admin just changed the pay-period
+  start day in another tab and immediately ran an export.
+
+**Notes for next iteration:**
+- OT pay implementation: needs a policy decision (federal 1.5×?
+  state-specific multiplier? CA double-time after 12h?). Wire it
+  via a new `overtime_multiplier` setting + a `compute OT pay` step
+  in `runExport` once the policy is set.
+- The `biweekly` calculation assumes the cycles are anchored at
+  *any* occurrence of the start-day-of-week — there's no concept
+  of "first cycle started on X date." If a property runs payroll
+  on an alternating-week schedule (e.g., even weeks only), we'd
+  need a second setting (cycle anchor date) + math to figure out
+  which week of the cycle today is in. Defer until a real customer
+  needs it.
+- Cap-365 for custom is enforced client-side. If we ever expose a
+  programmatic export endpoint, enforce server-side too.
+- The XLSX bundle is ~700KB. If bundle size becomes a concern,
+  consider code-splitting it via `React.lazy` + dynamic import so
+  only admins who export load it.
+
 ### 2026-05-19 — Sprint 9.3.5: Home dashboard — kill the This Week gap, fit clock at 640vh, lock on mobile too
 
 Three issues spotted from screenshots:
