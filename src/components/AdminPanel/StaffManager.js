@@ -154,6 +154,12 @@ const StaffManager = () => {
   // Fetched once when the export popover opens.
   const [payStartDay,  setPayStartDay]  = useState('0');
   const [otThreshold,  setOtThreshold]  = useState(40);
+  // Sprint 9.4.1: whether the export includes time entries for staff
+  // currently marked inactive. Default false — payroll usually only
+  // pays active staff, and including former employees in the workbook
+  // confused the user. Admin can opt-in when they need historical
+  // payroll for departed staff.
+  const [csvIncludeInactive, setCsvIncludeInactive] = useState(false);
   const csvWrapRef = useRef(null);
 
   const reload = async () => {
@@ -352,9 +358,26 @@ const StaffManager = () => {
       return;
     }
 
-    const entries = data.entries || [];
+    let entries = data.entries || [];
+
+    // Sprint 9.4.1: drop entries belonging to inactive users unless
+    // the admin opted in. The active flag lives on the local
+    // `employees` list (server returns all staff by default), so we
+    // build a Set of active user_ids and filter against it. Doing
+    // this client-side keeps the server endpoint unchanged.
+    if (!csvIncludeInactive) {
+      const activeIds = new Set(
+        employees.filter(e => e.active !== false).map(e => e.user_id)
+      );
+      entries = entries.filter(e => activeIds.has(e.user_id));
+    }
+
     if (entries.length === 0) {
-      alert('No entries in this range — nothing to export.');
+      alert(
+        csvIncludeInactive
+          ? 'No entries in this range — nothing to export.'
+          : 'No entries for active staff in this range. Check "Include inactive staff" if you need historical payroll for departed employees.'
+      );
       return;
     }
 
@@ -674,13 +697,27 @@ const StaffManager = () => {
                 </div>
               </div>
 
+              {/* Sprint 9.4.1: opt-in to include former / inactive staff.
+                  Off by default — payroll typically only covers active
+                  employees, and the unfiltered behavior surprised the
+                  GM (departed staff showing in the workbook). */}
+              <label className="staff-mgr-export-checkbox">
+                <input
+                  type="checkbox"
+                  className="hop-check"
+                  checked={csvIncludeInactive}
+                  onChange={e => setCsvIncludeInactive(e.target.checked)}
+                />
+                <span>Include inactive staff</span>
+              </label>
+
               <button
                 type="button"
                 className="staff-mgr-export-go"
                 onClick={runExport}
                 disabled={csvBusy || (csvScope === 'department' && !deptScopeAvailable)}
               >
-                {csvBusy ? 'Exporting…' : 'Download CSV'}
+                {csvBusy ? 'Exporting…' : 'Download XLSX'}
               </button>
             </div>
           )}

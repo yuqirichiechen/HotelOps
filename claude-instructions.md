@@ -733,6 +733,62 @@ hour override + audit logging; moved sign-out to Settings on both sides.
 - AdminHome auto-refreshes every 60s; could be smarter (only when tab is
   visible, refresh on focus, etc.) — Sprint 5.x polish.
 
+### 2026-05-19 — Sprint 9.4.1: export popover gets "Include inactive staff" checkbox
+
+Quick follow-up to 9.4. Pre-9.4.1 the export pulled time entries
+for *every* employee with rows in the range, regardless of active
+status — so departed staff showed up in the payroll workbook,
+which surprised the GM.
+
+Added `csvIncludeInactive` state (default `false`) and a checkbox
+between the Scope radios and the Download button. `runExport` does
+the filter client-side after the fetch — builds a `Set` of active
+user_ids from the already-loaded `employees` list and filters
+entries against it:
+
+```js
+if (!csvIncludeInactive) {
+  const activeIds = new Set(
+    employees.filter(e => e.active !== false).map(e => e.user_id)
+  );
+  entries = entries.filter(e => activeIds.has(e.user_id));
+}
+```
+
+Client-side keeps `/api/admin/entries` unchanged (it already
+doesn't filter by active status) and avoids a roundtrip on toggle.
+
+If the resulting list is empty *because* of the filter, the empty-
+state alert hints at the checkbox instead of just "nothing to
+export":
+
+> "No entries for active staff in this range. Check 'Include
+> inactive staff' if you need historical payroll for departed
+> employees."
+
+Also renamed the run button label from "Download CSV" → "Download
+XLSX" (a leftover from 9.4 — the file is XLSX now).
+
+**Files modified:**
+- `src/components/AdminPanel/StaffManager.js`:
+  - Added `csvIncludeInactive` state.
+  - Added active-id Set + filter in `runExport` before the
+    empty-state check.
+  - New `<label className="staff-mgr-export-checkbox">` between the
+    Scope block and the Download button.
+  - Download button label "CSV" → "XLSX".
+- `src/components/AdminPanel/AdminPanel.css`:
+  - New `.staff-mgr-export-checkbox` row chrome (matches the export
+    radios).
+
+**Notes for next iteration:**
+- Active filter happens *after* the server query, so the
+  `user_ids=…` URL param still includes inactive IDs if the
+  "Filtered" scope is picked while inactive are visible in the
+  list. Acceptable today (server doesn't care, client filters)
+  but if we add server-side payroll endpoints later, push the
+  filter into the SQL `WHERE` for consistency.
+
 ### 2026-05-19 — Sprint 9.4: payroll export — biweekly + custom range, XLSX with one sheet per employee, OT summary
 
 Reworks the Staff list export end-to-end for payroll use.

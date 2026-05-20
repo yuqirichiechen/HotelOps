@@ -2740,6 +2740,20 @@
   margin-left: 4px;
 }
 
+/* Sprint 9.4.1: include-inactive checkbox sits between the Scope
+   radios and the Download button. Matches the export-radio row
+   chrome so the popover reads as one continuous set of controls. */
+.staff-mgr-export-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin-top: 8px;
+}
+.staff-mgr-export-checkbox input { cursor: pointer; }
+
 .staff-mgr-export-go {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
