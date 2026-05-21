@@ -211,8 +211,31 @@
   margin-top: 1px;
 }
 
+/* Sprint 11.1: keep 3 tiles inline on mobile, just compress. The
+   1-column stacked variant from Sprint 11 ate too much vertical
+   space — admins iterating fast want all three visible without
+   scrolling. */
 @media (max-width: 720px) {
-  .notes-center-tiles { grid-template-columns: 1fr; }
+  .notes-center { padding: 14px 12px; gap: 10px; }
+  .notes-center-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .notes-center-tile {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 10px 8px;
+    gap: 4px;
+  }
+  .notes-center-tile-icon { width: 30px; height: 30px; font-size: 14px; }
+  .notes-center-tile-num  { font-size: 22px; }
+  .notes-center-tile-label {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+  .notes-center-tile-meta { display: none; }
+  .notes-center-header { flex-direction: column; align-items: flex-start; gap: 6px; }
 }
 
 
@@ -672,6 +695,20 @@
   background: var(--bg-base);
   color: var(--text-primary);
 }
+/* Sprint 11.1: for_date picker inline with Visibility */
+.notes-drawer-compose-date {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.notes-drawer-compose-date:hover { background: var(--bg-raised); }
+
 .notes-drawer-attach {
   display: inline-flex;
   align-items: center;

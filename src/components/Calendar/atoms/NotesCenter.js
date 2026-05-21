@@ -30,9 +30,18 @@ const NotesCenter = ({
   viewAllHref,
   staffScope = false,
   staffDepartmentId = null,
+  currentUser = null,
 }) => {
   const [counts, setCounts] = useState({ unread: 0, general: 0, carryovers: 0 });
   const [loading, setLoading] = useState(true);
+
+  // Sprint 11.1: admin has no users row, so the server returns
+  // is_read=TRUE for every note (admin is moderator, not audience).
+  // The "Unread" tile would then read "0" forever — useless. For
+  // admin, repurpose the tile to count *unresolved* active notes
+  // (the moderation queue: anything that hasn't been resolved yet).
+  // Staff still uses real per-user is_read tracking.
+  const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +57,9 @@ const NotesCenter = ({
       });
       const today = forDate;
       setCounts({
-        unread: notes.filter(n => !n.is_read && !n.resolved_at).length,
+        unread: isAdmin
+          ? notes.filter(n => !n.resolved_at).length
+          : notes.filter(n => !n.is_read && !n.resolved_at).length,
         general: notes.filter(n =>
           !n.resolved_at &&
           (n.scope === 'department' || n.scope === 'all') &&
@@ -63,7 +74,7 @@ const NotesCenter = ({
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [forDate, staffScope, staffDepartmentId]);
+  }, [forDate, staffScope, staffDepartmentId, isAdmin]);
 
   return (
     <section className="notes-center">
@@ -92,8 +103,12 @@ const NotesCenter = ({
           <span className="notes-center-tile-icon notes-center-tile-icon-unread" aria-hidden>📨</span>
           <div className="notes-center-tile-text">
             <div className="notes-center-tile-num">{counts.unread}</div>
-            <div className="notes-center-tile-label">Unread Notes</div>
-            <div className="notes-center-tile-meta">Needs attention</div>
+            <div className="notes-center-tile-label">
+              {isAdmin ? 'Active Notes' : 'Unread Notes'}
+            </div>
+            <div className="notes-center-tile-meta">
+              {isAdmin ? 'Awaiting resolution' : 'Needs attention'}
+            </div>
           </div>
         </button>
 

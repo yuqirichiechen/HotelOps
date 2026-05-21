@@ -2099,13 +2099,19 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
       `SELECT
          n.note_id, n.body, n.scope,
          n.schedule_id, n.department_id,
-         n.for_date, n.carry_until,
+         -- Sprint 11.1: explicit ::text casts so the client gets
+         -- "YYYY-MM-DD" strings, not the JS-Date round-trip that
+         -- bakes a timezone into the JSON (e.g. "2026-05-20T07:00:00Z").
+         -- Without this, `n.for_date === forDate` comparisons in the
+         -- drawer's General/All filters silently miss every row.
+         n.for_date::text   AS for_date,
+         n.carry_until::text AS carry_until,
          n.pinned_at, n.resolved_at,
          n.created_at, n.updated_at,
          n.author_user_id,
          COALESCE(u.name, n.author_label, 'Unknown') AS author_name,
          d.name AS department_name,
-         s.scheduled_date  AS schedule_date,
+         s.scheduled_date::text  AS schedule_date,
          sh.start_time     AS shift_start,
          sh.end_time       AS shift_end,
          su.name           AS schedule_user_name,

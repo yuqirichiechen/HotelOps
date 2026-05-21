@@ -792,6 +792,156 @@ nav row:
 
 ---
 
+### 2026-05-21 — Sprint 11.1: Calendar polish + counter bug + assign-to-shift + for_date picker
+
+Six items, three fixes + two features + one mobile layout. Caught
+on the first post-Sprint-11 demo.
+
+**1. DayToggle removed from admin Day view.** The Today / Tomorrow
+Preview toggle was a fixed two-day snap, not a relative day shifter —
+once admin navigated past today the toggle wouldn't update relative
+to the new cursor and read as broken. Admin uses the existing
+prev/next day-nav buttons. Staff Day view keeps the toggle since
+the staff Calendar doesn't have other day-nav surfaces.
+
+**2. "Always 0" counters — for_date type mismatch fix.** The GET
+`/api/handoff-notes` endpoint was returning `n.for_date` and
+`n.carry_until` as Postgres `date` columns; `pg` round-trips those
+through JS `Date` → JSON serializes as ISO timestamp strings
+("2026-05-20T07:00:00.000Z") that bake in the server's timezone.
+Meanwhile the client compares `n.for_date === forDate` against
+"YYYY-MM-DD" strings — every comparison misses. Effect: NotesCenter
+General + Carryovers tiles read 0 regardless of actual data, AND
+the drawer's General tab filtered out every row.
+
+Fix: explicit `::text` casts in the SELECT:
+```sql
+n.for_date::text       AS for_date,
+n.carry_until::text    AS carry_until,
+s.scheduled_date::text AS schedule_date,
+```
+
+Sibling fix: admin's "Unread Notes" tile was structurally always 0
+because the server returns `is_read=TRUE` for every row when the
+requester is admin (admin = moderator, not audience — Sprint 10.4
+decision). For admin, the tile now counts *unresolved active notes*
+("Active Notes" / "Awaiting resolution") instead. Staff still uses
+real per-user `is_read` tracking with the original "Unread Notes"
+label.
+
+**3. Assign-to-shift compose is live.** The Visibility dropdown's
+"Assign to shift (coming soon)" stub is wired:
+
+- Click "Assign to shift" → lazy-loads `/api/shifts/range` for the
+  next 7 days (uses the Sprint 10.1 endpoint).
+- Picker shows each upcoming schedule as
+  `"Sat May 22 · 7a–3p · Front Desk · Emily Tran"`.
+- Post sends `{ scope: 'shift', schedule_id }`. The server
+  resolves `for_date` from the schedule (existing Sprint 10
+  behavior — for `scope='shift'`, `for_date` is denormalized from
+  `schedules.scheduled_date`).
+- Auto-switch tab to `assigned` after a successful post.
+- Staff can also assign — the server's
+  `schedule_visibility='department'` gates the picker to their own
+  dept.
+
+**4. for_date picker in compose + date display on note rows.**
+New `<input type="date">` next to the Visibility dropdown in the
+compose footer, defaulting to the drawer's current `forDate`. Admin
+can shift it forward (callback follow-ups, "remind me in a month"
+style notes). The picker syncs with `forDate` only when the
+textarea is empty so navigating between days doesn't blow away an
+in-progress draft.
+
+Note timestamps render differently:
+```js
+formatNoteTime(n) === created_date == for_date
+  ? "3:45 PM"
+  : "Mon Jun 15 · 3:45 PM"
+```
+So a note posted today for next month displays its scheduled date,
+not just the post timestamp.
+
+**5. General tab empty — also fixed by the for_date cast (#2).**
+The General tab filter is `(scope='department'|'all') && for_date
+=== forDate`. Same string-vs-ISO-timestamp mismatch as the
+counters; once for_date is cast to text the filter passes again.
+
+**6. Mobile NotesCenter — 3 tiles on one row.** Sprint 11's media
+query stacked the tiles 1-per-row which ate a lot of vertical
+real estate. New compact layout: `repeat(3, minmax(0, 1fr))` on
+the grid, tiles flex-column with center-aligned text, hide the
+meta line at small widths. Header also stacks (title / sub on top,
+View all notes below) for narrow widths.
+
+**Files modified:**
+- `server/server.js`:
+  - GET `/api/handoff-notes` SELECT: explicit `::text` casts on
+    `for_date`, `carry_until`, `s.scheduled_date`.
+- `src/components/Calendar/atoms/NotesDrawer.js`:
+  - Compose state: `composeForDate`, `composeScheduleId`,
+    `upcomingShifts` cache + `loadUpcomingShifts` callback.
+  - Visibility menu wires "Assign to shift" with the schedules
+    picker.
+  - `<input type="date">` in compose actions row.
+  - `formatNoteTime(n)` shows date when for_date != created_date.
+  - `onPost` builds payload from scope (department/all/shift) +
+    composeForDate; auto-switches tab to 'assigned' for shift
+    posts.
+- `src/components/Calendar/atoms/NotesCenter.js`:
+  - Accepts `currentUser` prop.
+  - Admin "Unread" tile renamed → "Active Notes" / "Awaiting
+    resolution" and counts unresolved active notes.
+- `src/components/Calendar/Calendar.css`:
+  - `.notes-drawer-compose-date` rules.
+  - Mobile `@media (max-width: 720px)` NotesCenter: 3-column
+    compact tile layout (replaces the 1-column stack).
+- `src/components/AdminPanel/Calendar/index.js`:
+  - Day view branch: DayToggle removed.
+  - Pass `currentUser={user}` to NotesCenter.
+  - Removed `todayMidnight`/`tomorrowMidnight`/`dayToggleSide`
+    state (DayToggle was the only consumer).
+- `src/pages/StaffCalendar/index.js`:
+  - Pass `currentUser={user}` to NotesCenter (DayToggle stays).
+
+**Conventions reinforced:**
+- **Cast Postgres `date` columns to `::text` whenever the client
+  compares against `YYYY-MM-DD` strings.** Don't trust the `pg`
+  driver to do the right thing — it'll silently round-trip
+  through `Date`, drop a tz on the ISO string, and break every
+  date-equality check downstream. Set the cast at the SELECT layer
+  once.
+- **Admin's "unread" semantics are different from staff's.** Admin
+  is moderator; for them, the count that matters is "unresolved
+  notes I should look at," not "notes I personally haven't read."
+  Same tile, different math + label per role.
+- **Lazy-load picker data.** The assign-to-shift schedule list
+  only fetches when the user opens the option — not on every
+  drawer mount. Cheaper for the 95% of opens where the user posts
+  to a department.
+- **Mobile tile layouts should stay compact, not stack.** A
+  3-tile metric strip is more useful as a single-line at-a-glance
+  view than a tall column. Hide the meta sub-line on narrow
+  widths; keep the number + label.
+
+**Notes for next iteration:**
+- The for_date picker has no upper bound — admin could pick "year
+  2030." Consider clamping to (today + N) where N is a sensible
+  ceiling (90 days?) once we see how it's actually used.
+- The shift picker label is one long string; gets unwieldy if a
+  schedule has long staff names. Could switch to a structured
+  picker (date column + time column + dept column + staff column)
+  if it becomes a complaint.
+- Staff posting `scope='shift'` to a schedule that isn't their
+  own currently works at the server (no per-shift author check).
+  If we want to gate it to "your own shifts only," that's a
+  server-side check on `schedules.user_id === req.auth.sub`.
+- The `formatNoteTime` heuristic compares `created_date == for_date`
+  — if a note was created at 11:55 PM for "tomorrow," the date
+  prefix would show even though the note feels "today" to the
+  author. Acceptable edge case; if it bites, compare against
+  midnight-local instead of date string.
+
 ### 2026-05-20 — Sprint 11: Calendar redesign (Notes Center, 4-tab drawer, combined Week, dept colors, full-screen Notes page)
 
 The 10-series shipped a working but structurally-wrong-for-the-spec

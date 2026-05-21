@@ -10,7 +10,8 @@ import AssignModal from './AssignModal';
 import AssignPanel from './AssignPanel';
 import NotesDrawer from '../../Calendar/atoms/NotesDrawer';
 import NotesCenter from '../../Calendar/atoms/NotesCenter';
-import DayToggle from '../../Calendar/atoms/DayToggle';
+// Sprint 11.1: DayToggle removed from admin Day view (admins use the
+// outer prev/next day-nav). Staff Calendar still imports it.
 import './Scheduling.css';
 import '../../Calendar/Calendar.css';
 
@@ -77,16 +78,6 @@ const SchedulingManager = () => {
   // tabs on click. Default 'all'.
   const [notesTab, setNotesTab] = useState('all');
   const notesDrawerRef = useRef(null);
-
-  // Sprint 11: Today/Tomorrow Preview toggle. Cursor stays the
-  // source of truth — we derive the toggle side from the cursor
-  // and clicking the toggle moves the cursor.
-  const todayMidnight   = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
-  const tomorrowMidnight = useMemo(() => { const d = new Date(todayMidnight); d.setDate(d.getDate() + 1); return d; }, [todayMidnight]);
-  const dayToggleSide = fmtDate(cursor) === fmtDate(tomorrowMidnight) ? 'tomorrow' : 'today';
-  const setDayToggleSide = (side) => {
-    setCursor(side === 'tomorrow' ? new Date(tomorrowMidnight) : new Date(todayMidnight));
-  };
 
   // Tile click on NotesCenter → switch drawer tab + scroll drawer
   // into view so the user lands on the relevant content.
@@ -388,24 +379,17 @@ const SchedulingManager = () => {
         )}
         {view === 'day' && (
           <>
-            {/* Sprint 11 Day view shell, per mockup #25:
-                  1. DayToggle (Today / Tomorrow Preview)
-                  2. NotesCenter (3 tiles + View all notes →)
-                  3. Existing DayView (staff timeline)
-                  4. NotesDrawer at the bottom, tab controlled by parent
-                The drawer's tab is set by NotesCenter tile clicks via
-                handleNotesTile, which also scrolls the drawer into
-                view so the user sees the result of their tap. */}
-            <DayToggle
-              today={todayMidnight}
-              tomorrow={tomorrowMidnight}
-              value={dayToggleSide}
-              onChange={setDayToggleSide}
-            />
+            {/* Sprint 11 Day view shell. 11.1 dropped the
+                Today/Tomorrow toggle for admin — the outer prev/next
+                day-nav buttons already cover that motion, and the
+                toggle didn't update relative to the active cursor
+                so it read as broken. Staff Day view still uses the
+                toggle (no other day-nav surfaces). */}
             <NotesCenter
               forDate={fmtDate(cursor)}
               onTileClick={handleNotesTile}
               viewAllHref={`/admin/calendar/notes?date=${fmtDate(cursor)}`}
+              currentUser={user}
             />
             <DayView
               date={cursor}

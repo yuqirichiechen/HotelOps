@@ -57,6 +57,22 @@ const VISIBILITY_OPTIONS = [
 const formatTime = (iso) =>
   new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+// Sprint 11.1: header timestamp for a note row. If the note's
+// for_date is the same day it was created on, show just the time
+// ("3:45 PM"). If for_date is a different day (admin scheduled the
+// note for a future date, or it's carrying forward), show "Mon Jun
+// 15 · 3:45 PM" so the reader can tell at a glance which day this
+// belongs to.
+const formatNoteTime = (n) => {
+  if (!n) return '';
+  const createdDate = n.created_at?.slice(0, 10);  // "YYYY-MM-DD"
+  const time = formatTime(n.created_at);
+  if (!n.for_date || n.for_date === createdDate) return time;
+  const d = new Date(n.for_date + 'T00:00:00');
+  const day = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  return `${day} · ${time}`;
+};
+
 const addDaysIso = (iso, days) => {
   const d = new Date(iso + 'T00:00:00');
   d.setDate(d.getDate() + days);
@@ -100,8 +116,31 @@ const NotesDrawer = ({
   const [composeDept,       setComposeDept]       = useState(
     staffScope ? staffDepartmentId : null
   );
+  // Sprint 11.1: per-note for_date picker. Defaults to the drawer's
+  // current forDate (so a note posted on Day view applies to that
+  // day), but admin/staff can shift it to a future date for
+  // follow-ups ("call back on Jun 15"). The note carries that date
+  // and surfaces on the matching day's drawer regardless of when
+  // it was composed.
+  const [composeForDate,    setComposeForDate]    = useState(forDate);
+  // Sprint 11.1: assign-to-shift picker target.
+  const [composeScheduleId, setComposeScheduleId] = useState(null);
   const [composeBusy,       setComposeBusy]       = useState(false);
   const [visMenuOpen,       setVisMenuOpen]       = useState(false);
+  // Sprint 11.1: upcoming schedules cache for the assign-to-shift
+  // picker. Lazy-loaded when the dropdown opens to avoid an
+  // up-front round-trip on every drawer mount.
+  const [upcomingShifts,    setUpcomingShifts]    = useState(null);
+  const [shiftsLoading,     setShiftsLoading]     = useState(false);
+
+  // Keep compose for_date in sync with the page's forDate when the
+  // user navigates to a different day (without an in-progress
+  // compose). If the user typed in the textarea we leave it alone
+  // so they don't lose their selection mid-thought.
+  useEffect(() => {
+    if (!composeBody.trim()) setComposeForDate(forDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forDate]);
 
   // Per-note overflow + edit
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -213,28 +252,38 @@ const NotesDrawer = ({
       setError('Pick a department to post to.');
       return;
     }
-    if (composeVisibility === 'shift') {
-      setError('Shift-attached compose is not wired yet.');
+    if (composeVisibility === 'shift' && !composeScheduleId) {
+      setError('Pick a shift to assign to.');
       return;
     }
-    const scope = composeVisibility === 'all' ? 'all' : 'department';
+    // Sprint 11.1: scope derives from the Visibility selection.
+    const scope =
+      composeVisibility === 'all'   ? 'all' :
+      composeVisibility === 'shift' ? 'shift' :
+      'department';
     setComposeBusy(true);
     setError('');
     try {
+      const payload = {
+        body:          composeBody.trim(),
+        scope,
+        for_date:      composeForDate,  // Sprint 11.1: user-selectable
+      };
+      if (scope === 'department') payload.department_id = composeDept;
+      if (scope === 'shift')      payload.schedule_id   = composeScheduleId;
       const { ok, data } = await apiFetch('/handoff-notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          body: composeBody.trim(),
-          scope,
-          department_id: scope === 'department' ? composeDept : undefined,
-          for_date: forDate,
-        }),
+        body: JSON.stringify(payload),
       });
       if (ok && data?.success) {
         setComposeBody('');
-        // Auto-switch tab to General so the user sees their post
-        setTab('general');
+        setComposeScheduleId(null);
+        setComposeForDate(forDate);
+        // Auto-switch tab to where the new note will land so the
+        // user sees their post immediately.
+        if (scope === 'shift') setTab('assigned');
+        else                   setTab('general');
         refresh();
       } else {
         setError(data?.message || 'Could not post note.');
@@ -244,6 +293,28 @@ const NotesDrawer = ({
     }
     setComposeBusy(false);
   };
+
+  // Sprint 11.1: lazy-load upcoming shifts for the assign-to-shift
+  // picker. Fetches the next ~7 days. Staff gets schedule_visibility-
+  // gated results from the server.
+  const loadUpcomingShifts = useCallback(async () => {
+    if (upcomingShifts !== null) return; // already loaded once
+    setShiftsLoading(true);
+    const from = new Date(); from.setHours(0,0,0,0);
+    const to   = new Date(from); to.setDate(to.getDate() + 7);
+    const pad = n => String(n).padStart(2, '0');
+    const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const params = new URLSearchParams({ from: iso(from), to: iso(to) });
+    if (currentUser?.user_id) params.set('userId', currentUser.user_id);
+    try {
+      const { ok, data } = await apiFetch(`/shifts/range?${params.toString()}`);
+      if (ok && data?.success) setUpcomingShifts(data.schedules || []);
+      else                     setUpcomingShifts([]);
+    } catch {
+      setUpcomingShifts([]);
+    }
+    setShiftsLoading(false);
+  }, [upcomingShifts, currentUser]);
 
   // ── per-note actions (unchanged from 10.2) ───────────────────────────────
   const canMutate = (note) => {
@@ -387,7 +458,7 @@ const NotesDrawer = ({
               Carries to {n.carry_until}
             </span>
           )}
-          <span className="notes-drawer-note-time">{formatTime(n.created_at)}</span>
+          <span className="notes-drawer-note-time">{formatNoteTime(n)}</span>
           {editable && canMutate(n) && (
             <button
               type="button"
@@ -582,7 +653,7 @@ const NotesDrawer = ({
                   <button
                     type="button"
                     className={composeVisibility === 'department' ? 'is-active' : ''}
-                    onClick={() => { setComposeVisibility('department'); setVisMenuOpen(false); }}
+                    onClick={() => { setComposeVisibility('department'); }}
                   >
                     Visible to department
                   </button>
@@ -603,21 +674,60 @@ const NotesDrawer = ({
                     <button
                       type="button"
                       className={composeVisibility === 'all' ? 'is-active' : ''}
-                      onClick={() => { setComposeVisibility('all'); setVisMenuOpen(false); }}
+                      onClick={() => { setComposeVisibility('all'); }}
                     >
                       Visible to all staff
                     </button>
                   )}
                   <button
                     type="button"
-                    disabled
-                    title="Assign-to-shift compose lands in a future sprint"
+                    className={composeVisibility === 'shift' ? 'is-active' : ''}
+                    onClick={() => {
+                      setComposeVisibility('shift');
+                      loadUpcomingShifts();
+                    }}
                   >
-                    Assign to shift (soon)
+                    Assign to shift
                   </button>
+                  {composeVisibility === 'shift' && (
+                    <div className="notes-drawer-visibility-dept">
+                      <select
+                        value={composeScheduleId || ''}
+                        onChange={e => setComposeScheduleId(e.target.value || null)}
+                      >
+                        <option value="">{shiftsLoading ? 'Loading…' : 'Choose a shift…'}</option>
+                        {(upcomingShifts || []).map(s => {
+                          // Label: "Sat May 22 · 7a–3p · Front Desk · Emily Tran"
+                          const d = new Date((s.scheduled_date || '').slice(0, 10) + 'T00:00:00');
+                          const dayLabel = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                          const start = (s.start_time || '').slice(0, 5);
+                          const end   = (s.end_time   || '').slice(0, 5);
+                          return (
+                            <option key={s.schedule_id} value={s.schedule_id}>
+                              {dayLabel} · {start}–{end} · {s.department_name || '—'} · {s.employee_name}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+            {/* Sprint 11.1: per-note for_date picker. Defaults to the
+                drawer's day; admin/staff can shift it forward for
+                follow-up notes ("call back on Jun 15"). For 'shift'
+                scope, the server overrides this from the schedule's
+                scheduled_date — the picker is ignored in that case
+                (kept visible but it's a no-op). */}
+            <input
+              type="date"
+              className="notes-drawer-compose-date"
+              value={composeForDate}
+              min={forDate}
+              onChange={e => setComposeForDate(e.target.value)}
+              title="Date this note applies to"
+            />
             <button
               type="button"
               className="notes-drawer-attach"

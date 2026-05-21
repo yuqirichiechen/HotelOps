@@ -195,6 +195,7 @@ const StaffCalendar = () => {
               viewAllHref={`/calendar/notes?date=${isoDay(cursor)}`}
               staffScope={true}
               staffDepartmentId={user?.department_id || null}
+              currentUser={user}
             />
 
             <div className="staff-cal-day-list">
