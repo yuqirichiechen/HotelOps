@@ -792,6 +792,78 @@ nav row:
 
 ---
 
+### 2026-05-20 — Sprint 10.4.1: HandoffsDrawer — fix "post button doesn't work" perception
+
+Not actually a post bug — posts were succeeding server-side (badge
+showed 5 notes on the staff Week view after admin had been
+composing). But the drawer landed users on the wrong default tab,
+and after a successful post the active tab didn't switch to where
+the new note actually lived. Result: admin posts a "Department"
+note from the default "Handoffs" tab, drawer refreshes onto an
+empty list (Handoffs is `scope='shift'` only), admin thinks the
+post failed and tries again.
+
+Three small fixes in `HandoffsDrawer.js`:
+
+1. **Default tab changed from `handoffs` → `general`.** The
+   `handoffs` tab is shift-attached threads; the compose UI for
+   *those* isn't wired yet (needs a `schedule_id` from a clicked
+   shift block, which 10.1/10.2/10.3 didn't reach). Until that
+   lands, defaulting to Handoffs landed everyone on a structurally
+   empty tab. General is where 99% of today's notes live.
+
+2. **Auto-switch tab after a successful post.** Posting
+   `scope='department'` or `'all'` switches to the `general` tab.
+   Posting `scope='shift'` switches to `handoffs`. So admin always
+   sees their freshly-posted note on the next paint.
+
+3. **Per-tab count badges in the tab bar.** Small inline pill on
+   each tab showing the count of (non-resolved) notes that match
+   that tab's filter:
+
+   ```
+   Handoffs   General [5]   Cross-day
+   ```
+
+   Empty tabs read as empty at a glance; tabs with content invite
+   clicks. The badge inherits brand colors on the active tab so it
+   doesn't compete for attention there.
+
+The counts compute against the full `notes` array (not the
+dept-filtered view) so the bar is consistent regardless of which
+chip is selected. Resolved notes are excluded so the count matches
+what's visible above the Resolved (N) group.
+
+**Files modified:**
+- `src/components/Calendar/atoms/HandoffsDrawer.js`:
+  - `useState('handoffs')` → `useState('general')`.
+  - `onPost` success branch: `setTab(...)` based on `composeScope`.
+  - New `tabCounts` derivation + render in the TABS map.
+- `src/components/Calendar/Calendar.css`:
+  - New `.handoffs-drawer-tab-count` pill style (active state
+    inherits brand color).
+
+**Conventions reinforced:**
+- **Default UI state should land users on a tab with content.**
+  An empty default tab reads as a broken feature, even when the
+  data is one click away.
+- **Mutation success should move the user toward the result, not
+  leave them where they were.** Posting a department note → switch
+  to the department-notes tab. Otherwise the post feels invisible.
+- **Tab-bar count badges are the cheapest "where's the content"
+  signal.** No animation, no toast, no extra fetch — just compute
+  from the data you already have.
+
+**Notes for next iteration:**
+- The shift-attached compose flow (Handoffs tab) still needs a
+  `schedule_id` context. Future sprint: clicking a shift block in
+  the Day view opens the drawer scrolled to Handoffs with the
+  schedule_id pre-filled for compose.
+- Empty-state copy on Handoffs ("No shift-attached handoffs for
+  this day") is technically correct but doesn't tell the user *why*
+  the tab might always look empty. Refresh the copy when the
+  shift-attached compose lands.
+
 ### 2026-05-20 — Sprint 10.4: production deploy bug-fixes (req.auth shape + admin-as-author)
 
 First deploy of the 10-series surfaced two related crashes that

@@ -48,7 +48,13 @@ const HandoffsDrawer = ({
   defaultScope = 'department',
   currentUser = null,
 }) => {
-  const [tab, setTab]               = useState('handoffs');
+  // Sprint 10.4.1: default to 'general' (department/all broadcasts).
+  // The 'handoffs' tab is shift-attached threads — the compose UI
+  // for those isn't wired yet (needs a schedule_id from a clicked
+  // shift block), so until that lands, defaulting to Handoffs lands
+  // most users on a structurally empty tab and they think there's
+  // nothing in the drawer.
+  const [tab, setTab]               = useState('general');
   // Cross-day sub-toggle. 'today' shows notes whose carry covers
   // forDate; 'tomorrow' shows notes whose carry covers forDate + 1.
   const [crossSide, setCrossSide]   = useState('today');
@@ -149,6 +155,33 @@ const HandoffsDrawer = ({
   const resolved = allFiltered.filter(n =>  n.resolved_at);
   const unreadActiveIds = active.filter(n => !n.is_read).map(n => n.note_id);
 
+  // Sprint 10.4.1: per-tab counts so the tab bar tells users which
+  // tab has content at a glance. Without this, posting a "General"
+  // note while sitting on the (default-empty) Handoffs tab looks
+  // like the post failed. The counts compute against the full
+  // `notes` array (dept filter not applied here — the tab-bar
+  // count should reflect "what's in this tab in total," not "what
+  // matches my current dept chip"). Resolved notes are excluded so
+  // the count matches what's actually visible above the Resolved
+  // group.
+  const tabCounts = {
+    handoffs: notes.filter(n =>
+      !n.resolved_at &&
+      n.scope === 'shift' &&
+      n.for_date === forDate
+    ).length,
+    general: notes.filter(n =>
+      !n.resolved_at &&
+      (n.scope === 'department' || n.scope === 'all') &&
+      n.for_date === forDate
+    ).length,
+    'cross-day': notes.filter(n =>
+      !n.resolved_at &&
+      n.carry_until &&
+      n.carry_until >= forDate
+    ).length,
+  };
+
   // ── cross-day header summary ─────────────────────────────────────────────
   const crossSummary = (() => {
     const carrying = notes.filter(n => n.carry_until && n.carry_until >= forDate);
@@ -183,6 +216,16 @@ const HandoffsDrawer = ({
       });
       if (ok && data?.success) {
         setComposeBody('');
+        // Sprint 10.4.1: after a successful post, switch to the tab
+        // where the new note will appear. Without this, posting a
+        // 'department' or 'all' note from the Handoffs tab refreshed
+        // into an empty list (filter is scope==='shift'), making it
+        // look like the post failed. Now Post → see your note.
+        if (composeScope === 'department' || composeScope === 'all') {
+          setTab('general');
+        } else if (composeScope === 'shift') {
+          setTab('handoffs');
+        }
         refresh();
       } else {
         setError(data?.message || 'Could not post note.');
@@ -433,18 +476,24 @@ const HandoffsDrawer = ({
       </header>
 
       <div className="handoffs-drawer-tabs" role="tablist">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.key}
-            className={`handoffs-drawer-tab ${tab === t.key ? 'is-active' : ''}`}
-            onClick={() => { setTab(t.key); setOpenMenuId(null); }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {TABS.map(t => {
+          const n = tabCounts[t.key] || 0;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`handoffs-drawer-tab ${tab === t.key ? 'is-active' : ''}`}
+              onClick={() => { setTab(t.key); setOpenMenuId(null); }}
+            >
+              {t.label}
+              {n > 0 && (
+                <span className="handoffs-drawer-tab-count">{n}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Cross-day header: today/tomorrow toggle + summary chips */}
