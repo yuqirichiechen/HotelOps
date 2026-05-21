@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../auth';
+import { apiFetch, useAuth } from '../../auth';
 
 const VISIBILITY_OPTIONS = [
   {
@@ -42,6 +42,86 @@ const AdminSettings = () => {
   const [saving,     setSaving]     = useState(false);
   const [saved,      setSaved]      = useState(false);
   const [error,      setError]      = useState('');
+
+  // Sprint 11: Departments management — load, add, edit name/color,
+  // delete. Refetches on every mutation since the dataset is tiny
+  // (5-10 rows typical) and freshness > round-trip cost.
+  const [depts,         setDepts]         = useState([]);
+  const [deptDraft,     setDeptDraft]     = useState({ name: '', color: '#3182ce' });
+  const [deptBusy,      setDeptBusy]      = useState(false);
+  const [deptError,     setDeptError]     = useState('');
+  const [editingDeptId, setEditingDeptId] = useState(null);
+  const [editingDeptDraft, setEditingDeptDraft] = useState({ name: '', color: '' });
+
+  const refreshDepts = async () => {
+    const res = await fetch('/api/admin/departments').then(r => r.json()).catch(() => null);
+    if (res?.success) setDepts(res.departments || []);
+  };
+  useEffect(() => { refreshDepts(); }, []);
+
+  const addDept = async () => {
+    if (!deptDraft.name.trim()) return;
+    setDeptBusy(true);
+    setDeptError('');
+    const { ok, data } = await apiFetch('/admin/departments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: deptDraft.name.trim(), color: deptDraft.color || null }),
+    });
+    setDeptBusy(false);
+    if (!ok || !data?.success) {
+      setDeptError(data?.message || 'Could not add department.');
+      return;
+    }
+    setDeptDraft({ name: '', color: '#3182ce' });
+    refreshDepts();
+  };
+
+  const startDeptEdit = (d) => {
+    setEditingDeptId(d.department_id);
+    setEditingDeptDraft({ name: d.name, color: d.color || '#3182ce' });
+    setDeptError('');
+  };
+  const cancelDeptEdit = () => {
+    setEditingDeptId(null);
+    setEditingDeptDraft({ name: '', color: '' });
+  };
+  const saveDeptEdit = async () => {
+    if (!editingDeptDraft.name.trim()) return;
+    setDeptBusy(true);
+    setDeptError('');
+    const { ok, data } = await apiFetch(`/admin/departments/${editingDeptId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:  editingDeptDraft.name.trim(),
+        color: editingDeptDraft.color || null,
+      }),
+    });
+    setDeptBusy(false);
+    if (!ok || !data?.success) {
+      setDeptError(data?.message || 'Could not save department.');
+      return;
+    }
+    setEditingDeptId(null);
+    setEditingDeptDraft({ name: '', color: '' });
+    refreshDepts();
+  };
+  const deleteDept = async (d) => {
+    // Skip a confirm dialog — backend already refuses if staff
+    // reference the dept, so the user gets useful feedback in the
+    // error path. If they truly intend to delete an empty dept,
+    // one click is enough.
+    setDeptBusy(true);
+    setDeptError('');
+    const { ok, data } = await apiFetch(`/admin/departments/${d.department_id}`, { method: 'DELETE' });
+    setDeptBusy(false);
+    if (!ok || !data?.success) {
+      setDeptError(data?.message || 'Could not delete department.');
+      return;
+    }
+    refreshDepts();
+  };
 
   useEffect(() => {
     fetch('/api/admin/settings')
@@ -266,6 +346,112 @@ const AdminSettings = () => {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Sprint 11: Departments — name + color management. Each
+              dept's color shows up on Calendar chips and shift band
+              tinting; admin can add new depts as the property's
+              org structure grows. */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">🏷️</div>
+              <div>
+                <div className="settings-section-title">Departments</div>
+                <div className="settings-section-desc">
+                  Add or rename departments and pick a color. Colors drive Calendar chips + shift band tinting.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-dept-list">
+              {depts.length === 0 && (
+                <div className="settings-perf-help">No departments yet — add one below.</div>
+              )}
+              {depts.map(d => (
+                <div key={d.department_id} className="settings-dept-row">
+                  {editingDeptId === d.department_id ? (
+                    <>
+                      <input
+                        type="color"
+                        className="settings-dept-color"
+                        value={editingDeptDraft.color || '#cccccc'}
+                        onChange={e => setEditingDeptDraft(s => ({ ...s, color: e.target.value }))}
+                        aria-label="Department color"
+                      />
+                      <input
+                        type="text"
+                        className="settings-dept-name"
+                        value={editingDeptDraft.name}
+                        onChange={e => setEditingDeptDraft(s => ({ ...s, name: e.target.value }))}
+                        placeholder="Department name"
+                      />
+                      <button
+                        type="button"
+                        className="settings-dept-btn settings-dept-btn-save"
+                        onClick={saveDeptEdit}
+                        disabled={deptBusy || !editingDeptDraft.name.trim()}
+                      >Save</button>
+                      <button
+                        type="button"
+                        className="settings-dept-btn"
+                        onClick={cancelDeptEdit}
+                        disabled={deptBusy}
+                      >Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        className="settings-dept-swatch"
+                        style={{ background: d.color || 'var(--bg-raised)' }}
+                        aria-hidden
+                      />
+                      <span className="settings-dept-name-text">{d.name}</span>
+                      <button
+                        type="button"
+                        className="settings-dept-btn"
+                        onClick={() => startDeptEdit(d)}
+                        disabled={deptBusy}
+                      >Edit</button>
+                      <button
+                        type="button"
+                        className="settings-dept-btn settings-dept-btn-danger"
+                        onClick={() => deleteDept(d)}
+                        disabled={deptBusy}
+                      >Delete</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="settings-dept-add">
+              <input
+                type="color"
+                className="settings-dept-color"
+                value={deptDraft.color}
+                onChange={e => setDeptDraft(s => ({ ...s, color: e.target.value }))}
+                aria-label="New department color"
+              />
+              <input
+                type="text"
+                className="settings-dept-name"
+                value={deptDraft.name}
+                placeholder="New department name…"
+                onChange={e => setDeptDraft(s => ({ ...s, name: e.target.value }))}
+              />
+              <button
+                type="button"
+                className="settings-dept-btn settings-dept-btn-save"
+                onClick={addDept}
+                disabled={deptBusy || !deptDraft.name.trim()}
+              >Add</button>
+            </div>
+
+            {deptError && (
+              <div className="settings-perf-help" style={{ color: 'var(--danger-text)' }}>
+                {deptError}
+              </div>
+            )}
           </div>
 
           {/* Sprint 9.4: Payroll — pay-period start day. Drives the

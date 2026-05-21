@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, useAuth } from '../../auth';
-import StaffWeekView from '../../components/Calendar/views/StaffWeekView';
-import HandoffsDrawer from '../../components/Calendar/atoms/HandoffsDrawer';
+import CalendarWeekView from '../../components/Calendar/views/CalendarWeekView';
+import NotesDrawer from '../../components/Calendar/atoms/NotesDrawer';
+import NotesCenter from '../../components/Calendar/atoms/NotesCenter';
+import DayToggle from '../../components/Calendar/atoms/DayToggle';
 import '../../components/Calendar/Calendar.css';
 import './StaffCalendar.css';
 
@@ -54,6 +56,24 @@ const StaffCalendar = () => {
   const [schedules,   setSchedules]   = useState([]);
   const [employees,   setEmployees]   = useState([]);
   const [departments, setDepartments] = useState([]);
+
+  // Sprint 11: Day-view notes tab + drawer ref + Today/Tomorrow
+  // toggle helpers. Mirrors the admin Calendar's Day view shell.
+  const [notesTab, setNotesTab] = useState('all');
+  const notesDrawerRef = useRef(null);
+
+  const todayMidnight    = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+  const tomorrowMidnight = useMemo(() => { const d = new Date(todayMidnight); d.setDate(d.getDate() + 1); return d; }, [todayMidnight]);
+  const dayToggleSide    = isoDay(cursor) === isoDay(tomorrowMidnight) ? 'tomorrow' : 'today';
+  const setDayToggleSide = (side) => {
+    setCursor(side === 'tomorrow' ? new Date(tomorrowMidnight) : new Date(todayMidnight));
+  };
+  const handleNotesTile = (tabKey) => {
+    setNotesTab(tabKey);
+    if (notesDrawerRef.current) {
+      notesDrawerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
   const [loading,     setLoading]     = useState(true);
 
   const weekStart = useMemo(() => startOfWeek(cursor), [cursor]);
@@ -140,23 +160,43 @@ const StaffCalendar = () => {
 
       <div className="staff-cal-body">
         {view === 'week' && (
-          <StaffWeekView
+          // Sprint 11: switched from the matrix-only StaffWeekView
+          // to CalendarWeekView (pills + perm tabs + stats + matrix
+          // + notes feed) per mockup #26.
+          <CalendarWeekView
             weekStart={weekStart}
             schedules={schedules}
             employees={employees}
             departments={departments}
-            currentUserId={user?.user_id}
+            currentUser={user}
+            staffScope={true}
+            staffDepartmentId={user?.department_id || null}
             onPickDate={(d) => { setCursor(new Date(d)); setView('day'); }}
           />
         )}
 
         {view === 'day' && (
           <>
-            {/* Sprint 10.1: minimal staff Day view — a list of the
-                day's schedules grouped by department. Doesn't reuse
-                the admin DayView (which has assign/edit affordances
-                staff don't need). A future sprint could share a
-                read-only shared DayView between roles. */}
+            {/* Sprint 11: staff Day view mirrors admin per mockup #25,
+                with two role-scoping differences:
+                  - NotesCenter / NotesDrawer pass staffScope=true so
+                    only own-dept + all-staff notes appear.
+                  - DepartmentChips inside the drawer are hidden
+                    (single dept context). */}
+            <DayToggle
+              today={todayMidnight}
+              tomorrow={tomorrowMidnight}
+              value={dayToggleSide}
+              onChange={setDayToggleSide}
+            />
+            <NotesCenter
+              forDate={isoDay(cursor)}
+              onTileClick={handleNotesTile}
+              viewAllHref={`/calendar/notes?date=${isoDay(cursor)}`}
+              staffScope={true}
+              staffDepartmentId={user?.department_id || null}
+            />
+
             <div className="staff-cal-day-list">
               {loading && <div className="staff-cal-empty">Loading…</div>}
               {!loading && schedules.length === 0 && (
@@ -185,13 +225,18 @@ const StaffCalendar = () => {
               )}
             </div>
 
-            <HandoffsDrawer
-              forDate={isoDay(cursor)}
-              departments={departments}
-              editable={true}
-              defaultScope="department"
-              currentUser={user}
-            />
+            <div ref={notesDrawerRef}>
+              <NotesDrawer
+                forDate={isoDay(cursor)}
+                departments={departments}
+                editable={true}
+                currentUser={user}
+                tab={notesTab}
+                onTabChange={setNotesTab}
+                staffScope={true}
+                staffDepartmentId={user?.department_id || null}
+              />
+            </div>
           </>
         )}
       </div>

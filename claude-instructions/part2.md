@@ -792,6 +792,244 @@ nav row:
 
 ---
 
+### 2026-05-20 — Sprint 11: Calendar redesign (Notes Center, 4-tab drawer, combined Week, dept colors, full-screen Notes page)
+
+The 10-series shipped a working but structurally-wrong-for-the-spec
+Calendar. User came back with new mockups (#25 admin Day, #26 staff
+Week) and a clearer model: the "Handoff Center" stat cards belong
+at the *top* (not in a bottom drawer), the drawer keeps the *list*
+but with 4 tabs, week views combine a matrix and a notes feed,
+departments are color-coded, and "View all notes →" opens a
+dedicated full-screen page. New sprint number because this is a
+redesign on top of 10.x, not a bug fix.
+
+**Confirmed design decisions** (user reply 2026-05-20):
+1. NotesCenter stat tiles at *top* of Day view, clickable → switch
+   the drawer's tab + scroll the drawer into view.
+2. Today/Tomorrow Preview toggle switches the *whole page* (cursor
+   moves, all data re-fetches).
+3. Staff and admin Calendars are different — staff Week is
+   role-scoped (own dept matrix + dept/all-staff notes), admin
+   Week is unscoped.
+4. "View all notes →" goes to a dedicated full-screen Notes page
+   (no timeline).
+5. Drawer tabs are now **All / Assigned / General / Cross-day**.
+6. Department chip colors are stored *per department* (`departments.color`
+   column), admin-settable. Future-proofs the "admin adds their
+   own dept" path.
+
+**A. Schema + API (migration 014).**
+
+```sql
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS color VARCHAR(7);
+ALTER TABLE departments ADD CONSTRAINT departments_color_format
+  CHECK (color IS NULL OR color ~ '^#[0-9A-Fa-f]{6}$');
+-- + seed defaults for known dept names
+```
+
+`schema.sql` updated for fresh installs. New server endpoints:
+- `POST   /api/admin/departments`      — create with name + color
+- `PATCH  /api/admin/departments/:id`  — update name and/or color
+- `DELETE /api/admin/departments/:id`  — refuses if staff still
+  reference the dept (must reassign first)
+
+All admin-gated (`requireAuth + requireRole('admin')`).
+
+**B. New atoms (`src/components/Calendar/atoms/`).**
+
+- **NotesDrawer** — replaces `HandoffsDrawer`. Four tabs (All /
+  Assigned / General / Cross-day), per-tab counts. Compose footer
+  redesigned: textarea + **Visibility ⌄** dropdown (Visible to
+  department / Visible to all staff / Assign to shift — last is
+  stubbed for a future sprint) + Attach (stubbed) + Post (paper-
+  airplane). Tab state is *controllable* via a `tab` / `onTabChange`
+  prop pair — NotesCenter tiles use it to switch tabs externally.
+  All Sprint 10.2 pieces (read dots, pin / resolve, mark-all-read,
+  overflow menu, Resolved group) carry over.
+- **NotesCenter** — top-of-Day-view summary card. 3 stat tiles
+  (Unread / General / Carryovers) + "View all notes →" link to the
+  full-screen Notes page. Self-fetches per `forDate`. Accepts
+  `staffScope` to restrict the count math to own-dept + all-staff.
+- **DayToggle** — full-page Today / Tomorrow Preview switch.
+  Parent owns the cursor; the toggle just changes which side is
+  active.
+- **DepartmentChips** (updated) — now reads the `color` column.
+  Inactive chips show a soft-tinted background (`{color}1F`);
+  active chip fills with the color and uses white text. Each chip
+  also gets an icon glyph derived from the dept name (front desk,
+  housekeeping, etc.) — fallback `👥`.
+
+The old `HandoffsDrawer.js` is deleted. The shared CSS file is
+rewritten with the new `notes-drawer-*` class prefix (the
+`handoffs-drawer-*` prefix is gone).
+
+**C. Combined Week view (`views/CalendarWeekView.js`).**
+
+One component used by both `ShiftsView`/`StaffCalendar` and
+`SchedulingManager`. Top to bottom:
+1. 7-day pill row (Mon..Sun) with a shift-count badge per day.
+   Click → drill into Day view via `onPickDate`.
+2. **Permission tabs** (staff-only): "{Dept name}" / "All Staff
+   Updates" with a 🔒 notice on the dept tab.
+3. Three stat tiles. Staff: My Shifts / Department Notes / All-
+   Staff Notes. Admin: Total Shifts / Open Shifts / Handoff Notes.
+4. **Team matrix** (rows: staff scoped to dept for staff role, all
+   staff for admin; cols: 7 days). Each cell shows shift time
+   range or "Off"; shift-attached notes render as `💬 N` badges.
+5. **Notes feed** at the bottom with Department / All Staff toggle.
+   Renders top 5 sorted (pinned first, then newest). "View all
+   notes →" links to the full-screen Notes page.
+
+`AdminWeekView` and `StaffWeekView` (the Sprint 10.1 matrix-only
+components) are deleted.
+
+**D. Day view rebuild — admin + staff.**
+
+Both wrappers (`AdminPanel/Calendar/index.js` and
+`pages/StaffCalendar/index.js`) now compose, on the `view === 'day'`
+branch:
+```
+<DayToggle today={…} tomorrow={…} value={dayToggleSide} onChange={…} />
+<NotesCenter forDate={…} onTileClick={…} viewAllHref={…} [staffScope]/>
+<DayView /* admin */ or <staff shift list> />
+<div ref={notesDrawerRef}>
+  <NotesDrawer forDate tab onTabChange editable currentUser [staffScope]/>
+</div>
+```
+
+The page's cursor is the source of truth for which day is shown;
+the DayToggle just snaps it to today vs today+1. Tile click →
+parent sets `notesTab` + scrolls the drawer into view.
+
+Staff variant passes `staffScope={true}` + `staffDepartmentId` so
+the drawer client-filters to scope='all' or (scope='department' &
+my dept). Same scoping in NotesCenter for the counts.
+
+**E. Full-screen Notes page (`/admin/calendar/notes`, `/calendar/notes`).**
+
+New `src/pages/NotesPage/`. One component, route shared:
+- `/admin/calendar/notes` → admin context (full visibility)
+- `/calendar/notes`       → staff context (own dept + all-staff)
+
+Both render the same `NotesDrawer` in `variant='page'` mode (no
+card chrome, no close button). Page header has a "‹ Back to
+Calendar" link + day nav (prev / `<input type="date">` / next /
+Today). `?date=YYYY-MM-DD` query param keeps the URL stable for
+share + refresh.
+
+**F. Department management UI (AdminSettings).**
+
+New "Departments" section under AdminSettings, between Performance
+Thresholds and Payroll. Each row: color swatch + name + Edit /
+Delete. Inline edit mode swaps the row for `<input type="color">`
++ `<input type="text">` + Save / Cancel. Add row at the bottom for
+creating new depts. Server validates name uniqueness + color
+format; delete is refused server-side if staff still reference the
+dept (the error message tells the admin to reassign first).
+
+**G. Routes + cleanup.**
+
+`App.js` adds:
+- `/admin/calendar/notes` → `<NotesPage />`
+- `/calendar/notes`       → `<NotesPage />`
+
+Files deleted:
+- `src/components/Calendar/atoms/HandoffsDrawer.js`
+- `src/components/Calendar/views/AdminWeekView.js`
+- `src/components/Calendar/views/StaffWeekView.js`
+
+The Sprint 10.1-era 4-week-summary `WeekView.js` was already deleted
+in 10.3.
+
+**Files added:**
+- `database/migrations/014_department_color.sql`
+- `src/components/Calendar/atoms/NotesDrawer.js`
+- `src/components/Calendar/atoms/NotesCenter.js`
+- `src/components/Calendar/atoms/DayToggle.js`
+- `src/components/Calendar/views/CalendarWeekView.js`
+- `src/pages/NotesPage/index.js`
+- `src/pages/NotesPage/NotesPage.css`
+
+**Files modified (major):**
+- `database/schema.sql` — `departments.color` column + CHECK.
+- `server/server.js` — POST/PATCH/DELETE for `/admin/departments`.
+- `src/components/Calendar/atoms/DepartmentChips.js` — color-aware,
+  icon glyphs.
+- `src/components/Calendar/Calendar.css` — entirely rewritten.
+- `src/components/AdminPanel/Calendar/index.js` — Day-view branch
+  rebuilt, Week view swapped to CalendarWeekView, `useRef` /
+  `useMemo` / DayToggle state added.
+- `src/pages/StaffCalendar/index.js` — same shape; staffScope wired.
+- `src/components/AdminPanel/AdminSettings.js` — new Departments
+  section + state.
+- `src/components/AdminPanel/AdminPanel.css` — `.settings-dept-*`
+  rules for the dept management row chrome.
+- `src/App.js` — NotesPage import + two routes.
+
+**Migration step required after this branch ships:**
+```sh
+psql "<connection-string>?sslmode=require" -f database/migrations/014_department_color.sql
+```
+
+**Conventions reinforced / added:**
+- **Stat tiles at the top, drawer at the bottom, content in the
+  middle.** Tap a tile to set the drawer's tab + scroll to it. This
+  pattern is the new house style for surfaces that have both
+  metrics and a list — discoverability beats clever clicking
+  semantics.
+- **Per-department color stored in DB, not hardcoded.** Future
+  multi-tenant / admin-onboarded depts get their own colors
+  without a code change. Frontend renders neutral when color is
+  null (degrades gracefully).
+- **One Week-view component for both roles, role-gated.**
+  CalendarWeekView takes `staffScope` and `staffDepartmentId`;
+  swaps tabs/matrix scoping/stat labels accordingly. Avoids the
+  AdminWeekView/StaffWeekView duplication of Sprint 10.1.
+- **NotesDrawer supports controlled OR uncontrolled tab state.**
+  Pass `tab` + `onTabChange` to control externally (Day-view
+  wrappers do this for NotesCenter tile integration); omit them
+  for standalone embeds. Same component, two modes — no fork.
+- **Page-shared component for shared routes.** NotesPage handles
+  both `/admin/calendar/notes` and `/calendar/notes` and reads the
+  pathname to decide scoping. One component, two URLs.
+
+**Notes for next iteration:**
+- **Shift-attached compose isn't wired.** Mockups show "Assign to
+  shift" as a Visibility option but the picker for *which* shift /
+  staff member isn't built. Compose currently disables the
+  option. A clean fix: clicking a shift block in DayView opens
+  the drawer with the schedule_id pre-set + Visibility forced to
+  "shift".
+- **"Open Shifts" stat on admin Week is hardcoded 0.** Needs a
+  server endpoint that returns unassigned shift-template slots
+  per week.
+- **Year + Month views** are unchanged from Sprint 10.x. User
+  spec said Month should use the dept-matrix style (#24-like);
+  the existing `AdminPanel/Calendar/MonthView.js` still renders
+  the old calendar-cells layout. Schedule a 11.x sprint to swap
+  Month to the dept-matrix shape (the math is "weeks of the
+  month × depts as rows" — a 4-5-row grid of mini matrices, or
+  one big matrix with day-of-month cols).
+- **AdminPanel/Calendar/Scheduling.css** is still named for the
+  pre-rename folder; rename to `Calendar.css` on the next sweep.
+  Internal-only inconsistency.
+- **No audit log** on dept create / rename / delete or on note
+  pin/resolve/delete. The existing `audit_logs` pattern covers it
+  (actor_id NULL, action + JSONB data, admin username in data) —
+  worth wiring in 11.x.
+- **DELETE department doesn't check shifts table** — only the
+  users.department_id FK. If a `shifts.department_id` row points
+  at the deleted dept, the FK would block at DB level but with a
+  Postgres error, not the friendly 409 we return for users. Bug
+  is theoretical (shifts inherit dept_id by schema, but no admin
+  flow currently creates orphaned ones); fix is a second
+  reference check.
+- **Per-cell note count in CalendarWeekView is currently client-
+  computed** off the `notes` array fetched for the week. Works at
+  small scale; if a property has hundreds of notes per week the
+  client filter could get slow. Promote to the `/counts` endpoint
+  with `(date, user_id)` grouping if it bites.
+
 ### 2026-05-20 — Sprint 10.4.1: HandoffsDrawer — fix "post button doesn't work" perception
 
 Not actually a post bug — posts were succeeding server-side (badge

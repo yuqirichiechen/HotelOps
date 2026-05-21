@@ -369,6 +369,107 @@ app.get('/api/admin/departments', async (req, res) => {
   }
 });
 
+// Sprint 11: dept management. Admin can add / rename / recolor /
+// delete departments. Color is `#RRGGBB` or NULL (use frontend
+// fallback). Name uniqueness handled by the DB UNIQUE constraint.
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+app.post('/api/admin/departments', requireAuth, requireRole('admin'), async (req, res) => {
+  const { name, color } = req.body || {};
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ success: false, message: 'name required' });
+  }
+  if (color != null && color !== '' && !HEX_COLOR_RE.test(color)) {
+    return res.status(400).json({ success: false, message: 'color must be #RRGGBB or null' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO departments (name, color) VALUES ($1, $2)
+       RETURNING department_id, name, color`,
+      [String(name).trim(), color || null]
+    );
+    return res.json({ success: true, department: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ success: false, message: 'department name already exists' });
+    }
+    console.error('[departments:POST]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.patch('/api/admin/departments/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { name, color } = req.body || {};
+  const sets = [];
+  const params = [];
+  if (name !== undefined) {
+    if (!String(name).trim()) {
+      return res.status(400).json({ success: false, message: 'name cannot be empty' });
+    }
+    params.push(String(name).trim());
+    sets.push(`name = $${params.length}`);
+  }
+  if (color !== undefined) {
+    if (color === null || color === '') {
+      sets.push(`color = NULL`);
+    } else if (HEX_COLOR_RE.test(color)) {
+      params.push(color);
+      sets.push(`color = $${params.length}`);
+    } else {
+      return res.status(400).json({ success: false, message: 'color must be #RRGGBB or null' });
+    }
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ success: false, message: 'nothing to update' });
+  }
+  params.push(parseInt(id, 10));
+  try {
+    const { rows } = await pool.query(
+      `UPDATE departments SET ${sets.join(', ')} WHERE department_id = $${params.length}
+       RETURNING department_id, name, color`,
+      params
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'department not found' });
+    }
+    return res.json({ success: true, department: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ success: false, message: 'department name already exists' });
+    }
+    console.error('[departments:PATCH]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Refuse to delete if staff or shifts reference this dept —
+    // would orphan FKs. Admin should reassign first.
+    const { rows: refs } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM users WHERE department_id = $1`,
+      [parseInt(id, 10)]
+    );
+    if (refs[0]?.n > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `${refs[0].n} staff still in this department — reassign them first.`,
+      });
+    }
+    const { rowCount } = await pool.query(
+      `DELETE FROM departments WHERE department_id = $1`,
+      [parseInt(id, 10)]
+    );
+    if (!rowCount) return res.status(404).json({ success: false, message: 'department not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[departments:DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // ── Employee clock-in / out ───────────────────────────────────────────────────
 
 app.post('/api/authenticate', async (req, res) => {

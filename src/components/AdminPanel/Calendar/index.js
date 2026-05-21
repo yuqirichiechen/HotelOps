@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { flushSync } from 'react-dom';
 import { useAuth } from '../../../auth';
 import YearView from './YearView';
 import MonthView from './MonthView';
-import AdminWeekView from '../../Calendar/views/AdminWeekView';
+import CalendarWeekView from '../../Calendar/views/CalendarWeekView';
 import DayView from './DayView';
 import AssignModal from './AssignModal';
 import AssignPanel from './AssignPanel';
-import HandoffsDrawer from '../../Calendar/atoms/HandoffsDrawer';
+import NotesDrawer from '../../Calendar/atoms/NotesDrawer';
+import NotesCenter from '../../Calendar/atoms/NotesCenter';
+import DayToggle from '../../Calendar/atoms/DayToggle';
 import './Scheduling.css';
 import '../../Calendar/Calendar.css';
 
@@ -69,6 +71,31 @@ const SchedulingManager = () => {
   const [modal,        setModal]        = useState(null);
   const [panelOpen,    setPanelOpen]    = useState(false);
   const [panelPrefill, setPanelPrefill] = useState(null);
+
+  // Sprint 11: Day-view-only state. The notes drawer's tab is
+  // controlled by the parent so the NotesCenter tiles can switch
+  // tabs on click. Default 'all'.
+  const [notesTab, setNotesTab] = useState('all');
+  const notesDrawerRef = useRef(null);
+
+  // Sprint 11: Today/Tomorrow Preview toggle. Cursor stays the
+  // source of truth — we derive the toggle side from the cursor
+  // and clicking the toggle moves the cursor.
+  const todayMidnight   = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+  const tomorrowMidnight = useMemo(() => { const d = new Date(todayMidnight); d.setDate(d.getDate() + 1); return d; }, [todayMidnight]);
+  const dayToggleSide = fmtDate(cursor) === fmtDate(tomorrowMidnight) ? 'tomorrow' : 'today';
+  const setDayToggleSide = (side) => {
+    setCursor(side === 'tomorrow' ? new Date(tomorrowMidnight) : new Date(todayMidnight));
+  };
+
+  // Tile click on NotesCenter → switch drawer tab + scroll drawer
+  // into view so the user lands on the relevant content.
+  const handleNotesTile = (tabKey) => {
+    setNotesTab(tabKey);
+    if (notesDrawerRef.current) {
+      notesDrawerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   // Load base data once
   useEffect(() => {
@@ -345,21 +372,41 @@ const SchedulingManager = () => {
           />
         )}
         {view === 'week' && (
-          // Sprint 10.1: swapped the legacy "monthly hours summary"
-          // WeekView for the new matrix-per-department AdminWeekView.
-          // The old summary still lives at ./WeekView.js — keep on
-          // disk; if admins miss the aggregate view we can wire it
-          // as a density toggle later.
-          <AdminWeekView
+          // Sprint 11: combined Week view (matrix-per-staff + notes
+          // feed) per mockup #26. AdminWeekView (matrix-per-dept
+          // from 10.1) is repurposed for Month view in Sprint 11.x
+          // since the user spec moved that style to Month.
+          <CalendarWeekView
             weekStart={startOfWeek(cursor)}
+            schedules={schedules}
             employees={employees}
             departments={departments}
-            schedules={schedules}
+            currentUser={user}
+            staffScope={false}
             onPickDate={(d) => zoomTo('day', new Date(d))}
           />
         )}
         {view === 'day' && (
           <>
+            {/* Sprint 11 Day view shell, per mockup #25:
+                  1. DayToggle (Today / Tomorrow Preview)
+                  2. NotesCenter (3 tiles + View all notes →)
+                  3. Existing DayView (staff timeline)
+                  4. NotesDrawer at the bottom, tab controlled by parent
+                The drawer's tab is set by NotesCenter tile clicks via
+                handleNotesTile, which also scrolls the drawer into
+                view so the user sees the result of their tap. */}
+            <DayToggle
+              today={todayMidnight}
+              tomorrow={tomorrowMidnight}
+              value={dayToggleSide}
+              onChange={setDayToggleSide}
+            />
+            <NotesCenter
+              forDate={fmtDate(cursor)}
+              onTileClick={handleNotesTile}
+              viewAllHref={`/admin/calendar/notes?date=${fmtDate(cursor)}`}
+            />
             <DayView
               date={cursor}
               schedules={schedules}
@@ -369,19 +416,16 @@ const SchedulingManager = () => {
               onPickDate={(d)   => setCursor(new Date(d))}
               onEdit={(schedule) => setModal({ type: 'edit', schedule })}
             />
-            {/* Sprint 10: handoffs drawer below Day view. `forDate`
-                is the YYYY-MM-DD form of the current cursor; the
-                drawer fetches notes for that day and lets admins
-                compose new ones (editable=true). Sprint 10.1 wired
-                the Cross-day tab + per-note overflow menu (edit /
-                delete / carry-forward); currentUser is required so
-                the drawer can gate the menu by author/admin. */}
-            <HandoffsDrawer
-              forDate={fmtDate(cursor)}
-              departments={departments}
-              editable={true}
-              currentUser={user}
-            />
+            <div ref={notesDrawerRef}>
+              <NotesDrawer
+                forDate={fmtDate(cursor)}
+                departments={departments}
+                editable={true}
+                currentUser={user}
+                tab={notesTab}
+                onTabChange={setNotesTab}
+              />
+            </div>
           </>
         )}
       </div>

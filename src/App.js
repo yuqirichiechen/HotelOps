@@ -4,6 +4,7 @@ import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import ShiftsView from './components/ShiftsView';
 import StaffCalendar from './pages/StaffCalendar';
+import NotesPage from './pages/NotesPage';
 import StaffLogin from './pages/Login/StaffLogin';
 import AdminLogin from './pages/Login/AdminLogin';
 import TenantPicker from './pages/Login/TenantPicker';
@@ -122,6 +123,7 @@ const App = () => {
                 redirect for one cycle (any stale bookmark or hand-
                 typed URL still lands somewhere useful). */}
             <Route path="/admin/calendar"          element={<SchedulingManager />} />
+            <Route path="/admin/calendar/notes"    element={<NotesPage />} />
             <Route path="/admin/scheduling"        element={<Navigate to="/admin/calendar" replace />} />
             {/* Sprint 10 → 10.3: admin Shift Notes folded into the
                 Calendar's handoffs drawer; original page deleted.
@@ -148,7 +150,8 @@ const App = () => {
                 moved to /kiosk for any property that still wants a
                 shared-tablet lookup; everyday authed staff land on
                 /calendar. */}
-            <Route path="/calendar"    element={<StaffCalendar />} />
+            <Route path="/calendar"       element={<StaffCalendar />} />
+            <Route path="/calendar/notes" element={<NotesPage />} />
             <Route path="/kiosk"       element={<ShiftsView />} />
             {/* Sprint 10 → 10.3: /shift-notes was folded into the
                 Calendar's handoffs drawer; the original page is

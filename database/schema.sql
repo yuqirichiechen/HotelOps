@@ -36,15 +36,19 @@ CREATE TYPE entry_status AS ENUM ('pending', 'approved', 'rejected');
 CREATE TABLE departments (
   department_id   SERIAL PRIMARY KEY,
   name            VARCHAR(100) NOT NULL UNIQUE,
-  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  -- Sprint 11: admin-settable color for the Calendar dept chips +
+  -- shift band tinting. #RRGGBB hex, NULL = frontend neutral fallback.
+  color           VARCHAR(7),
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  CONSTRAINT departments_color_format CHECK (color IS NULL OR color ~ '^#[0-9A-Fa-f]{6}$')
 );
 
-INSERT INTO departments (name) VALUES
-  ('Front Desk'),
-  ('Housekeeping'),
-  ('Maintenance'),
-  ('Food & Beverage'),
-  ('Management');
+INSERT INTO departments (name, color) VALUES
+  ('Front Desk',      '#3182ce'),
+  ('Housekeeping',    '#38a169'),
+  ('Maintenance',     '#dd6b20'),
+  ('Food & Beverage', '#805ad5'),
+  ('Management',      '#718096');
 
 
 -- ── USERS ─────────────────────────────────────────────────────────────────────

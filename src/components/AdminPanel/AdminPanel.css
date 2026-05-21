@@ -1938,6 +1938,88 @@
   color: white;
 }
 
+/* Sprint 11: Departments management — row + add form. */
+.settings-dept-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.settings-dept-row,
+.settings-dept-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-base);
+}
+.settings-dept-add {
+  background: var(--bg-surface);
+  border-style: dashed;
+}
+.settings-dept-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+.settings-dept-color {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.settings-dept-name-text {
+  flex: 1 1 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.settings-dept-name {
+  flex: 1 1 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.settings-dept-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.settings-dept-btn:hover:not(:disabled) { background: var(--bg-raised); }
+.settings-dept-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.settings-dept-btn-save {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.settings-dept-btn-save:hover:not(:disabled) { background: var(--brand-hover); }
+.settings-dept-btn-danger {
+  color: var(--danger-text);
+}
+.settings-dept-btn-danger:hover:not(:disabled) {
+  background: var(--danger-subtle);
+}
+
 /* ── Staff perf: OT pending/approved split + Approve button (Sprint 6.2) ── */
 
 .staff-perf-ot-split {
