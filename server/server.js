@@ -1945,11 +1945,19 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
   // carry_until reaches into [from, to]). The second clause is what
   // makes 10.1's cross-day view work later — same query, no new
   // endpoint.
+  // Sprint 10.4: admin tokens carry the username in req.auth.sub
+  // (not a UUID — admin creds live in server/config/admins.json),
+  // so we can't bind `sub` directly to a UUID-typed read-state
+  // join. For admin: skip the read-state join (admin doesn't track
+  // unread state) and emit is_read=TRUE for every row instead.
+  // For staff: bind their UUID and compute is_read normally.
+  const isAdminReader = req.auth.type === 'admin';
   const conditions = [
     `( (n.for_date BETWEEN $1::date AND $2::date)
       OR (n.carry_until IS NOT NULL AND n.carry_until >= $1::date AND n.for_date <= $2::date) )`,
   ];
-  const params = [from, to, req.user.user_id];
+  const params = [from, to];
+  if (!isAdminReader) params.push(req.auth.sub);
 
   if (scope) {
     if (!['shift', 'department', 'all'].includes(scope)) {
@@ -1973,6 +1981,18 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
     conditions.push(`n.carry_until IS NOT NULL AND n.carry_until >= CURRENT_DATE`);
   }
 
+  // Sprint 10.4: LEFT JOIN users (not JOIN) — admin-authored notes
+  // have author_user_id IS NULL; the LEFT JOIN preserves the row
+  // and we fall back to `author_label` (and a final "Unknown"
+  // safety net) for the displayed name. The read-state join is
+  // skipped for admin and `is_read` short-circuits to TRUE.
+  const readJoinSql = isAdminReader
+    ? ''
+    : `LEFT JOIN handoff_note_reads r ON r.note_id = n.note_id AND r.user_id = $3::uuid`;
+  const isReadExpr = isAdminReader
+    ? `TRUE AS is_read`
+    : `(r.note_id IS NOT NULL) AS is_read`;
+
   try {
     const { rows } = await pool.query(
       `SELECT
@@ -1981,21 +2001,21 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
          n.for_date, n.carry_until,
          n.pinned_at, n.resolved_at,
          n.created_at, n.updated_at,
-         n.author_user_id, u.name AS author_name,
+         n.author_user_id,
+         COALESCE(u.name, n.author_label, 'Unknown') AS author_name,
          d.name AS department_name,
          s.scheduled_date  AS schedule_date,
          sh.start_time     AS shift_start,
          sh.end_time       AS shift_end,
          su.name           AS schedule_user_name,
-         (r.note_id IS NOT NULL) AS is_read
+         ${isReadExpr}
        FROM handoff_notes n
-       JOIN users u ON n.author_user_id = u.user_id
+       LEFT JOIN users u ON n.author_user_id = u.user_id
        LEFT JOIN departments d ON n.department_id = d.department_id
        LEFT JOIN schedules s   ON n.schedule_id = s.schedule_id
        LEFT JOIN shifts sh     ON s.shift_id = sh.shift_id
        LEFT JOIN users su      ON s.user_id = su.user_id
-       LEFT JOIN handoff_note_reads r
-         ON r.note_id = n.note_id AND r.user_id = $3
+       ${readJoinSql}
        WHERE ${conditions.join(' AND ')}
        ORDER BY n.pinned_at DESC NULLS LAST, n.created_at DESC`,
       params
@@ -2052,14 +2072,23 @@ app.post('/api/handoff-notes', requireAuth, async (req, res) => {
     return res.status(400).json({ success: false, message: 'carry_until must be YYYY-MM-DD' });
   }
 
+  // Sprint 10.4: admin author has no row in `users` (creds live in
+  // server/config/admins.json), so we can't FK to user_id. Store
+  // author_user_id=NULL + author_label = the admin's display name,
+  // matching the audit_logs pattern from Sprint 5.
+  const isAdmin = req.auth.type === 'admin';
+  const authorUserId = isAdmin ? null : req.auth.sub;
+  const authorLabel  = isAdmin ? (req.auth.name || req.auth.sub || 'Admin') : null;
+
   try {
     const { rows } = await pool.query(
       `INSERT INTO handoff_notes
-         (author_user_id, body, scope, schedule_id, department_id, for_date, carry_until)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (author_user_id, author_label, body, scope, schedule_id, department_id, for_date, carry_until)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING note_id`,
       [
-        req.user.user_id,
+        authorUserId,
+        authorLabel,
         String(body).trim(),
         scope,
         scope === 'shift'      ? schedule_id   : null,
@@ -2093,8 +2122,8 @@ app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   );
   if (!own.length) return res.status(404).json({ success: false, message: 'note not found' });
 
-  const isAuthor = own[0].author_user_id === req.user.user_id;
-  const isAdmin  = req.user.role === 'admin';
+  const isAuthor = own[0].author_user_id === req.auth.sub;
+  const isAdmin  = req.auth.role === 'admin';
   if (!isAuthor && !isAdmin) {
     return res.status(403).json({ success: false, message: 'forbidden' });
   }
@@ -2160,6 +2189,13 @@ app.post('/api/handoff-notes/mark-read', requireAuth, async (req, res) => {
   if (note_ids.length > 1000) {
     return res.status(400).json({ success: false, message: 'too many note_ids (max 1000)' });
   }
+  // Sprint 10.4: admin has no users row → can't FK into
+  // handoff_note_reads. Return success with marked=0 instead of
+  // crashing — the drawer treats admin as already-read for every
+  // row (see GET /handoff-notes), so this is consistent.
+  if (req.auth.type === 'admin') {
+    return res.json({ success: true, marked: 0 });
+  }
   try {
     // unnest() expands the array into rows; INSERT … SELECT skips
     // any IDs the user already marked read.
@@ -2168,7 +2204,7 @@ app.post('/api/handoff-notes/mark-read', requireAuth, async (req, res) => {
        SELECT id::uuid, $2::uuid
        FROM unnest($1::uuid[]) AS id
        ON CONFLICT (note_id, user_id) DO NOTHING`,
-      [note_ids, req.user.user_id]
+      [note_ids, req.auth.sub]
     );
     return res.json({ success: true, marked: rowCount });
   } catch (err) {
@@ -2185,6 +2221,13 @@ app.post('/api/handoff-notes/mark-read', requireAuth, async (req, res) => {
 // timely that wants my attention," not "there's any unread note
 // anywhere in history"). Resolved notes don't count.
 app.get('/api/handoff-notes/unread-count', requireAuth, async (req, res) => {
+  // Sprint 10.4: admin has no users row to track reads against, so
+  // there's nothing to count. Return 0 — the sidebar dot stays
+  // hidden for admin viewers, which is the right HCI: admins are
+  // *moderators* of handoffs, not the audience.
+  if (req.auth.type === 'admin') {
+    return res.json({ success: true, count: 0 });
+  }
   try {
     const { rows } = await pool.query(
       `SELECT COUNT(*)::int AS count
@@ -2195,7 +2238,7 @@ app.get('/api/handoff-notes/unread-count', requireAuth, async (req, res) => {
          AND n.resolved_at IS NULL
          AND ( (n.for_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '1 day')
             OR (n.carry_until IS NOT NULL AND n.carry_until >= CURRENT_DATE) )`,
-      [req.user.user_id]
+      [req.auth.sub]
     );
     return res.json({ success: true, count: rows[0]?.count || 0 });
   } catch (err) {
@@ -2223,18 +2266,33 @@ app.get('/api/handoff-notes/counts', requireAuth, async (req, res) => {
     return res.status(400).json({ success: false, message: 'from and to required (YYYY-MM-DD)' });
   }
 
-  const params = [from, to, req.user.user_id];
+  // Sprint 10.4: admin has no users row for read tracking. Drop the
+  // reads LEFT JOIN entirely and report unread=0 for admin
+  // requests (consistent with admin treatment in the GET /handoff-
+  // notes and /unread-count endpoints — admin is moderator, not
+  // audience).
+  const isAdminReader = req.auth.type === 'admin';
+  const params = [from, to];
+  if (!isAdminReader) params.push(req.auth.sub);
   let deptFilter = '';
   if (department_id) {
     params.push(parseInt(department_id, 10));
     deptFilter = `AND (n.department_id = $${params.length}::int OR n.scope = 'all')`;
   }
 
+  const readJoinSql = isAdminReader
+    ? ''
+    : `LEFT JOIN handoff_note_reads r ON r.note_id = n.note_id AND r.user_id = $3::uuid`;
+  const unreadExpr = isAdminReader
+    ? `0`
+    : `COUNT(n.note_id) FILTER (WHERE r.note_id IS NULL)`;
+
   try {
     // generate_series spans every day in the window; cross-join to
     // handoff_notes and keep matches where the day falls inside the
     // note's [for_date, COALESCE(carry_until, for_date)] range.
-    // Unread = no row in handoff_note_reads for the requester.
+    // Unread = no row in handoff_note_reads for the requester (or
+    // hardcoded 0 for admin).
     const { rows } = await pool.query(
       `WITH days AS (
          SELECT generate_series($1::date, $2::date, INTERVAL '1 day')::date AS d
@@ -2242,15 +2300,12 @@ app.get('/api/handoff-notes/counts', requireAuth, async (req, res) => {
        SELECT
          to_char(days.d, 'YYYY-MM-DD')         AS date,
          COUNT(n.note_id)                      AS total,
-         COUNT(n.note_id) FILTER (
-           WHERE r.note_id IS NULL
-         )                                     AS unread
+         ${unreadExpr}                          AS unread
        FROM days
        LEFT JOIN handoff_notes n
          ON days.d BETWEEN n.for_date AND COALESCE(n.carry_until, n.for_date)
          ${deptFilter}
-       LEFT JOIN handoff_note_reads r
-         ON r.note_id = n.note_id AND r.user_id = $3
+       ${readJoinSql}
        GROUP BY days.d
        HAVING COUNT(n.note_id) > 0
        ORDER BY days.d`,
@@ -2278,8 +2333,8 @@ app.delete('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   );
   if (!own.length) return res.status(404).json({ success: false, message: 'note not found' });
 
-  const isAuthor = own[0].author_user_id === req.user.user_id;
-  const isAdmin  = req.user.role === 'admin';
+  const isAuthor = own[0].author_user_id === req.auth.sub;
+  const isAdmin  = req.auth.role === 'admin';
   if (!isAuthor && !isAdmin) {
     return res.status(403).json({ success: false, message: 'forbidden' });
   }

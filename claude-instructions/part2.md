@@ -792,6 +792,119 @@ nav row:
 
 ---
 
+### 2026-05-20 — Sprint 10.4: production deploy bug-fixes (req.auth shape + admin-as-author)
+
+First deploy of the 10-series surfaced two related crashes that
+needed a one-shot migration + endpoint patches.
+
+**Bug #1: `req.user` doesn't exist; the middleware sets `req.auth`.**
+
+Every handoff-notes endpoint introduced in 10/10.1/10.2 referenced
+`req.user.user_id` and `req.user.role`. Crashed in prod with
+`TypeError: Cannot read properties of undefined (reading 'user_id')`
+on first sidebar poll. The actual middleware (`server/auth.js`)
+sets `req.auth = payload` where payload is `{ sub, role, name, type,
+iat, exp }`. The rest of the codebase has been using `req.auth.sub`
+since Sprint 1 — I just didn't grep before writing the new endpoints.
+
+Fix: bulk replace across `server.js`:
+- `req.user.user_id` → `req.auth.sub` (9 occurrences)
+- `req.user.role`    → `req.auth.role` (2 occurrences)
+
+**Bug #2: admin tokens carry a *username string* in `sub`, not a
+UUID.**
+
+The audit_logs convention (Sprint 5+) covers this for *write*
+logging via `actor_id = NULL + admin username in JSON data`. The
+handoff-notes endpoints did not — they bound `req.auth.sub` directly
+as a UUID into FK columns and into the read-state LEFT JOIN. Admin
+requests would fail with a uuid-cast error or an FK violation:
+
+- POST: INSERT into `handoff_notes(author_user_id = 'admin' /* string */)`
+  blew up the `users(user_id) UUID` FK.
+- GET, /counts, /unread-count: `r.user_id = $::uuid` cast errored
+  on the username string.
+- /mark-read: INSERT into `handoff_note_reads(user_id = 'admin')`
+  also FK-blocked.
+
+**Fix: migration 013 + endpoint admin paths.**
+
+Migration `013_handoff_notes_admin_author.sql`:
+```sql
+ALTER TABLE handoff_notes ALTER COLUMN author_user_id DROP NOT NULL;
+ALTER TABLE handoff_notes ADD COLUMN IF NOT EXISTS author_label TEXT;
+ALTER TABLE handoff_notes ADD CONSTRAINT handoff_notes_author_required
+  CHECK (author_user_id IS NOT NULL OR author_label IS NOT NULL);
+```
+
+Endpoint changes:
+- **POST `/api/handoff-notes`**: detect admin via `req.auth.type === 'admin'`.
+  When admin, `author_user_id = NULL` and `author_label =
+  req.auth.name || req.auth.sub || 'Admin'`. Staff path unchanged
+  (FK to their UUID, `author_label = NULL`).
+- **GET `/api/handoff-notes`**: changed `JOIN users` to `LEFT JOIN
+  users` so admin-authored rows don't get filtered out. `author_name`
+  expression: `COALESCE(u.name, n.author_label, 'Unknown')`. For
+  admin viewers, skip the `handoff_note_reads` LEFT JOIN entirely
+  and emit `TRUE AS is_read` (admin = moderator, not audience —
+  the "unread" concept doesn't apply).
+- **GET `/api/handoff-notes/counts`**: same admin treatment — drop
+  the reads join, hardcode `unread = 0`.
+- **GET `/api/handoff-notes/unread-count`**: admin short-circuit
+  to `{ count: 0 }`.
+- **POST `/api/handoff-notes/mark-read`**: admin short-circuit to
+  `{ marked: 0 }` (success).
+- **PATCH / DELETE**: ownership check (`note.author_user_id ===
+  req.auth.sub`) safely returns false for admin (UUID compared to
+  username string is always false), and the admin-role check picks
+  them up. No change needed.
+
+`database/schema.sql` updated to match the migrated state so fresh
+installs work without re-running 013.
+
+**Conventions reinforced:**
+- **The auth payload is on `req.auth`, not `req.user`.** Set in
+  `server/auth.js` line ~65. New endpoints that need the requester:
+  `const userId = req.auth.sub;` (staff UUID) or
+  `req.auth.role === 'admin'` (role gate).
+- **`req.auth.sub` is a UUID for staff, a username STRING for
+  admin.** Never bind it directly into a UUID-typed SQL parameter
+  without branching on `req.auth.type`. The audit_logs pattern
+  (NULL FK + textual fallback column) is the right shape for any
+  table that needs to record admin authorship.
+- **Admin is a moderator surface, not an audience.** Skip read-
+  tracking writes/reads for admin requests instead of trying to
+  force a fake UUID. The drawer's `is_read = true` for admin is
+  the right UX.
+
+**Files modified:**
+- `server/server.js` — `req.user.*` → `req.auth.*`; admin paths
+  in all six handoff endpoints (GET, POST, PATCH, DELETE, mark-
+  read, unread-count, counts).
+- `database/migrations/013_handoff_notes_admin_author.sql` —
+  new.
+- `database/schema.sql` — `author_user_id` made nullable;
+  `author_label` column + check constraint added to the table def.
+
+**Migration step required after this branch ships:**
+```sh
+psql "<connection-string>?sslmode=require" -f database/migrations/013_handoff_notes_admin_author.sql
+```
+
+**Notes for next iteration:**
+- The frontend doesn't yet *visually* distinguish admin-authored
+  notes from staff-authored ones in any structural way (just the
+  "Admin" label in the author slot). If that's confusing in
+  practice, add a small chrome cue.
+- The Sidebar polls `/unread-count` regardless of role; admin
+  always returns 0 now, so the request is mildly wasted bandwidth
+  for admin sessions. Adding an `if (user?.role === 'admin')
+  return;` short-circuit in the `useEffect` would skip the poll
+  entirely — low priority cleanup.
+- A real "users.admin" row for the admin would let us drop the
+  `author_label` fallback and treat admin uniformly. Worth doing
+  when the auth model evolves (SaaS-ready); not now.
+
 ### 2026-05-20 — Sprint 10.3: cleanup + Assistant placeholder; closes the Sprint 10 series
 
 Final sprint of the Calendar consolidation series. Deletes orphan

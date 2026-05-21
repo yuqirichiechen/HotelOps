@@ -180,7 +180,12 @@ CREATE INDEX idx_schedules_date      ON schedules(scheduled_date);
 
 CREATE TABLE handoff_notes (
   note_id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  author_user_id UUID        NOT NULL REFERENCES users(user_id),
+  -- Nullable + author_label text fallback (Sprint 10.4) so admin
+  -- (who has no users row — credentials in server/config/admins.json)
+  -- can author notes. CHECK below guarantees at least one path is
+  -- populated.
+  author_user_id UUID        REFERENCES users(user_id),
+  author_label   TEXT,
   body           TEXT        NOT NULL,
   scope          VARCHAR(16) NOT NULL CHECK (scope IN ('shift', 'department', 'all')),
   schedule_id    UUID        REFERENCES schedules(schedule_id)     ON DELETE CASCADE,
@@ -195,6 +200,9 @@ CREATE TABLE handoff_notes (
     (scope = 'shift'      AND schedule_id IS NOT NULL) OR
     (scope = 'department' AND department_id IS NOT NULL AND schedule_id IS NULL) OR
     (scope = 'all'        AND schedule_id IS NULL AND department_id IS NULL)
+  ),
+  CONSTRAINT handoff_notes_author_required CHECK (
+    author_user_id IS NOT NULL OR author_label IS NOT NULL
   )
 );
 
