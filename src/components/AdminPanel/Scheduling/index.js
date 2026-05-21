@@ -7,7 +7,9 @@ import WeekView from './WeekView';
 import DayView from './DayView';
 import AssignModal from './AssignModal';
 import AssignPanel from './AssignPanel';
+import HandoffsDrawer from '../../Calendar/atoms/HandoffsDrawer';
 import './Scheduling.css';
+import '../../Calendar/Calendar.css';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -353,15 +355,27 @@ const SchedulingManager = () => {
           />
         )}
         {view === 'day' && (
-          <DayView
-            date={cursor}
-            schedules={schedules}
-            employees={employees}
-            departments={departments}
-            loading={loading}
-            onPickDate={(d)   => setCursor(new Date(d))}
-            onEdit={(schedule) => setModal({ type: 'edit', schedule })}
-          />
+          <>
+            <DayView
+              date={cursor}
+              schedules={schedules}
+              employees={employees}
+              departments={departments}
+              loading={loading}
+              onPickDate={(d)   => setCursor(new Date(d))}
+              onEdit={(schedule) => setModal({ type: 'edit', schedule })}
+            />
+            {/* Sprint 10: handoffs drawer below Day view. `forDate`
+                is the YYYY-MM-DD form of the current cursor; the
+                drawer fetches notes for that day and lets admins
+                compose new ones (editable=true). Cross-day tab is
+                stubbed; 10.1 wires it. */}
+            <HandoffsDrawer
+              forDate={fmtDate(cursor)}
+              departments={departments}
+              editable={true}
+            />
+          </>
         )}
       </div>
 

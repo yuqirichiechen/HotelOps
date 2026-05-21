@@ -1854,6 +1854,238 @@ app.put('/api/admin/settings', async (req, res) => {
   }
 });
 
+// ── HANDOFF NOTES (Sprint 10) ─────────────────────────────────────────────────
+//
+// One endpoint family backs the Calendar handoffs drawer's three
+// views (per-shift threads, general department/all-staff handoffs,
+// cross-day carryovers — 10.1+ surfaces the third). The data model is
+// in database/migrations/011_handoff_notes.sql; this is the read/
+// write layer over it.
+//
+// Visibility model: all authed users can read all notes (Snoqualmie
+// is single-tenant; multi-tenant scoping would happen at the
+// `tenant_id` column or DB level if we add it). Mutations are
+// author-or-admin gated. Pin / resolve / read state arrive in 10.2;
+// 10 only exposes body + carry_until on PATCH.
+
+// GET /api/handoff-notes?from=YYYY-MM-DD&to=YYYY-MM-DD
+//   [&scope=shift|department|all] [&schedule_id=UUID] [&department_id=INT]
+//
+// Returns notes whose for_date falls in [from, to] OR whose
+// carry_until extends into that range. is_read is computed per
+// requester via LEFT JOIN handoff_note_reads. Sorted with pinned
+// notes first (NULLs last), then newest.
+app.get('/api/handoff-notes', requireAuth, async (req, res) => {
+  const { from, to, scope, schedule_id, department_id } = req.query;
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ success: false, message: 'from and to required (YYYY-MM-DD)' });
+  }
+
+  // Visibility window: for_date in [from, to] OR (carrying AND
+  // carry_until reaches into [from, to]). The second clause is what
+  // makes 10.1's cross-day view work later — same query, no new
+  // endpoint.
+  const conditions = [
+    `( (n.for_date BETWEEN $1::date AND $2::date)
+      OR (n.carry_until IS NOT NULL AND n.carry_until >= $1::date AND n.for_date <= $2::date) )`,
+  ];
+  const params = [from, to, req.user.user_id];
+
+  if (scope) {
+    if (!['shift', 'department', 'all'].includes(scope)) {
+      return res.status(400).json({ success: false, message: 'scope must be shift|department|all' });
+    }
+    params.push(scope);
+    conditions.push(`n.scope = $${params.length}`);
+  }
+  if (schedule_id) {
+    params.push(schedule_id);
+    conditions.push(`n.schedule_id = $${params.length}::uuid`);
+  }
+  if (department_id) {
+    params.push(parseInt(department_id, 10));
+    conditions.push(`n.department_id = $${params.length}::int`);
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         n.note_id, n.body, n.scope,
+         n.schedule_id, n.department_id,
+         n.for_date, n.carry_until,
+         n.pinned_at, n.resolved_at,
+         n.created_at, n.updated_at,
+         n.author_user_id, u.name AS author_name,
+         d.name AS department_name,
+         s.scheduled_date  AS schedule_date,
+         sh.start_time     AS shift_start,
+         sh.end_time       AS shift_end,
+         su.name           AS schedule_user_name,
+         (r.note_id IS NOT NULL) AS is_read
+       FROM handoff_notes n
+       JOIN users u ON n.author_user_id = u.user_id
+       LEFT JOIN departments d ON n.department_id = d.department_id
+       LEFT JOIN schedules s   ON n.schedule_id = s.schedule_id
+       LEFT JOIN shifts sh     ON s.shift_id = sh.shift_id
+       LEFT JOIN users su      ON s.user_id = su.user_id
+       LEFT JOIN handoff_note_reads r
+         ON r.note_id = n.note_id AND r.user_id = $3
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY n.pinned_at DESC NULLS LAST, n.created_at DESC`,
+      params
+    );
+    return res.json({ success: true, notes: rows });
+  } catch (err) {
+    console.error('[handoff-notes:GET]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// POST /api/handoff-notes
+//   body: { body, scope, schedule_id?, department_id?, for_date?, carry_until? }
+// For scope='shift', for_date is denormalized from the schedule on
+// insert; for the other two scopes it's required from the caller.
+app.post('/api/handoff-notes', requireAuth, async (req, res) => {
+  const { body, scope, schedule_id, department_id, for_date, carry_until } = req.body || {};
+
+  if (!body || !String(body).trim()) {
+    return res.status(400).json({ success: false, message: 'body required' });
+  }
+  if (!['shift', 'department', 'all'].includes(scope)) {
+    return res.status(400).json({ success: false, message: 'scope must be shift|department|all' });
+  }
+
+  let resolvedDate = for_date;
+  if (scope === 'shift') {
+    if (!schedule_id) {
+      return res.status(400).json({ success: false, message: 'shift scope requires schedule_id' });
+    }
+    const { rows: srows } = await pool.query(
+      `SELECT scheduled_date FROM schedules WHERE schedule_id = $1`,
+      [schedule_id]
+    );
+    if (!srows.length) {
+      return res.status(404).json({ success: false, message: 'schedule not found' });
+    }
+    // ISO-format the date so the CHECK doesn't get tripped by timezone drift.
+    resolvedDate = srows[0].scheduled_date.toISOString().split('T')[0];
+  } else if (scope === 'department') {
+    if (!department_id) {
+      return res.status(400).json({ success: false, message: 'department scope requires department_id' });
+    }
+    if (!for_date || !/^\d{4}-\d{2}-\d{2}$/.test(for_date)) {
+      return res.status(400).json({ success: false, message: 'for_date required (YYYY-MM-DD)' });
+    }
+  } else { // 'all'
+    if (!for_date || !/^\d{4}-\d{2}-\d{2}$/.test(for_date)) {
+      return res.status(400).json({ success: false, message: 'for_date required (YYYY-MM-DD)' });
+    }
+  }
+
+  if (carry_until && !/^\d{4}-\d{2}-\d{2}$/.test(carry_until)) {
+    return res.status(400).json({ success: false, message: 'carry_until must be YYYY-MM-DD' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO handoff_notes
+         (author_user_id, body, scope, schedule_id, department_id, for_date, carry_until)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING note_id`,
+      [
+        req.user.user_id,
+        String(body).trim(),
+        scope,
+        scope === 'shift'      ? schedule_id   : null,
+        scope === 'department' ? parseInt(department_id, 10) : null,
+        resolvedDate,
+        carry_until || null,
+      ]
+    );
+    return res.json({ success: true, note_id: rows[0].note_id });
+  } catch (err) {
+    console.error('[handoff-notes:POST]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// PATCH /api/handoff-notes/:id  (author or admin only)
+//   body: { body?, carry_until? }   (pin/resolve added in 10.2)
+app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { body, carry_until } = req.body || {};
+
+  const { rows: own } = await pool.query(
+    `SELECT author_user_id FROM handoff_notes WHERE note_id = $1`,
+    [id]
+  );
+  if (!own.length) return res.status(404).json({ success: false, message: 'note not found' });
+
+  const isAuthor = own[0].author_user_id === req.user.user_id;
+  const isAdmin  = req.user.role === 'admin';
+  if (!isAuthor && !isAdmin) {
+    return res.status(403).json({ success: false, message: 'forbidden' });
+  }
+
+  const sets = [];
+  const params = [];
+  if (typeof body === 'string') {
+    if (!body.trim()) return res.status(400).json({ success: false, message: 'body cannot be empty' });
+    params.push(body.trim());
+    sets.push(`body = $${params.length}`);
+  }
+  if (carry_until !== undefined) {
+    if (carry_until === null || carry_until === '') {
+      sets.push(`carry_until = NULL`);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(carry_until)) {
+      params.push(carry_until);
+      sets.push(`carry_until = $${params.length}::date`);
+    } else {
+      return res.status(400).json({ success: false, message: 'carry_until must be YYYY-MM-DD or null' });
+    }
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ success: false, message: 'nothing to update' });
+  }
+
+  params.push(id);
+  try {
+    await pool.query(
+      `UPDATE handoff_notes SET ${sets.join(', ')} WHERE note_id = $${params.length}`,
+      params
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[handoff-notes:PATCH]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// DELETE /api/handoff-notes/:id  (author or admin only)
+app.delete('/api/handoff-notes/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  const { rows: own } = await pool.query(
+    `SELECT author_user_id FROM handoff_notes WHERE note_id = $1`,
+    [id]
+  );
+  if (!own.length) return res.status(404).json({ success: false, message: 'note not found' });
+
+  const isAuthor = own[0].author_user_id === req.user.user_id;
+  const isAdmin  = req.user.role === 'admin';
+  if (!isAuthor && !isAdmin) {
+    return res.status(403).json({ success: false, message: 'forbidden' });
+  }
+
+  try {
+    await pool.query(`DELETE FROM handoff_notes WHERE note_id = $1`, [id]);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[handoff-notes:DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ── Serve React frontend ──────────────────────────────────────────────────────
 
 const buildPath = path.join(__dirname, 'build');

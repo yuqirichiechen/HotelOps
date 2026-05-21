@@ -11,19 +11,23 @@ import './Sidebar.css';
 // route lands on the user's *tenant*'s login (not the picker) via the
 // `hotelops-tenant-slug` localStorage hint from 9.3.2.
 
+// Sprint 10: "Shift Notes" entry removed from both nav arrays —
+// handoff notes now live in the Calendar surface's bottom drawer.
+// Old URLs (/shift-notes, /admin/shift-notes) redirect to the
+// corresponding Calendar route via <Navigate> in App.js for one
+// cycle. "Scheduling" relabelled "Calendar" on the admin side; the
+// staff side already had "Calendar."
 const STAFF_NAV = [
   { to: '/',            label: 'Home',        icon: '🏠', live: true,  end: true },
   { to: '/timesheet',   label: 'Timesheet',   icon: '⏱️', live: true  },
   { to: '/calendar',    label: 'Calendar',    icon: '📅', live: true  },
-  { to: '/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
   { to: '/settings',    label: 'Settings',    icon: '⚙️', live: false },
 ];
 
 const ADMIN_NAV = [
   { to: '/admin',             label: 'Home',        icon: '🏠', live: true,  end: true },
   { to: '/admin/staff',       label: 'Staff',       icon: '👥', live: true  },
-  { to: '/admin/scheduling',  label: 'Scheduling',  icon: '📅', live: true  },
-  { to: '/admin/shift-notes', label: 'Shift Notes', icon: '📝', live: false },
+  { to: '/admin/calendar',    label: 'Calendar',    icon: '📅', live: true  },
   { to: '/admin/reports',     label: 'Reports',     icon: '📊', live: false },
   { to: '/admin/settings',    label: 'Settings',    icon: '⚙️', live: true  },
 ];

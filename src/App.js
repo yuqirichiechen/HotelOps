@@ -3,7 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import ShiftsView from './components/ShiftsView';
-import ShiftNotes from './components/ShiftNotes';
+// Sprint 10: ShiftNotes / AdminShiftNotes no longer rendered — both
+// routes now <Navigate>-redirect into the Calendar surface. The
+// components themselves are kept on disk for one cycle (10.3 deletes
+// them along with this comment) so any unmerged branch with deep
+// imports doesn't break.
+// import ShiftNotes from './components/ShiftNotes';
 import StaffLogin from './pages/Login/StaffLogin';
 import AdminLogin from './pages/Login/AdminLogin';
 import TenantPicker from './pages/Login/TenantPicker';
@@ -15,7 +20,7 @@ import Settings from './pages/Settings';
 import SetPin from './pages/SetPin';
 import AdminHome from './pages/AdminHome';
 import AdminReports from './pages/AdminReports';
-import AdminShiftNotes from './pages/AdminShiftNotes';
+// import AdminShiftNotes from './pages/AdminShiftNotes';  // Sprint 10: folded into Calendar; see ShiftNotes import note above.
 import StaffManager from './components/AdminPanel/StaffManager';
 import StaffDetail from './components/AdminPanel/StaffDetail';
 import SchedulingManager from './components/AdminPanel/Scheduling';
@@ -112,8 +117,15 @@ const App = () => {
             {/* Legacy /admin/employees → /admin/staff */}
             <Route path="/admin/employees"         element={<Navigate to="/admin/staff" replace />} />
             <Route path="/admin/employees/:userId" element={<NavStaff />} />
-            <Route path="/admin/scheduling"        element={<SchedulingManager />} />
-            <Route path="/admin/shift-notes"       element={<AdminShiftNotes />} />
+            {/* Sprint 10: "Scheduling" surface renamed to "Calendar"
+                in the nav. Old /admin/scheduling URL kept as a
+                redirect for one cycle (any stale bookmark or hand-
+                typed URL still lands somewhere useful). */}
+            <Route path="/admin/calendar"          element={<SchedulingManager />} />
+            <Route path="/admin/scheduling"        element={<Navigate to="/admin/calendar" replace />} />
+            {/* Sprint 10: Shift Notes folded into Calendar. Old route
+                redirects to Calendar where the handoffs drawer lives. */}
+            <Route path="/admin/shift-notes"       element={<Navigate to="/admin/calendar" replace />} />
             <Route path="/admin/reports"           element={<AdminReports />} />
             <Route path="/admin/settings"          element={<AdminSettings />} />
           </Route>
@@ -127,7 +139,13 @@ const App = () => {
             <Route path="/"            element={<Home />} />
             <Route path="/timesheet"   element={<Timesheet />} />
             <Route path="/calendar"    element={<ShiftsView />} />
-            <Route path="/shift-notes" element={<ShiftNotes />} />
+            {/* Sprint 10: /shift-notes is folded into Calendar. The
+                legacy ShiftNotes page still renders for one cycle in
+                case any in-app deep link points here; 10.3 deletes
+                the component entirely and turns this into a redirect.
+                For now route to /calendar so new clicks land on the
+                merged surface. */}
+            <Route path="/shift-notes" element={<Navigate to="/calendar" replace />} />
             <Route path="/settings"    element={<Settings theme={theme} onToggleTheme={toggleTheme} />} />
             {/* Legacy redirects */}
             <Route path="/shifts"    element={<Navigate to="/calendar" replace />} />

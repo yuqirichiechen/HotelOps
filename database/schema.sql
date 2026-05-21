@@ -182,6 +182,47 @@ CREATE INDEX idx_shift_notes_department ON shift_notes(department_id);
 CREATE INDEX idx_shift_notes_created    ON shift_notes(created_at DESC);
 
 
+-- ── HANDOFF NOTES (Sprint 10) ──────────────────────────────────────────────────
+-- The single first-class entity backing the Calendar surface's three
+-- note views: per-shift threads, general department / all-staff
+-- handoffs, and cross-day carryovers (10.1+ surfaces). One row drives
+-- which views it appears in via `scope` + `for_date` + `carry_until`.
+-- Migration: database/migrations/011_handoff_notes.sql
+
+CREATE TABLE handoff_notes (
+  note_id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_user_id UUID        NOT NULL REFERENCES users(user_id),
+  body           TEXT        NOT NULL,
+  scope          VARCHAR(16) NOT NULL CHECK (scope IN ('shift', 'department', 'all')),
+  schedule_id    UUID        REFERENCES schedules(schedule_id)     ON DELETE CASCADE,
+  department_id  INT         REFERENCES departments(department_id) ON DELETE SET NULL,
+  for_date       DATE        NOT NULL,
+  carry_until    DATE,
+  pinned_at      TIMESTAMPTZ,
+  resolved_at    TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT handoff_notes_scope_shape CHECK (
+    (scope = 'shift'      AND schedule_id IS NOT NULL) OR
+    (scope = 'department' AND department_id IS NOT NULL AND schedule_id IS NULL) OR
+    (scope = 'all'        AND schedule_id IS NULL AND department_id IS NULL)
+  )
+);
+
+CREATE INDEX idx_handoff_notes_for_date              ON handoff_notes(for_date);
+CREATE INDEX idx_handoff_notes_department_for_date   ON handoff_notes(department_id, for_date);
+CREATE INDEX idx_handoff_notes_schedule              ON handoff_notes(schedule_id);
+CREATE INDEX idx_handoff_notes_carry_until           ON handoff_notes(carry_until)
+  WHERE carry_until IS NOT NULL;
+
+CREATE TABLE handoff_note_reads (
+  note_id  UUID        NOT NULL REFERENCES handoff_notes(note_id) ON DELETE CASCADE,
+  user_id  UUID        NOT NULL REFERENCES users(user_id)         ON DELETE CASCADE,
+  read_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (note_id, user_id)
+);
+
+
 -- ── ROOM TYPES ────────────────────────────────────────────────────────────────
 
 CREATE TABLE room_types (

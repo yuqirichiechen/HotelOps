@@ -1,0 +1,313 @@
+/* Sprint 10: shared Calendar atoms.
+   This stylesheet covers the atoms living in `src/components/Calendar/`:
+   - DepartmentChips
+   - DayPickerPills
+   - HandoffsDrawer
+   Higher-level views (DayView, WeekView, etc.) live in views/ and pull
+   their own CSS as they're added in 10.x. */
+
+
+/* ── DepartmentChips ─────────────────────────────────────────────────────── */
+
+.calendar-dept-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.calendar-dept-chip {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+.calendar-dept-chip:hover {
+  background: var(--bg-raised);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+.calendar-dept-chip.is-active {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  color: white;
+}
+
+
+/* ── DayPickerPills (atom is ready; not wired in 10) ─────────────────────── */
+
+.calendar-day-pills {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calendar-day-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.calendar-day-pill:hover {
+  background: var(--bg-raised);
+  border-color: var(--text-muted);
+}
+.calendar-day-pill.is-active {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+}
+.calendar-day-pill.is-active .calendar-day-pill-name,
+.calendar-day-pill.is-active .calendar-day-pill-num {
+  color: white;
+}
+.calendar-day-pill-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.calendar-day-pill-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.calendar-day-pill-badge {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+
+/* ── HandoffsDrawer ──────────────────────────────────────────────────────── */
+
+.handoffs-drawer {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px 12px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.handoffs-drawer-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.handoffs-drawer-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.handoffs-drawer-date {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tab bar — 3 filter tabs along the top of the drawer. Active tab
+   has a brand-color underline (mirrors the rest of the app's tab UX). */
+.handoffs-drawer-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-top: 2px;
+}
+.handoffs-drawer-tab {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.handoffs-drawer-tab:hover { color: var(--text-primary); }
+.handoffs-drawer-tab.is-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand-bg);
+}
+
+.handoffs-drawer-dept-chips {
+  margin-top: 2px;
+}
+
+.handoffs-drawer-body {
+  min-height: 96px;
+}
+
+.handoffs-drawer-empty,
+.handoffs-drawer-stub {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 18px 4px;
+  font-style: italic;
+  text-align: center;
+}
+.handoffs-drawer-stub {
+  background: var(--bg-base);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.handoffs-drawer-error {
+  font-size: 13px;
+  color: var(--danger-text);
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.handoffs-drawer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.handoffs-drawer-note {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.handoffs-drawer-note.is-unread {
+  /* Brand-tinted left edge marks unread without competing with the
+     note's own type for attention. Sprint 10.2 wires the actual
+     read flow; 10 just renders the visual hint when the server
+     returns is_read=false. */
+  border-left: 3px solid var(--brand-bg);
+}
+.handoffs-drawer-note-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.handoffs-drawer-note-author {
+  font-family: 'TiemposText', Georgia, serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.handoffs-drawer-note-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+}
+.handoffs-drawer-note-badge-shift { background: rgba(26, 54, 93, 0.08); color: var(--brand-text); }
+.handoffs-drawer-note-badge-dept  { background: rgba(56, 161, 105, 0.10); color: var(--success-text); }
+.handoffs-drawer-note-badge-all   { background: rgba(217, 159, 57, 0.14); color: #6b4f10; }
+.handoffs-drawer-note-time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.handoffs-drawer-note-body {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* Compose footer — only renders when `editable` and not on Cross-day */
+.handoffs-drawer-compose {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.handoffs-drawer-compose-scope {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.handoffs-drawer-scope-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.handoffs-drawer-scope-opt.is-active { color: var(--text-primary); font-weight: 600; }
+.handoffs-drawer-compose-dept {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+.handoffs-drawer-compose-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.handoffs-drawer-compose-input {
+  flex: 1 1 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  resize: vertical;
+  min-height: 56px;
+}
+.handoffs-drawer-compose-go {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 18px;
+  border: 1px solid var(--brand-bg);
+  border-radius: 8px;
+  background: var(--brand-bg);
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  align-self: stretch;
+}
+.handoffs-drawer-compose-go:hover:not(:disabled) { background: var(--brand-hover); }
+.handoffs-drawer-compose-go:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
