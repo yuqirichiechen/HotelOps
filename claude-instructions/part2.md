@@ -792,6 +792,57 @@ nav row:
 
 ---
 
+### 2026-05-21 — Sprint 11.1.1: fix backtick-in-SQL-comment crashing module load
+
+Deploy from 11.1 hit `SyntaxError: missing ) after argument list`
+at `server.js:2099` on module load — the GET `/api/handoff-notes`
+SELECT template literal couldn't parse.
+
+Root cause: the 11.1B fix had a SQL comment that contained
+backticks for code emphasis:
+
+```js
+const sql = `SELECT
+  ...
+  -- Without this, \`n.for_date === forDate\` comparisons in the
+  -- drawer's General/All filters silently miss every row.
+  ...
+`;
+```
+
+JS template literals can't have raw backticks inside without
+escaping. The unescaped backtick closed the template early; the
+parser then saw bare `n.for_date === forDate` followed by another
+template, then bare identifiers, and bailed with the generic
+"missing )" error. Frustratingly, `node --check` on my dev box was
+silent on it under some Node versions (CI's stricter parse caught
+it; my local v20 happened to pass earlier — same script, different
+result was the demo-day surprise).
+
+Fix: remove backticks from the SQL comment + added a callout in
+the comment itself warning future readers ("no backticks in this
+comment — they would close the enclosing JS template literal
+early").
+
+**Convention added:**
+- **Never put a raw backtick inside a JS template literal**, even
+  in a SQL comment. If a comment needs to reference code, use
+  single quotes or remove the formatting. Backticks for code
+  emphasis are for prose, not template-literal strings.
+- **When in doubt, do a `node -e "require('./server.js')"` smoke
+  test, not just `node --check`.** `--check` parses but doesn't
+  evaluate; some parser edge cases (like inside template literals)
+  can slip through depending on Node version. Requiring the
+  module triggers the full parser + module loader and surfaces
+  these immediately.
+
+**Files modified:**
+- `server/server.js` — GET /handoff-notes SELECT comment rewritten
+  without backticks; explanatory note left in-line.
+
+No frontend or schema changes. Re-deploy with the same env should
+pass health checks.
+
 ### 2026-05-21 — Sprint 11.1: Calendar polish + counter bug + assign-to-shift + for_date picker
 
 Six items, three fixes + two features + one mobile layout. Caught

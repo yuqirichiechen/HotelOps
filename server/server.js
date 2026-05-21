@@ -2100,10 +2100,12 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
          n.note_id, n.body, n.scope,
          n.schedule_id, n.department_id,
          -- Sprint 11.1: explicit ::text casts so the client gets
-         -- "YYYY-MM-DD" strings, not the JS-Date round-trip that
-         -- bakes a timezone into the JSON (e.g. "2026-05-20T07:00:00Z").
-         -- Without this, `n.for_date === forDate` comparisons in the
-         -- drawer's General/All filters silently miss every row.
+         -- YYYY-MM-DD strings, not the JS-Date round-trip that
+         -- bakes a timezone into the JSON (e.g. 2026-05-20T07:00:00Z).
+         -- Without this, n.for_date === forDate comparisons in the
+         -- drawer general/all filters silently miss every row.
+         -- (Note: no backticks in this comment — they would close the
+         -- enclosing JS template literal early. Fixed in Sprint 11.1.1.)
          n.for_date::text   AS for_date,
          n.carry_until::text AS carry_until,
          n.pinned_at, n.resolved_at,
