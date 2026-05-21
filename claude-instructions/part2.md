@@ -443,58 +443,184 @@ Add to deploy notes / CI pipeline as appropriate.
 
 ---
 
-#### Sprint 10.1 plan — Cross-day view + Week-view note badges + carry-forward UI
+### 2026-05-20 — Sprint 10.1: Cross-day tab, per-note carry/edit/delete, Week-view note badges, staff Calendar replaces kiosk
 
-**Scope**: light up the third drawer tab on Day view, add the note
-badges that thread through Week view, and make `carry_until`
-toggleable from the UI.
+Second of the four Calendar sprints. Lights up the third drawer tab,
+introduces the new matrix-per-* Week views with note badges, and
+takes the staff `/calendar` route off the legacy kiosk flow.
 
-**UX:**
-- Cross-day tab (`HandoffsDrawer`) gains the Today/Tomorrow toggle
-  (#11) with a header summary (Unread / General / Carryovers
-  counts). Lists carryover notes by department.
-- Each handoff note's overflow menu (`⋯`) gets:
-  - **Carry to next** — sets `carry_until = tomorrow`.
-  - **Carry to next week** — sets `carry_until = today+7`.
-  - **Stop carrying** — clears `carry_until`.
-  - **Edit** / **Delete** (author/admin).
-- Week views (#12 staff + #13 admin): each shift cell shows a `💬 N`
-  badge when there are notes scoped to that shift OR to that
-  shift's department on that date. Clicking the badge opens the
-  Day view at that date with the Handoffs drawer pre-filtered.
+**Server: `carry=true` filter + `/counts` endpoint.**
 
-**Server:**
-- `GET /api/handoff-notes` gains `[carry=true]` filter to return
-  notes where `carry_until >= today`.
-- Aggregation endpoint `GET /api/handoff-notes/counts?from=&to=`
-  returns `{ date: { total, unread } }` for week-view badges (one
-  round-trip instead of one query per cell).
+GET `/api/handoff-notes` gained `[carry=true]` — restricts to notes
+where `carry_until IS NOT NULL AND carry_until >= CURRENT_DATE`.
+Drives "show me what's actively rolling forward right now."
 
-**Frontend:**
-- `views/WeekView/StaffWeekView.js` — new, matrix-per-staff (#12).
-- `views/WeekView/AdminWeekView.js` — new, matrix-per-dept (#13).
-- Both consume the new `counts` endpoint and render badges on
-  shift cells.
-- `HandoffsDrawer` Cross-day tab fully wired; carry-forward menu
-  items added to the note overflow.
+New `GET /api/handoff-notes/counts?from=&to=[&department_id=]`
+returns `{ date: { total, unread } }` per day in the range, in one
+round-trip. The clever bit is `generate_series` + a LEFT JOIN where
+`days.d BETWEEN n.for_date AND COALESCE(n.carry_until, n.for_date)`
+— a carrying note correctly contributes to *every* day it's
+visible, not just the origin. Without the carry coalesce a 5-day-
+carrying note would only show its badge on its origin date.
+
+Also added `GET /api/shifts/range?from=&to=[&userId=]` — range
+version of `/shifts/daily`, for the new StaffCalendar's week
+fetches. Same `schedule_visibility` model (all / department / none).
+
+**HandoffsDrawer: Cross-day tab live + per-note overflow menu.**
+
+Tab #3 is no longer a stub. Sub-toggle (Today / Tomorrow) flips the
+`visibleDate` between `forDate` and `addDaysIso(forDate, 1)`. The
+fetch widens to `forDate..forDate+1` when the tab is active so
+flipping the toggle doesn't re-fetch. Header summary chips:
+**Unread** (notes still unread by current user), **Carrying**
+(total notes with `carry_until >= forDate`), and **Reach tomorrow**
+(notes whose `carry_until >= forDate+1`).
+
+Each note row gets an overflow button (`⋯`) — only shown when
+`editable={true}` AND the requester is the author OR an admin.
+Click opens an absolute-positioned menu with:
+
+- **Carry to next day** → PATCH `carry_until = forDate + 1`
+- **Carry to next week** → PATCH `carry_until = forDate + 7`
+- **Stop carrying** (only if currently carrying) → PATCH `carry_until = null`
+- **Edit** → flips the note body into an inline textarea + Save / Cancel
+- **Delete** → DELETE the note (no confirm dialog; 10.2 can add undo)
+
+A "Carries to YYYY-MM-DD" badge appears on notes that have an
+active `carry_until` so the user can tell at a glance which notes
+will appear tomorrow even when looking at the Today tab.
+
+`HandoffsDrawer` now requires `currentUser` for author/admin
+gating. SchedulingManager passes `useAuth().user`; StaffCalendar
+does the same.
+
+**Week views: AdminWeekView (matrix-per-dept) + StaffWeekView (matrix-per-staff).**
+
+New files:
+
+- `src/components/Calendar/views/AdminWeekView.js` — mockup #13.
+  Rows: departments. Cols: 7 days. Each cell shows shift bands
+  (up to 3 visible, "+N" overflow), staff-on-shift / dept-capacity,
+  and a `💬 N` badge when notes cover the day. Clicking any cell or
+  the day-column header zooms to Day view at that date.
+
+- `src/components/Calendar/views/StaffWeekView.js` — mockup #12.
+  Rows: staff (sorted by name). Cols: 7 days. Each cell shows the
+  shift time range or "Off"; the current user's row is highlighted.
+  Day-header cells carry their own `💬 N` badge when notes touch
+  that day. Department chip filter scopes the rows.
+
+Both views self-fetch `/handoff-notes/counts` for the visible week
+(one request, gracefully handles 401/empty by treating missing
+keys as `{total:0}`). Schedules + employees + departments arrive
+as props from the parent (single source of truth).
+
+Note badge scoping today: shows the global per-day total. A future
+sprint should refine to "notes touching *this* staff/dept on this
+day" — for now the global count gives the right "is there
+*anything* I should look at today" signal.
+
+**AdminPanel/Scheduling swaps WeekView → AdminWeekView.**
+
+The existing `WeekView.js` was a 4-week aggregate hours summary
+(Sprint 8.5.1). 10.1 replaces its usage in `SchedulingManager` with
+the new matrix-per-dept `AdminWeekView`. The old file is *not
+deleted* — it stays on disk in case admins miss the aggregate view
+(could come back as a density toggle in a later sprint). 10.3 will
+delete if no demand.
+
+**Staff `/calendar` now routes to a real authed Calendar.**
+
+New page: `src/pages/StaffCalendar/index.js` + `StaffCalendar.css`.
+Replaces the legacy `ShiftsView` kiosk flow. Layout:
+
+- Header: title, prev / Today / next nav, range label, view toggle
+  (Week / Day).
+- Week mode: renders `<StaffWeekView />` with current user
+  highlighted. Clicking a cell zooms to Day.
+- Day mode: simple shift list grouped by `department_name` + the
+  full `<HandoffsDrawer />` (editable, default scope `department`).
+
+Staff can compose handoff notes (scope: department or all-staff)
+because the requirement was "viewing or putting in shift notes."
+Staff cannot edit/delete shifts — that's admin-only and the staff
+Calendar doesn't expose those affordances.
+
+The legacy kiosk `ShiftsView` (phone-keypad → look up employee →
+see shifts) moves to `/kiosk` so any property still relying on a
+shared-tablet lookup has the URL available; it's just not the
+default Calendar route anymore.
+
+**Files added:**
+- `src/components/Calendar/views/AdminWeekView.js`
+- `src/components/Calendar/views/StaffWeekView.js`
+- `src/pages/StaffCalendar/index.js`
+- `src/pages/StaffCalendar/StaffCalendar.css`
 
 **Files modified:**
-- `src/components/Calendar/views/WeekView/StaffWeekView.js` — new.
-- `src/components/Calendar/views/WeekView/AdminWeekView.js` — new.
-- `src/components/Calendar/atoms/HandoffsDrawer.js` — Cross-day tab
-  + overflow menu.
-- `server/server.js` — counts endpoint + carry filter.
+- `server/server.js`:
+  - `GET /api/handoff-notes` — new `carry=true` filter.
+  - New `GET /api/handoff-notes/counts` endpoint.
+  - New `GET /api/shifts/range` endpoint.
+- `src/components/Calendar/atoms/HandoffsDrawer.js`:
+  - Cross-day tab fully wired (Today/Tomorrow toggle, summary).
+  - Per-note overflow menu (Carry to next / Carry to next week /
+    Stop carrying / Edit / Delete) with author/admin gating.
+  - Inline edit-in-place textarea.
+  - `currentUser` prop added.
+- `src/components/Calendar/Calendar.css`:
+  - Cross-day header (toggle + summary stat chips).
+  - Per-note overflow menu chrome + edit-row.
+  - AdminWeekView grid (140px dept col + 7 day cols).
+  - StaffWeekView grid (200px staff col + 7 day cols), `is-me`
+    row highlight.
+- `src/components/AdminPanel/Scheduling/index.js`:
+  - Replaced `WeekView` import with `AdminWeekView`.
+  - Swapped JSX usage; added `useAuth()` + `currentUser` on
+    drawer.
+- `src/App.js`:
+  - `/calendar` → `<StaffCalendar />` (was `<ShiftsView />`).
+  - `/kiosk` → `<ShiftsView />` (legacy).
+  - Imported the new page.
 
-**Conventions this sprint adds:**
-- **`carry_until` is set explicitly by the user.** No auto-carry-
-  forward when a note isn't acknowledged. Carrying is a deliberate
-  admin/staff choice; staleness is a feature, not a bug.
+**Conventions this sprint adds / reinforces:**
+- **`carry_until` is set explicitly by the user.** Carrying is a
+  deliberate choice. No auto-carry-forward-when-unread. Staleness
+  is the signal that no one acknowledged it.
+- **Per-day count aggregation via `generate_series` + carry coalesce.**
+  The "this carrying note shows on each day in its window" math
+  belongs in SQL — don't reproduce it on the client per cell.
+- **Self-fetching views** (StaffWeekView, AdminWeekView) for
+  *secondary* data like note counts; primary schedule data still
+  flows through props from the parent.
+- **Author OR admin** is the standard mutation gate for handoff
+  notes. `canMutate(note) = role === 'admin' || note.author_user_id === user.user_id`.
+- **Kiosk flow lives at `/kiosk`** if anyone still needs it.
+  `/calendar` is for authed staff personal use.
 
-**Acceptance**: Wed has 3 notes carried over from Mon → they appear
-on Wed's drawer when set to Today *and* on Tue's drawer when set to
-Tomorrow (`carry_until` ≥ Tue). Week view shows `💬 3` on Wed's
-shift cells in the relevant department; clicking opens Wed Day view
-with the drawer pre-filtered.
+**Notes for next iteration (10.2 picks up):**
+- **Pin / resolve + read state UI** — schema columns exist, drawer
+  already sorts by `pinned_at`. 10.2 wires the PATCH for
+  `pinned`/`resolved` plus the mark-all-read flow and the
+  Sidebar nav-badge count.
+- **Note badges currently show global per-day counts.** Refining
+  to "notes touching this row's staff/dept" requires the counts
+  endpoint to support multi-key grouping (e.g., per `(date,
+  department_id)`); deferred.
+- **Staff Calendar Day view is a simple list,** not the full
+  timeline visual. Could share a read-only flavor of the admin
+  `DayView.js` in a later sprint; for 10.1 the list + drawer is
+  enough for "see who's on + post a note."
+- **The `/api/admin/employees` and `/api/admin/departments`
+  endpoints are unauthed today** and the StaffCalendar reuses
+  them. Semantically off (a `/api/staff/calendar-context` would
+  be cleaner). Tracked here as future cleanup.
+- **No Year / Month views on staff Calendar.** Likely fine; if
+  GM asks, copy the admin Year/Month components and pass
+  `editable=false`.
+- **Old `WeekView.js` (4-week aggregate) is kept on disk** in case
+  the density-toggle idea materializes. 10.3 deletes if not.
 
 ---
 

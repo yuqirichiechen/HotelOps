@@ -1,28 +1,29 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../../auth';
 import DepartmentChips from './DepartmentChips';
 
-// Sprint 10: shared bottom drawer that lists handoff notes for a
-// given date + optional department filter. Hosts three filter tabs:
-//   - Handoffs  — shift-attached threads (scope='shift'). 10 wires.
-//   - General   — department/all-staff broadcasts (scope IN
-//                 ('department','all')). 10 wires.
-//   - Cross-day — carryovers + pins (carry_until or pinned_at set).
-//                 Stubbed in 10; 10.1 lights it up.
+// Sprint 10 + 10.1: shared bottom drawer that lists handoff notes for
+// a given date + optional department filter. Three filter tabs:
+//   - Handoffs  — shift-attached threads (scope='shift')
+//   - General   — department/all-staff broadcasts
+//   - Cross-day — carryovers + tomorrow preview (10.1)
 //
-// The drawer fetches once for the date and filters locally per-tab.
-// A single date is cheap to fetch; the request also returns notes
-// whose carry_until covers the date so the Cross-day tab has data
-// available even before its UX lands.
+// Each note row has an overflow menu (⋯) with Carry-forward actions
+// (Carry to next / Carry to next week / Stop carrying) and Edit /
+// Delete (author or admin only). The Carry actions PATCH carry_until
+// directly so the same note "moves" between Today and Tomorrow on
+// the cross-day view without re-creating rows.
 //
 // Props:
 //   forDate      — 'YYYY-MM-DD' the drawer is showing
 //   departments  — [{ department_id, name }] for the dept chips
-//   editable     — whether to show the compose footer (admin-or-staff)
-//   defaultScope — initial compose scope ('department' | 'all'). The
-//                  Sprint 10 UI only exposes department + all in
-//                  compose; shift-attached threads need a schedule_id
-//                  context (10.1 wires that from the Day view).
+//   editable     — whether to show the compose footer + per-note
+//                  edit/delete affordances
+//   defaultScope — initial compose scope ('department' | 'all')
+//   currentUser  — { user_id, role } — required for author/admin
+//                  gating on the overflow menu
+//
+// Sprint 10.2 will add pin/resolve + read state UI on top of this.
 
 const TABS = [
   { key: 'handoffs',  label: 'Handoffs'  },
@@ -33,29 +34,69 @@ const TABS = [
 const formatTime = (iso) =>
   new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+const addDaysIso = (iso, days) => {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 const HandoffsDrawer = ({
   forDate,
   departments = [],
   editable = false,
   defaultScope = 'department',
+  currentUser = null,
 }) => {
   const [tab, setTab]               = useState('handoffs');
-  const [deptFilter, setDeptFilter] = useState(null); // department_id | null
+  // Cross-day sub-toggle. 'today' shows notes whose carry covers
+  // forDate; 'tomorrow' shows notes whose carry covers forDate + 1.
+  const [crossSide, setCrossSide]   = useState('today');
+  const [deptFilter, setDeptFilter] = useState(null);
   const [notes, setNotes]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
 
-  // Compose state (general tab only — Sprint 10 scope)
+  // Compose state
   const [composeBody,  setComposeBody]  = useState('');
   const [composeScope, setComposeScope] = useState(defaultScope);
   const [composeDept,  setComposeDept]  = useState(null);
   const [composeBusy,  setComposeBusy]  = useState(false);
 
+  // Per-note overflow menu — only one open at a time
+  const [openMenuId, setOpenMenuId] = useState(null);
+  // Per-note edit mode
+  const [editingId,   setEditingId]   = useState(null);
+  const [editingBody, setEditingBody] = useState('');
+  const [editingBusy, setEditingBusy] = useState(false);
+
+  const menuRef = useRef(null);
+
+  // Dismiss the overflow menu when clicking outside it
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [openMenuId]);
+
+  // ── fetch ────────────────────────────────────────────────────────────────
+  // For Today/General tabs the drawer fetches notes for `forDate`.
+  // For Cross-day, the fetch widens by one day (today + tomorrow) so
+  // we can flip the sub-toggle without re-fetching. The filter to
+  // each tab's actual rows happens in the `filtered` derivation
+  // below.
   const refresh = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ from: forDate, to: forDate });
+      const from = forDate;
+      const to   = tab === 'cross-day' ? addDaysIso(forDate, 1) : forDate;
+      const params = new URLSearchParams({ from, to });
       const { ok, data } = await apiFetch(`/handoff-notes?${params.toString()}`);
       if (ok && data?.success) {
         setNotes(data.notes || []);
@@ -66,20 +107,48 @@ const HandoffsDrawer = ({
       setError('Could not load handoff notes.');
     }
     setLoading(false);
-  }, [forDate]);
+  }, [forDate, tab]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ── filter notes for the active tab ──────────────────────────────────────
+  // ── filter by tab + dept ─────────────────────────────────────────────────
+  const visibleDate = tab === 'cross-day' && crossSide === 'tomorrow'
+    ? addDaysIso(forDate, 1)
+    : forDate;
+
   const filtered = notes.filter(n => {
-    if (tab === 'handoffs')  return n.scope === 'shift';
-    if (tab === 'general')   return n.scope === 'department' || n.scope === 'all';
-    if (tab === 'cross-day') return n.carry_until || n.pinned_at;
+    if (tab === 'handoffs') {
+      // Shift-attached threads tied to forDate
+      return n.scope === 'shift' && n.for_date === forDate;
+    }
+    if (tab === 'general') {
+      // Department/all broadcasts whose for_date is exactly forDate
+      // (carryovers belong to cross-day, not general).
+      return (n.scope === 'department' || n.scope === 'all') && n.for_date === forDate;
+    }
+    if (tab === 'cross-day') {
+      // Notes whose carry covers the visible date AND originated
+      // before that date (so they're rolling forward into it).
+      if (!n.carry_until) return false;
+      return n.carry_until >= visibleDate;
+    }
     return true;
   }).filter(n => {
     if (deptFilter == null) return true;
     return n.department_id === deptFilter;
   });
+
+  // ── cross-day header summary ─────────────────────────────────────────────
+  const crossSummary = (() => {
+    const carrying = notes.filter(n => n.carry_until && n.carry_until >= forDate);
+    const tomorrowOnly = carrying.filter(n => n.carry_until >= addDaysIso(forDate, 1));
+    const unread = carrying.filter(n => !n.is_read).length;
+    return {
+      unread,
+      total: carrying.length,
+      tomorrow: tomorrowOnly.length,
+    };
+  })();
 
   // ── compose ──────────────────────────────────────────────────────────────
   const onPost = async () => {
@@ -113,6 +182,71 @@ const HandoffsDrawer = ({
     setComposeBusy(false);
   };
 
+  // ── per-note actions (10.1) ──────────────────────────────────────────────
+  const canMutate = (note) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    return note.author_user_id === currentUser.user_id;
+  };
+
+  const patchNote = async (id, patch) => {
+    const { ok, data } = await apiFetch(`/handoff-notes/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!ok || !data?.success) {
+      setError(data?.message || 'Update failed.');
+      return false;
+    }
+    setOpenMenuId(null);
+    refresh();
+    return true;
+  };
+
+  const doCarry = (note, days) => {
+    if (days == null) {
+      patchNote(note.note_id, { carry_until: null });
+    } else {
+      patchNote(note.note_id, { carry_until: addDaysIso(forDate, days) });
+    }
+  };
+
+  const startEdit = (note) => {
+    setEditingId(note.note_id);
+    setEditingBody(note.body);
+    setOpenMenuId(null);
+  };
+
+  const saveEdit = async (note) => {
+    if (!editingBody.trim()) return;
+    setEditingBusy(true);
+    const ok = await patchNote(note.note_id, { body: editingBody.trim() });
+    setEditingBusy(false);
+    if (ok) {
+      setEditingId(null);
+      setEditingBody('');
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingBody('');
+  };
+
+  const doDelete = async (note) => {
+    // No confirm dialog — a stray click would be annoying, but the
+    // PATCH/DELETE is reversible by re-posting; keep it light.
+    // Sprint 10.2 can add an undo toast.
+    const { ok, data } = await apiFetch(`/handoff-notes/${note.note_id}`, { method: 'DELETE' });
+    if (!ok || !data?.success) {
+      setError(data?.message || 'Delete failed.');
+      return;
+    }
+    setOpenMenuId(null);
+    refresh();
+  };
+
   return (
     <section className="handoffs-drawer">
       <header className="handoffs-drawer-header">
@@ -128,14 +262,47 @@ const HandoffsDrawer = ({
             role="tab"
             aria-selected={tab === t.key}
             className={`handoffs-drawer-tab ${tab === t.key ? 'is-active' : ''}`}
-            onClick={() => setTab(t.key)}
+            onClick={() => { setTab(t.key); setOpenMenuId(null); }}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {departments.length > 0 && tab !== 'cross-day' && (
+      {/* Cross-day header: today/tomorrow toggle + summary chips */}
+      {tab === 'cross-day' && (
+        <div className="handoffs-drawer-cross-header">
+          <div className="handoffs-drawer-cross-toggle">
+            <button
+              type="button"
+              className={`handoffs-drawer-cross-side ${crossSide === 'today' ? 'is-active' : ''}`}
+              onClick={() => setCrossSide('today')}
+            >
+              Today · {forDate}
+            </button>
+            <button
+              type="button"
+              className={`handoffs-drawer-cross-side ${crossSide === 'tomorrow' ? 'is-active' : ''}`}
+              onClick={() => setCrossSide('tomorrow')}
+            >
+              Tomorrow · {addDaysIso(forDate, 1)}
+            </button>
+          </div>
+          <div className="handoffs-drawer-cross-summary">
+            <span className="handoffs-drawer-cross-stat">
+              <strong>{crossSummary.unread}</strong> Unread
+            </span>
+            <span className="handoffs-drawer-cross-stat">
+              <strong>{crossSummary.total}</strong> Carrying
+            </span>
+            <span className="handoffs-drawer-cross-stat">
+              <strong>{crossSummary.tomorrow}</strong> Reach tomorrow
+            </span>
+          </div>
+        </div>
+      )}
+
+      {departments.length > 0 && (
         <DepartmentChips
           departments={departments}
           value={deptFilter}
@@ -145,21 +312,17 @@ const HandoffsDrawer = ({
       )}
 
       <div className="handoffs-drawer-body">
-        {tab === 'cross-day' ? (
-          <div className="handoffs-drawer-stub">
-            Cross-day view lands in Sprint 10.1.
-            Today's drawer can show carryovers and pinned notes in the
-            other tabs once those tools are wired.
-          </div>
-        ) : loading ? (
+        {loading ? (
           <div className="handoffs-drawer-empty">Loading…</div>
         ) : error ? (
           <div className="handoffs-drawer-error">{error}</div>
         ) : filtered.length === 0 ? (
           <div className="handoffs-drawer-empty">
-            {tab === 'handoffs'
-              ? 'No shift-attached handoffs for this day.'
-              : 'No general handoffs for this day.'}
+            {tab === 'handoffs'  && 'No shift-attached handoffs for this day.'}
+            {tab === 'general'   && 'No general handoffs for this day.'}
+            {tab === 'cross-day' && (crossSide === 'today'
+              ? 'No carryovers reach today.'
+              : 'No carryovers reach tomorrow.')}
           </div>
         ) : (
           <ul className="handoffs-drawer-list">
@@ -183,9 +346,65 @@ const HandoffsDrawer = ({
                       All staff
                     </span>
                   )}
+                  {n.carry_until && (
+                    <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-carry">
+                      Carries to {n.carry_until}
+                    </span>
+                  )}
                   <span className="handoffs-drawer-note-time">{formatTime(n.created_at)}</span>
+                  {editable && canMutate(n) && (
+                    <button
+                      type="button"
+                      className="handoffs-drawer-note-more"
+                      aria-label="Note actions"
+                      onClick={() => setOpenMenuId(openMenuId === n.note_id ? null : n.note_id)}
+                    >⋯</button>
+                  )}
                 </div>
-                <div className="handoffs-drawer-note-body">{n.body}</div>
+
+                {editingId === n.note_id ? (
+                  <div className="handoffs-drawer-note-edit">
+                    <textarea
+                      className="handoffs-drawer-compose-input"
+                      value={editingBody}
+                      onChange={e => setEditingBody(e.target.value)}
+                      rows={2}
+                    />
+                    <div className="handoffs-drawer-note-edit-actions">
+                      <button
+                        type="button"
+                        className="handoffs-drawer-note-cancel"
+                        onClick={cancelEdit}
+                        disabled={editingBusy}
+                      >Cancel</button>
+                      <button
+                        type="button"
+                        className="handoffs-drawer-compose-go"
+                        onClick={() => saveEdit(n)}
+                        disabled={editingBusy || !editingBody.trim()}
+                      >{editingBusy ? 'Saving…' : 'Save'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="handoffs-drawer-note-body">{n.body}</div>
+                )}
+
+                {openMenuId === n.note_id && (
+                  <div className="handoffs-drawer-note-menu" ref={menuRef}>
+                    <button type="button" onClick={() => doCarry(n, 1)}>Carry to next day</button>
+                    <button type="button" onClick={() => doCarry(n, 7)}>Carry to next week</button>
+                    {n.carry_until && (
+                      <button type="button" onClick={() => doCarry(n, null)}>Stop carrying</button>
+                    )}
+                    <hr />
+                    <button type="button" onClick={() => startEdit(n)}>Edit</button>
+                    <button
+                      type="button"
+                      className="handoffs-drawer-note-menu-danger"
+                      onClick={() => doDelete(n)}
+                    >Delete</button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

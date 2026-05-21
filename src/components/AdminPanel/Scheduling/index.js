@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { flushSync } from 'react-dom';
+import { useAuth } from '../../../auth';
 import YearView from './YearView';
 import MonthView from './MonthView';
-import WeekView from './WeekView';
+import AdminWeekView from '../../Calendar/views/AdminWeekView';
 import DayView from './DayView';
 import AssignModal from './AssignModal';
 import AssignPanel from './AssignPanel';
@@ -53,6 +54,7 @@ const runWithTransition = (cb, dir = null) => {
 
 const SchedulingManager = () => {
   const nav = useNavigate();
+  const { user } = useAuth(); // Sprint 10.1: needed for HandoffsDrawer author gating
 
   // ── View + cursor state ─────────────────────────────────────────────────
   const [view,   setView]   = useState('month'); // year | month | week | day
@@ -343,15 +345,17 @@ const SchedulingManager = () => {
           />
         )}
         {view === 'week' && (
-          <WeekView
+          // Sprint 10.1: swapped the legacy "monthly hours summary"
+          // WeekView for the new matrix-per-department AdminWeekView.
+          // The old summary still lives at ./WeekView.js — keep on
+          // disk; if admins miss the aggregate view we can wire it
+          // as a density toggle later.
+          <AdminWeekView
             weekStart={startOfWeek(cursor)}
             employees={employees}
             departments={departments}
             schedules={schedules}
-            loading={loading}
-            onAssign={(emp, date) => setModal({ type: 'assign', employee: emp, date })}
-            onEdit={(schedule)    => setModal({ type: 'edit',   schedule })}
-            onMove={handleMove}
+            onPickDate={(d) => zoomTo('day', new Date(d))}
           />
         )}
         {view === 'day' && (
@@ -368,12 +372,15 @@ const SchedulingManager = () => {
             {/* Sprint 10: handoffs drawer below Day view. `forDate`
                 is the YYYY-MM-DD form of the current cursor; the
                 drawer fetches notes for that day and lets admins
-                compose new ones (editable=true). Cross-day tab is
-                stubbed; 10.1 wires it. */}
+                compose new ones (editable=true). Sprint 10.1 wired
+                the Cross-day tab + per-note overflow menu (edit /
+                delete / carry-forward); currentUser is required so
+                the drawer can gate the menu by author/admin. */}
             <HandoffsDrawer
               forDate={fmtDate(cursor)}
               departments={departments}
               editable={true}
+              currentUser={user}
             />
           </>
         )}

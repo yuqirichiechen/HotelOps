@@ -311,3 +311,479 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+
+/* ── Sprint 10.1: Cross-day header (Today / Tomorrow + summary) ─────────── */
+
+.handoffs-drawer-cross-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.handoffs-drawer-cross-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-surface);
+  border-radius: 8px;
+  padding: 2px;
+}
+.handoffs-drawer-cross-side {
+  flex: 1 1 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.handoffs-drawer-cross-side:hover { color: var(--text-primary); }
+.handoffs-drawer-cross-side.is-active {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+.handoffs-drawer-cross-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.handoffs-drawer-cross-stat strong {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ── Sprint 10.1: per-note overflow menu + edit-in-place ────────────────── */
+
+.handoffs-drawer-note-badge-carry {
+  background: rgba(217, 159, 57, 0.20);
+  color: #6b4f10;
+}
+
+.handoffs-drawer-note-more {
+  margin-left: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.handoffs-drawer-note-more:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+
+/* The menu floats inside the note row. Anchored top-right via right:0.
+   Position relative to its parent — the note row itself is the
+   positioned ancestor. */
+.handoffs-drawer-note { position: relative; }
+
+.handoffs-drawer-note-menu {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  z-index: 10;
+  min-width: 180px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.handoffs-drawer-note-menu button {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.handoffs-drawer-note-menu button:hover { background: var(--bg-raised); }
+.handoffs-drawer-note-menu hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+.handoffs-drawer-note-menu-danger { color: var(--danger-text); }
+.handoffs-drawer-note-menu-danger:hover {
+  background: var(--danger-subtle) !important;
+}
+
+/* Edit-in-place — textarea + Save/Cancel below the head row */
+.handoffs-drawer-note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.handoffs-drawer-note-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.handoffs-drawer-note-cancel {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.handoffs-drawer-note-cancel:hover { background: var(--bg-raised); }
+
+
+/* ── Sprint 10.1: AdminWeekView (matrix-per-department) ─────────────────── */
+
+.admin-week-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-week-stats {
+  display: flex;
+  gap: 24px;
+  padding: 14px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.admin-week-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.admin-week-stat-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.admin-week-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+.admin-week-dept-chips { padding: 0; }
+
+.admin-week-grid {
+  display: grid;
+  grid-template-columns: 140px repeat(7, 1fr);
+  gap: 2px;
+  background: var(--border);  /* shows as gridlines */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.admin-week-row {
+  display: contents;
+}
+.admin-week-cell {
+  background: var(--bg-surface);
+  padding: 8px 10px;
+  font-family: 'TiemposText', Georgia, serif;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.admin-week-cell:hover { background: var(--bg-raised); }
+
+.admin-week-cell-corner,
+.admin-week-cell-day {
+  background: var(--bg-base);
+  min-height: 48px;
+  padding: 6px 8px;
+}
+.admin-week-cell-day {
+  align-items: center;
+  cursor: pointer;
+}
+.admin-week-cell-day.is-today {
+  background: var(--accent-bg);
+}
+.admin-week-cell-day-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-week-cell-day-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-week-cell-dept {
+  background: var(--bg-base);
+  cursor: default;
+}
+.admin-week-cell-dept:hover { background: var(--bg-base); }
+.admin-week-cell-dept-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.admin-week-cell-dept-cap {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-week-cell-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-week-cell-band {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: rgba(26, 54, 93, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.admin-week-cell-band-more {
+  background: transparent;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 2px 4px;
+}
+.admin-week-cell-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.admin-week-cell-meta {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.admin-week-cell-note-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+
+/* ── Sprint 10.1: StaffWeekView (matrix-per-staff) ──────────────────────── */
+
+.staff-week-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.staff-week-stats {
+  display: flex;
+  gap: 24px;
+  padding: 14px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.staff-week-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.staff-week-stat-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.staff-week-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+.staff-week-dept-chips { padding: 0; }
+
+.staff-week-grid {
+  display: grid;
+  grid-template-columns: 200px repeat(7, 1fr);
+  gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.staff-week-row { display: contents; }
+.staff-week-row.is-me .staff-week-cell-staff {
+  background: var(--accent-bg);
+}
+
+.staff-week-cell {
+  background: var(--bg-surface);
+  padding: 8px 10px;
+  font-family: 'TiemposText', Georgia, serif;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  text-align: left;
+}
+.staff-week-cell:hover { background: var(--bg-raised); }
+
+.staff-week-cell-corner,
+.staff-week-cell-day {
+  background: var(--bg-base);
+  min-height: 48px;
+  padding: 6px 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.staff-week-cell-day.is-today { background: var(--accent-bg); }
+.staff-week-cell-day-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.staff-week-cell-day-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.staff-week-cell-day-badge {
+  font-size: 10px;
+  color: var(--brand-text);
+  font-weight: 600;
+}
+
+.staff-week-cell-staff {
+  background: var(--bg-base);
+  cursor: default;
+  gap: 10px;
+  align-items: center;
+}
+.staff-week-cell-staff:hover { background: var(--bg-base); }
+.staff-week-cell-staff-initial {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--brand-bg);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.staff-week-cell-staff-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.staff-week-cell-staff-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.staff-week-cell-staff-you {
+  font-size: 11px;
+  color: var(--brand-text);
+  font-weight: 500;
+}
+.staff-week-cell-staff-dept {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.staff-week-cell-data {
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  justify-content: center;
+}
+.staff-week-cell-data.is-off {
+  background: var(--bg-base);
+  color: var(--text-muted);
+}
+.staff-week-cell-time {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.staff-week-cell-off {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.staff-week-cell-note-badge {
+  font-size: 10px;
+  color: var(--brand-text);
+  font-weight: 600;
+}
+
+.staff-week-empty {
+  grid-column: 1 / -1;
+  padding: 20px;
+  font-style: italic;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--bg-surface);
+}

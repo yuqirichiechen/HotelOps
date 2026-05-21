@@ -1654,6 +1654,62 @@ app.delete('/api/admin/schedule/:id', async (req, res) => {
 
 // ── Shifts board (employee-facing) ───────────────────────────────────────────
 
+// GET /api/shifts/range?from=YYYY-MM-DD&to=YYYY-MM-DD[&userId=UUID]
+// Sprint 10.1: range version of /api/shifts/daily for the staff
+// Calendar's week view. Same visibility model — `schedule_visibility`
+// = 'all' shows everyone's schedules, 'department' restricts to the
+// requester's dept (when userId provided), 'none' returns empty.
+app.get('/api/shifts/range', async (req, res) => {
+  const { from, to, userId } = req.query;
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ success: false, message: 'from and to required (YYYY-MM-DD)' });
+  }
+  try {
+    const { rows: sv } = await pool.query(
+      "SELECT value FROM app_settings WHERE key = 'schedule_visibility'"
+    );
+    const visibility = sv[0]?.value || 'all';
+
+    if (visibility === 'none') {
+      return res.json({ success: true, schedules: [], visibility });
+    }
+
+    let query = `
+      SELECT
+        sc.schedule_id,
+        sc.user_id,
+        sc.scheduled_date::text,
+        COALESCE(sc.custom_start_time, sh.start_time)::text AS start_time,
+        COALESCE(sc.custom_end_time,   sh.end_time)::text   AS end_time,
+        u.name           AS employee_name,
+        u.department_id,
+        d.name           AS department_name
+      FROM schedules sc
+      JOIN users u        ON sc.user_id       = u.user_id
+      JOIN departments d  ON u.department_id  = d.department_id
+      LEFT JOIN shifts sh ON sc.shift_id      = sh.shift_id
+      WHERE sc.scheduled_date BETWEEN $1::date AND $2::date AND u.active = true`;
+    const params = [from, to];
+
+    if (visibility === 'department' && userId) {
+      const { rows: ur } = await pool.query(
+        'SELECT department_id FROM users WHERE user_id = $1', [userId]
+      );
+      if (ur.length && ur[0].department_id) {
+        query += ' AND u.department_id = $3';
+        params.push(ur[0].department_id);
+      }
+    }
+
+    query += ' ORDER BY sc.scheduled_date, d.name, start_time';
+    const { rows } = await pool.query(query, params);
+    return res.json({ success: true, schedules: rows, visibility });
+  } catch (err) {
+    console.error('[shifts/range]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/shifts/daily', async (req, res) => {
   const { date, userId } = req.query;
   if (!date) return res.status(400).json({ success: false, message: 'date required' });
@@ -1870,13 +1926,17 @@ app.put('/api/admin/settings', async (req, res) => {
 
 // GET /api/handoff-notes?from=YYYY-MM-DD&to=YYYY-MM-DD
 //   [&scope=shift|department|all] [&schedule_id=UUID] [&department_id=INT]
+//   [&carry=true]
 //
 // Returns notes whose for_date falls in [from, to] OR whose
 // carry_until extends into that range. is_read is computed per
 // requester via LEFT JOIN handoff_note_reads. Sorted with pinned
-// notes first (NULLs last), then newest.
+// notes first (NULLs last), then newest. Sprint 10.1 added the
+// `carry=true` filter — restricts results to notes that are
+// actively carrying (carry_until >= today). Drives the Cross-day
+// tab in the HandoffsDrawer.
 app.get('/api/handoff-notes', requireAuth, async (req, res) => {
-  const { from, to, scope, schedule_id, department_id } = req.query;
+  const { from, to, scope, schedule_id, department_id, carry } = req.query;
   if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
     return res.status(400).json({ success: false, message: 'from and to required (YYYY-MM-DD)' });
   }
@@ -1905,6 +1965,12 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
   if (department_id) {
     params.push(parseInt(department_id, 10));
     conditions.push(`n.department_id = $${params.length}::int`);
+  }
+  if (carry === 'true') {
+    // Sprint 10.1: "actively carrying right now." Note must have a
+    // carry_until that hasn't passed yet. for_date can be earlier
+    // than today (the note originated earlier and is rolling forward).
+    conditions.push(`n.carry_until IS NOT NULL AND n.carry_until >= CURRENT_DATE`);
   }
 
   try {
@@ -2057,6 +2123,70 @@ app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error('[handoff-notes:PATCH]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// GET /api/handoff-notes/counts?from=YYYY-MM-DD&to=YYYY-MM-DD
+//   [&department_id=INT]
+//
+// Sprint 10.1: per-day count aggregation used by Week-view shift
+// cells to render `💬 N` badges. One round-trip instead of one
+// query per cell. Counts a note for *every* date in [for_date,
+// COALESCE(carry_until, for_date)] that falls inside the requested
+// window — so a carrying note correctly shows on each day it's
+// visible, not only its origin date.
+//
+// Returns { success, counts: { 'YYYY-MM-DD': { total, unread } } }.
+// Days with zero notes are omitted (client treats missing keys as
+// {total:0, unread:0}).
+app.get('/api/handoff-notes/counts', requireAuth, async (req, res) => {
+  const { from, to, department_id } = req.query;
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ success: false, message: 'from and to required (YYYY-MM-DD)' });
+  }
+
+  const params = [from, to, req.user.user_id];
+  let deptFilter = '';
+  if (department_id) {
+    params.push(parseInt(department_id, 10));
+    deptFilter = `AND (n.department_id = $${params.length}::int OR n.scope = 'all')`;
+  }
+
+  try {
+    // generate_series spans every day in the window; cross-join to
+    // handoff_notes and keep matches where the day falls inside the
+    // note's [for_date, COALESCE(carry_until, for_date)] range.
+    // Unread = no row in handoff_note_reads for the requester.
+    const { rows } = await pool.query(
+      `WITH days AS (
+         SELECT generate_series($1::date, $2::date, INTERVAL '1 day')::date AS d
+       )
+       SELECT
+         to_char(days.d, 'YYYY-MM-DD')         AS date,
+         COUNT(n.note_id)                      AS total,
+         COUNT(n.note_id) FILTER (
+           WHERE r.note_id IS NULL
+         )                                     AS unread
+       FROM days
+       LEFT JOIN handoff_notes n
+         ON days.d BETWEEN n.for_date AND COALESCE(n.carry_until, n.for_date)
+         ${deptFilter}
+       LEFT JOIN handoff_note_reads r
+         ON r.note_id = n.note_id AND r.user_id = $3
+       GROUP BY days.d
+       HAVING COUNT(n.note_id) > 0
+       ORDER BY days.d`,
+      params
+    );
+
+    const counts = {};
+    rows.forEach(r => {
+      counts[r.date] = { total: Number(r.total), unread: Number(r.unread) };
+    });
+    return res.json({ success: true, counts });
+  } catch (err) {
+    console.error('[handoff-notes/counts]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
 });

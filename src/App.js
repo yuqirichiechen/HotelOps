@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react
 import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import ShiftsView from './components/ShiftsView';
+import StaffCalendar from './pages/StaffCalendar';
 // Sprint 10: ShiftNotes / AdminShiftNotes no longer rendered — both
 // routes now <Navigate>-redirect into the Calendar surface. The
 // components themselves are kept on disk for one cycle (10.3 deletes
@@ -138,7 +139,14 @@ const App = () => {
           }>
             <Route path="/"            element={<Home />} />
             <Route path="/timesheet"   element={<Timesheet />} />
-            <Route path="/calendar"    element={<ShiftsView />} />
+            {/* Sprint 10.1: /calendar now serves the new authed
+                StaffCalendar (Week + Day, with handoffs drawer).
+                The legacy kiosk ShiftsView (phone-keypad flow) is
+                moved to /kiosk for any property that still wants a
+                shared-tablet lookup; everyday authed staff land on
+                /calendar. */}
+            <Route path="/calendar"    element={<StaffCalendar />} />
+            <Route path="/kiosk"       element={<ShiftsView />} />
             {/* Sprint 10: /shift-notes is folded into Calendar. The
                 legacy ShiftNotes page still renders for one cycle in
                 case any in-app deep link points here; 10.3 deletes
