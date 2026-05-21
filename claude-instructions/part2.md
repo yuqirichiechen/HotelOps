@@ -792,43 +792,209 @@ nav row:
 
 ---
 
-#### Sprint 10.3 plan — Cleanup + legacy delete
+### 2026-05-20 — Sprint 10.3: cleanup + Assistant placeholder; closes the Sprint 10 series
 
-**Scope**: now that the Calendar surface has done a full sprint of
-real use, delete the old Shift Notes plumbing and clean up
-transitional shims.
+Final sprint of the Calendar consolidation series. Deletes orphan
+files, drops the legacy `shift_notes` table, renames the
+`AdminPanel/Scheduling/` folder to match the user-facing route, and
+adds an Assistant nav slot for the Sprint 11+ surface.
 
-**Deletes:**
-- `src/pages/ShiftNotes/` (staff) — folder + index + CSS.
-- `src/pages/AdminShiftNotes/` — folder + index.
-- Any `shift_notes` API endpoints in `server/server.js` that the
-  Calendar didn't absorb. If the old `shift_notes` table existed
-  separately from `handoff_notes`, write a one-shot migration that
-  copies extant rows into `handoff_notes` then drops the old table.
-- `/shift-notes` and `/admin/shift-notes` route redirects in
-  `App.js` can stay (cheap, helps anyone with stale bookmarks).
-- Any leftover Shift Notes nav references in admin dashboards or
-  the AdminHome "pending" lists.
+**Assistant placeholder (the new ask).**
 
-**Cleanup touches:**
-- Audit `src/components/Calendar/` for dead props on atoms that
-  were added speculatively during 10.x. Remove what nothing reads.
-- Move any orphaned components from `src/components/Scheduling/`
-  (the wrapper kept the same name in 10; if Calendar atoms made it
-  redundant, fold it).
+`/admin/assistant` is now a routed admin-only page rendering a
+"Under construction" surface. Sets expectations: lead paragraph
+explains the locally-deployed LLM + RAG plan, a dashed empty-state
+panel says "not wired up yet," and a "What you'll be able to ask"
+preview block lists five sample questions ("Who worked yesterday?",
+"How many hours did Sarah work this week?", etc.) so admins
+discover the surface's intent before any model is in place.
+Implementation-plan paragraph at the bottom notes the hybrid
+approach (SQL tool-calls for structured questions, RAG over the
+handoff-notes corpus for free-text) and the privacy story ("local
+model so PII never leaves the property"). New files:
+`src/pages/Assistant/index.js`, `src/pages/Assistant/Assistant.css`.
 
-**Acceptance**: `grep -ri "shift_notes\|ShiftNotes" src/ server/`
-returns zero hits outside of the redirect entries and the
-migration file. Running the app from a fresh clone with the
-production seed shows no orphan UI / dead code paths.
+Sidebar `ADMIN_NAV` gets the entry between Reports and Settings
+with icon `🤖` and `live: false` (consistent with how the nav
+signals "feature exists in plan, not yet wired").
+
+**Legacy `shift_notes` table dropped.**
+
+`grep` against `server/server.js` confirmed *no* API endpoint ever
+read or wrote `shift_notes` — the table existed in schema.sql but
+the app never had a write path. Migration 012 drops it cleanly:
+
+```sql
+DROP TRIGGER IF EXISTS trg_shift_notes_updated_at ON shift_notes;
+DROP INDEX  IF EXISTS idx_shift_notes_department;
+DROP INDEX  IF EXISTS idx_shift_notes_created;
+DROP TABLE  IF EXISTS shift_notes;
+```
+
+The migration file documents the equivalent row-mapping if a
+deployment turns out to have real data (the only way is hand-seeded
+test rows; the app never wrote a single one):
+
+```sql
+INSERT INTO handoff_notes
+  (note_id, author_user_id, body, scope, department_id, for_date)
+SELECT
+  note_id, author_id,
+  COALESCE(title || E'\n\n', '') || body,
+  CASE WHEN department_id IS NULL THEN 'all' ELSE 'department' END,
+  department_id,
+  created_at::date
+FROM shift_notes;
+```
+
+`schema.sql` stripped of the table + its trigger so fresh installs
+match the migrated state. The 10.3-edited section in schema.sql
+keeps a note pointing future readers at the change.
+
+**Orphan deletes (verified zero importers before removal):**
+
+- `src/components/ShiftNotes/` (staff page) — folder removed.
+- `src/pages/AdminShiftNotes/` — folder removed.
+- `src/components/Scheduling/` (the 12-line `ComingSoon`
+  placeholder) — folder removed.
+- `src/components/AdminPanel/index.js` (the legacy
+  screen-state shell from pre-Sprint-5 admin nav; documented as
+  "orphan, Sprint 5.x can delete" since April) — file removed.
+- `src/components/AdminPanel/Scheduling/WeekView.js` (the
+  4-week aggregate summary from Sprint 8.5.1; Sprint 10.1 swapped
+  to `AdminWeekView` and nothing else imported the old file) —
+  file removed.
+- `src/components/Calendar/atoms/DayPickerPills.js` (atom was
+  built in Sprint 10 but never wired; cleaner to drop and re-add
+  fresh when a future Day-view rebuild needs it) — file removed.
+  CSS block in `Calendar.css` deleted alongside.
+
+Commented-out imports for `ShiftNotes` and `AdminShiftNotes` in
+`App.js` deleted. Sprint-10-vintage explanatory comments around
+the `/shift-notes` and `/admin/shift-notes` redirect routes
+trimmed; redirects themselves *kept* (they're cheap, they help
+stale bookmarks land somewhere sensible).
+
+**Folder rename: `AdminPanel/Scheduling/` → `AdminPanel/Calendar/`.**
+
+Matches the user-facing `/admin/calendar` route. Internal files
+(DayView.js, MonthView.js, YearView.js, AssignModal.js,
+AssignPanel.js, Scheduling.css, index.js) kept their names —
+they're either imported relatively from inside the folder
+(unaffected by the rename) or rare enough that touching them isn't
+worth the diff. `index.js` still `export default SchedulingManager`
+because the symbol's renamed in user-facing strings but not in code
+identifiers — the file ID rename can come later if it bothers
+anyone.
+
+`App.js` import updated:
+```diff
+- import SchedulingManager from './components/AdminPanel/Scheduling';
++ import SchedulingManager from './components/AdminPanel/Calendar';
+```
+
+**Atom audit (Calendar/atoms/):**
+
+- `DepartmentChips` — used by `HandoffsDrawer`, `AdminWeekView`,
+  `StaffWeekView`. All props (`departments`, `value`, `onChange`,
+  `className`) used by at least one caller. Clean.
+- `HandoffsDrawer` — both call sites (admin SchedulingManager,
+  StaffCalendar) pass `forDate`, `departments`, `editable`,
+  `currentUser`. `defaultScope` is used by StaffCalendar (passes
+  `"department"`). All declared props are used. Clean.
+- `DayPickerPills` — zero callers. Deleted (see above).
+
+**Files modified:**
+- `database/migrations/012_drop_legacy_shift_notes.sql` — new.
+- `database/schema.sql` — `shift_notes` table + index + trigger
+  block removed; section header note left pointing at migration 012.
+- `src/App.js`:
+  - New `import Assistant from './pages/Assistant';`.
+  - New `/admin/assistant` route.
+  - `SchedulingManager` import path updated for the folder rename.
+  - Commented `ShiftNotes` / `AdminShiftNotes` imports deleted.
+  - Sprint-10-era explanatory route comments tightened.
+- `src/components/Layout/Sidebar.js`:
+  - `ADMIN_NAV` gains `Assistant` entry (`🤖`, `live: false`).
+- `src/components/Calendar/Calendar.css`:
+  - Header doc updated (4 components listed, 10.3 deletion noted).
+  - `.calendar-day-pill*` rules removed.
+
+**Files deleted:**
+- `src/components/ShiftNotes/` (folder)
+- `src/pages/AdminShiftNotes/` (folder)
+- `src/components/Scheduling/` (folder)
+- `src/components/AdminPanel/index.js`
+- `src/components/AdminPanel/Scheduling/WeekView.js`
+  (moved with the rename to `AdminPanel/Calendar/`, then removed)
+- `src/components/Calendar/atoms/DayPickerPills.js`
+
+**Files added:**
+- `src/pages/Assistant/index.js`
+- `src/pages/Assistant/Assistant.css`
+- `database/migrations/012_drop_legacy_shift_notes.sql`
+
+**Migration step required before this branch ships:**
+```sh
+psql "<connection-string>?sslmode=require" -f database/migrations/012_drop_legacy_shift_notes.sql
+```
 
 **Conventions this sprint adds:**
-- **Don't fold cleanup into a feature sprint.** It gets its own
-  number specifically so feature-sprint reviews don't slow down
-  on "should we also delete X?" debates.
+- **Cleanup gets its own sprint number.** Trying to fold deletes
+  into a feature sprint slows the feature sprint with "should we
+  also drop X?" debates. The pattern: feature sprints add, the
+  cleanup sprint subtracts.
+- **A nav slot can exist before the feature does.** The Assistant
+  page is a placeholder with explicit "under construction" copy +
+  preview content. Sets expectations and lets the admin discover
+  the upcoming surface; doesn't lie about what works today.
+- **Schema cleanup ships its own migration.** Don't drop tables
+  inside an unrelated feature migration. 012 is a one-job
+  migration so any operator reviewing the diff sees exactly one
+  destructive change.
 
----
+**Sprint 10 series — done. Recap:**
 
-_(Sprint 10+ work entries get appended below this planning block as
-they land. The plan above gets *replaced* in place by the real
-post-implementation entry when each sub-sprint ships.)_
+- **10**: schema + API + admin Day-view handoffs drawer; rename
+  Scheduling → Calendar in nav.
+- **10.1**: Cross-day tab live; per-note overflow menu
+  (Carry / Edit / Delete); new matrix-per-* Week views with note
+  badges; staff `/calendar` switched from legacy kiosk to authed
+  StaffCalendar; new `GET /counts` + `GET /shifts/range` endpoints.
+- **10.2**: pin / resolve / read state UI; "Mark all read" bulk
+  upsert; sidebar unread badge with 60s polling; admin-only
+  pin/resolve gate on the server.
+- **10.3**: legacy `shift_notes` dropped (migration 012); orphan
+  ShiftNotes / AdminShiftNotes / legacy WeekView / DayPickerPills
+  files removed; `AdminPanel/Scheduling/` → `AdminPanel/Calendar/`
+  folder rename; Assistant placeholder lands the nav slot for
+  Sprint 11+.
+
+**Notes for the next iteration (Sprint 11+ candidates):**
+- **Assistant implementation** — real local LLM + RAG/function-
+  calling hybrid. Tracked in the locked-decisions section
+  (RAG vs SQL tool-calls vs hybrid; model choice; audit logging).
+- **Audit logs for moderation actions** (pin / resolve / delete).
+  The existing `audit_logs` table pattern (actor_id, action,
+  old_data, new_data JSONB) covers it; just write rows from the
+  PATCH/DELETE handlers in `server.js`.
+- **Note badges per-row in Week views** — currently global per-day.
+  Refining to "notes touching this row's staff/dept on this day"
+  requires the `/counts` endpoint to support multi-key grouping
+  (e.g. `GROUP BY date, department_id` or `GROUP BY date,
+  schedule_id`).
+- **Folder index.js export-symbol rename** — `AdminPanel/Calendar/
+  index.js` still `export default SchedulingManager`. Folder
+  matches the user-facing name; the symbol does not. Rename to
+  `CalendarManager` in a touch-the-world pass if the inconsistency
+  bothers anyone.
+- **StaffCalendar Day view is a list, not a timeline.** Future
+  sprint could extract a read-only `<DayView />` from the admin
+  Calendar's existing 428-line DayView.js and share it.
+- **`Forecasting/` component is orphan since the AdminPanel shell
+  was deleted.** Was rendered only by the old internal-state
+  `AdminPanel/index.js`. If forecasting becomes a real surface,
+  add a route + nav entry; otherwise delete the folder in a
+  future cleanup.
+- **`AdminDashboard/`** folder (legacy from Sprint 5 notes) is
+  also orphan. Same deal — verify zero importers, then delete.

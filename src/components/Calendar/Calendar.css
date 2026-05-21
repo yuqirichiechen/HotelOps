@@ -1,10 +1,11 @@
-/* Sprint 10: shared Calendar atoms.
+/* Sprint 10 → 10.3: shared Calendar atoms + views.
    This stylesheet covers the atoms living in `src/components/Calendar/`:
-   - DepartmentChips
-   - DayPickerPills
-   - HandoffsDrawer
-   Higher-level views (DayView, WeekView, etc.) live in views/ and pull
-   their own CSS as they're added in 10.x. */
+   - DepartmentChips (atom)
+   - HandoffsDrawer  (atom)
+   - AdminWeekView   (view)
+   - StaffWeekView   (view)
+   10.3 dropped the unused DayPickerPills atom + its CSS — re-add via
+   a fresh file if a Day-view rebuild wants it. */
 
 
 /* ── DepartmentChips ─────────────────────────────────────────────────────── */
@@ -38,57 +39,6 @@
   background: var(--brand-bg);
   border-color: var(--brand-bg);
   color: white;
-}
-
-
-/* ── DayPickerPills (atom is ready; not wired in 10) ─────────────────────── */
-
-.calendar-day-pills {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-}
-
-.calendar-day-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-surface);
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-.calendar-day-pill:hover {
-  background: var(--bg-raised);
-  border-color: var(--text-muted);
-}
-.calendar-day-pill.is-active {
-  background: var(--brand-bg);
-  border-color: var(--brand-bg);
-}
-.calendar-day-pill.is-active .calendar-day-pill-name,
-.calendar-day-pill.is-active .calendar-day-pill-num {
-  color: white;
-}
-.calendar-day-pill-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.calendar-day-pill-num {
-  font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-.calendar-day-pill-badge {
-  font-size: 10px;
-  color: var(--text-muted);
 }
 
 

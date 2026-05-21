@@ -29,6 +29,10 @@ const ADMIN_NAV = [
   { to: '/admin/staff',       label: 'Staff',       icon: '👥', live: true  },
   { to: '/admin/calendar',    label: 'Calendar',    icon: '📅', live: true  },
   { to: '/admin/reports',     label: 'Reports',     icon: '📊', live: false },
+  // Sprint 10.3: Assistant placeholder. `live: false` so the nav
+  // doesn't claim it's wired; copy / icon match the AdminHome
+  // visual rhythm. Real surface (local LLM + RAG) ships Sprint 11+.
+  { to: '/admin/assistant',   label: 'Assistant',   icon: '🤖', live: false },
   { to: '/admin/settings',    label: 'Settings',    icon: '⚙️', live: true  },
 ];
 

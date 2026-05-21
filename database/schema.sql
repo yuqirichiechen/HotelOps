@@ -17,7 +17,8 @@
 --   approval_requests — manual time-edit approval workflow
 --   shifts            — shift templates (start/end time per department)
 --   schedules         — employee ↔ shift assignments by date
---   shift_notes       — role-filtered shift handoff communications
+--   handoff_notes     — Calendar handoff/communication entity (Sprint 10)
+--   handoff_note_reads — per-user read state for handoff_notes (Sprint 10)
 --   room_types        — hotel room category lookup
 --   forecasts         — daily room availability vs. expected check-ins
 --   audit_logs        — full change history for all privileged operations
@@ -162,24 +163,12 @@ CREATE INDEX idx_schedules_user_date ON schedules(user_id, scheduled_date DESC);
 CREATE INDEX idx_schedules_date      ON schedules(scheduled_date);
 
 
--- ── SHIFT NOTES ───────────────────────────────────────────────────────────────
--- Shift handoff communications with role-based visibility.
--- visible_to NULL = visible to all roles.
-
-CREATE TABLE shift_notes (
-  note_id       UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  author_id     UUID         NOT NULL REFERENCES users(user_id),
-  department_id INT          REFERENCES departments(department_id),
-  title         VARCHAR(255) NOT NULL,
-  body          TEXT         NOT NULL,
-  visible_to    user_role[],
-  notify_at     TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_shift_notes_department ON shift_notes(department_id);
-CREATE INDEX idx_shift_notes_created    ON shift_notes(created_at DESC);
+-- Sprint 10.3: the legacy `shift_notes` table was removed in
+-- migration 012. It was superseded by `handoff_notes` (10) which
+-- backs the Calendar's handoffs drawer. Old deployments run
+-- migration 012 to drop the table; fresh installs never see it.
+-- If you find a reference to `shift_notes` anywhere downstream,
+-- it's stale and should map onto `handoff_notes`.
 
 
 -- ── HANDOFF NOTES (Sprint 10) ──────────────────────────────────────────────────
@@ -289,6 +278,7 @@ CREATE TRIGGER trg_users_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER trg_shift_notes_updated_at
-  BEFORE UPDATE ON shift_notes
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- Sprint 10.3: trg_shift_notes_updated_at was removed alongside
+-- the shift_notes table itself (migration 012). The equivalent
+-- behavior for handoff_notes is set up by migration 011 via its
+-- own handoff_notes_touch_updated_at function + trigger.

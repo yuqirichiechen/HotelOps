@@ -1,0 +1,113 @@
+/* Sprint 10.3: Assistant placeholder page chrome. Intentionally
+   simple — this page exists to hold the nav slot, not to do work
+   yet. Matches the visual rhythm of AdminHome / Settings so the
+   page doesn't feel like an outlier when admins navigate in. */
+
+.assistant-page {
+  padding: 22px 24px 28px;
+  max-width: 880px;
+  margin: 0 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.assistant-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+}
+.assistant-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(217, 159, 57, 0.20);
+  color: #6b4f10;
+}
+
+.assistant-lede {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.assistant-empty {
+  background: var(--bg-surface);
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  padding: 36px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.assistant-empty-icon { font-size: 42px; line-height: 1; }
+.assistant-empty-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.assistant-empty-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 480px;
+  line-height: 1.5;
+}
+
+.assistant-preview {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 22px;
+}
+.assistant-section-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+}
+.assistant-preview-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.assistant-preview-item {
+  padding: 10px 14px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+}
+.assistant-preview-quote {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-style: italic;
+}
+.assistant-preview-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
