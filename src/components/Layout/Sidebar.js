@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../auth';
+import { apiFetch, useAuth } from '../../auth';
 import './Sidebar.css';
 
 // Two NAV sets: admins get an admin-focused sidebar (Home → Employees → ...)
@@ -41,6 +41,29 @@ const Sidebar = ({ theme, onToggleTheme }) => {
   const NAV = user?.role === 'admin' ? ADMIN_NAV : STAFF_NAV;
   const role = user?.role === 'admin' ? 'admin' : 'staff';
 
+  // Sprint 10.2: unread handoff-notes count drives a dot on the
+  // Calendar nav item. Polled every 60s while the sidebar is
+  // mounted (which is "always" inside the AppShell). Light enough
+  // not to need WebSocket plumbing for the capstone surface.
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const tick = () => {
+      apiFetch('/handoff-notes/unread-count').then(({ data }) => {
+        if (cancelled) return;
+        if (data?.success) setUnread(data.count || 0);
+      }).catch(() => { /* ignore — keep last value */ });
+    };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
+  // Which nav `to` value gets the badge depends on role — admin
+  // Calendar lives at /admin/calendar; staff at /calendar.
+  const calendarPath = user?.role === 'admin' ? '/admin/calendar' : '/calendar';
+
   const handleSignOut = async () => {
     // Read tenant slug BEFORE logout, then route to the per-tenant
     // login page (or fall back to the picker if no slug is stored).
@@ -70,6 +93,11 @@ const Sidebar = ({ theme, onToggleTheme }) => {
               >
                 <span className="nav-icon">{icon}</span>
                 <span className="sidebar-nav-label">{label}</span>
+                {to === calendarPath && unread > 0 && (
+                  <span className="sidebar-unread-badge" title={`${unread} unread handoff${unread === 1 ? '' : 's'}`}>
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
                 {live && <span className="live-dot" title="Live" />}
               </NavLink>
             </li>
@@ -96,7 +124,12 @@ const Sidebar = ({ theme, onToggleTheme }) => {
             end={end || to === '/'}
             className={({ isActive }) => `bottom-nav-item${isActive ? ' active' : ''}`}
           >
-            <span className="bottom-nav-icon">{icon}</span>
+            <span className="bottom-nav-icon">
+              {icon}
+              {to === calendarPath && unread > 0 && (
+                <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
+              )}
+            </span>
             <span className="bottom-nav-label">{label}</span>
           </NavLink>
         ))}

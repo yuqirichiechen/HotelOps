@@ -459,6 +459,124 @@
 .handoffs-drawer-note-cancel:hover { background: var(--bg-raised); }
 
 
+/* ── Sprint 10.2: read state + Mark-all-read + pin / resolve ────────────── */
+
+/* Header right side hosts the date AND the Mark-all-read button.
+   Make sure they breathe horizontally and wrap cleanly on narrow
+   screens. */
+.handoffs-drawer-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.handoffs-drawer-mark-all {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border: 1px solid var(--brand-bg);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brand-text);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.handoffs-drawer-mark-all:hover {
+  background: var(--brand-bg);
+  color: white;
+}
+.handoffs-drawer-mark-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Read-state dot — sits at the left edge of each note row. Filled
+   brand color = unread (attention); outlined = read. Tap to mark
+   read explicitly. */
+.handoffs-drawer-note-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--brand-bg);
+  background: var(--brand-bg);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  margin-right: 2px;
+  transition: opacity 0.12s ease;
+}
+.handoffs-drawer-note-dot.is-read {
+  background: transparent;
+  opacity: 0.4;
+  cursor: default;
+}
+.handoffs-drawer-note-dot.is-unread:hover {
+  opacity: 0.85;
+}
+
+/* Pinned + resolved badges */
+.handoffs-drawer-note-badge-pinned {
+  background: rgba(217, 159, 57, 0.20);
+  color: #6b4f10;
+  font-weight: 600;
+}
+.handoffs-drawer-note-badge-resolved {
+  background: rgba(56, 161, 105, 0.14);
+  color: var(--success-text);
+  font-weight: 600;
+}
+
+/* Visually push pinned notes forward — subtle left border in
+   brand color, slightly stronger than the unread strip so it reads
+   as "this is the priority item." */
+.handoffs-drawer-note.is-pinned {
+  border-left: 3px solid #d99f39;
+  background: rgba(217, 159, 57, 0.04);
+}
+
+/* Resolved notes — dim the row so they recede when expanded. The
+   collapsed Resolved group is the more common state; this styling
+   covers the rare moment when the group is open. */
+.handoffs-drawer-note.is-resolved {
+  opacity: 0.6;
+}
+.handoffs-drawer-note.is-resolved .handoffs-drawer-note-body {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+  text-decoration-thickness: 1px;
+}
+
+/* Collapsed Resolved group at the bottom of the list */
+.handoffs-drawer-resolved-group {
+  margin-top: 10px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+.handoffs-drawer-resolved-toggle {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.02em;
+}
+.handoffs-drawer-resolved-toggle:hover { color: var(--text-primary); }
+.handoffs-drawer-resolved-caret {
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
+}
+.handoffs-drawer-list-resolved {
+  margin-top: 6px;
+}
+
+
 /* ── Sprint 10.1: AdminWeekView (matrix-per-department) ─────────────────── */
 
 .admin-week-view {

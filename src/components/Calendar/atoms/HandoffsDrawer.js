@@ -69,6 +69,14 @@ const HandoffsDrawer = ({
   const [editingId,   setEditingId]   = useState(null);
   const [editingBody, setEditingBody] = useState('');
   const [editingBusy, setEditingBusy] = useState(false);
+  // Sprint 10.2: collapse state for the "Resolved (N)" group at
+  // the bottom of the list. Default collapsed — resolved notes
+  // shouldn't compete with active ones for attention.
+  const [showResolved, setShowResolved] = useState(false);
+  // "Mark all read" busy flag
+  const [markingRead, setMarkingRead] = useState(false);
+
+  const isAdmin = currentUser?.role === 'admin';
 
   const menuRef = useRef(null);
 
@@ -116,19 +124,14 @@ const HandoffsDrawer = ({
     ? addDaysIso(forDate, 1)
     : forDate;
 
-  const filtered = notes.filter(n => {
+  const allFiltered = notes.filter(n => {
     if (tab === 'handoffs') {
-      // Shift-attached threads tied to forDate
       return n.scope === 'shift' && n.for_date === forDate;
     }
     if (tab === 'general') {
-      // Department/all broadcasts whose for_date is exactly forDate
-      // (carryovers belong to cross-day, not general).
       return (n.scope === 'department' || n.scope === 'all') && n.for_date === forDate;
     }
     if (tab === 'cross-day') {
-      // Notes whose carry covers the visible date AND originated
-      // before that date (so they're rolling forward into it).
       if (!n.carry_until) return false;
       return n.carry_until >= visibleDate;
     }
@@ -137,6 +140,14 @@ const HandoffsDrawer = ({
     if (deptFilter == null) return true;
     return n.department_id === deptFilter;
   });
+
+  // Sprint 10.2: split into active vs resolved. The list returned
+  // from the server is already sorted (pinned first, then newest),
+  // so resolved notes fall to the bottom anyway — but pulling them
+  // out into a collapsed group means active notes stay focused.
+  const active   = allFiltered.filter(n => !n.resolved_at);
+  const resolved = allFiltered.filter(n =>  n.resolved_at);
+  const unreadActiveIds = active.filter(n => !n.is_read).map(n => n.note_id);
 
   // ── cross-day header summary ─────────────────────────────────────────────
   const crossSummary = (() => {
@@ -234,6 +245,160 @@ const HandoffsDrawer = ({
     setEditingBody('');
   };
 
+  // Sprint 10.2: pin / resolve via PATCH. Boolean true stamps the
+  // corresponding *_at; false clears it. Admin-only — the server
+  // enforces, the UI just hides the menu items for non-admins.
+  const togglePin     = (note) => patchNote(note.note_id, { pinned:   !note.pinned_at });
+  const toggleResolve = (note) => patchNote(note.note_id, { resolved: !note.resolved_at });
+
+  const markAllRead = async () => {
+    if (unreadActiveIds.length === 0) return;
+    setMarkingRead(true);
+    const { ok, data } = await apiFetch('/handoff-notes/mark-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note_ids: unreadActiveIds }),
+    });
+    setMarkingRead(false);
+    if (!ok || !data?.success) {
+      setError(data?.message || 'Could not mark read.');
+      return;
+    }
+    refresh();
+  };
+
+  // Mark a single note read on body-click (so reading = acknowledging
+  // without needing to hit a button). We only fire when the note is
+  // currently unread to avoid no-op POSTs on every tap.
+  const markOneRead = async (note) => {
+    if (note.is_read) return;
+    await apiFetch('/handoff-notes/mark-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note_ids: [note.note_id] }),
+    });
+    refresh();
+  };
+
+  // Sprint 10.2: shared per-note row renderer. Used by both the
+  // active list and the collapsed Resolved group below it.
+  const renderNote = (n) => (
+    <li
+      key={n.note_id}
+      className={[
+        'handoffs-drawer-note',
+        n.is_read     ? ''             : 'is-unread',
+        n.pinned_at   ? 'is-pinned'    : '',
+        n.resolved_at ? 'is-resolved'  : '',
+      ].filter(Boolean).join(' ')}
+    >
+      <div className="handoffs-drawer-note-head">
+        {/* Read-state dot. Filled = unread, hollow = read. Clicking
+            it marks read explicitly even when the rest of the row's
+            click target is elsewhere. */}
+        <button
+          type="button"
+          className={`handoffs-drawer-note-dot ${n.is_read ? 'is-read' : 'is-unread'}`}
+          aria-label={n.is_read ? 'Already read' : 'Mark read'}
+          title={n.is_read ? 'Read' : 'Unread — tap to mark read'}
+          onClick={() => markOneRead(n)}
+        />
+        <span className="handoffs-drawer-note-author">{n.author_name}</span>
+        {n.pinned_at && (
+          <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-pinned">📌 Pinned</span>
+        )}
+        {n.resolved_at && (
+          <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-resolved">✓ Resolved</span>
+        )}
+        {n.scope === 'shift' && n.schedule_user_name && (
+          <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-shift">
+            {n.schedule_user_name}
+            {n.shift_start && ` · ${n.shift_start.slice(0, 5)}`}
+          </span>
+        )}
+        {n.scope === 'department' && n.department_name && (
+          <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-dept">
+            {n.department_name}
+          </span>
+        )}
+        {n.scope === 'all' && (
+          <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-all">All staff</span>
+        )}
+        {n.carry_until && (
+          <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-carry">
+            Carries to {n.carry_until}
+          </span>
+        )}
+        <span className="handoffs-drawer-note-time">{formatTime(n.created_at)}</span>
+        {editable && canMutate(n) && (
+          <button
+            type="button"
+            className="handoffs-drawer-note-more"
+            aria-label="Note actions"
+            onClick={() => setOpenMenuId(openMenuId === n.note_id ? null : n.note_id)}
+          >⋯</button>
+        )}
+      </div>
+
+      {editingId === n.note_id ? (
+        <div className="handoffs-drawer-note-edit">
+          <textarea
+            className="handoffs-drawer-compose-input"
+            value={editingBody}
+            onChange={e => setEditingBody(e.target.value)}
+            rows={2}
+          />
+          <div className="handoffs-drawer-note-edit-actions">
+            <button
+              type="button"
+              className="handoffs-drawer-note-cancel"
+              onClick={cancelEdit}
+              disabled={editingBusy}
+            >Cancel</button>
+            <button
+              type="button"
+              className="handoffs-drawer-compose-go"
+              onClick={() => saveEdit(n)}
+              disabled={editingBusy || !editingBody.trim()}
+            >{editingBusy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="handoffs-drawer-note-body">{n.body}</div>
+      )}
+
+      {openMenuId === n.note_id && (
+        <div className="handoffs-drawer-note-menu" ref={menuRef}>
+          {/* Admin-only: pin / resolve. Hidden for non-admins so
+              the menu doesn't get visually crowded for staff. */}
+          {isAdmin && (
+            <>
+              <button type="button" onClick={() => togglePin(n)}>
+                {n.pinned_at ? 'Unpin' : 'Pin to top'}
+              </button>
+              <button type="button" onClick={() => toggleResolve(n)}>
+                {n.resolved_at ? 'Reopen' : 'Mark resolved'}
+              </button>
+              <hr />
+            </>
+          )}
+          <button type="button" onClick={() => doCarry(n, 1)}>Carry to next day</button>
+          <button type="button" onClick={() => doCarry(n, 7)}>Carry to next week</button>
+          {n.carry_until && (
+            <button type="button" onClick={() => doCarry(n, null)}>Stop carrying</button>
+          )}
+          <hr />
+          <button type="button" onClick={() => startEdit(n)}>Edit</button>
+          <button
+            type="button"
+            className="handoffs-drawer-note-menu-danger"
+            onClick={() => doDelete(n)}
+          >Delete</button>
+        </div>
+      )}
+    </li>
+  );
+
   const doDelete = async (note) => {
     // No confirm dialog — a stray click would be annoying, but the
     // PATCH/DELETE is reversible by re-posting; keep it light.
@@ -251,7 +416,20 @@ const HandoffsDrawer = ({
     <section className="handoffs-drawer">
       <header className="handoffs-drawer-header">
         <div className="handoffs-drawer-title">Handoff notes</div>
-        <div className="handoffs-drawer-date">{forDate}</div>
+        <div className="handoffs-drawer-header-right">
+          {unreadActiveIds.length > 0 && (
+            <button
+              type="button"
+              className="handoffs-drawer-mark-all"
+              onClick={markAllRead}
+              disabled={markingRead}
+              title={`${unreadActiveIds.length} unread`}
+            >
+              {markingRead ? 'Marking…' : `Mark all read (${unreadActiveIds.length})`}
+            </button>
+          )}
+          <div className="handoffs-drawer-date">{forDate}</div>
+        </div>
       </header>
 
       <div className="handoffs-drawer-tabs" role="tablist">
@@ -316,7 +494,7 @@ const HandoffsDrawer = ({
           <div className="handoffs-drawer-empty">Loading…</div>
         ) : error ? (
           <div className="handoffs-drawer-error">{error}</div>
-        ) : filtered.length === 0 ? (
+        ) : allFiltered.length === 0 ? (
           <div className="handoffs-drawer-empty">
             {tab === 'handoffs'  && 'No shift-attached handoffs for this day.'}
             {tab === 'general'   && 'No general handoffs for this day.'}
@@ -325,89 +503,29 @@ const HandoffsDrawer = ({
               : 'No carryovers reach tomorrow.')}
           </div>
         ) : (
-          <ul className="handoffs-drawer-list">
-            {filtered.map(n => (
-              <li key={n.note_id} className={`handoffs-drawer-note ${n.is_read ? '' : 'is-unread'}`}>
-                <div className="handoffs-drawer-note-head">
-                  <span className="handoffs-drawer-note-author">{n.author_name}</span>
-                  {n.scope === 'shift' && n.schedule_user_name && (
-                    <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-shift">
-                      {n.schedule_user_name}
-                      {n.shift_start && ` · ${n.shift_start.slice(0, 5)}`}
-                    </span>
-                  )}
-                  {n.scope === 'department' && n.department_name && (
-                    <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-dept">
-                      {n.department_name}
-                    </span>
-                  )}
-                  {n.scope === 'all' && (
-                    <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-all">
-                      All staff
-                    </span>
-                  )}
-                  {n.carry_until && (
-                    <span className="handoffs-drawer-note-badge handoffs-drawer-note-badge-carry">
-                      Carries to {n.carry_until}
-                    </span>
-                  )}
-                  <span className="handoffs-drawer-note-time">{formatTime(n.created_at)}</span>
-                  {editable && canMutate(n) && (
-                    <button
-                      type="button"
-                      className="handoffs-drawer-note-more"
-                      aria-label="Note actions"
-                      onClick={() => setOpenMenuId(openMenuId === n.note_id ? null : n.note_id)}
-                    >⋯</button>
-                  )}
-                </div>
-
-                {editingId === n.note_id ? (
-                  <div className="handoffs-drawer-note-edit">
-                    <textarea
-                      className="handoffs-drawer-compose-input"
-                      value={editingBody}
-                      onChange={e => setEditingBody(e.target.value)}
-                      rows={2}
-                    />
-                    <div className="handoffs-drawer-note-edit-actions">
-                      <button
-                        type="button"
-                        className="handoffs-drawer-note-cancel"
-                        onClick={cancelEdit}
-                        disabled={editingBusy}
-                      >Cancel</button>
-                      <button
-                        type="button"
-                        className="handoffs-drawer-compose-go"
-                        onClick={() => saveEdit(n)}
-                        disabled={editingBusy || !editingBody.trim()}
-                      >{editingBusy ? 'Saving…' : 'Save'}</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="handoffs-drawer-note-body">{n.body}</div>
+          <>
+            <ul className="handoffs-drawer-list">
+              {active.map(n => renderNote(n))}
+            </ul>
+            {resolved.length > 0 && (
+              <div className="handoffs-drawer-resolved-group">
+                <button
+                  type="button"
+                  className="handoffs-drawer-resolved-toggle"
+                  onClick={() => setShowResolved(v => !v)}
+                  aria-expanded={showResolved}
+                >
+                  <span className="handoffs-drawer-resolved-caret">{showResolved ? '▾' : '▸'}</span>
+                  Resolved ({resolved.length})
+                </button>
+                {showResolved && (
+                  <ul className="handoffs-drawer-list handoffs-drawer-list-resolved">
+                    {resolved.map(n => renderNote(n))}
+                  </ul>
                 )}
-
-                {openMenuId === n.note_id && (
-                  <div className="handoffs-drawer-note-menu" ref={menuRef}>
-                    <button type="button" onClick={() => doCarry(n, 1)}>Carry to next day</button>
-                    <button type="button" onClick={() => doCarry(n, 7)}>Carry to next week</button>
-                    {n.carry_until && (
-                      <button type="button" onClick={() => doCarry(n, null)}>Stop carrying</button>
-                    )}
-                    <hr />
-                    <button type="button" onClick={() => startEdit(n)}>Edit</button>
-                    <button
-                      type="button"
-                      className="handoffs-drawer-note-menu-danger"
-                      onClick={() => doDelete(n)}
-                    >Delete</button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+          </>
         )}
       </div>
 

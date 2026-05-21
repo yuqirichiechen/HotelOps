@@ -624,55 +624,171 @@ default Calendar route anymore.
 
 ---
 
-#### Sprint 10.2 plan — Pinned, resolved, read state
+### 2026-05-20 — Sprint 10.2: pin / resolve / read-state UI; sidebar unread badge
 
-**Scope**: the interaction polish that makes the handoffs drawer
-production-ready for actual hotel use. Admin can pin a note to the
-top until it's resolved; everyone has unread badges and "mark all
-read" works as in mockup #9.
-
-**UX:**
-- Admin gains **Pin / Unpin** in the note overflow menu. Pinned
-  notes (`pinned_at IS NOT NULL`) sort to the top of the drawer
-  list within their scope.
-- Admin gains **Resolve** in the note overflow menu. Resolved notes
-  (`resolved_at IS NOT NULL`) move to a collapsed "Resolved" group
-  at the bottom of the drawer (collapsible).
-- Read state: each note has a small filled/unfilled dot indicator
-  (right edge) per current viewer. "Mark all as read" button
-  becomes functional (single PATCH that bulk-inserts read rows).
-- Nav badge: Sidebar's Calendar item shows a small `●` when the
-  current user has unread handoffs in the current/next 24h
-  window. Polled every 60s.
+Interaction polish that makes the handoffs drawer feel
+production-grade. Pin to top, resolve to close, per-user read
+state, "mark all read," and a sidebar dot that pulls eyes to the
+Calendar when something needs attention.
 
 **Server:**
-- `PATCH /api/handoff-notes/:id` accepts `pinned: bool` and
-  `resolved: bool` (sets/clears `pinned_at` and `resolved_at`).
-- `POST /api/handoff-notes/mark-read` — body
-  `{ note_ids: [...] }`; bulk upsert into `handoff_note_reads`.
-- `GET /api/handoff-notes/unread-count` — returns
-  `{ count: N }` for the current user across visible notes.
 
-**Frontend:**
-- Drawer adds the pin/resolve UI + the read-state dot rendering.
-- Sidebar polls `/handoff-notes/unread-count` every 60s while
-  mounted; badge on Calendar nav when `count > 0`.
+PATCH `/api/handoff-notes/:id` gained two more accepted fields:
+
+```
+pinned:    boolean   // true ⇒ pinned_at = NOW(); false ⇒ pinned_at = NULL
+resolved:  boolean   // mirrors for resolved_at
+```
+
+Both are **admin-only** even when the requester is the author. The
+plan version was ambiguous; the gate landed at "pin/resolve = admin
+only" because:
+- Letting the author of a note pin it to the top defeats the
+  moderation purpose of pinning.
+- Letting staff resolve their own note before an admin reviews it
+  would let problems vanish from the queue.
+
+`POST /api/handoff-notes/mark-read` — body `{ note_ids: [UUID, ...] }`.
+Bulk upsert into `handoff_note_reads` via `unnest($1::uuid[])` +
+`ON CONFLICT (note_id, user_id) DO NOTHING`. Returns `{ marked }`
+(insert row count, so the client can confirm without re-fetching
+the list). Capped at 1000 IDs per call as a runaway-client guard.
+
+`GET /api/handoff-notes/unread-count` — drives the sidebar badge.
+Counts notes the requester hasn't marked read whose visibility
+window touches today or tomorrow, *excluding resolved*. The "today
+or tomorrow" window means the badge reads as "there's something
+timely," not "there's any unread thing anywhere in history." Exact
+SQL:
+
+```sql
+WHERE r.note_id IS NULL              -- not in this user's reads
+  AND n.resolved_at IS NULL          -- not closed
+  AND ( (n.for_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '1 day')
+     OR (n.carry_until >= CURRENT_DATE) )
+```
+
+**HandoffsDrawer — six new affordances:**
+
+1. **Read dot per note** at the left edge. Filled brand-color =
+   unread; outlined / dimmed = read. Tap toggles to read (one-shot
+   POST to `/mark-read` with that single ID).
+2. **Mark all read** button in the drawer header — visible only
+   when `unreadActiveIds.length > 0`, with the count in the label.
+   One bulk POST. Body is the array of `active.filter(!is_read).map(note_id)` —
+   resolved notes don't count toward "all read" because they're
+   tucked under the collapsed group anyway.
+3. **Pin / Unpin** in the per-note overflow menu — admin only.
+   Sets / clears `pinned_at`. Server already sorts pinned notes
+   first (`ORDER BY pinned_at DESC NULLS LAST, created_at DESC` from
+   Sprint 10), so the UI sort doesn't need to change. A 📌 "Pinned"
+   badge + amber left-border on the row makes the state visible.
+4. **Mark resolved / Reopen** in the overflow menu — admin only.
+   Sets / clears `resolved_at`. Resolved notes get a ✓ badge,
+   strike-through body, dimmed opacity, AND get moved out of the
+   active list into a collapsed "Resolved (N)" group at the bottom.
+5. **Resolved group** — collapsed by default (`showResolved` state).
+   The toggle is a quiet text button with a `▸` / `▾` caret. The
+   resolved notes still respect the active tab filter (a resolved
+   shift-handoff doesn't appear when you're on the General tab).
+6. **Single-note click-to-read** (via the dot) — tapping the dot on
+   an unread note marks just that one read. Doesn't require opening
+   the overflow menu. Read state is per-user, so this only updates
+   the *current* user's view.
+
+The list split in code:
+```js
+const allFiltered = notes.filter(/* tab + dept */);
+const active   = allFiltered.filter(n => !n.resolved_at);
+const resolved = allFiltered.filter(n =>  n.resolved_at);
+```
+
+**Sidebar — unread badge with 60s polling:**
+
+`useEffect` runs `apiFetch('/handoff-notes/unread-count')` on mount
+and every 60s thereafter; cancelled on unmount via the cleanup +
+cancelled flag. Light enough not to need WebSockets for the
+capstone surface. The badge sits at the right edge of the Calendar
+nav row:
+
+- Desktop: pill with the number (`9+` if > 9). Brand-accent
+  background.
+- Mobile bottom-nav: an 8px dot at the icon's top-right, with a
+  2px ring in the sidebar background so it pops against any nav
+  color.
+
+`calendarPath` is computed per role (admin `/admin/calendar`, staff
+`/calendar`) so the badge attaches to the right row.
 
 **Files modified:**
-- `src/components/Calendar/atoms/HandoffsDrawer.js` — pin/resolve
-  menu items + read dots + mark-all-read wiring.
-- `src/components/Layout/Sidebar.js` — unread badge polling.
-- `server/server.js` — three new endpoints + bulk read insert.
+- `server/server.js`:
+  - PATCH `/api/handoff-notes/:id` — accepts `pinned`, `resolved`,
+    admin-only gate on those fields.
+  - New `POST /api/handoff-notes/mark-read` (bulk upsert).
+  - New `GET /api/handoff-notes/unread-count`.
+- `src/components/Calendar/atoms/HandoffsDrawer.js`:
+  - Extracted per-note JSX into a `renderNote(n)` helper so the
+    same row renders inside the active list and the resolved
+    group.
+  - Added `isAdmin` derived from `currentUser.role`.
+  - `togglePin`, `toggleResolve`, `markAllRead`, `markOneRead`
+    handlers.
+  - Read-state dot + pinned/resolved badges + amber pinned border
+    + dimmed resolved row + strike-through body.
+  - Header gained `.handoffs-drawer-header-right` with the
+    Mark-all-read pill.
+  - Collapsed `Resolved (N)` group with caret toggle.
+- `src/components/Calendar/Calendar.css`:
+  - New rules for `.handoffs-drawer-mark-all`,
+    `.handoffs-drawer-note-dot`, `.handoffs-drawer-note-badge-pinned`,
+    `.handoffs-drawer-note-badge-resolved`, `.handoffs-drawer-note.is-pinned`,
+    `.handoffs-drawer-note.is-resolved`,
+    `.handoffs-drawer-resolved-group`,
+    `.handoffs-drawer-resolved-toggle`,
+    `.handoffs-drawer-list-resolved`.
+- `src/components/Layout/Sidebar.js`:
+  - `useEffect` polling `/handoff-notes/unread-count` every 60s.
+  - `unread` state + `calendarPath` derived from `user.role`.
+  - Badge JSX on desktop nav + dot on mobile bottom-nav.
+- `src/components/Layout/Sidebar.css`:
+  - New `.sidebar-unread-badge` (pill on desktop).
+  - New `.bottom-nav-unread-dot` (small dot on mobile).
 
 **Conventions this sprint adds:**
-- **Read state is per-user, not per-note.** A note doesn't get a
-  "read by everyone" flag; we always join through
-  `handoff_note_reads` filtered by the current user.
+- **Pin and resolve are admin-only privileges.** The author can
+  edit / delete / carry-forward their own notes; pin and resolve
+  belong to moderation. The server enforces, the UI hides.
+- **Read state is per-user, not per-note.** Always join
+  `handoff_note_reads` filtered by the current user; never add a
+  global "read" flag to `handoff_notes`.
+- **Sidebar badges via low-frequency polling** (60s) are fine for
+  capstone scope. Don't reach for WebSockets / SSE without a
+  product reason — staleness of ≤1 minute on an unread count is
+  not a real UX problem.
+- **Bulk reads use `ON CONFLICT DO NOTHING`** so the same call
+  can be repeated safely. Don't try to dedupe on the client.
 
-**Acceptance**: admin pins a note → it sorts to the top for every
-viewer until unpinned. Staff opens drawer → 5 unread notes have
-filled dots; tapping "Mark all read" empties them and clears the
-sidebar badge. Resolving a note moves it to the "Resolved" group.
+**Notes for next iteration (10.3 cleanup):**
+- **The old `ShiftNotes/` + `AdminShiftNotes/` folders are still
+  on disk** with only `<Navigate>` redirects pointing past them.
+  10.3 deletes the folders and the commented-out imports in
+  `App.js`. Also fold any pre-existing `shift_notes` table rows
+  into `handoff_notes` via a one-shot migration, then drop the
+  table.
+- **`AdminPanel/Scheduling/` folder name** vs route `/admin/calendar`
+  is a lingering inconsistency; 10.3 should rename the folder to
+  `AdminPanel/Calendar/`. Touches every import inside, hence
+  deferred from 10/10.1/10.2.
+- **Old `Scheduling/WeekView.js`** (4-week summary) is unused but
+  on disk. Delete if no admin has asked for it back.
+- **Audit log for moderation actions.** Pin/resolve are
+  consequential admin actions; consider writing an
+  `audit_logs` row when 10.x+ tightens. Not blocking for the
+  capstone demo.
+- **Sub-1-minute updates** are missing — if you pin a note while
+  another admin's drawer is open, they see it on next refresh /
+  next refetch. Acceptable; revisit only if a real workflow
+  surfaces.
 
 ---
 

@@ -2076,10 +2076,16 @@ app.post('/api/handoff-notes', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/handoff-notes/:id  (author or admin only)
-//   body: { body?, carry_until? }   (pin/resolve added in 10.2)
+//   body: { body?, carry_until?, pinned?, resolved? }
+//
+// 10 exposed body + carry_until. 10.2 added pinned + resolved. Both
+// new fields are *admin-only* even when the requester is the author —
+// pinning your own note to the top defeats the moderation purpose, and
+// staff resolving their own note before an admin reviews it would let
+// problems disappear from the queue.
 app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { body, carry_until } = req.body || {};
+  const { body, carry_until, pinned, resolved } = req.body || {};
 
   const { rows: own } = await pool.query(
     `SELECT author_user_id FROM handoff_notes WHERE note_id = $1`,
@@ -2091,6 +2097,9 @@ app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   const isAdmin  = req.user.role === 'admin';
   if (!isAuthor && !isAdmin) {
     return res.status(403).json({ success: false, message: 'forbidden' });
+  }
+  if ((pinned !== undefined || resolved !== undefined) && !isAdmin) {
+    return res.status(403).json({ success: false, message: 'pin/resolve is admin-only' });
   }
 
   const sets = [];
@@ -2110,6 +2119,14 @@ app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'carry_until must be YYYY-MM-DD or null' });
     }
   }
+  // 10.2: pinned / resolved map to *_at timestamps. Sending `true`
+  // stamps NOW(); `false` clears the timestamp. NULL is equivalent
+  // to not sending the key at all (no-op).
+  if (pinned === true)  sets.push(`pinned_at = NOW()`);
+  if (pinned === false) sets.push(`pinned_at = NULL`);
+  if (resolved === true)  sets.push(`resolved_at = NOW()`);
+  if (resolved === false) sets.push(`resolved_at = NULL`);
+
   if (sets.length === 0) {
     return res.status(400).json({ success: false, message: 'nothing to update' });
   }
@@ -2124,6 +2141,66 @@ app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[handoff-notes:PATCH]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// POST /api/handoff-notes/mark-read
+//   body: { note_ids: [UUID, ...] }
+//
+// Sprint 10.2: bulk mark a set of notes as read by the current
+// user. Idempotent via composite-PK ON CONFLICT DO NOTHING — calling
+// twice with the same IDs is a no-op. Returns the inserted count
+// (so the client can confirm progress without re-fetching the list).
+app.post('/api/handoff-notes/mark-read', requireAuth, async (req, res) => {
+  const { note_ids } = req.body || {};
+  if (!Array.isArray(note_ids) || note_ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'note_ids array required' });
+  }
+  // Soft cap so a runaway client can't blow up the query.
+  if (note_ids.length > 1000) {
+    return res.status(400).json({ success: false, message: 'too many note_ids (max 1000)' });
+  }
+  try {
+    // unnest() expands the array into rows; INSERT … SELECT skips
+    // any IDs the user already marked read.
+    const { rowCount } = await pool.query(
+      `INSERT INTO handoff_note_reads (note_id, user_id)
+       SELECT id::uuid, $2::uuid
+       FROM unnest($1::uuid[]) AS id
+       ON CONFLICT (note_id, user_id) DO NOTHING`,
+      [note_ids, req.user.user_id]
+    );
+    return res.json({ success: true, marked: rowCount });
+  } catch (err) {
+    console.error('[handoff-notes/mark-read]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// GET /api/handoff-notes/unread-count
+//
+// Sprint 10.2: drives the Sidebar's Calendar-nav dot. Counts notes
+// the current user hasn't marked read, whose visibility window
+// reaches today or tomorrow (so the badge means "there's something
+// timely that wants my attention," not "there's any unread note
+// anywhere in history"). Resolved notes don't count.
+app.get('/api/handoff-notes/unread-count', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM handoff_notes n
+       LEFT JOIN handoff_note_reads r
+         ON r.note_id = n.note_id AND r.user_id = $1::uuid
+       WHERE r.note_id IS NULL
+         AND n.resolved_at IS NULL
+         AND ( (n.for_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '1 day')
+            OR (n.carry_until IS NOT NULL AND n.carry_until >= CURRENT_DATE) )`,
+      [req.user.user_id]
+    );
+    return res.json({ success: true, count: rows[0]?.count || 0 });
+  } catch (err) {
+    console.error('[handoff-notes/unread-count]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
