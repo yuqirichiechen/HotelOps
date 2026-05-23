@@ -792,6 +792,130 @@ nav row:
 
 ---
 
+### 2026-05-22 — Sprint 11.1.2: soft-delete users + lock clock-action during grace window
+
+Two unrelated bugs.
+
+**1. Cannot delete inactive staff — FK constraint blocks.**
+
+`DELETE FROM users WHERE user_id = $1` exploded on the
+`time_entries_user_id_fkey` constraint because the user had clocked
+in at some point and the entries can't be dropped (payroll +
+audit). Switched to soft-delete:
+
+Migration 015:
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_users_not_deleted ON users(user_id) WHERE deleted_at IS NULL;
+```
+
+DELETE `/api/admin/employees/:id`:
+- Check the row exists, isn't already soft-deleted (idempotent re-call), and is inactive (existing precondition — must deactivate first).
+- `UPDATE users SET deleted_at = NOW(), active = false, updated_at = NOW()`.
+- Returns success.
+
+List endpoints add `WHERE deleted_at IS NULL`:
+- `GET /api/admin/employees`     — main StaffManager list.
+- `GET /api/admin/employees/:id` — detail view (404 if deleted).
+- `DELETE /api/admin/departments/:id` ref-count guard now ignores
+  soft-deleted staff (else a tenant with departed employees can't
+  delete the dept they used to belong to).
+
+Other `FROM users` queries (login lookups, clock-in/out paths) all
+already filter `AND active = true`. Since soft-delete also sets
+`active = false`, those paths reject soft-deleted users without
+needing a code change. The `deleted_at` column is the load-bearing
+gate; `active = false` is the convenient consequence.
+
+Historical FK references (time_entries, schedules, handoff_notes
+when authored by deleted user, audit_logs) stay intact. Payroll
+exports + reports still attribute hours correctly to the (now-
+deleted) user's name via the join.
+
+**2. Clock In/Out grace-window lock.**
+
+Staff could clock in, then immediately clock out before the
+auto-signout countdown finished — an accidental double-tap or
+"oops" scenario. Fix: while `clockEvent` is set (the post-clock-
+event window during which the bottom cards show the countdown),
+disable the *opposite* action button:
+
+```jsx
+<button disabled={busy || clockEvent?.type === 'in'}>
+  {clockEvent?.type === 'in' ? 'Just clocked in' : 'Clock Out'}
+</button>
+```
+
+Symmetric for the Clock In button:
+```jsx
+<button disabled={busy || loading || clockEvent?.type === 'out'}>
+  {clockEvent?.type === 'out' ? 'Just clocked out' : 'Clock In'}
+</button>
+```
+
+The lock auto-clears when `clockEvent` clears — either via the
+"Keep signed in" button on the bottom card, or when auto-signout
+fires (at which point the user's navigating away anyway), or when
+the 4-second ack window expires (autoSignoutSeconds=0 case).
+
+Button label flips to "Just clocked in" / "Just clocked out" so
+the lock reads as intentional state, not a broken click target.
+
+**Files modified:**
+- `database/migrations/015_users_soft_delete.sql` — new.
+- `database/schema.sql` — `users.deleted_at` column + partial
+  index.
+- `server/server.js`:
+  - `DELETE /api/admin/employees/:id` switched to soft-delete.
+  - `GET /api/admin/employees` adds `WHERE u.deleted_at IS NULL`.
+  - `GET /api/admin/employees/:id` adds the same.
+  - `DELETE /api/admin/departments/:id` ref-count query filters
+    out soft-deleted staff.
+- `src/pages/Home/index.js` — both clock-action buttons disabled
+  + labelled while `clockEvent` is the opposite type.
+
+**Migration step required after this branch ships:**
+```sh
+psql "<connection-string>?sslmode=require" -f database/migrations/015_users_soft_delete.sql
+```
+
+**Conventions reinforced:**
+- **Soft-delete is the default for any row with historical FK
+  references.** Hard delete blows up the audit trail, and in
+  hotel/payroll contexts the audit trail is the whole point. Add
+  `deleted_at TIMESTAMPTZ` + filter in list endpoints; the
+  existing `active = false` flag becomes a consequence, not the
+  load-bearing gate.
+- **Lock the opposite action during a grace window, not the
+  whole UI.** Staff can still cancel auto-signout (the "Keep
+  signed in" button stays clickable on the bottom card) and the
+  clock card stays informative; only the action that would undo
+  the just-completed event is greyed.
+- **Disabled buttons should label the reason.** "Clock Out" →
+  "Just clocked in" reads as "this is locked because you just
+  did the thing," not "this button is broken." Costs one ternary
+  and improves trust.
+
+**Notes for next iteration:**
+- Other `FROM users` queries (`/api/admin/staff/:userId/performance`,
+  some dashboard queries) don't yet filter `deleted_at`. They're
+  unreachable from the UI because list endpoints filter, but if a
+  bookmarked URL points at a deleted user's detail page they'd
+  still resolve. Safe to add `deleted_at IS NULL` to those
+  joins in a future cleanup sweep — low priority.
+- The "undelete" path isn't exposed. If an admin needs to restore
+  a soft-deleted user, they'd run `UPDATE users SET deleted_at =
+  NULL, active = true WHERE user_id = '…'` by hand. Worth a UI
+  surface if real demand emerges.
+- The button-label flip ("Just clocked in") is shown for the
+  duration of `clockEvent`. If autoSignoutSeconds is 0 the window
+  is 4 seconds (the ack window); if non-zero it's that many
+  seconds. Either way the user can read the label long enough to
+  understand the lock — but if a property wants a visible
+  countdown on the button (in addition to the bottom card's
+  AutoSignoutBanner countdown), wire `clockEvent.seconds` into
+  the label.
+
 ### 2026-05-21 — Sprint 11.1.1: fix backtick-in-SQL-comment crashing module load
 
 Deploy from 11.1 hit `SyntaxError: missing ) after argument list`

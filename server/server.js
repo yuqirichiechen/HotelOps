@@ -449,7 +449,11 @@ app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), asyn
     // Refuse to delete if staff or shifts reference this dept —
     // would orphan FKs. Admin should reassign first.
     const { rows: refs } = await pool.query(
-      `SELECT COUNT(*)::int AS n FROM users WHERE department_id = $1`,
+      // Sprint 11.1.2: don't count soft-deleted staff against
+      // dept deletion — they're gone from every other surface, so
+      // they shouldn't block dept cleanup either.
+      `SELECT COUNT(*)::int AS n FROM users
+       WHERE department_id = $1 AND deleted_at IS NULL`,
       [parseInt(id, 10)]
     );
     if (refs[0]?.n > 0) {
@@ -873,6 +877,7 @@ app.get('/api/admin/employees', async (req, res) => {
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
        LEFT JOIN week_agg wa   ON wa.user_id      = u.user_id
+       WHERE u.deleted_at IS NULL  -- Sprint 11.1.2: hide soft-deleted users
        ORDER BY u.name`,
       [threshold]
     );
@@ -901,7 +906,7 @@ app.get('/api/admin/employees/:id', async (req, res) => {
               (u.pin_hash IS NOT NULL) AS has_pin
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
-       WHERE u.user_id = $1`,
+       WHERE u.user_id = $1 AND u.deleted_at IS NULL`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
@@ -977,13 +982,31 @@ app.put('/api/admin/employees/:id', async (req, res) => {
 });
 
 app.delete('/api/admin/employees/:id', async (req, res) => {
+  // Sprint 11.1.2: soft delete. Hard DELETE explodes on the
+  // time_entries.user_id FK (payroll/audit history we can't drop).
+  // Setting `deleted_at = NOW()` hides the user from every UI
+  // surface (list queries filter `deleted_at IS NULL`) while
+  // preserving FK references for the historical record.
   try {
     const { rows: check } = await pool.query(
-      'SELECT active FROM users WHERE user_id = $1', [req.params.id]
+      'SELECT active, deleted_at FROM users WHERE user_id = $1',
+      [req.params.id]
     );
-    if (!check.length) return res.status(404).json({ success: false, message: 'Employee not found' });
-    if (check[0].active) return res.status(400).json({ success: false, message: 'Deactivate employee before deleting' });
-    await pool.query('DELETE FROM users WHERE user_id = $1', [req.params.id]);
+    if (!check.length) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+    if (check[0].deleted_at) {
+      // Idempotent — re-DELETE of an already-soft-deleted user is a no-op success.
+      return res.json({ success: true });
+    }
+    if (check[0].active) {
+      return res.status(400).json({ success: false, message: 'Deactivate employee before deleting' });
+    }
+    await pool.query(
+      `UPDATE users SET deleted_at = NOW(), active = false, updated_at = NOW()
+       WHERE user_id = $1`,
+      [req.params.id]
+    );
     return res.json({ success: true });
   } catch (err) {
     console.error(err);

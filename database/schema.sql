@@ -70,6 +70,10 @@ CREATE TABLE users (
   hire_date        DATE         NOT NULL DEFAULT CURRENT_DATE,
   base_hourly_rate NUMERIC(6,2),
   active           BOOLEAN      NOT NULL DEFAULT TRUE,
+  -- Sprint 11.1.2: soft-delete stamp. Hard-delete fails on FK to
+  -- time_entries (and other historical tables); leave the row,
+  -- mark deleted, and hide from lookups via WHERE deleted_at IS NULL.
+  deleted_at       TIMESTAMPTZ,
   pin_hash         TEXT,                            -- bcrypt; NULL = no PIN set
   pin_required     BOOLEAN      NOT NULL DEFAULT FALSE,  -- admin-controlled
   pin_must_set     BOOLEAN      NOT NULL DEFAULT FALSE,  -- forces set-PIN interstitial after admin reset
@@ -89,6 +93,8 @@ CREATE TABLE users (
 CREATE INDEX idx_users_phone      ON users(phone_number);
 CREATE INDEX idx_users_role       ON users(role);
 CREATE INDEX idx_users_department ON users(department_id);
+-- Sprint 11.1.2: partial index for the hot "not deleted" path.
+CREATE INDEX idx_users_not_deleted ON users(user_id) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_users_username_lower  ON users (LOWER(username))   WHERE username      IS NOT NULL;
 CREATE UNIQUE INDEX idx_users_employee_code   ON users (employee_code)     WHERE employee_code IS NOT NULL;
 CREATE INDEX        idx_users_birthday        ON users(birthday)            WHERE birthday      IS NOT NULL;

@@ -193,15 +193,25 @@ const Home = () => {
         <div className="home-clock-flip-container">
           <div className={`home-clock-flip-card ${onClock ? 'flipped' : ''}`}>
 
+            {/*
+              Sprint 11.1.2: lock the opposite-action button while
+              the post-clock-event grace window (countdown to auto-
+              signout) is active. clockEvent.type='out' just clocked
+              out → "Clock In" disabled until grace window closes.
+              clockEvent.type='in' just clocked in → "Clock Out"
+              disabled. Prevents the accidental immediate-reverse tap
+              that staff could otherwise pull off in the 3 seconds
+              before auto-signout fires.
+            */}
             {/* Front — ready to clock in */}
             <div className="home-clock-face">
               <ClockWidget />
               <button
                 className="home-clock-action in"
                 onClick={handleClockIn}
-                disabled={busy || loading}
+                disabled={busy || loading || clockEvent?.type === 'out'}
               >
-                {busy ? '…' : 'Clock In'}
+                {busy ? '…' : (clockEvent?.type === 'out' ? 'Just clocked out' : 'Clock In')}
               </button>
             </div>
 
@@ -219,9 +229,9 @@ const Home = () => {
               <button
                 className="home-clock-action out"
                 onClick={handleClockOut}
-                disabled={busy}
+                disabled={busy || clockEvent?.type === 'in'}
               >
-                {busy ? '…' : 'Clock Out'}
+                {busy ? '…' : (clockEvent?.type === 'in' ? 'Just clocked in' : 'Clock Out')}
               </button>
             </div>
 
