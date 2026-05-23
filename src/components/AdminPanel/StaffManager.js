@@ -164,6 +164,23 @@ const StaffManager = () => {
   const [csvIncludeInactive, setCsvIncludeInactive] = useState(false);
   const csvWrapRef = useRef(null);
 
+  // Sprint 11.4: per-row selection for the export popover's "Selected"
+  // scope. Each row has a checkbox; ticking it adds user_id to this
+  // Set. Selected scope in the export dialog uses these ids verbatim.
+  // Independent of the list-filter chips (admin can search the whole
+  // roster, tick a handful, and still get just those staff in the
+  // workbook).
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const toggleSelected = (userId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else                  next.add(userId);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
   const reload = async () => {
     setLoading(true);
     const [emp, dept] = await Promise.all([
@@ -294,7 +311,13 @@ const StaffManager = () => {
     });
   }, [employees, search, selectedDept, statFilter, includeInactive]);
 
-  const maxHours = Math.max(8, ...filtered.map(e => e.hours_this_week || 0));
+  // Sprint 11.4: the progress bar now reports each staff member's
+  // hours-this-week as a fraction of a fixed 40h workweek (was a
+  // ratio against the loudest staff in the filtered list, which
+  // made everyone look proportional to whoever was at the top —
+  // not useful for spotting OT). Anything above 40h pegs the bar
+  // at 100% and flips to a warn-tint to flag overtime.
+  const HOURS_FULL = 40;
 
   // ── Export (Sprint 9.4: now XLSX, multi-sheet) ────────────────────────────
   //
@@ -350,6 +373,17 @@ const StaffManager = () => {
       }
       params.set('user_ids', ids.join(','));
       scopeLabel = `filtered-${ids.length}`;
+    } else if (csvScope === 'selected') {
+      // Sprint 11.4: explicitly-ticked staff. Independent of the
+      // search/dept filter so the admin can roam the full roster
+      // and just tick the ones they need.
+      if (selectedIds.size === 0) {
+        setCsvBusy(false);
+        alert('No staff selected — tick one or more from the list first.');
+        return;
+      }
+      params.set('user_ids', Array.from(selectedIds).join(','));
+      scopeLabel = `selected-${selectedIds.size}`;
     }
 
     const { ok, data } = await apiFetch(`/admin/entries?${params.toString()}`);
@@ -599,6 +633,22 @@ const StaffManager = () => {
           Include inactive
         </button>
 
+        {/* Sprint 11.4: selection summary — only renders when at
+            least one row is ticked. Lets the admin see how many
+            are picked and clear them all in one click. */}
+        {selectedIds.size > 0 && (
+          <button
+            type="button"
+            className="staff-mgr-selection-chip"
+            onClick={clearSelection}
+            aria-label="Clear selection"
+            title="Clear selection"
+          >
+            {selectedIds.size} selected
+            <span className="staff-mgr-selection-clear" aria-hidden>✕</span>
+          </button>
+        )}
+
         <div className={`staff-mgr-export ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
           <button
             type="button"
@@ -696,6 +746,24 @@ const StaffManager = () => {
                     />
                     <span>Filtered list <span className="staff-mgr-export-meta">{filtered.length}</span></span>
                   </label>
+                  {/* Sprint 11.4: only show the Selected option when at
+                      least one row is ticked. Keeps the popover tidy
+                      when the admin isn't using the selection feature. */}
+                  <label className={`staff-mgr-export-radio ${selectedIds.size === 0 ? 'is-disabled' : ''}`}>
+                    <input
+                      type="radio"
+                      className="hop-radio"
+                      name="csv-scope"
+                      disabled={selectedIds.size === 0}
+                      checked={csvScope === 'selected'}
+                      onChange={() => setCsvScope('selected')}
+                    />
+                    <span>
+                      {selectedIds.size > 0
+                        ? <>Selected staff <span className="staff-mgr-export-meta">{selectedIds.size}</span></>
+                        : <>Selected staff <span className="staff-mgr-export-meta">tick rows first</span></>}
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -717,7 +785,11 @@ const StaffManager = () => {
                 type="button"
                 className="staff-mgr-export-go"
                 onClick={runExport}
-                disabled={csvBusy || (csvScope === 'department' && !deptScopeAvailable)}
+                disabled={
+                  csvBusy ||
+                  (csvScope === 'department' && !deptScopeAvailable) ||
+                  (csvScope === 'selected' && selectedIds.size === 0)
+                }
               >
                 {csvBusy ? 'Exporting…' : 'Download XLSX'}
               </button>
@@ -847,19 +919,50 @@ const StaffManager = () => {
       ) : (
         <ul className="staff-mgr-list">
           {filtered.map(e => {
-            const pct = maxHours > 0 ? ((e.hours_this_week || 0) / maxHours) * 100 : 0;
+            const hours = e.hours_this_week || 0;
+            const pct   = Math.min(100, (hours / HOURS_FULL) * 100);
+            const isOT  = hours > HOURS_FULL;
+            const isSelected = selectedIds.has(e.user_id);
             return (
               <li
                 key={e.user_id}
-                className={`staff-mgr-row ${e.active ? '' : 'is-inactive'}`}
+                className={`staff-mgr-row ${e.active ? '' : 'is-inactive'} ${isSelected ? 'is-selected' : ''}`}
                 onClick={() => goTo('staffDetail', { userId: e.user_id })}
               >
+                {/* Sprint 11.4: per-row checkbox for the export popover's
+                    "Selected" scope. stopPropagation so ticking doesn't
+                    drill into StaffDetail. */}
+                <label
+                  className="staff-mgr-row-select"
+                  onClick={(ev) => ev.stopPropagation()}
+                  aria-label={`Select ${e.name}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="hop-check"
+                    checked={isSelected}
+                    onChange={() => toggleSelected(e.user_id)}
+                  />
+                </label>
+
                 <div className="staff-mgr-avatar">
                   {(e.name || '?').charAt(0).toUpperCase()}
                 </div>
 
                 <div className="staff-mgr-row-info">
-                  <div className="staff-mgr-row-name">{e.name}</div>
+                  <div className="staff-mgr-row-name-line">
+                    <span className="staff-mgr-row-name">{e.name}</span>
+                    {/* Sprint 11.4: on-the-clock badge moved next to
+                        the name so the progress bar column stays the
+                        same width for every row (was eating the pills
+                        column's `auto` slot before, misaligning bars
+                        across rows). */}
+                    {e.is_on_clock && (
+                      <span className="staff-mgr-pill is-live staff-mgr-pill-inline">
+                        <span className="staff-mgr-pill-dot" /> On the clock
+                      </span>
+                    )}
+                  </div>
                   <div className="staff-mgr-row-meta">
                     <span style={{ textTransform: 'capitalize' }}>{fmtRole(e.role)}</span>
                     <span className="staff-mgr-row-dot">·</span>
@@ -869,19 +972,25 @@ const StaffManager = () => {
                   </div>
                 </div>
 
+                {/* Sprint 11.4: bar shows hours/40h (fixed denominator
+                    so the visual scale reads as "% of a full week"
+                    instead of "% of the loudest staff in the list").
+                    `is-ot` flips the fill to a warn tint when the
+                    user's gone over 40h. */}
                 <div className="staff-mgr-row-hours">
-                  <div className="staff-mgr-row-hours-num">{e.hours_this_week || 0}h</div>
+                  <div className="staff-mgr-row-hours-num">
+                    {hours}h
+                    {isOT && <span className="staff-mgr-row-ot-flag"> OT</span>}
+                  </div>
                   <div className="staff-mgr-row-bar">
-                    <div className="staff-mgr-row-bar-fill" style={{ width: `${pct}%` }} />
+                    <div
+                      className={`staff-mgr-row-bar-fill ${isOT ? 'is-ot' : ''}`}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
                 </div>
 
                 <div className="staff-mgr-row-pills">
-                  {e.is_on_clock && (
-                    <span className="staff-mgr-pill is-live">
-                      <span className="staff-mgr-pill-dot" /> On the clock
-                    </span>
-                  )}
                   {(e.pending_ot_hours || 0) > 0 && (
                     <span className="staff-mgr-pill is-warn">
                       {e.pending_ot_hours}h OT pending

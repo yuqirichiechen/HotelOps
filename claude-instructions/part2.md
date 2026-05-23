@@ -792,6 +792,99 @@ nav row:
 
 ---
 
+### 2026-05-23 — Sprint 11.4: StaffManager polish + per-row export selection
+
+Five tweaks on the admin Staff list.
+
+**1. On-the-clock badge inline with the name.**
+
+Image #5 showed the bug clearly: rows where a staff member was
+clocked in had a green ON THE CLOCK pill in the trailing "pills"
+column, which pushed the progress-bar column inward by the pill's
+width. Bars across rows didn't line up. Moved the pill into a
+new `.staff-mgr-row-name-line` flex container — name on the left,
+badge immediately to its right (compact `.staff-mgr-pill-inline`
+variant: 9px font, 3px padding, `flex-shrink: 0`). Pills column
+now only carries OT-pending + Inactive (rare), so the hours+bar
+column reads consistently across all rows.
+
+**2. Progress bar = hours / 40h fixed.**
+
+Was: `pct = h / max(filtered.h)` — every bar was relative to
+whoever had the loudest week in view, so the visual scale shifted
+as you typed in the search box. Now: `pct = min(100, h/40 * 100)`.
+Anything over 40h pegs at 100% and the bar's fill gradient flips
+to amber (`#f59e0b → #fbbf24`) so OT reads at a glance. A small
+"OT" tag also lights up next to the hours number for the same
+reason. Theme tokens (`--warn-*`) are tuned for pill text/bg
+contrast and didn't read well as a saturated bar gradient — used
+explicit hex.
+
+**3. Mobile: progress bar surfaced.**
+
+Mobile rule had `display: none` on `.staff-mgr-row-hours`. Lifted
+the hide; rewired the mobile grid to:
+```
+"select avatar info    chevron"
+"select avatar hours   hours"
+"select avatar pills   pills"
+```
+Hours + bar share one row now (number on the left, bar takes the
+rest with `flex: 1`). Same fixed `/40h` math + amber-on-OT as
+desktop, so the visual rule is consistent across breakpoints.
+
+**4. "Include inactive" toggle anchored left.**
+
+Was `margin-left: auto` which pushed the toggle to the middle of
+the post-divider row (the Export button's own auto-margin then
+ate the rest of the slack — visually the toggle floated halfway
+between divider and Export). Changed to
+`margin-left: 0; margin-right: auto`. Toggle now sits at the
+start of the row; Export keeps its `margin-left: auto` and lands
+on the right. Mobile already had `margin-left: 0` so nothing
+changes there.
+
+**5. Selectable XLSX export.**
+
+New: per-row checkbox (24–28px column, leftmost) + a "Selected
+staff" scope option in the export popover. State lives in a
+`Set<user_id>` (`selectedIds`); ticking a row adds/removes its
+id. Selection is independent of the search/dept filter, so the
+admin can roam the full roster and just tick the ones they need
+to pay out.
+
+UI additions:
+- `.staff-mgr-row-select` column on every row. Wrapper swallows
+  click events (`stopPropagation`) so ticking doesn't drill into
+  StaffDetail.
+- Row gets an `is-selected` class → soft accent-tinted background
+  while ticked.
+- New "Selected staff (N)" scope in the export radios. Disabled
+  with a "tick rows first" hint until N > 0.
+- New `.staff-mgr-selection-chip` next to the Include-inactive
+  toggle — shows "N selected ✕" when N > 0, click to clear all.
+- Export-Go button additionally disables when scope is 'selected'
+  and selectedIds is empty.
+
+Server side: `runExport`'s 'selected' branch reuses the same
+`user_ids` query param the 'filtered' branch uses, so no server
+change needed. Scope label in the filename is
+`selected-N` for traceability.
+
+**Verified.** StaffManager.js parses clean; AdminPanel.css braces
+balance (472/472). Row layout: bars align across on-clock and
+non-clocked rows. /40h math + amber OT fill works (tested
+mentally — straight CSS). Mobile shows the bar. Toggle on left,
+Export on right. Per-row checkbox + Selected scope wired end to
+end through `runExport`.
+
+**Follow-ups.** None outstanding. If we later want bulk *actions*
+(deactivate selected, assign-department selected) the
+`selectedIds` Set is already there — those would just add new
+buttons next to the selection chip.
+
+---
+
 ### 2026-05-23 — Sprint 11.3: two-column login layouts, desktop keyboard access, role-switch animation restored
 
 Three HCI fixes on the login family.
