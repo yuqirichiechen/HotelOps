@@ -46,49 +46,58 @@ const TenantPicker = ({ kind }) => {
 
   return (
     <div className="login-page login-layout-hardcode">
+      {/* Sprint 11.3: two-column shape on desktop — brand intro
+          (logo + title + sub) on the left, property chooser
+          (list + dev sign-in) on the right. With a single tenant
+          the right column shows one tall row; with more tenants
+          the visual still reads cleanly. Mobile (<1024px): the
+          two wrappers stack naturally. */}
       <div className="login-card tenant-picker-card">
-        <div className="tenant-picker-header">
-          <HotelOpsLogo size="xl" />
+        <div className="tenant-picker-intro">
+          <div className="tenant-picker-header">
+            <HotelOpsLogo size="xl" />
+          </div>
+          <h1 className="login-title">Select your property</h1>
+          <p className="login-sub">
+            Choose where you work to {kind === 'admin' ? 'sign in as a manager' : 'clock in'}.
+          </p>
         </div>
 
-        <h1 className="login-title">Select your property</h1>
-        <p className="login-sub">
-          Choose where you work to {kind === 'admin' ? 'sign in as a manager' : 'clock in'}.
-        </p>
+        <div className="tenant-picker-chooser">
+          <ul className="tenant-picker-list">
+            {tenants.map(t => (
+              <li key={t.slug}>
+                <TransitionLink to={`/${t.slug}/login`} className="tenant-picker-row">
+                  {t.logoUrl ? (
+                    <span className="tenant-picker-logo-wrap">
+                      {/* Sprint 9.2.2: per-tenant view-transition-name so
+                          the row's thumbnail morphs directly into the
+                          post-pick page's big tenant banner. Other rows'
+                          thumbs (different names) just fade out. */}
+                      <img
+                        src={t.logoUrl}
+                        alt=""
+                        className="tenant-picker-logo"
+                        style={{ viewTransitionName: `tenant-brand-${t.slug}` }}
+                      />
+                    </span>
+                  ) : (
+                    <span className="tenant-picker-logo-wrap tenant-picker-logo-empty">
+                      {t.name.charAt(0)}
+                    </span>
+                  )}
+                  <span className="tenant-picker-name">{t.name}</span>
+                  <span className="tenant-picker-arrow" aria-hidden>›</span>
+                </TransitionLink>
+              </li>
+            ))}
+          </ul>
 
-        <ul className="tenant-picker-list">
-          {tenants.map(t => (
-            <li key={t.slug}>
-              <TransitionLink to={`/${t.slug}/login`} className="tenant-picker-row">
-                {t.logoUrl ? (
-                  <span className="tenant-picker-logo-wrap">
-                    {/* Sprint 9.2.2: per-tenant view-transition-name so
-                        the row's thumbnail morphs directly into the
-                        post-pick page's big tenant banner. Other rows'
-                        thumbs (different names) just fade out. */}
-                    <img
-                      src={t.logoUrl}
-                      alt=""
-                      className="tenant-picker-logo"
-                      style={{ viewTransitionName: `tenant-brand-${t.slug}` }}
-                    />
-                  </span>
-                ) : (
-                  <span className="tenant-picker-logo-wrap tenant-picker-logo-empty">
-                    {t.name.charAt(0)}
-                  </span>
-                )}
-                <span className="tenant-picker-name">{t.name}</span>
-                <span className="tenant-picker-arrow" aria-hidden>›</span>
-              </TransitionLink>
-            </li>
-          ))}
-        </ul>
-
-        {/* Sprint 9.2.1: only Dev sign-in here. Manager/Staff toggle
-            moves to the post-pick login pages where it belongs. */}
-        <div className="login-switch">
-          <TransitionLink to="/login/dev">Dev sign-in →</TransitionLink>
+          {/* Sprint 9.2.1: only Dev sign-in here. Manager/Staff toggle
+              moves to the post-pick login pages where it belongs. */}
+          <div className="login-switch">
+            <TransitionLink to="/login/dev">Dev sign-in →</TransitionLink>
+          </div>
         </div>
       </div>
     </div>

@@ -792,6 +792,114 @@ nav row:
 
 ---
 
+### 2026-05-23 — Sprint 11.3: two-column login layouts, desktop keyboard access, role-switch animation restored
+
+Three HCI fixes on the login family.
+
+**1. Two-column picker on desktop.**
+
+`TenantPicker` was rendering as a single tall column on desktop —
+HotelOps logo centered up top, then "Select your property" + sub,
+then a list with one row. On a wide viewport it looked like a
+narrow mobile card pinned to the middle of a huge dark canvas.
+
+Restructured `TenantPicker.js` into two wrappers — `.tenant-picker-
+intro` (HotelOps logo + title + sub) and `.tenant-picker-chooser`
+(property list + dev sign-in). At `min-width: 1024px`, the card
+becomes a 2-col grid; under that breakpoint the wrappers stack
+naturally (mobile unchanged). When a second tenant joins, the
+right column scales to a tidy list without any layout work.
+
+**2. Two-column staff login on desktop — for real this time.**
+
+Sprint 9.1.2/9.1.3 had set up a 2-col grid via `display: contents`
+on the form, with the keypad spanning all rows of column 1. The
+GM screenshot (image #4) showed the bug: tenant logo at the top
+of the left column, then a ~200px vertical gap, then the welcome
+card collapsed at the bottom. Cause: when the keypad's intrinsic
+height exceeded the sum of col-1 row heights, the grid expanded
+each col-1 row to compensate — and `align-content: start` only
+controls *track packing*, not per-track expansion under spanned
+items.
+
+Rewrote with explicit `.login-card-left` + `.login-card-right`
+wrappers (no more `display: contents` trickery) and a plain
+`grid-template-columns: 1fr 380px` at `min-width: 1024px`.
+`align-items: start` keeps each column at its own natural height;
+the longer one drives the card height, the shorter one shows a
+clean empty space at the bottom of its cell. Mobile (<1024px):
+both columns are block elements and stack.
+
+Mobile keypad slot: on mobile the keypad would have ended up
+*below* the Sign-in button (`.login-card-right` renders after
+`.login-card-left` in DOM order). Added a `useMediaQuery` hook
+keyed to `(min-width: 1024px)`; mobile renders the keypad inside
+the form between the error and the submit button (so users edit
+the visible input via a keypad right next to it), desktop renders
+it in `.login-card-right`. Same `renderKeypads()` helper, two
+slots — keypad state is shared, no double-mount cost worth
+mentioning.
+
+Removed the obsolete `.login-page.login-layout-{hardcode,fluid}
+.login-card` 2-col grid rules; the layout-mode classes now only
+drive *inner element sizing* (font sizes, paddings, button
+heights). AdminLogin stays single-column at every breakpoint —
+no keypad to put on the right. The card's `view-transition-name:
+login-card` morphs its width when the user flips staff <-> admin.
+
+**3. Desktop keyboard access (the readOnly lock loosens).**
+
+Sprint 11.1.3 made the numeric identifier input fully read-only
+to suppress the iOS keyboard + autofill bar. Right call on a
+kiosk; wrong call on a manager's MacBook where they just want
+to type. New rule: only lock when
+`(pointer: coarse) and (hover: none)` matches — i.e. phones and
+tablets with no mouse. Touch-screen laptops still have hover
+(via the trackpad), so they fall through and stay editable.
+
+Applied to both the identifier input (`readOnly={lockNumeric}`,
+`inputMode={lockNumeric ? 'none' : 'text'}`,
+`autoComplete={lockNumeric ? 'off' : 'username'}`) and the PIN
+input (`readOnly={isTouchDevice}`, `inputMode` mirrors). On
+desktop the user can just type; the on-screen keypad still
+works for mouse clicks. On mobile/pad the lock holds.
+
+**4. Staff <-> admin role-switch animation restored.**
+
+11.2.1 collapsed `/:tenant/login/staff` + `/:tenant/login/admin`
+into a single `/:tenant/login` URL with an internal mode state.
+Side effect: the role-switch icon used to be a `TransitionLink`
+that wrapped `navigate()` in `document.startViewTransition`;
+when the switch became a plain `setMode`, the morph stopped
+firing.
+
+Fixed in `TenantLogin.js`: `flipMode(next)` wraps the
+`setState` in `document.startViewTransition(() => flushSync(...))`.
+`flushSync` is required — React batches updates and without it
+the API would snapshot the "after" DOM before the swap actually
+happened. Browsers without the API fall through to a plain
+`setMode` (Safari < 18.4 / older Firefox). The card's
+`view-transition-name: login-card` morphs its width (wide staff
+2-col → narrow admin 1-col); shared `hotelops-mark` keeps the
+HotelOps logo in place; `tenant-brand-${slug}` keeps the tenant
+banner in place. The form contents (Welcome back ↔ Manager
+sign-in, the role icon glyph, etc.) cross-fade by default.
+
+**Verified.** All four touched login files (`TenantPicker`,
+`TenantLogin`, `StaffLogin`, `AdminLogin`) parse clean. Picker
+on desktop renders side-by-side, mobile stacks. Staff login on
+desktop has form left + keypad right (no more vertical gap
+crater). Desktop physical-keyboard input into the numeric field
+works again. Tapping the manager icon morphs the card to admin
+sign-in and back. iPad in landscape (touch + ≥1024px) gets the
+2-col layout *and* the input lock — both desired.
+
+**Follow-ups.** None outstanding. The keypad still hides the
+ABC switcher when the tenant has username login disabled
+(Sprint 9.x rule); that's unchanged.
+
+---
+
 ### 2026-05-23 — Sprint 11.2.1: single-URL shells (`/:slug/staff` + `/:slug/admin`), combined login
 
 11.2 left the picker at `/` but post-login URLs were still flat

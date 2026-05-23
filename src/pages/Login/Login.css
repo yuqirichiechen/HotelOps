@@ -748,44 +748,16 @@ html[data-tenant-logo-strategy="invert"] .login-tenant-logo-wrap {
    col-1 item — brand, tenant, title, sub, fields, submit, switch).
    No phantom rows; height of the form area matches the keypad's
    intrinsic height. */
-@media (min-width: 1024px) {
-  .login-page.login-layout-hardcode .login-card {
-    max-width: 880px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
-    column-gap: 32px;
-    row-gap: 14px;
-    align-items: start;
-    /* Sprint 9.2.1 fix: pack rows at the top instead of stretching them
-       to fill the keypad-spanning cell's height. Without this, the grid
-       defaults to `align-content: stretch` and the col-1 rows grow
-       evenly to match the keypad's intrinsic height — which (with the
-       larger keypad buttons in two-col mode) produced enormous gaps
-       between brand/title/sub/field/submit. With `align-content: start`
-       the col-1 stack stays compact at the top and any extra height in
-       the keypad cell shows as empty space below the form — visually
-       fine because the form is what staff need to interact with. */
-    align-content: start;
-  }
-  /* All direct children of card default to col 1 (brand, tenant, title,
-     sub, switch). */
-  .login-page.login-layout-hardcode .login-card > * { grid-column: 1; }
-  /* Form acts as a transparent wrapper — its children participate in
-     the card's grid directly. */
-  .login-page.login-layout-hardcode .login-form { display: contents; }
-  .login-page.login-layout-hardcode .login-form > .login-field,
-  .login-page.login-layout-hardcode .login-form > .login-error,
-  .login-page.login-layout-hardcode .login-form > .login-submit {
-    grid-column: 1;
-  }
-  .login-page.login-layout-hardcode .login-form > .login-kb-area {
-    grid-column: 2;
-    grid-row: 1 / -1;    /* span exactly the rows in col 1, no phantom rows */
-    margin-top: 0;
-    align-self: start;
-  }
-  .login-page.login-layout-hardcode .login-submit { margin-top: 0; }
-}
+/* Sprint 11.3: 2-col shape moved off the layout-mode (hardcode/fluid)
+   classes onto explicit element-level wrappers (`.login-card-staff`,
+   `.tenant-picker-card.is-twocol`). The old approach relied on
+   `display: contents` to flatten the form into the card's grid; the
+   keypad spanning rows then stretched col-1 items unpredictably (image
+   #4 in the GM screenshot showed brand at top + a 200px gap + form
+   collapsed at the bottom). Explicit `.login-card-left` /
+   `.login-card-right` containers make the shape unambiguous. The
+   hardcode/fluid distinction now controls *inner element sizing* only
+   (fonts, paddings, button heights) — see the rules below this block. */
 
 /* Sprint 9.1.3: fluid layout. Uses clamp() with viewport-height (vh) +
    viewport-width (vw) units so every sized element scales continuously
@@ -823,31 +795,89 @@ html[data-tenant-logo-strategy="invert"] .login-tenant-logo-wrap {
   gap: clamp(6px, 1.2vh, 14px);
 }
 
-/* Two-column in fluid mode kicks in at the same breakpoint, but inner
-   sizing remains continuous. */
+/* Sprint 11.3: see comment above — fluid-mode 2-col grid removed in
+   favor of the element-level `.login-card-staff` two-column shape. */
+
+/* ── Sprint 11.3: staff login two-column on desktop ────────────────────
+   Mobile (<1024px): everything stacks naturally — `.login-card-left`
+   and `.login-card-right` are block elements, keypad falls below the
+   form. Desktop (>=1024px): explicit two-column grid with the form on
+   the left and the keypad on the right.
+   AdminLogin has no `.login-card-staff` modifier and stays single-
+   column at every breakpoint (there's no keypad to put on the right).
+   The card's `view-transition-name: login-card` morphs the width when
+   the user flips between staff <-> admin via the role-switch icon. */
+.login-card-staff .login-card-left,
+.login-card-staff .login-card-right {
+  min-width: 0;  /* enable shrink within grid */
+}
+.login-card-staff .login-card-left .login-form {
+  /* On mobile the form keeps its prior margin; nothing to override. */
+}
 @media (min-width: 1024px) {
-  .login-page.login-layout-fluid .login-card {
+  .login-card.login-card-staff {
+    max-width: 920px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, clamp(320px, 30vw, 420px));
-    column-gap: clamp(20px, 2.5vw, 40px);
-    row-gap: clamp(10px, 1.4vh, 16px);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+    column-gap: 36px;
     align-items: start;
-    align-content: start;  /* same fix as hardcode — see 9.2.1 note above */
   }
-  .login-page.login-layout-fluid .login-card > * { grid-column: 1; }
-  .login-page.login-layout-fluid .login-form { display: contents; }
-  .login-page.login-layout-fluid .login-form > .login-field,
-  .login-page.login-layout-fluid .login-form > .login-error,
-  .login-page.login-layout-fluid .login-form > .login-submit {
-    grid-column: 1;
+  /* Left column: stack the tenant brand + headline + form items
+     compactly at the top of the column. */
+  .login-card-staff .login-card-left {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
-  .login-page.login-layout-fluid .login-form > .login-kb-area {
-    grid-column: 2;
-    grid-row: 1 / -1;
+  .login-card-staff .login-card-left .login-tenant-brand { margin-bottom: 4px; }
+  .login-card-staff .login-card-left .login-headline-row { margin-bottom: 0; }
+  /* Right column: keypad sits at the top of the column, anchored. */
+  .login-card-staff .login-card-right {
+    align-self: stretch;
+  }
+  .login-card-staff .login-card-right .login-kb-area {
     margin-top: 0;
-    align-self: start;
   }
-  .login-page.login-layout-fluid .login-submit { margin-top: 0; }
+}
+
+/* ── Sprint 11.3: tenant picker two-column on desktop ──────────────────
+   Mobile: brand intro on top, property list below (stacked).
+   Desktop (>=1024px): brand intro on the left (logo + title + sub),
+   property list + dev sign-in on the right. With one tenant the right
+   column shows a single tall row; with more, the visual still works. */
+.tenant-picker-intro,
+.tenant-picker-chooser {
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .login-card.tenant-picker-card {
+    max-width: 920px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    column-gap: 56px;
+    align-items: center;
+    padding: 48px 44px;
+  }
+  .tenant-picker-card .tenant-picker-intro {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 0;
+  }
+  .tenant-picker-card .tenant-picker-header {
+    justify-content: flex-start;
+    margin-bottom: 4px;
+  }
+  .tenant-picker-card .tenant-picker-intro .login-title {
+    margin-bottom: 0;
+    text-align: left;
+  }
+  .tenant-picker-card .tenant-picker-intro .login-sub {
+    margin-bottom: 0;
+    text-align: left;
+  }
+  .tenant-picker-card .tenant-picker-list { margin-top: 0; }
+  .tenant-picker-card .login-switch { margin-top: 16px; }
 }
 
 /* Sprint 7.1: QWERTY letter keyboard. Three rows of letters + a switcher

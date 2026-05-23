@@ -9,6 +9,32 @@ import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 import '../../components/shared/RoleIcon.css';
 
+// Sprint 11.3: small media-query hook used twice below — once for
+// touch detection (governs whether to lock the numeric input against
+// the OS keyboard), once for the desktop two-column layout breakpoint
+// (governs whether the keypad renders inside the form or in a sibling
+// right-hand column). Initial value is read synchronously so first
+// paint matches the viewport.
+const useMediaQuery = (query) => {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia(query).matches;
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    setMatches(mq.matches);
+    const handler = (e) => setMatches(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler);
+      else mq.removeListener(handler);
+    };
+  }, [query]);
+  return matches;
+};
+
 // Sprint 7.1: built-in QWERTY keyboard alongside the existing numeric
 // keypad. Tablet/kiosk deployments can't always rely on the OS keyboard
 // being available or appropriate, so we render our own. The two keyboards
@@ -140,6 +166,20 @@ const StaffLogin = ({ onRoleSwitch }) => {
   // default) or 'fluid' (clamp()-based continuous scaling). Admin
   // configures via Settings. Class on .login-page drives CSS selection.
   const [layoutMode,     setLayoutMode]     = useState('hardcode');
+  // Sprint 11.3: touch-only restrictions on the numeric input.
+  // `(pointer: coarse) and (hover: none)` is true on phones/tablets
+  // and *false* on touch-screen laptops (those still have a mouse,
+  // so `hover: hover`). On desktop / laptop we lift the lock so
+  // users can just type — the on-screen keypad still works for
+  // mouse clicks if they prefer it.
+  const isTouchDevice = useMediaQuery('(pointer: coarse) and (hover: none)');
+  const lockNumeric = isTouchDevice && kbMode === 'numbers';
+  // Sprint 11.3: 1024px is the same breakpoint the CSS uses for the
+  // two-column shape. We render the keypad inside the form on mobile
+  // (between the error and the Sign-in button — kept close to the
+  // identifier input where the user is looking), and in a sibling
+  // right-hand column on desktop.
+  const isDesktopLayout = useMediaQuery('(min-width: 1024px)');
 
   useEffect(() => {
     fetch('/api/public-config')
@@ -270,161 +310,152 @@ const StaffLogin = ({ onRoleSwitch }) => {
   // there's no value letters can express — drop ABC entirely.
   const showLetters = lettersAvailable && activeField === 'id' && kbMode === 'letters';
 
+  // Sprint 11.3: keypad markup factored out so we can render it in
+  // either the in-form mobile slot or the right-column desktop slot
+  // without duplicating the prop wiring. The keypad's `onKey`
+  // mutates the shared `identifier` / `pin` state, so it works the
+  // same wherever it sits in the DOM.
+  const renderKeypads = () => (
+    <div className={`login-kb-area ${!lettersAvailable ? 'is-numbers-only' : ''}`}>
+      <KeypadNumbers
+        onKey={onKey}
+        onSwitch={lettersAvailable && activeField === 'id' ? () => setKbMode('letters') : null}
+        hidden={showLetters}
+      />
+      {lettersAvailable && (
+        <KeyboardLetters
+          onKey={onKey}
+          caps={caps}
+          onCaps={() => setCaps(c => !c)}
+          onSwitch={() => setKbMode('numbers')}
+          hidden={!showLetters}
+        />
+      )}
+    </div>
+  );
+
   return (
     <div className={`login-page login-layout-${layoutMode}`}>
-      <div className="login-card">
-        {/* Sprint 9.2.3 → 9.3.4: HotelOps + role-switch moved from
-            their own top-bar row into the right side of the welcome
-            headline. The previous topbar ate ~90–100px of vertical
-            real estate the dashboard didn't have on tablet portrait
-            viewports; the headline-row layout (see JSX below) reuses
-            the whitespace next to the title/sub text instead.
-            View-transition selector still targets .login-topbar-brand
-            so the picker → post-pick morph works unchanged. */}
-
-        {/* Sprint 9.2 / 9.2.1 / 9.2.2: tenant logo as banner-style
-            primary brand. The `viewTransitionName` on the img matches
-            the picker-row thumbnail for this tenant, so View
-            Transitions morphs the small picker thumb directly into
-            this big banner during navigation. The fallback name span
-            only renders when no logoUrl is configured. */}
-        <div className="login-tenant-brand">
-          {tenant.logoUrl ? (
-            <span className="login-tenant-logo-wrap">
-              <img
-                src={tenant.logoUrl}
-                alt={tenant.name}
-                className="login-tenant-logo"
-                style={{ viewTransitionName: `tenant-brand-${tenant.slug}` }}
-              />
-            </span>
-          ) : (
-            <span className="login-tenant-name">{tenant.name}</span>
-          )}
-        </div>
-
-        <div className="login-headline-row">
-          <div className="login-headline-text">
-            <h1 className="login-title">Welcome back</h1>
-            <p className="login-sub">{subSentence}</p>
-          </div>
-          <div className="login-headline-actions">
-            <TransitionLink
-              to="/"
-              className="login-topbar-brand"
-              aria-label="HotelOps — back to property selection"
-              title="Back to property selection"
-            >
-              <HotelOpsLogo size="lg" />
-            </TransitionLink>
-            {/* Sprint 11.2.1: in-page role switch — flips the
-                TenantLogin parent's `mode` state. URL stays put. */}
-            <button
-              type="button"
-              onClick={onRoleSwitch}
-              className="login-role-switch"
-              aria-label="Manager sign-in"
-              title="Manager sign-in"
-            >
-              <RoleIcon role="manager" alt="Manager sign-in" />
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={submit} className="login-form">
-          {/* Sprint 9.1: removed the duplicate visible <label> — the
-              .login-sub above already describes what to type. Keeping an
-              aria-label on the input means screen readers still get a
-              proper announcement without sighted users seeing the same
-              copy twice. */}
-          {/* Sprint 11.1.3: when the on-screen keypad is in numbers mode,
-              the identifier input is fully read-only — tap still focuses
-              so activeField flips, but the system keyboard and password
-              autofill bar stay suppressed. Letters mode (username) keeps
-              the system keyboard available since the on-screen ABC is
-              optional there. The PIN input is always read-only since
-              PIN is always numeric. */}
-          <div className={`login-field ${activeField === 'id' ? 'is-active' : ''}`}>
-            <input
-              id="identifier"
-              className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
-              type="text"
-              autoComplete={kbMode === 'numbers' ? 'off' : 'username'}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={16}
-              value={identifier}
-              onChange={onIdentifierChange}
-              onFocus={() => setActive('id')}
-              placeholder={fieldPlaceholder}
-              aria-label={fieldLabel}
-              autoFocus
-              readOnly={kbMode === 'numbers'}
-              inputMode={kbMode === 'numbers' ? 'none' : 'text'}
-            />
-          </div>
-
-          {needsPin && (
-            <div className={`login-field ${activeField === 'pin' ? 'is-active' : ''}`}>
-              <input
-                id="pin"
-                className="is-keypad is-numeric"
-                type="password"
-                inputMode="none"
-                maxLength={4}
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                onFocus={() => setActive('pin')}
-                placeholder="• • • •"
-                aria-label="PIN"
-                readOnly
-                autoComplete="off"
-              />
-            </div>
-          )}
-
-          {err && <div className="login-error">{err}</div>}
-
-          {/* Both keyboards rendered always; the inactive one is hidden via
-              visibility + pointer-events, and the wrapper sizes to whichever
-              is taller. This locks the form height so switching modes
-              doesn't shift the page layout. The numeric keypad happens to be
-              the taller of the two (5 rows vs 4), so the letters keyboard
-              leaves a small bottom gap — accepted as the better tradeoff. */}
-          {/* Sprint 9: letters keyboard only renders when the tenant has
-              the username login method enabled. If not, the ABC/123 switcher
-              on the numeric keypad is also hidden — no value letters can
-              express here. The locked-height grid auto-sizes to the only
-              remaining child (numbers keypad). */}
-          <div className={`login-kb-area ${!lettersAvailable ? 'is-numbers-only' : ''}`}>
-            <KeypadNumbers
-              onKey={onKey}
-              onSwitch={lettersAvailable && activeField === 'id' ? () => setKbMode('letters') : null}
-              hidden={showLetters}
-            />
-            {lettersAvailable && (
-              <KeyboardLetters
-                onKey={onKey}
-                caps={caps}
-                onCaps={() => setCaps(c => !c)}
-                onSwitch={() => setKbMode('numbers')}
-                hidden={!showLetters}
-              />
+      {/* Sprint 11.3: explicit two-column shape on desktop —
+          `.login-card-left` holds the brand + headline + form,
+          `.login-card-right` holds the keypad. Mobile (<1024px) the
+          two columns stack naturally. The keypad lives outside the
+          <form> so the form's submit semantics aren't affected by
+          the column wrappers; `onKey` is just a closure that mutates
+          shared state — works the same wherever the keypad sits. */}
+      <div className="login-card login-card-staff">
+        <div className="login-card-left">
+          {/* Sprint 9.2.x: tenant logo as banner-style brand. The
+              `viewTransitionName` on the img matches the picker
+              thumbnail so the picker→login morph still works. */}
+          <div className="login-tenant-brand">
+            {tenant.logoUrl ? (
+              <span className="login-tenant-logo-wrap">
+                <img
+                  src={tenant.logoUrl}
+                  alt={tenant.name}
+                  className="login-tenant-logo"
+                  style={{ viewTransitionName: `tenant-brand-${tenant.slug}` }}
+                />
+              </span>
+            ) : (
+              <span className="login-tenant-name">{tenant.name}</span>
             )}
           </div>
 
-          <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+          <div className="login-headline-row">
+            <div className="login-headline-text">
+              <h1 className="login-title">Welcome back</h1>
+              <p className="login-sub">{subSentence}</p>
+            </div>
+            <div className="login-headline-actions">
+              <TransitionLink
+                to="/"
+                className="login-topbar-brand"
+                aria-label="HotelOps — back to property selection"
+                title="Back to property selection"
+              >
+                <HotelOpsLogo size="lg" />
+              </TransitionLink>
+              {/* Sprint 11.2.1: in-page role switch — flips the
+                  TenantLogin parent's `mode` state. URL stays put. */}
+              <button
+                type="button"
+                onClick={onRoleSwitch}
+                className="login-role-switch"
+                aria-label="Manager sign-in"
+                title="Manager sign-in"
+              >
+                <RoleIcon role="manager" alt="Manager sign-in" />
+              </button>
+            </div>
+          </div>
 
-        {/* Sprint 9.2.3: Manager sign-in moved to the top-bar icon
-            above; bottom row removed. GM feedback wanted the primary
-            "Sign in" button bigger — easier with no link competing
-            below it — and removing the row fixes the mobile scroll
-            bug (the bottom link was the last pixel pushing over
-            iPhone-SE's viewport). */}
+          <form onSubmit={submit} className="login-form">
+            {/* Sprint 11.1.3 + 11.3: on a touch device, lock the
+                numeric input (readOnly + inputMode="none" +
+                autoComplete="off") to suppress the OS keyboard /
+                autofill bar — the on-screen keypad is the only
+                input path. On a desktop with a physical keyboard,
+                `lockNumeric` is false so the user can just type. */}
+            <div className={`login-field ${activeField === 'id' ? 'is-active' : ''}`}>
+              <input
+                id="identifier"
+                className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
+                type="text"
+                autoComplete={lockNumeric ? 'off' : 'username'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={16}
+                value={identifier}
+                onChange={onIdentifierChange}
+                onFocus={() => setActive('id')}
+                placeholder={fieldPlaceholder}
+                aria-label={fieldLabel}
+                autoFocus
+                readOnly={lockNumeric}
+                inputMode={lockNumeric ? 'none' : 'text'}
+              />
+            </div>
+
+            {needsPin && (
+              <div className={`login-field ${activeField === 'pin' ? 'is-active' : ''}`}>
+                <input
+                  id="pin"
+                  className="is-keypad is-numeric"
+                  type="password"
+                  inputMode={isTouchDevice ? 'none' : 'numeric'}
+                  maxLength={4}
+                  value={pin}
+                  onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onFocus={() => setActive('pin')}
+                  placeholder="• • • •"
+                  aria-label="PIN"
+                  readOnly={isTouchDevice}
+                  autoComplete="off"
+                />
+              </div>
+            )}
+
+            {err && <div className="login-error">{err}</div>}
+
+            {/* Mobile: keypad sits between error and submit (close to
+                the identifier input the user is editing). On desktop
+                this slot stays empty — see `.login-card-right` below. */}
+            {!isDesktopLayout && renderKeypads()}
+
+            <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+
+        {isDesktopLayout && (
+          <div className="login-card-right">
+            {renderKeypads()}
+          </div>
+        )}
       </div>
     </div>
   );
