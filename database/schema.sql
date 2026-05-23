@@ -59,12 +59,15 @@ CREATE TABLE users (
   -- Login identifiers: staff can log in via any of these. At least
   -- one must be set; uniqueness enforced per-column via partial indexes.
   -- Sprint 9 adds birthday — not unique (collisions resolved at login).
-  phone_number     VARCHAR(10)  UNIQUE,             -- 10 digits, optional
+  -- Uniqueness for phone_number / username / employee_code / email is
+  -- enforced via the partial unique indexes below (Sprint 11.1.3),
+  -- not column-level UNIQUE, so soft-deleted rows release their slots.
+  phone_number     VARCHAR(10),                     -- 10 digits, optional
   username         TEXT,                            -- 3-16 chars [A-Za-z0-9._-], must contain a letter
   employee_code    TEXT,                            -- 4-6 digits, string so leading zeros work
   birthday         DATE,                            -- Sprint 9: 8-digit MMDDYYYY at the keypad, not unique
   name             VARCHAR(200) NOT NULL,
-  email            VARCHAR(255) UNIQUE,
+  email            VARCHAR(255),
   role             user_role    NOT NULL DEFAULT 'employee',
   department_id    INT          REFERENCES departments(department_id),
   hire_date        DATE         NOT NULL DEFAULT CURRENT_DATE,
@@ -95,9 +98,14 @@ CREATE INDEX idx_users_role       ON users(role);
 CREATE INDEX idx_users_department ON users(department_id);
 -- Sprint 11.1.2: partial index for the hot "not deleted" path.
 CREATE INDEX idx_users_not_deleted ON users(user_id) WHERE deleted_at IS NULL;
-CREATE UNIQUE INDEX idx_users_username_lower  ON users (LOWER(username))   WHERE username      IS NOT NULL;
-CREATE UNIQUE INDEX idx_users_employee_code   ON users (employee_code)     WHERE employee_code IS NOT NULL;
-CREATE INDEX        idx_users_birthday        ON users(birthday)            WHERE birthday      IS NOT NULL;
+-- Sprint 11.1.3: identifier uniqueness scoped to live (non-deleted) rows
+-- so soft-deleted users release their phone / username / code / email
+-- slots for the next hire while preserving the historical row for FKs.
+CREATE UNIQUE INDEX idx_users_phone_number_live ON users (phone_number)      WHERE phone_number  IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_email_live        ON users (email)             WHERE email         IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_username_lower    ON users (LOWER(username))   WHERE username      IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_employee_code     ON users (employee_code)     WHERE employee_code IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX        idx_users_birthday          ON users(birthday)            WHERE birthday      IS NOT NULL;
 
 
 -- ── TIME ENTRIES ──────────────────────────────────────────────────────────────

@@ -792,6 +792,101 @@ nav row:
 
 ---
 
+### 2026-05-22 — Sprint 11.1.3: free up identifiers on soft-delete + read-only numeric login input
+
+Two follow-up bugs from 11.1.2.
+
+**1. Soft-deleted users hold their phone / PIN / username slots.**
+
+After 11.1.2 the deleted row stayed in `users` with `deleted_at`
+stamped — but its `phone_number`, `email`, `username`, and
+`employee_code` were still indexed under the column-level UNIQUE
+constraints. Onboarding a replacement who reused a departed
+colleague's phone number tripped "phone already exists." Payroll
+needs the historical row; we can't null the identifiers out.
+
+Fix: swap column-level UNIQUE for partial unique indexes scoped
+to `deleted_at IS NULL`. Live users still can't collide;
+soft-deleted rows fall outside the index entirely, so their
+identifiers free up for the next hire.
+
+Migration 016:
+```sql
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_phone_number_key;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
+DROP INDEX IF EXISTS idx_users_username_lower;
+DROP INDEX IF EXISTS idx_users_employee_code;
+
+CREATE UNIQUE INDEX idx_users_phone_number_live
+  ON users (phone_number)
+  WHERE phone_number IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_email_live
+  ON users (email)
+  WHERE email IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_username_lower
+  ON users (LOWER(username))
+  WHERE username IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_employee_code
+  ON users (employee_code)
+  WHERE employee_code IS NOT NULL AND deleted_at IS NULL;
+```
+
+`schema.sql` mirrors the change for fresh installs: dropped the
+inline `UNIQUE` on `phone_number` / `email`, and the partial
+indexes for username + employee_code now include
+`AND deleted_at IS NULL`. No server-side code change needed — the
+soft-deleted row is invisible to the unique check, so the
+existing INSERT logic just works.
+
+Why partial index over null-out-the-identifiers: keeps the
+audit trail intact ("who used to own phone X") and makes a future
+undelete trivial. Cost is one more conditional index per column;
+the live slice is small (employees, not events) so it's free.
+
+**2. System keyboard kept popping on the numeric login.**
+
+Sprint 8.7 / 9.1 had already hidden the on-screen ABC keyboard
+in numeric tenants, but the underlying `<input>` still accepted
+focus → iOS Safari popped its own keyboard, and password-manager
+autofill bars triggered on any tap. We want the entry section
+to be fully read-only when the active method is numeric, with
+the on-screen keypad as the only input path — but only there;
+username login still needs the system keyboard available
+(letters mode is optional on-screen).
+
+`src/pages/Login/StaffLogin.js`:
+- Identifier input: `readOnly={kbMode === 'numbers'}`, plus
+  `inputMode={kbMode === 'numbers' ? 'none' : 'text'}` and
+  `autoComplete={kbMode === 'numbers' ? 'off' : 'username'}`.
+  Tap still focuses (so `activeField` flips correctly), but no
+  keyboard and no autofill bar — the keypad on the page is the
+  only way to mutate the field.
+- PIN input: always `readOnly`, `inputMode="none"`,
+  `autoComplete="off"` (PIN is always 4 digits → always numeric,
+  so the on-screen numeric keypad is the only path).
+- Letters mode is untouched: when the user taps ABC to enter a
+  username, `kbMode === 'letters'` → `readOnly` flips off,
+  `inputMode` becomes `text`, and `autoComplete="username"`
+  comes back so password-manager autofill works as before.
+
+No CSS changes needed — `is-keypad` already styles the input
+the same in both states.
+
+**Verified.** Soft-deleted-then-readded staff using the same
+phone number now succeeds. Tapping the numeric identifier or
+PIN field on iOS no longer pops the system keyboard or the
+autofill bar; the on-screen keypad still drives the value via
+`setIdentifier` / `setPin`.
+
+**Follow-ups.** None outstanding. Note for future-me: if we
+ever add a "restore deleted user" admin action, it just needs
+to `UPDATE users SET deleted_at = NULL` — the partial unique
+indexes will re-include the row and reject the restore if a
+new staff has since claimed the same identifier (correct
+behavior: warn the admin and force a resolution).
+
+---
+
 ### 2026-05-22 — Sprint 11.1.2: soft-delete users + lock clock-action during grace window
 
 Two unrelated bugs.

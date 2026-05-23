@@ -329,12 +329,19 @@ const StaffLogin = () => {
               aria-label on the input means screen readers still get a
               proper announcement without sighted users seeing the same
               copy twice. */}
+          {/* Sprint 11.1.3: when the on-screen keypad is in numbers mode,
+              the identifier input is fully read-only — tap still focuses
+              so activeField flips, but the system keyboard and password
+              autofill bar stay suppressed. Letters mode (username) keeps
+              the system keyboard available since the on-screen ABC is
+              optional there. The PIN input is always read-only since
+              PIN is always numeric. */}
           <div className={`login-field ${activeField === 'id' ? 'is-active' : ''}`}>
             <input
               id="identifier"
               className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
               type="text"
-              autoComplete="username"
+              autoComplete={kbMode === 'numbers' ? 'off' : 'username'}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -345,6 +352,8 @@ const StaffLogin = () => {
               placeholder={fieldPlaceholder}
               aria-label={fieldLabel}
               autoFocus
+              readOnly={kbMode === 'numbers'}
+              inputMode={kbMode === 'numbers' ? 'none' : 'text'}
             />
           </div>
 
@@ -354,13 +363,15 @@ const StaffLogin = () => {
                 id="pin"
                 className="is-keypad is-numeric"
                 type="password"
-                inputMode="numeric"
+                inputMode="none"
                 maxLength={4}
                 value={pin}
                 onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 onFocus={() => setActive('pin')}
                 placeholder="• • • •"
                 aria-label="PIN"
+                readOnly
+                autoComplete="off"
               />
             </div>
           )}
