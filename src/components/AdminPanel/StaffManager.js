@@ -292,11 +292,17 @@ const StaffManager = () => {
     };
   }, [employees]);
 
-  // ── Filtered list ─────────────────────────────────────────────────────────
+  // Sprint 11.5: list sort order. Admin picks via the dropdown in
+  // the toolbar; the filter step below applies the chosen
+  // comparator after filtering. Default is name-asc (matches the
+  // alphabetical grouping the GM expects).
+  const [sortMode, setSortMode] = useState('name-asc');
+
+  // ── Filtered + sorted list ─────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q      = search.trim().toLowerCase();
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-    return employees.filter(e => {
+    const list = employees.filter(e => {
       if (!includeInactive && !e.active) return false;
       if (selectedDept !== 'all') {
         const key = e.department_id == null ? '__none__' : String(e.department_id);
@@ -309,7 +315,29 @@ const StaffManager = () => {
       }
       return true;
     });
-  }, [employees, search, selectedDept, statFilter, includeInactive]);
+    // Sprint 11.5: sort step. `localeCompare` with the numeric
+    // option keeps "Beth 10" after "Beth 2", which the default
+    // string compare gets wrong. Missing hire_date sorts last
+    // regardless of asc/desc — no date is worse signal than any
+    // date.
+    const cmpName  = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+    const cmpHours = (a, b) => (a.hours_this_week || 0) - (b.hours_this_week || 0);
+    const cmpHire  = (a, b) => {
+      const ta = a.hire_date ? new Date(a.hire_date).getTime() : -Infinity;
+      const tb = b.hire_date ? new Date(b.hire_date).getTime() : -Infinity;
+      return ta - tb;
+    };
+    const sorters = {
+      'name-asc':    cmpName,
+      'name-desc':   (a, b) => -cmpName(a, b),
+      'hours-desc':  (a, b) => -cmpHours(a, b),
+      'hours-asc':   cmpHours,
+      'hire-newest': (a, b) => -cmpHire(a, b),
+      'hire-oldest': cmpHire,
+    };
+    const cmp = sorters[sortMode] || cmpName;
+    return [...list].sort(cmp);
+  }, [employees, search, selectedDept, statFilter, includeInactive, sortMode]);
 
   // Sprint 11.4: the progress bar now reports each staff member's
   // hours-this-week as a fraction of a fixed 40h workweek (was a
@@ -632,6 +660,25 @@ const StaffManager = () => {
         >
           Include inactive
         </button>
+
+        {/* Sprint 11.5: sort dropdown — lets the admin reorder the
+            list by name (A↔Z) or by activity signal (hours / hire
+            date) without losing their current filter. */}
+        <label className="staff-mgr-sort" aria-label="Sort staff list">
+          <span className="staff-mgr-sort-label">Sort</span>
+          <select
+            className="staff-mgr-sort-select"
+            value={sortMode}
+            onChange={e => setSortMode(e.target.value)}
+          >
+            <option value="name-asc">Name A → Z</option>
+            <option value="name-desc">Name Z → A</option>
+            <option value="hours-desc">Hours · most</option>
+            <option value="hours-asc">Hours · least</option>
+            <option value="hire-newest">Hired · newest</option>
+            <option value="hire-oldest">Hired · oldest</option>
+          </select>
+        </label>
 
         {/* Sprint 11.4: selection summary — only renders when at
             least one row is ticked. Lets the admin see how many

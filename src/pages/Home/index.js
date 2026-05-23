@@ -95,18 +95,34 @@ const Home = () => {
   // auto-signout is disabled (seconds <= 0) we still flip This Week
   // for the confirmation visual, and auto-clear after a short ack
   // window so the user gets their week summary back.
+  //
+  // Sprint 11.5: the grace-window lock duration binds to the auto-
+  // signout setting. When auto-signout is enabled, the lock holds
+  // for the full countdown (matching the banner). When disabled,
+  // we still apply a short floor (DEFAULT_LOCK_SECONDS) so a high-
+  // CPS / spam-tap user can't instantly reverse their clock event.
+  const DEFAULT_LOCK_SECONDS = 3;
   const triggerClockEvent = (type) => {
     const seconds = data?.autoSignoutSeconds || 0;
     setClockEvent({ type, seconds });
     if (seconds <= 0) {
-      setTimeout(() => setClockEvent(null), 4000);
+      setTimeout(() => setClockEvent(null), DEFAULT_LOCK_SECONDS * 1000);
     }
   };
 
   const handleKeepSignedIn = () => setClockEvent(null);
 
   const handleAutoSignout = async () => {
-    setClockEvent(null);
+    // Sprint 11.5: keep both clock buttons disabled through the
+    // entire async logout + nav. Previously this function started
+    // with `setClockEvent(null)`, which re-enabled the opposite-
+    // action button for the ~half-second between state-flush and
+    // navigation — long enough for a spam-tap to squeak a reverse
+    // clock-out/in past the lock. Now we set busy=true (both
+    // Clock In + Clock Out have `disabled={busy || …}` so this
+    // covers them both) and leave clockEvent set; the page unmounts
+    // a moment later so its visual state doesn't matter.
+    setBusy(true);
     // Sprint 9.3.2: read the persisted tenant slug *before* logout
     // (logout shouldn't touch this key today, but reading early is
     // robust to future logout flows that clear more state). If the

@@ -792,6 +792,84 @@ nav row:
 
 ---
 
+### 2026-05-23 — Sprint 11.5: clock-action race fix, StaffManager sort, admin calendar gap
+
+Three small fixes.
+
+**1. Clock-in/out race window closed; lock binds to auto-signout setting.**
+
+Sprint 11.1.2's grace-window lock did the right thing in principle
+(disable the opposite-action button after a clock event), but
+`handleAutoSignout` opened with `setClockEvent(null)` — and the
+clear ran *before* the async `logout()` + `navigate()`. That left
+a ~half-second window where both buttons re-enabled, which a
+spam-tap on phone or a high-CPS mouse could squeak through to
+reverse the event right before the page navigated away.
+
+Fix is two parts:
+- `handleAutoSignout` now starts with `setBusy(true)` and *does
+  not* clear `clockEvent`. Both clock buttons already have
+  `disabled={busy || …}`, so the lock holds through the entire
+  async window. The page unmounts a moment later so the visual
+  state of `clockEvent` no longer matters.
+- The "disabled auto-signout" ack-window timeout used to clear
+  `clockEvent` after a hardcoded 4000ms. Lifted that to a named
+  `DEFAULT_LOCK_SECONDS = 3` constant so it matches the floor the
+  user expects from the same setting. When the admin enables
+  auto-signout, the lock already follows the configured countdown
+  (set via the AutoSignoutBanner's `seconds` prop, which the
+  server hands back as `autoSignoutSeconds`). When disabled, the
+  3s floor prevents spam-tap reversals from sneaking in.
+
+**2. Admin StaffManager sort dropdown.**
+
+Native `<select>` chip in the toolbar (sibling to the
+Include-inactive toggle). Six options:
+- Name A → Z (default — matches the alphabetical grouping the
+  GM already expects)
+- Name Z → A
+- Hours · most
+- Hours · least
+- Hired · newest
+- Hired · oldest
+
+`filtered` useMemo applies the sort step after filtering, so
+search / dept / stat / include-inactive filters compose with the
+sort. Name compares use `localeCompare(..., { numeric: true,
+sensitivity: 'base' })` so "Beth 10" sorts after "Beth 2" and
+case doesn't trip the order. Missing `hire_date` falls to the
+end regardless of direction (no date is worse signal than any
+date). Class `.staff-mgr-sort` styles the wrapper to match the
+existing chip language.
+
+**3. Admin Calendar Day view: gap between timeline and notes.**
+
+`SchedulingManager`'s Day view stacks three direct children
+(`NotesCenter`, `DayView`, `NotesDrawer`) inside `.sched-content`.
+`.sched-content` was a plain block (`flex: 1; min-height: 0;`)
+with no flex / gap of its own — so those three sections sat
+flush against each other. The parent `.sched-manager` flex-gap
+only applied *between* `.sched-content` and its siblings, not
+between `.sched-content`'s kids.
+
+Added `display: flex; flex-direction: column; gap: 16px` to
+`.sched-content`. Single-child views (year / month / week) are
+unaffected; Day view gets the breathing band the GM asked for.
+(Staff Calendar already had this via `.staff-cal-body { gap:
+16px }` — admin now matches.)
+
+**Verified.** Home.js + StaffManager.js parse clean.
+AdminPanel.css (476/476) + Scheduling.css (370/370) braces
+balance. Race fix is behavioral so visual review needed — but
+both clock buttons share `disabled={busy || …}` so the
+`setBusy(true)` covers them by construction.
+
+**Follow-ups.** None outstanding. If we later want `--`-delimited
+sort persistence (admin's last pick survives reload), the state
+would live in localStorage; not worth wiring for this sprint.
+
+---
+
 ### 2026-05-23 — Sprint 11.4: StaffManager polish + per-row export selection
 
 Five tweaks on the admin Staff list.

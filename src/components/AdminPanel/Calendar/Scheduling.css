@@ -131,6 +131,18 @@
 .sched-content {
   flex: 1;
   min-height: 0;
+  /* Sprint 11.5: Day view stacks NotesCenter + DayView (the
+     shift timeline) + NotesDrawer as direct children of this
+     container. Previously they sat flush against each other
+     (no gap) because `.sched-content` was a plain block — the
+     parent `.sched-manager` flex-gap only applied between
+     `.sched-content` and its siblings, not inside it. Adding
+     flex column + gap here gives every view's stacked sections
+     a small breathing room band. Single-child views (year,
+     month, week) are unaffected. */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .sched-loading,
