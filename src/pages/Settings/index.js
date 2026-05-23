@@ -62,8 +62,8 @@ const Settings = ({ theme, onToggleTheme }) => {
     const slug = typeof window !== 'undefined'
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
-    // Sprint 11.2: picker URL is `/` now (was `/login/staff`).
-    const loginPath = slug ? `/${slug}/login/staff` : '/';
+    // Sprint 11.2.1: combined login at `/:slug/login` (no role suffix).
+    const loginPath = slug ? `/${slug}/login` : '/';
     await logout();
     nav(loginPath, { replace: true });
   };

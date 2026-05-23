@@ -9,7 +9,7 @@ import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 import '../../components/shared/RoleIcon.css';
 
-const AdminLogin = () => {
+const AdminLogin = ({ onRoleSwitch }) => {
   const { loginAdmin } = useAuth();
   const nav = useNavigate();
   // Sprint 9: same /:tenant slug treatment as StaffLogin.
@@ -35,7 +35,8 @@ const AdminLogin = () => {
       if (tenant?.slug) {
         localStorage.setItem('hotelops-tenant-slug', tenant.slug);
       }
-      nav('/admin', { replace: true });
+      // Sprint 11.2.1: post-login lands on the per-tenant admin shell.
+      nav(`/${tenant.slug}/admin`, { replace: true });
       return;
     }
     setErr(res.message || 'Sign-in failed');
@@ -78,14 +79,17 @@ const AdminLogin = () => {
             >
               <HotelOpsLogo size="lg" />
             </TransitionLink>
-            <TransitionLink
-              to={tenantSlug ? `/${tenantSlug}/login/staff` : '/'}
+            {/* Sprint 11.2.1: in-page role switch — flips the
+                TenantLogin parent's `mode` state. URL stays put. */}
+            <button
+              type="button"
+              onClick={onRoleSwitch}
               className="login-role-switch"
               aria-label="Staff sign-in"
               title="Staff sign-in"
             >
               <RoleIcon role="staff" alt="Staff sign-in" />
-            </TransitionLink>
+            </button>
           </div>
         </div>
 

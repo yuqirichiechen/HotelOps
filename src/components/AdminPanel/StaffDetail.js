@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../../auth';
+import { useView } from '../../shells/ViewContext';
 
 const ROLES = ['employee', 'front_desk', 'admin'];
 
@@ -38,9 +38,11 @@ const toLocalInput = (iso) => {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const StaffDetail = () => {
-  const { userId } = useParams();
-  const nav = useNavigate();
+// Sprint 11.2.1: `userId` comes from view params (set by StaffManager
+// when an admin clicks a row), not from the URL. Back goes through
+// the AdminShell's `goTo('staff')` instead of a URL navigation.
+const StaffDetail = ({ userId }) => {
+  const { goTo } = useView();
 
   const [emp,           setEmp]           = useState(null);
   const [loading,       setLoading]       = useState(true);
@@ -209,7 +211,7 @@ const StaffDetail = () => {
     const res  = await fetch(`/api/admin/employees/${emp.user_id}`, { method: 'DELETE' });
     const data = await res.json();
     setDeleting(false);
-    if (data.success) nav('/admin/staff');
+    if (data.success) goTo('staff');
     else              setError(data.message);
   };
 
@@ -293,7 +295,7 @@ const StaffDetail = () => {
   if (!emp)    return (
     <div className="emp-detail">
       <div className="emp-detail-topbar">
-        <button className="btn-back" onClick={() => nav('/admin/staff')}>‹ Staff</button>
+        <button className="btn-back" onClick={() => goTo('staff')}>‹ Staff</button>
       </div>
       <div className="emp-empty">Staff not found.</div>
     </div>
@@ -309,7 +311,7 @@ const StaffDetail = () => {
     <div className="emp-detail">
       {/* Header */}
       <div className="emp-detail-topbar">
-        <button className="btn-back" onClick={() => nav('/admin/staff')}>‹ Staff</button>
+        <button className="btn-back" onClick={() => goTo('staff')}>‹ Staff</button>
         {!editing && <button className="btn-edit" onClick={startEdit}>Edit</button>}
       </div>
 

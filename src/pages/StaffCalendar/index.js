@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, useAuth } from '../../auth';
+import { useView } from '../../shells/ViewContext';
 import CalendarWeekView from '../../components/Calendar/views/CalendarWeekView';
 import NotesDrawer from '../../components/Calendar/atoms/NotesDrawer';
 import NotesCenter from '../../components/Calendar/atoms/NotesCenter';
@@ -49,6 +50,9 @@ const fmtWeekLabel = (ws) => {
 
 const StaffCalendar = () => {
   const { user } = useAuth();
+  // Sprint 11.2.1: "View all notes" routes through the StaffShell
+  // view stack instead of a URL change.
+  const { goTo } = useView();
 
   const [view,   setView]   = useState('week');
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
@@ -172,6 +176,7 @@ const StaffCalendar = () => {
             staffScope={true}
             staffDepartmentId={user?.department_id || null}
             onPickDate={(d) => { setCursor(new Date(d)); setView('day'); }}
+            onViewAllNotes={() => goTo('notes', { date: isoDay(cursor) })}
           />
         )}
 
@@ -192,7 +197,7 @@ const StaffCalendar = () => {
             <NotesCenter
               forDate={isoDay(cursor)}
               onTileClick={handleNotesTile}
-              viewAllHref={`/calendar/notes?date=${isoDay(cursor)}`}
+              onViewAll={() => goTo('notes', { date: isoDay(cursor) })}
               staffScope={true}
               staffDepartmentId={user?.department_id || null}
               currentUser={user}

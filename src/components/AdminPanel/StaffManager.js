@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { apiFetch } from '../../auth';
+import { useView } from '../../shells/ViewContext';
 
 // List-as-dashboard pattern (Sprint 6.3): clickable stats banner drives the
 // list filter, rich rows show this-week metrics inline, Add Staff is a
@@ -121,7 +121,9 @@ const sanitizeSheetName = (name, used) => {
 };
 
 const StaffManager = () => {
-  const nav = useNavigate();
+  // Sprint 11.2.1: row click + back button drive the AdminShell's
+  // view state instead of URL nav.
+  const { goTo } = useView();
 
   const [employees,   setEmployees]   = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -474,7 +476,7 @@ const StaffManager = () => {
 
       {/* Header */}
       <div className="staff-mgr-topbar">
-        <button className="btn-back" onClick={() => nav('/admin')}>‹ Home</button>
+        <button className="btn-back" onClick={() => goTo('home')}>‹ Home</button>
         <h2 className="staff-mgr-h1">Staff</h2>
       </div>
 
@@ -850,7 +852,7 @@ const StaffManager = () => {
               <li
                 key={e.user_id}
                 className={`staff-mgr-row ${e.active ? '' : 'is-inactive'}`}
-                onClick={() => nav(`/admin/staff/${e.user_id}`)}
+                onClick={() => goTo('staffDetail', { userId: e.user_id })}
               >
                 <div className="staff-mgr-avatar">
                   {(e.name || '?').charAt(0).toUpperCase()}

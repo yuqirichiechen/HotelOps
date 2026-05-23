@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../../auth';
+import { useView } from '../../shells/ViewContext';
 
 const VISIBILITY_OPTIONS = [
   {
@@ -26,6 +27,8 @@ const VISIBILITY_OPTIONS = [
 const AdminSettings = () => {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  // Sprint 11.2.1: back-to-Home is a view flip, not a URL change.
+  const { goTo } = useView();
 
   const [visibility, setVisibility] = useState('all');
   const [otHours,    setOtHours]    = useState('40');
@@ -198,8 +201,9 @@ const AdminSettings = () => {
     const slug = typeof window !== 'undefined'
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
-    // Sprint 11.2: picker URL is `/` now (was `/login/admin`).
-    const loginPath = slug ? `/${slug}/login/admin` : '/';
+    // Sprint 11.2.1: per-tenant combined login at `/:slug/login`.
+    // (Was `/:slug/login/admin` in 11.2.)
+    const loginPath = slug ? `/${slug}/login` : '/';
     await logout();
     nav(loginPath, { replace: true });
   };
@@ -208,7 +212,7 @@ const AdminSettings = () => {
     <div className="admin-settings-page">
       <div className="settings-topbar">
         <div className="settings-topbar-left">
-          <button className="btn-back" onClick={() => nav('/admin')}>← Home</button>
+          <button className="btn-back" onClick={() => goTo('home')}>← Home</button>
           <h2>Settings</h2>
         </div>
         {/* Sprint 9.1.2: save button moved to the topbar as the

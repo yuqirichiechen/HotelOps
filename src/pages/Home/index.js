@@ -114,8 +114,9 @@ const Home = () => {
     // fall back to `/` (the picker) so the user can pick again
     // instead of hitting a broken URL. (Sprint 11.2: picker URL was
     // `/login/staff` pre-launch; now it's `/`.)
+    // Sprint 11.2.1: combined login at `/:slug/login` (no role suffix).
     const slug = localStorage.getItem('hotelops-tenant-slug');
-    const loginPath = slug ? `/${slug}/login/staff` : '/';
+    const loginPath = slug ? `/${slug}/login` : '/';
     await logout();
     // Sprint 8.6.2: animate the page swap. The login page's `.login-card`
     // already has its own slide-in animation; this gives the *outer* page

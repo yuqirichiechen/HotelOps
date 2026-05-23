@@ -792,6 +792,145 @@ nav row:
 
 ---
 
+### 2026-05-23 — Sprint 11.2.1: single-URL shells (`/:slug/staff` + `/:slug/admin`), combined login
+
+11.2 left the picker at `/` but post-login URLs were still flat
+(`/`, `/admin`, `/timesheet`, …) — the URL didn't tell you which
+property you were on, and any sub-page (Timesheet, Calendar,
+StaffDetail) added URL surface that "shouldn't matter" for a
+single-purpose app. 11.2.1 collapses everything into two static
+post-login URLs and a single combined login:
+
+**New URL surface (all of it):**
+- `/` — picker (unauthed) or redirect (authed → per-tenant shell).
+- `/:tenant/login` — combined staff + manager sign-in. Internal
+  mode toggle, URL never changes when you tap the role icon.
+- `/:tenant/staff` — staff shell. **Never changes** after login;
+  Home / Timesheet / Calendar / Settings switch in React state.
+- `/:tenant/admin` — admin shell. Same shape — Home / Staff /
+  Calendar / Reports / Assistant / Settings + sub-views
+  (StaffDetail, NotesPage) are view state, not URL state.
+- `/set-pin`, `/login/dev`, `/dev`, `/kiosk` — out-of-band as
+  before.
+
+**Mental model:** Fidelity Active Trader Pro — the URL is just an
+app identifier; internal nav is in-app. Refresh on `/:slug/staff`
+lands on the staff Home (default view); the previous sub-view is
+not preserved. Browser back exits the shell. The user explicitly
+asked for this — "we just keep this simple. nothing to the
+details anymore."
+
+**Architecture:**
+
+New `src/shells/`:
+- `ViewContext.js` — `{ view, goTo }`. `view` is `{ name, params }`;
+  `goTo(name, params)` is the in-app-nav primitive. Replaces every
+  `useNavigate()` call that used to target an in-shell URL.
+- `StaffShell.js` — owns view state, renders `Sidebar` + the
+  active view component. Nav list: home / timesheet / calendar /
+  settings. Sub-view: notes (parent = calendar).
+- `AdminShell.js` — same shape. Nav: home / staff / calendar /
+  reports / assistant / settings. Sub-views: staffDetail
+  (parent = staff), notes (parent = calendar).
+
+`Sidebar` rewritten from NavLink-based (URL routing) to
+props-driven (`navItems`, `currentView`, `onNavigate`). Buttons,
+not anchors. CSS got button resets (`background:0; border:0;
+cursor:pointer; …`) on `.sidebar-link` + `.bottom-nav-item` to
+match the previous `<a>` styling pixel-for-pixel. Sign-out flow
+still uses `useNavigate` since logout truly leaves the shell.
+
+`TenantLogin.js` wraps `StaffLogin` and `AdminLogin` with internal
+mode state. The role-switch icon in each child now calls an
+`onRoleSwitch` callback (flips the parent's mode) instead of
+rendering a `TransitionLink` to a separate URL. Successful login
+navigates to `/${tenant.slug}/${role}`.
+
+`RequireRole` redirects unauthed → `/` (picker) and wrong-role →
+the user's per-tenant shell (`/${slug}/${role}`). `RedirectIfAuthed`
+bounces authed users away from the combined login. Both read the
+slug from localStorage (persisted on every successful login since
+Sprint 9.3.2).
+
+**Page refactors:**
+- `StaffManager` — row click + back: URL nav → `goTo('staffDetail',
+  { userId })` / `goTo('home')`.
+- `StaffDetail` — `useParams` → `userId` prop (from view params);
+  3 back-nav sites → `goTo('staff')`.
+- `AdminSettings`, admin `Calendar`, `AdminReports` — back buttons
+  → `goTo('home')`.
+- `AdminHome` — 4 staff-card clicks → `goTo('staffDetail',
+  { userId })`. `nav` kept for the auth-error retry (external).
+- `NotesPage` — was URL-driven (`useLocation` for path + query);
+  now props-driven (`role`, `date` from view params). Back button
+  is a `<button onClick={goTo('calendar')}>`.
+- `NotesCenter`, `CalendarWeekView` — `viewAllHref` / hardcoded
+  `<Link to>` replaced with `onViewAll` / `onViewAllNotes`
+  callbacks. Both shells wire the callbacks to
+  `goTo('notes', { date: ... })`.
+- `Home`, `Settings` (staff), `AdminSettings` — logout-fallback
+  URL updated from `/${slug}/login/{staff,admin}` → `/${slug}/login`
+  (combined).
+
+CSS for `.notes-center-view-all`, `.cal-week-notes-view-all`,
+`.notes-page-back` got button resets — they were styled `<Link>`s
+and are now `<button>`s.
+
+**`App.js` is short now:**
+```jsx
+<Routes>
+  <Route path="/" element={<RootRoute />} />
+  <Route path="/:tenant/login" element={
+    <RedirectIfAuthed><TenantLogin /></RedirectIfAuthed>
+  } />
+  <Route path="/:tenant/staff" element={
+    <RequireRole role="staff"><StaffShell {...} /></RequireRole>
+  } />
+  <Route path="/:tenant/admin" element={
+    <RequireRole role="admin"><AdminShell {...} /></RequireRole>
+  } />
+  <Route path="/set-pin" element={
+    <RequireRole role="staff"><SetPin {...} /></RequireRole>
+  } />
+  <Route path="/login/dev" element={<DevLogin />} />
+  <Route path="/dev"       element={<DevPanel />} />
+  <Route path="/kiosk" element={
+    <RequireRole role="staff"><ShiftsView /></RequireRole>
+  } />
+  <Route path="*" element={<Navigate to="/" replace />} />
+</Routes>
+```
+
+`AppShell` is gone from App.js — the shells own their own layout.
+`Outlet` is no longer imported. `Home`, `Timesheet`, `StaffCalendar`,
+`Settings`, `AdminHome`, `StaffManager`, `StaffDetail`, etc., are
+no longer route elements — they're view components inside the
+shells.
+
+**What didn't change:** the API surface, the JWT shape, the auth
+context, every page's *internal* behavior. Only their navigation
+mechanism flipped.
+
+**Verified.** All 22 touched files parse clean (babel). The URL
+stays at `/snoqualmieinn/staff` (or `/snoqualmieinn/admin`)
+regardless of which sidebar tab is active. Tap Timesheet from
+Home → URL doesn't change, content swaps. Refresh → lands on
+Home (shell default). Wrong-role attempt to hit the other shell
+bounces correctly to the user's own. Sign-out hits
+`/snoqualmieinn/login` cleanly.
+
+**Follow-ups.** Two natural next steps when they become
+necessary:
+- Bind the JWT to a tenant on the server so the slug doesn't
+  have to ride in localStorage. Only matters once a second real
+  tenant exists.
+- If the team ever wants deep-linkable sub-pages (e.g., emailing
+  a manager a link to a specific staff member's profile), revisit
+  this and add a `?view=` query param the shell reads on mount.
+  For Snoqualmie alone, not needed.
+
+---
+
 ### 2026-05-22 — Sprint 11.2: collapse picker to `/`, drop the `/login/{staff,admin}` no-slug URLs
 
 Routing cleanup ahead of going live. The picker (property

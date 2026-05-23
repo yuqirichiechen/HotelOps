@@ -1,28 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../auth';
+import { useView } from '../../shells/ViewContext';
 import NotesDrawer from '../../components/Calendar/atoms/NotesDrawer';
 import '../../components/Calendar/Calendar.css';
 import './NotesPage.css';
 
-// Sprint 11: full-screen "View all notes" page reached from the
-// NotesCenter's "View all notes →" link on Day view, and from the
+// Sprint 11: full-screen "View all notes" view, reached from the
+// NotesCenter's "View all notes →" tile on Day view, and from the
 // "View all notes →" link at the bottom of the CalendarWeekView
 // notes feed.
 //
-// Renders the NotesDrawer in `variant='page'` mode — no close
-// button, no surrounding card chrome; takes the whole content area.
-// All 4 tabs (All / Assigned / General / Cross-day) work. Compose
-// footer is present so admins/staff can post directly from here.
-//
-// Route is shared:
-//   /admin/calendar/notes  — admin context (full visibility)
-//   /calendar/notes        — staff context (own dept + all-staff)
-// Both render this same component; we read the current pathname to
-// know which one we're on and apply scoping accordingly.
-//
-// The `?date=YYYY-MM-DD` query param sets the page's date; defaults
-// to today.
+// Sprint 11.2.1: NotesPage is now a view-state target inside the
+// Staff/Admin shell — no URL routing. Props:
+//   role  — 'staff' | 'admin' (set by the parent shell). Drives
+//           the staff-scope filter on the underlying NotesDrawer.
+//   date  — 'YYYY-MM-DD' that opened the page (defaults to today
+//           if missing). The shell's view params carry this; the
+//           page also lets the user navigate days locally.
+// Back navigation flips the shell view back to 'calendar'.
 
 const isoDay = (d) => {
   const pad = n => String(n).padStart(2, '0');
@@ -35,18 +30,12 @@ const addDays = (iso, n) => {
   return isoDay(d);
 };
 
-const NotesPage = () => {
+const NotesPage = ({ role = 'staff', date }) => {
   const { user } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { goTo } = useView();
 
-  const isStaffRoute = location.pathname.startsWith('/calendar/notes');
-  const backHref = isStaffRoute ? '/calendar' : '/admin/calendar';
-
-  // Read ?date= from the URL, default to today.
-  const params = new URLSearchParams(location.search);
-  const initialDate = params.get('date') || isoDay(new Date());
-  const [forDate, setForDate] = useState(initialDate);
+  const isStaffRoute = role !== 'admin';
+  const [forDate, setForDate] = useState(date || isoDay(new Date()));
 
   const [departments, setDepartments] = useState([]);
   useEffect(() => {
@@ -59,21 +48,12 @@ const NotesPage = () => {
   const staffScope = isStaffRoute;
   const staffDepartmentId = isStaffRoute ? (user?.department_id || null) : null;
 
-  // Sync ?date= back to the URL on date changes so refresh + share
-  // links land on the same date.
-  useEffect(() => {
-    const next = new URLSearchParams(location.search);
-    next.set('date', forDate);
-    navigate({ pathname: location.pathname, search: `?${next.toString()}` }, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forDate]);
-
   return (
     <div className="notes-page">
       <header className="notes-page-header">
-        <Link to={backHref} className="notes-page-back">
+        <button type="button" onClick={() => goTo('calendar')} className="notes-page-back">
           <span aria-hidden>‹</span> Back to Calendar
-        </Link>
+        </button>
         <div className="notes-page-date-nav">
           <button
             type="button"

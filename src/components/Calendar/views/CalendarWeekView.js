@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { apiFetch } from '../../../auth';
 
 // Sprint 11: combined Week view per mockup #26 — used by both staff
@@ -26,6 +25,8 @@ import { apiFetch } from '../../../auth';
 //   staffScope        — true = scope to staff's own dept by default
 //   staffDepartmentId — staff's department_id (when staffScope)
 //   onPickDate        — (Date) => void, click a day cell or pill
+//   onViewAllNotes    — () => void; opens the full-screen notes page
+//                       (Sprint 11.2.1: replaces a hard-coded URL link)
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -54,6 +55,7 @@ const CalendarWeekView = ({
   staffScope = false,
   staffDepartmentId = null,
   onPickDate,
+  onViewAllNotes,
 }) => {
   // 'dept' (staff sees only own dept) | 'all' (staff sees all-staff
   // broadcasts only; admin defaults to this — "all staff" view)
@@ -380,12 +382,15 @@ const CalendarWeekView = ({
         )}
 
         <div className="cal-week-notes-foot">
-          <Link
-            to={staffScope ? '/calendar/notes' : '/admin/calendar/notes'}
-            className="cal-week-notes-view-all"
-          >
-            View all notes <span aria-hidden>›</span>
-          </Link>
+          {onViewAllNotes && (
+            <button
+              type="button"
+              onClick={onViewAllNotes}
+              className="cal-week-notes-view-all"
+            >
+              View all notes <span aria-hidden>›</span>
+            </button>
+          )}
         </div>
       </section>
     </div>

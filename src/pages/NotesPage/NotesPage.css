@@ -28,6 +28,12 @@
   font-weight: 600;
   color: var(--brand-text);
   text-decoration: none;
+  /* Sprint 11.2.1: was <Link>; now <button> for in-state nav. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
 .notes-page-back:hover { text-decoration: underline; }
 

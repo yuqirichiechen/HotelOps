@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { apiFetch } from '../../../auth';
 
 // Sprint 11: Notes Center — the top-of-Day-view summary card.
@@ -20,14 +19,16 @@ import { apiFetch } from '../../../auth';
 // Props:
 //   forDate       — 'YYYY-MM-DD'
 //   onTileClick   — (tab: 'all'|'assigned'|'general'|'cross-day') => void
-//   viewAllHref   — absolute href to the full-screen notes page
+//   onViewAll     — callback invoked when "View all notes" is tapped
+//                   (Sprint 11.2.1: replaces the old `viewAllHref` URL;
+//                   in-state navigation through the shell's view stack)
 //   staffScope    — restrict counts to (own dept) + (scope='all')
 //   staffDepartmentId — staff's department for the scope filter
 
 const NotesCenter = ({
   forDate,
   onTileClick,
-  viewAllHref,
+  onViewAll,
   staffScope = false,
   staffDepartmentId = null,
   currentUser = null,
@@ -86,10 +87,14 @@ const NotesCenter = ({
             <p className="notes-center-sub">Stay ahead of shift updates, handoffs, and cross-day notes.</p>
           </div>
         </div>
-        {viewAllHref && (
-          <Link to={viewAllHref} className="notes-center-view-all">
+        {onViewAll && (
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="notes-center-view-all"
+          >
             View all notes <span aria-hidden>›</span>
-          </Link>
+          </button>
         )}
       </header>
 

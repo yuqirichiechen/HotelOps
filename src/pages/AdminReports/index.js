@@ -1,13 +1,14 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useView } from '../../shells/ViewContext';
 import './AdminPlaceholder.css';
 
 const AdminReports = () => {
-  const nav = useNavigate();
+  // Sprint 11.2.1: back-to-Home is a view flip, not a URL change.
+  const { goTo } = useView();
   return (
     <div className="admin-ph-page">
       <div className="admin-ph-topbar">
-        <button className="btn-back" onClick={() => nav('/admin')}>← Home</button>
+        <button className="btn-back" onClick={() => goTo('home')}>← Home</button>
       </div>
       <div className="admin-ph-card">
         <div className="admin-ph-icon">📊</div>

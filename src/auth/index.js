@@ -179,11 +179,11 @@ export const RequireRole = ({ role = 'any', children }) => {
 
   if (!user) {
     // Sprint 11.2: both roles funnel to `/` (the picker). After the
-    // user picks a property + signs in, the role-aware login pages
-    // route them to the right post-auth destination, and the `from`
-    // state below preserves the originally-requested URL across the
-    // redirect for the standard "you tried to deep-link, sign in
-    // then we'll take you there" flow.
+    // user picks a property + signs in, the per-tenant login page
+    // routes them to the right post-auth destination, and the
+    // `from` state below preserves the originally-requested URL
+    // across the redirect for the standard "you tried to deep-link,
+    // sign in then we'll take you there" flow.
     return <Navigate to="/" replace state={{ from: location }} />;
   }
 
@@ -194,7 +194,16 @@ export const RequireRole = ({ role = 'any', children }) => {
     (role === 'staff' && !isAdmin);
 
   if (!ok) {
-    return <Navigate to={isAdmin ? '/admin' : '/'} replace />;
+    // Sprint 11.2.1: wrong role for this surface — send them to
+    // their own shell. Per-tenant slug comes from localStorage
+    // (set on login); fall back to `/` if missing.
+    const slug = typeof window !== 'undefined'
+      ? localStorage.getItem('hotelops-tenant-slug')
+      : null;
+    if (slug) {
+      return <Navigate to={isAdmin ? `/${slug}/admin` : `/${slug}/staff`} replace />;
+    }
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -206,6 +215,16 @@ export const RequireRole = ({ role = 'any', children }) => {
 export const RedirectIfAuthed = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/'} replace />;
+  if (user) {
+    // Sprint 11.2.1: authed users on the login page get bounced to
+    // their per-tenant shell.
+    const slug = typeof window !== 'undefined'
+      ? localStorage.getItem('hotelops-tenant-slug')
+      : null;
+    if (slug) {
+      return <Navigate to={user.role === 'admin' ? `/${slug}/admin` : `/${slug}/staff`} replace />;
+    }
+    return <Navigate to="/" replace />;
+  }
   return children;
 };

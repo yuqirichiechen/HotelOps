@@ -47,6 +47,12 @@
   font-weight: 500;
   letter-spacing: 0.01em;
   transition: all 0.15s ease;
+  /* Sprint 11.2.1: was <a> via NavLink; now <button> for in-state nav. */
+  background: transparent;
+  border: 0;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
 }
 
 .sidebar-link:hover {
@@ -238,6 +244,10 @@
     letter-spacing: 0.02em;
     transition: color 0.15s ease;
     padding-bottom: env(safe-area-inset-bottom);
+    /* Sprint 11.2.1: was <a> via NavLink; now <button> for in-state nav. */
+    background: transparent;
+    border: 0;
+    cursor: pointer;
   }
 
   .bottom-nav-item.active {

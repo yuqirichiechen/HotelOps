@@ -106,7 +106,7 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch, hidden }) => {
   );
 };
 
-const StaffLogin = () => {
+const StaffLogin = ({ onRoleSwitch }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -244,9 +244,14 @@ const StaffLogin = () => {
       if (tenant?.slug) {
         localStorage.setItem('hotelops-tenant-slug', tenant.slug);
       }
+      // Sprint 11.2.1: post-login lands on the per-tenant staff shell.
+      // The pre-redirect `from` (set by RequireRole when the user
+      // tried to deep-link into a protected URL while unauthed) is
+      // still honored — it'll resolve to `/:slug/staff` in the
+      // common case, or whatever the user originally typed.
       const next = res.user.pin_must_set
         ? '/set-pin'
-        : (loc.state?.from?.pathname || '/');
+        : (loc.state?.from?.pathname || `/${tenant.slug}/staff`);
       nav(next, { replace: true });
       return;
     }
@@ -312,14 +317,17 @@ const StaffLogin = () => {
             >
               <HotelOpsLogo size="lg" />
             </TransitionLink>
-            <TransitionLink
-              to={tenantSlug ? `/${tenantSlug}/login/admin` : '/'}
+            {/* Sprint 11.2.1: in-page role switch — flips the
+                TenantLogin parent's `mode` state. URL stays put. */}
+            <button
+              type="button"
+              onClick={onRoleSwitch}
               className="login-role-switch"
               aria-label="Manager sign-in"
               title="Manager sign-in"
             >
               <RoleIcon role="manager" alt="Manager sign-in" />
-            </TransitionLink>
+            </button>
           </div>
         </div>
 

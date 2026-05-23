@@ -20,6 +20,10 @@ import '../../components/shared/HotelOpsLogo.css';
 // post-pick "Manager sign-in" / "Staff sign-in" link so the visual
 // language stays consistent across the login family.
 
+// Sprint 11.2.1: `kind` is no longer used — the post-pick login is
+// a single combined page at `/:tenant/login`. Kept the prop slot in
+// case future variants want to swap copy. Default subtitle remains
+// kiosk-flavored ("clock in") since that's the dominant path.
 const TenantPicker = ({ kind }) => {
   const tenants = Object.values(KNOWN_TENANTS);
 
@@ -55,7 +59,7 @@ const TenantPicker = ({ kind }) => {
         <ul className="tenant-picker-list">
           {tenants.map(t => (
             <li key={t.slug}>
-              <TransitionLink to={`/${t.slug}/login/${kind}`} className="tenant-picker-row">
+              <TransitionLink to={`/${t.slug}/login`} className="tenant-picker-row">
                 {t.logoUrl ? (
                   <span className="tenant-picker-logo-wrap">
                     {/* Sprint 9.2.2: per-tenant view-transition-name so

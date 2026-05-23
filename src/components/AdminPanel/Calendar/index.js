@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { flushSync } from 'react-dom';
 import { useAuth } from '../../../auth';
+import { useView } from '../../../shells/ViewContext';
 import YearView from './YearView';
 import MonthView from './MonthView';
 import CalendarWeekView from '../../Calendar/views/CalendarWeekView';
@@ -56,7 +56,9 @@ const runWithTransition = (cb, dir = null) => {
 };
 
 const SchedulingManager = () => {
-  const nav = useNavigate();
+  // Sprint 11.2.1: back-to-Home + notes "view all" go through the
+  // AdminShell's view state instead of URL nav.
+  const { goTo } = useView();
   const { user } = useAuth(); // Sprint 10.1: needed for HandoffsDrawer author gating
 
   // ── View + cursor state ─────────────────────────────────────────────────
@@ -312,7 +314,7 @@ const SchedulingManager = () => {
               ‹ {backTarget === 'month' ? MONTH_NAMES[cursor.getMonth()] : cursor.getFullYear()}
             </button>
           ) : (
-            <button className="btn-back" onClick={() => nav('/admin')}>‹ Home</button>
+            <button className="btn-back" onClick={() => goTo('home')}>‹ Home</button>
           )}
           <h2 className="sched-title">{headerLabel}</h2>
         </div>
@@ -375,6 +377,7 @@ const SchedulingManager = () => {
             currentUser={user}
             staffScope={false}
             onPickDate={(d) => zoomTo('day', new Date(d))}
+            onViewAllNotes={() => goTo('notes', { date: fmtDate(cursor) })}
           />
         )}
         {view === 'day' && (
@@ -388,7 +391,7 @@ const SchedulingManager = () => {
             <NotesCenter
               forDate={fmtDate(cursor)}
               onTileClick={handleNotesTile}
-              viewAllHref={`/admin/calendar/notes?date=${fmtDate(cursor)}`}
+              onViewAll={() => goTo('notes', { date: fmtDate(cursor) })}
               currentUser={user}
             />
             <DayView

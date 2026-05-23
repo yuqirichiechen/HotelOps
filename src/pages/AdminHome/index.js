@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useView } from '../../shells/ViewContext';
 import { apiFetch, useAuth } from '../../auth';
 import './AdminHome.css';
 
@@ -50,6 +51,10 @@ const VIEWS = ['on-clock', 'coming-up', 'hours', 'pending-ot'];
 const AdminHome = () => {
   const { user, logout } = useAuth();
   const nav              = useNavigate();
+  // Sprint 11.2.1: staff-card clicks drill into the StaffDetail
+  // view inside the AdminShell; `nav` stays for the external
+  // sign-in retry (the auth-error fallback below).
+  const { goTo }         = useView();
 
   const [data,        setData]        = useState(null);
   const [loading,     setLoading]     = useState(true);
@@ -200,7 +205,7 @@ const AdminHome = () => {
                   <li
                     key={w.user_id}
                     className="adm-working-row"
-                    onClick={() => nav(`/admin/staff/${w.user_id}`)}
+                    onClick={() => goTo('staffDetail', { userId: w.user_id })}
                   >
                     <div className="adm-working-avatar">
                       {(w.name || '?').charAt(0).toUpperCase()}
@@ -247,7 +252,7 @@ const AdminHome = () => {
                 <li
                   key={s.schedule_id}
                   className="adm-sched-row"
-                  onClick={() => nav(`/admin/staff/${s.user_id}`)}
+                  onClick={() => goTo('staffDetail', { userId: s.user_id })}
                 >
                   <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
                   <div className="adm-sched-info">
@@ -296,7 +301,7 @@ const AdminHome = () => {
                   <li
                     key={s.user_id}
                     className="adm-hours-row"
-                    onClick={() => nav(`/admin/staff/${s.user_id}`)}
+                    onClick={() => goTo('staffDetail', { userId: s.user_id })}
                   >
                     <div className="adm-hours-info">
                       <div className="adm-hours-name">{s.name}</div>
@@ -340,7 +345,7 @@ const AdminHome = () => {
                 <li
                   key={s.user_id}
                   className="adm-hours-row"
-                  onClick={() => nav(`/admin/staff/${s.user_id}`)}
+                  onClick={() => goTo('staffDetail', { userId: s.user_id })}
                 >
                   <div className="adm-hours-info">
                     <div className="adm-hours-name">{s.name}</div>

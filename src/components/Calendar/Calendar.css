@@ -151,6 +151,11 @@
   color: var(--brand-text);
   text-decoration: none;
   white-space: nowrap;
+  /* Sprint 11.2.1: was <Link>; now a <button> for in-state nav. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 .notes-center-view-all:hover { text-decoration: underline; }
 .notes-center-tiles {
@@ -1185,5 +1190,10 @@
   font-weight: 600;
   color: var(--brand-text);
   text-decoration: none;
+  /* Sprint 11.2.1: was <Link>; now <button> for in-state nav. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 .cal-week-notes-view-all:hover { text-decoration: underline; }
