@@ -71,7 +71,7 @@ const AdminLogin = () => {
           </div>
           <div className="login-headline-actions">
             <TransitionLink
-              to="/login/admin"
+              to="/"
               className="login-topbar-brand"
               aria-label="HotelOps — back to property selection"
               title="Back to property selection"
@@ -79,7 +79,7 @@ const AdminLogin = () => {
               <HotelOpsLogo size="lg" />
             </TransitionLink>
             <TransitionLink
-              to={tenantSlug ? `/${tenantSlug}/login/staff` : '/login/staff'}
+              to={tenantSlug ? `/${tenantSlug}/login/staff` : '/'}
               className="login-role-switch"
               aria-label="Staff sign-in"
               title="Staff sign-in"

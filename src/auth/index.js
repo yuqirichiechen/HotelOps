@@ -178,8 +178,13 @@ export const RequireRole = ({ role = 'any', children }) => {
   if (loading) return null;
 
   if (!user) {
-    const target = role === 'admin' ? '/login/admin' : '/login/staff';
-    return <Navigate to={target} replace state={{ from: location }} />;
+    // Sprint 11.2: both roles funnel to `/` (the picker). After the
+    // user picks a property + signs in, the role-aware login pages
+    // route them to the right post-auth destination, and the `from`
+    // state below preserves the originally-requested URL across the
+    // redirect for the standard "you tried to deep-link, sign in
+    // then we'll take you there" flow.
+    return <Navigate to="/" replace state={{ from: location }} />;
   }
 
   const isAdmin = user.role === 'admin';

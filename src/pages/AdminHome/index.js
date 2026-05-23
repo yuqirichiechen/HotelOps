@@ -413,7 +413,7 @@ const AdminHome = () => {
               className="adm-error-retry"
               onClick={async () => {
                 await logout();
-                nav('/login/admin', { replace: true });
+                nav('/', { replace: true });
               }}
             >
               Sign in

@@ -62,7 +62,8 @@ const Settings = ({ theme, onToggleTheme }) => {
     const slug = typeof window !== 'undefined'
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
-    const loginPath = slug ? `/${slug}/login/staff` : '/login/staff';
+    // Sprint 11.2: picker URL is `/` now (was `/login/staff`).
+    const loginPath = slug ? `/${slug}/login/staff` : '/';
     await logout();
     nav(loginPath, { replace: true });
   };

@@ -82,7 +82,7 @@ const DevLogin = () => {
         </form>
 
         <div className="login-switch">
-          <TransitionLink to="/login/staff">Back to property select →</TransitionLink>
+          <TransitionLink to="/">Back to property select →</TransitionLink>
         </div>
       </div>
     </div>

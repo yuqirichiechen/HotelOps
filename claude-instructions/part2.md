@@ -792,6 +792,101 @@ nav row:
 
 ---
 
+### 2026-05-22 — Sprint 11.2: collapse picker to `/`, drop the `/login/{staff,admin}` no-slug URLs
+
+Routing cleanup ahead of going live. The picker (property
+selector) was living at `/login/staff` and `/login/admin` — two
+URLs for what's effectively the same screen — and the URL the
+kiosk lands on at boot (`/`) auth-bounced to one of those
+picker URLs, so every cold open paid an extra redirect. Made
+`/` the canonical picker:
+
+**Route map (before → after):**
+- `/` — was authed-only staff Home → now `RootRoute`: picker
+  if unauthed, Home (with shell) if staff authed, redirect to
+  `/admin` if admin authed.
+- `/login/staff`, `/login/admin` — were the picker → **deleted.**
+  The catch-all `*` already routes to `/`, so any stray
+  reference 1-hops to the new picker (effectively a built-in
+  redirect for free). No dedicated 301 needed since we're
+  pre-launch — nothing's bookmarked yet.
+- `/:tenant/login/staff`, `/:tenant/login/admin` — unchanged.
+  Tenant-prefixed logins are still the only URLs that show
+  the branded login form, by design.
+- `/admin/*`, `/timesheet`, `/calendar`, `/settings`, etc. —
+  **all post-login routes unchanged.** Flat URLs, tenant
+  identity lives in the JWT + the tenant logo banner on every
+  page (Fidelity Active Trader Pro pattern). No `/:tenant`
+  prefix on the authed app shell — keeps the URL surface
+  small, no bookmark migration risk, no nav-helper sweep.
+
+**`RootRoute` (App.js):**
+```jsx
+const RootRoute = ({ theme, onToggleTheme }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <TenantPicker kind="staff" />;
+  if (user.role === 'admin') return <Navigate to="/admin" replace />;
+  return (
+    <AppShell theme={theme} onToggleTheme={onToggleTheme}>
+      <Home />
+    </AppShell>
+  );
+};
+```
+
+Picker `kind` defaults to staff (the kiosk flow); managers who
+land here pick property → staff login → tap the manager role-
+icon in the headline to switch. One extra tap for the
+infrequent manager-on-a-cold-device case, zero extra taps for
+the kiosk-staff hot path.
+
+**`AppShell` signature** now accepts optional `children` (falls
+back to `<Outlet />`). Lets `RootRoute` render Home inside the
+shell directly instead of nesting another route layer just to
+get the sidebar.
+
+**`RequireRole` (auth/index.js)** unauthed redirect target
+collapsed from `/login/{staff,admin}` → `/`. Same `from`
+state on the Navigate so the standard deep-link-then-sign-in
+flow still routes back to the originally-requested URL after
+login.
+
+**Literal `/login/staff` and `/login/admin` sweep — 7 sites:**
+- `pages/Home/index.js`, `pages/Settings/index.js`,
+  `components/AdminPanel/AdminSettings.js` — auto/manual
+  signout fallbacks (`slug ? '/:slug/login/X' : '/'`). The
+  slug-aware path is unchanged; only the no-slug fallback
+  flips to `/`.
+- `pages/AdminHome/index.js` — admin error-card "Sign in"
+  button: `nav('/login/admin')` → `nav('/')`.
+- `pages/Login/StaffLogin.js`, `pages/Login/AdminLogin.js` —
+  HotelOps-logo "back to property selection" link + the
+  opposite-role icon's no-slug fallback.
+- `pages/Login/DevLogin.js` — "Back to property select →"
+  link target.
+
+**What didn't change:** auth context shape, JWT payload, every
+`navigate()` and `<Link>` inside the authed app shell, any
+admin/staff route, the API surface. Flat post-login URLs are
+the whole point.
+
+**Verified.** Cold-load `/` → picker. Tap Snoqualmie Inn →
+`/snoqualmieinn/login/staff`. Tap manager icon →
+`/snoqualmieinn/login/admin`. Sign in → `/admin` (admin) or
+`/` (staff Home). Sign out from any surface → tenant-aware
+`/snoqualmieinn/login/...` if the slug is cached, else
+picker at `/`. No 404s on any internal nav.
+
+**Follow-ups.** None outstanding. When a second real tenant
+joins the platform, the JWT should grow a tenant claim so the
+server can scope queries (and the client can show the right
+tenant logo without depending on localStorage); the Snoqualmie
+pilot doesn't need it yet, but it's the next obvious
+multi-tenancy step.
+
+---
+
 ### 2026-05-22 — Sprint 11.1.3: free up identifiers on soft-delete + read-only numeric login input
 
 Two follow-up bugs from 11.1.2.

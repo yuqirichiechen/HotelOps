@@ -111,10 +111,11 @@ const Home = () => {
     // (logout shouldn't touch this key today, but reading early is
     // robust to future logout flows that clear more state). If the
     // slug is missing for any reason — old session, fresh install —
-    // fall back to the bare `/login/staff` picker so the user can
-    // pick again instead of hitting a broken URL.
+    // fall back to `/` (the picker) so the user can pick again
+    // instead of hitting a broken URL. (Sprint 11.2: picker URL was
+    // `/login/staff` pre-launch; now it's `/`.)
     const slug = localStorage.getItem('hotelops-tenant-slug');
-    const loginPath = slug ? `/${slug}/login/staff` : '/login/staff';
+    const loginPath = slug ? `/${slug}/login/staff` : '/';
     await logout();
     // Sprint 8.6.2: animate the page swap. The login page's `.login-card`
     // already has its own slide-in animation; this gives the *outer* page

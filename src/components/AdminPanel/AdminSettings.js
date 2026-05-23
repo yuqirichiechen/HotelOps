@@ -198,7 +198,8 @@ const AdminSettings = () => {
     const slug = typeof window !== 'undefined'
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
-    const loginPath = slug ? `/${slug}/login/admin` : '/login/admin';
+    // Sprint 11.2: picker URL is `/` now (was `/login/admin`).
+    const loginPath = slug ? `/${slug}/login/admin` : '/';
     await logout();
     nav(loginPath, { replace: true });
   };

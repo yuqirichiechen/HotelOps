@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
-import { AuthProvider, RequireRole, RedirectIfAuthed } from './auth';
+import { AuthProvider, RequireRole, RedirectIfAuthed, useAuth } from './auth';
 import Sidebar from './components/Layout/Sidebar';
 import ShiftsView from './components/ShiftsView';
 import StaffCalendar from './pages/StaffCalendar';
@@ -42,14 +42,32 @@ const getInitialTheme = () => {
   return null;
 };
 
-const AppShell = ({ theme, onToggleTheme }) => (
+const AppShell = ({ theme, onToggleTheme, children }) => (
   <div className="app-shell">
     <Sidebar theme={theme} onToggleTheme={onToggleTheme} />
     <main className="app-main">
-      <Outlet />
+      {children ?? <Outlet />}
     </main>
   </div>
 );
+
+// Sprint 11.2: `/` is now the property picker for unauthed visitors
+// and the staff Home for authed staff. Admins hitting `/` get bounced
+// to `/admin` (their proper landing). This collapses the two old
+// no-slug picker URLs (`/login/staff`, `/login/admin`) into one
+// canonical entry point — the URL the kiosk loads on boot is also
+// the URL the picker lives on.
+const RootRoute = ({ theme, onToggleTheme }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <TenantPicker kind="staff" />;
+  if (user.role === 'admin') return <Navigate to="/admin" replace />;
+  return (
+    <AppShell theme={theme} onToggleTheme={onToggleTheme}>
+      <Home />
+    </AppShell>
+  );
+};
 
 const App = () => {
   const [theme, setTheme] = useState(getInitialTheme);
@@ -74,21 +92,12 @@ const App = () => {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* ── Public login routes ─────────────────────────────────────── */}
-          {/* Sprint 9 / 9.1.1: bare /login/* hits the TenantPicker (a list
-              of registered properties). Only /:tenant/login/* shows the
-              actual branded login. This prevents the bare URL from
-              auto-branding as the first/default tenant, which surprised
-              the GM ("why does this hotel's URL show our name without
-              the slug?"). Single-property deploys can short-circuit the
-              picker via DNS/Nginx redirecting bare /login/* to their
-              slug. */}
-          <Route path="/login/staff" element={
-            <RedirectIfAuthed><TenantPicker kind="staff" /></RedirectIfAuthed>
-          } />
-          <Route path="/login/admin" element={
-            <RedirectIfAuthed><TenantPicker kind="admin" /></RedirectIfAuthed>
-          } />
+          {/* ── Public root + per-tenant login ──────────────────────────── */}
+          {/* Sprint 11.2: collapsed the old `/login/staff` + `/login/admin`
+              no-slug picker routes into a single canonical `/`. RootRoute
+              picks between picker / Home / admin redirect based on auth
+              state. Per-tenant logins still live at `/:tenant/login/*`. */}
+          <Route path="/" element={<RootRoute theme={theme} onToggleTheme={toggleTheme} />} />
           <Route path="/:tenant/login/staff" element={
             <RedirectIfAuthed><StaffLogin /></RedirectIfAuthed>
           } />
@@ -137,12 +146,14 @@ const App = () => {
           </Route>
 
           {/* ── Staff (any non-admin authed) ────────────────────────────── */}
+          {/* Sprint 11.2: `/` is no longer in this wrapper — RootRoute
+              above owns the root and renders Home directly when staff
+              are authed (or the picker when they're not). */}
           <Route element={
             <RequireRole role="staff">
               <AppShell theme={theme} onToggleTheme={toggleTheme} />
             </RequireRole>
           }>
-            <Route path="/"            element={<Home />} />
             <Route path="/timesheet"   element={<Timesheet />} />
             {/* Sprint 10.1: /calendar now serves the new authed
                 StaffCalendar (Week + Day, with handoffs drawer).
