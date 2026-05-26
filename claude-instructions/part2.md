@@ -792,6 +792,27 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 11.6.1: icon PNGs moved into the public/ asset root
+
+11.6 wired the sidebar to load PNGs from `/logo/<base>_<theme>.png`,
+but the broken-image squares showed up because the GM dropped the
+files into `/logo/` at the *project root* — Create-React-App only
+serves static assets from `/public/`, so the URL 404'd silently
+(no console error, just `<img>` falling back to the broken-image
+placeholder).
+
+Created `public/logo/` and copied all 14 icon variants
+(`home`, `timesheet`, `calendar`, `stafficon`, `logbook`,
+`assistant`, `settings`, each in `_dark.png` + `_light.png`) into
+it from the project-root staging folder. Sidebar's `iconSrc(base)`
+helper resolves cleanly now — no code change needed, just the
+asset placement.
+
+The staging copy under `/logo/` was left untouched; future icon
+drops should copy into `public/logo/` to be live.
+
+---
+
 ### 2026-05-26 — Sprint 11.6: sidebar icon swap (emoji → tenant PNGs) + tenant-branded sidebar brand
 
 Pure UI swap — wires up the custom icon set the GM dropped in,
