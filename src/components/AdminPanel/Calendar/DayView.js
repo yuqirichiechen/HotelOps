@@ -73,19 +73,61 @@ const computeShiftHours = (start, end) => {
   return Math.round(((eMin - sMin) / 60) * 10) / 10;
 };
 
-// Greedy lane-packing for timeline mode.
+// Sprint 12.4: lane-packing now groups by department first, then
+// packs lanes within each dept group. Two shifts in the same dept
+// that don't overlap share a lane (saves horizontal space); two
+// shifts in the same dept that do overlap get adjacent sub-lanes
+// inside that dept's column band. Departments end up as contiguous
+// column groups, so the dept-color tinting on each bar reads as a
+// visual grouping cue (vs. before, where five dept-mixed lanes
+// looked like five unrelated columns).
+//
+// Output shape:
+//   shifts: [{ ..., _lane: globalIndex }]
+//   laneCount: total lanes across all depts
+//   deptBands: [{ deptId, deptName, startLane, lanes }]  — for the
+//              optional faint dept-band background overlays.
 const laneAssign = (shifts) => {
-  const sorted = [...shifts].sort((a, b) => a.start_time.localeCompare(b.start_time));
-  const lanes = [];
-  return {
-    shifts: sorted.map(s => {
+  // Group by department (null department_id = "__unassigned__" bucket).
+  const byDept = new Map();
+  for (const s of shifts) {
+    const key = s.department_id ?? '__none__';
+    if (!byDept.has(key)) byDept.set(key, []);
+    byDept.get(key).push(s);
+  }
+  // Stable dept order: by the earliest start time inside each group.
+  const deptOrder = [...byDept.entries()].sort((a, b) => {
+    const aStart = Math.min(...a[1].map(s => timeToMinutes(s.start_time)));
+    const bStart = Math.min(...b[1].map(s => timeToMinutes(s.start_time)));
+    return aStart - bStart;
+  });
+
+  const placed = [];
+  const deptBands = [];
+  let globalLane = 0;
+  for (const [deptId, list] of deptOrder) {
+    const sorted = [...list].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    const lanes = [];
+    for (const s of sorted) {
       const startMin = timeToMinutes(s.start_time);
       let lane = lanes.findIndex(end => end <= startMin);
       if (lane === -1) { lane = lanes.length; lanes.push(0); }
       lanes[lane] = timeToMinutes(s.end_time);
-      return { ...s, _lane: lane };
-    }),
-    laneCount: lanes.length || 1,
+      placed.push({ ...s, _lane: globalLane + lane });
+    }
+    const deptLaneCount = lanes.length || 1;
+    deptBands.push({
+      deptId,
+      deptName: sorted[0]?.department_name || null,
+      startLane: globalLane,
+      lanes: deptLaneCount,
+    });
+    globalLane += deptLaneCount;
+  }
+  return {
+    shifts: placed,
+    laneCount: globalLane || 1,
+    deptBands,
   };
 };
 
@@ -106,12 +148,90 @@ const horizontalShiftBox = (start, end) => {
   return { left: (s / 1440) * 100, width: ((e - s) / 1440) * 100 };
 };
 
+// Sprint 12.4: friendly clock-time formatter for ISO timestamps in
+// the modal. Returns "8:38 AM"-ish; falls back to the HH:MM:SS slice
+// for the rare case the modal gets a synthesized (no-clock-out)
+// shift whose start was already derived from `clock_in_time`.
+const fmtClockTime = (iso) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+// Sprint 12.4: shift-detail modal. Opens when any bar (timeline or
+// resource mode) is tapped. Centered card with a small dept-color
+// dot, name + on-shift live pill, department, and a 3-row clock-in
+// / clock-out / hours summary. Backdrop click + ✕ button both
+// dismiss; ESC handled at the document level via a useEffect below.
+const ShiftDetailModal = ({ shift, onClose }) => {
+  const color = DEPT_COLORS[shift.department_name] || DEFAULT_COLOR;
+  const inTime  = fmtClockTime(shift.clock_in_time)
+                  || fmtTimeRange(shift.start_time.slice(0,5), '00:00').split(' – ')[0];
+  const outTime = shift.is_in_progress
+    ? 'On shift'
+    : (fmtClockTime(shift.clock_out_time)
+       || fmtTimeRange('00:00', shift.end_time.slice(0,5)).split(' – ')[1]);
+  const hours = computeShiftHours(shift.start_time, shift.end_time);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="day-shift-detail-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="day-shift-detail-card"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="day-shift-detail-name"
+      >
+        <button
+          type="button"
+          className="day-shift-detail-close"
+          onClick={onClose}
+          aria-label="Close"
+        >✕</button>
+        <div
+          className="day-shift-detail-dept-bar"
+          style={{ background: color.border }}
+          aria-hidden
+        />
+        <h3 id="day-shift-detail-name" className="day-shift-detail-name">
+          {shift.employee_name}
+          {shift.is_in_progress && (
+            <span className="day-shift-detail-live-pill">
+              <span className="day-shift-detail-live-dot" /> ON SHIFT
+            </span>
+          )}
+        </h3>
+        <div className="day-shift-detail-dept">
+          {shift.department_name || 'Unassigned'}
+        </div>
+        <dl className="day-shift-detail-rows">
+          <div><dt>Clock in</dt><dd>{inTime}</dd></div>
+          <div><dt>Clock out</dt><dd>{outTime}</dd></div>
+          <div><dt>Hours</dt><dd>{hours}h{shift.is_in_progress ? ' (so far)' : ''}</dd></div>
+        </dl>
+      </div>
+    </div>
+  );
+};
+
 const DayView = ({ date, schedules, employees, departments, loading, onPickDate, onEdit }) => {
   const dateStr = fmtDate(date);
 
   // ── view state ──────────────────────────────────────────────────────────
   const [deptFilter, setDeptFilter] = useState('all'); // 'all' | dept_id
   const [viewMode,   setViewMode]   = useState('resource'); // 'resource' | 'timeline'
+  // Sprint 12.4: tap-to-see-detail. Mobile rows can't fit the full
+  // time range inside the bar (the screenshot showed "8:38am – ..."
+  // truncated), so any bar (timeline or rows mode) opens a modal
+  // with the full info. Desktop also benefits — same modal, same
+  // click affordance, no need to depend on hover/title tooltips.
+  const [detailShift, setDetailShift] = useState(null);
+  const closeDetail = () => setDetailShift(null);
 
   // Smart default on filter change. Admin can still override the toggle
   // afterward — this just sets the *starting* mode.
@@ -226,9 +346,23 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
       </div>
 
       {viewMode === 'timeline' ? (
-        <TimelineMode shifts={filteredShifts} onEdit={onEdit} />
+        <TimelineMode
+          shifts={filteredShifts}
+          onEdit={onEdit}
+          onShowDetail={setDetailShift}
+        />
       ) : (
-        <ResourceMode deptGroups={empsByDept} shifts={filteredShifts} onEdit={onEdit} />
+        <ResourceMode
+          deptGroups={empsByDept}
+          shifts={filteredShifts}
+          onEdit={onEdit}
+          onShowDetail={setDetailShift}
+        />
+      )}
+
+      {/* Sprint 12.4: shift-detail modal — opened by any bar click. */}
+      {detailShift && (
+        <ShiftDetailModal shift={detailShift} onClose={closeDetail} />
       )}
     </div>
   );
@@ -242,8 +376,10 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
 // hours is identical (the prior 24-row layout had the first row's label
 // special-cased and the gap between 12 AM and 1 AM read smaller than the
 // others).
-const TimelineMode = ({ shifts, onEdit }) => {
-  const { shifts: laneShifts, laneCount } = useMemo(() => laneAssign(shifts), [shifts]);
+const TimelineMode = ({ shifts, onEdit, onShowDetail }) => {
+  const { shifts: laneShifts, laneCount, deptBands } = useMemo(
+    () => laneAssign(shifts), [shifts]
+  );
   const hours = useMemo(() => Array.from({ length: 25 }, (_, h) => h), []);
   return (
     <div className="day-timeline-wrap">
@@ -261,6 +397,29 @@ const TimelineMode = ({ shifts, onEdit }) => {
           ))}
         </div>
         <div className="day-shift-surface">
+          {/* Sprint 12.4: faint dept-band underlays render *first*
+              so hour-lines and shift buttons (both rendered after)
+              stack on top. Each band spans its dept's contiguous
+              lane range; multi-lane bands read as "this whole
+              column-block is one dept." */}
+          {deptBands.map(band => {
+            const color = DEPT_COLORS[band.deptName] || DEFAULT_COLOR;
+            const left  = (band.startLane / laneCount) * 100;
+            const width = (band.lanes     / laneCount) * 100;
+            return (
+              <div
+                key={`band-${band.deptId}`}
+                className="day-timeline-dept-band"
+                style={{
+                  left:  `${left}%`,
+                  width: `${width}%`,
+                  background: color.bg,
+                  borderColor: color.border,
+                }}
+                aria-hidden
+              />
+            );
+          })}
           {hours.map(h => (
             <div key={h} className="day-hour-line" style={{ top: `${(h / 24) * 100}%` }} />
           ))}
@@ -270,15 +429,17 @@ const TimelineMode = ({ shifts, onEdit }) => {
             const left  = (s._lane / laneCount) * 100;
             const width = (1 / laneCount) * 100;
             const color = DEPT_COLORS[s.department_name] || DEFAULT_COLOR;
-            // Sprint 12: observed clock entries (is_actual) are
-            // display-only — admin manages the underlying time_entry
-            // via Staff → Detail. Scheduled-shift edit is still
-            // available for any legacy `s.schedule_id` that lacks
-            // the `entry-` prefix.
-            const interactive = !s.is_actual;
-            const endLabel    = s.is_in_progress
+            const endLabel = s.is_in_progress
               ? 'now'
               : fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5)).split(' – ')[1];
+            // Sprint 12.4: every bar opens the detail modal. Edit
+            // affordance is preserved only for legacy non-actual
+            // (admin-assigned) shifts that would still benefit from
+            // the AssignModal — clock entries route to the modal.
+            const handleClick = () => {
+              if (s.is_actual) onShowDetail(s);
+              else onEdit(s);
+            };
             return (
               <button
                 key={s.schedule_id}
@@ -292,9 +453,9 @@ const TimelineMode = ({ shifts, onEdit }) => {
                   background:  color.bg,
                   borderColor: color.border,
                   color:       color.text,
-                  cursor:      interactive ? 'pointer' : 'default',
+                  cursor:      'pointer',
                 }}
-                onClick={interactive ? () => onEdit(s) : undefined}
+                onClick={handleClick}
               >
                 <div className="day-shift-name">
                   {s.employee_name}
@@ -321,7 +482,7 @@ const TimelineMode = ({ shifts, onEdit }) => {
 //   - bar ≥ 720px → step 1h (25 labels)
 // The first (h=0) and last (h=24) labels are anchored to their respective
 // edges via data-edge so they don't get clipped by translate(-50%).
-const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
+const ResourceMode = ({ deptGroups, shifts, onEdit, onShowDetail }) => {
   // Build shift index by user_id for the per-row lookup. Limited to one
   // shift per user per day to match the data model the rest of the views
   // assume.
@@ -405,9 +566,20 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
               : DEFAULT_COLOR;
             return (
               <div key={emp.user_id} className="day-resource-row">
-                <div className="day-resource-name-col" title={emp.name}>
+                <div
+                  className={`day-resource-name-col${s?.is_in_progress ? ' is-in-progress' : ''}`}
+                  title={s?.is_in_progress ? `${emp.name} — on shift` : emp.name}
+                >
                   <span className="day-resource-initial">{(emp.name || '?').charAt(0).toUpperCase()}</span>
                   <span className="day-resource-name">{emp.name.split(' ')[0]}</span>
+                  {/* Sprint 12.4: green live dot at the name when
+                      the staff is currently on shift. Survives even
+                      when the bar gets ellipsised on narrow viewports
+                      — the dot is the primary "is this person live?"
+                      signal in rows mode. */}
+                  {s?.is_in_progress && (
+                    <span className="day-resource-name-live-dot" aria-label="On shift" />
+                  )}
                 </div>
                 <div className="day-resource-track">
                   {/* Ticks at 6 / 12 / 18 */}
@@ -415,12 +587,16 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
                   <div className="day-resource-tick" style={{ left: '50%' }} />
                   <div className="day-resource-tick" style={{ left: '75%' }} />
                   {s && box && (() => {
-                    // Sprint 12: observed clock entries are display-only;
-                    // in-progress flag drives the live-dot indicator.
-                    const interactive = !s.is_actual;
                     const startStr = s.start_time.slice(0,5);
                     const endStr   = s.is_in_progress ? 'now' : s.end_time.slice(0,5);
                     const rangeLabel = `${fmtTimeRange(startStr, endStr === 'now' ? '00:00' : endStr).split(' – ')[0]} – ${endStr === 'now' ? 'now' : fmtTimeRange(startStr, endStr).split(' – ')[1]}`;
+                    // Sprint 12.4: bars open the detail modal on tap
+                    // — keeps mobile usable when the time-range text
+                    // is ellipsised by the narrow bar width.
+                    const handleClick = () => {
+                      if (s.is_actual) onShowDetail(s);
+                      else onEdit(s);
+                    };
                     return (
                       <button
                         type="button"
@@ -431,17 +607,27 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
                           background:  color.bg,
                           borderColor: color.border,
                           color:       color.text,
-                          cursor:      interactive ? 'pointer' : 'default',
+                          cursor:      'pointer',
                         }}
-                        title={`${rangeLabel} · ${computeShiftHours(s.start_time, s.end_time)}h${s.notes ? ` · ${s.notes}` : ''}`}
-                        onClick={interactive ? () => onEdit(s) : undefined}
+                        title={`${rangeLabel} · ${computeShiftHours(s.start_time, s.end_time)}h${s.is_in_progress ? ' · on shift' : ''}${s.notes ? ` · ${s.notes}` : ''}`}
+                        onClick={handleClick}
                       >
-                        <span className="day-resource-shift-time">
-                          {rangeLabel}
-                          {' · '}
-                          <span className="day-resource-shift-hours">{computeShiftHours(s.start_time, s.end_time)}h</span>
-                          {s.is_in_progress && <span className="day-resource-live-dot" aria-label="On the clock" />}
-                        </span>
+                        {/* Sprint 12.4: live pill takes precedence when
+                            on shift — it's a stronger signal than the
+                            ticking "now" suffix the time-range used. */}
+                        {s.is_in_progress ? (
+                          <span className="day-resource-shift-time">
+                            <span className="day-resource-live-pill">
+                              <span className="day-resource-live-dot" /> ON SHIFT
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="day-resource-shift-time">
+                            {rangeLabel}
+                            {' · '}
+                            <span className="day-resource-shift-hours">{computeShiftHours(s.start_time, s.end_time)}h</span>
+                          </span>
+                        )}
                         {s.notes && (
                           <span className="day-resource-shift-notes">{s.notes}</span>
                         )}

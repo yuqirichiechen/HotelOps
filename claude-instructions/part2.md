@@ -792,6 +792,104 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 12.4: shift-detail modal, dept-grouped timeline, rows-mode live indicator
+
+Three changes to the admin Calendar Day view.
+
+**1. Tap-a-bar → detail modal (mobile-first, desktop-friendly).**
+
+Mobile screenshot showed the resource-mode bars getting their
+time range ellipsised ("8:38am – …" with the actual end clipped).
+Rather than try to fit more text in a tiny bar, made every shift
+bar tappable: opens a centered modal with the full clock-in /
+clock-out / hours rundown.
+
+New `ShiftDetailModal` inside `DayView.js`:
+- Backdrop click + ✕ button + ESC all dismiss.
+- Dept-color stripe down the left edge of the card.
+- Header row: staff name + a green "● ON SHIFT" pill if
+  `is_in_progress`.
+- Subhead: department name.
+- Three label/value rows: Clock in, Clock out (or "On shift"),
+  Hours (with "(so far)" suffix if in progress).
+
+Both `TimelineMode` and `ResourceMode` now route bar clicks to
+`onShowDetail(s)` for clock entries (`is_actual`) and keep
+`onEdit(s)` only for legacy non-actual scheduled shifts. The
+modal lives at the `DayView` root so a tap from either mode
+hits the same component; ESC handling registered in the modal's
+own `useEffect`.
+
+Modal CSS (`Scheduling.css`): fixed-position backdrop at
+z-index 200, slide-up + fade-in animation, `prefers-reduced-
+motion` respected.
+
+**2. Timeline lane-packing now groups by department.**
+
+`laneAssign` was global-greedy — five non-overlapping shifts =
+five mixed-dept lanes side by side, which the GM screenshot
+showed reading as "five unrelated columns" even though three
+of them were Housekeeping.
+
+Rewrote to group by department first, then lane-pack within
+each dept:
+```
+laneAssign returns:
+  shifts: [{ ..., _lane: globalIndex }]
+  laneCount: total lanes across all depts
+  deptBands: [{ deptId, deptName, startLane, lanes }]
+```
+
+Depts ordered by earliest-shift start (stable, predictable).
+Inside each dept, the greedy packer still creates sub-lanes
+for overlaps — so three overlapping Housekeeping shifts become
+three adjacent green sub-lanes inside a wider Housekeeping
+column band. The two non-overlapping Housekeeping shifts (if
+that ever happens) would share a single lane and save column
+space.
+
+To visualise the grouping, `TimelineMode` renders faint
+dept-color underlays (`.day-timeline-dept-band`) spanning each
+dept's lane range, behind the hour-lines and shift buttons.
+Same dept ⇒ same tint band, so a row of three green-tinted
+bars reads as "Housekeeping × 3" instead of "three random
+green bars."
+
+How overlaps are distinguished: bar borders + per-bar text
+(name + time range) inside their own sub-lane — same as
+before, just clustered.
+
+**3. Rows mode in-progress indicator.**
+
+Rows mode had a green pulsing right-edge on the bar (Sprint 12)
+but no signal in the name column. With limited horizontal
+width on mobile the bar's "live" cue could get clipped, so the
+real signal needs to live where the eye lands first: the name.
+
+Added `.day-resource-name-live-dot` (8px green pulsing dot)
+inside the name col when `s.is_in_progress`. Same
+`day-shift-live-pulse` keyframes the timeline and StaffManager
+use, so the live language reads consistently.
+
+Bar contents flip too: when in-progress, the bar replaces its
+time-range text with a compact `ON SHIFT` pill (green dot +
+9px uppercase label). The hover/title tooltip still shows the
+full range so power users can confirm exact times. Non-
+progress bars keep the original `9:00am – 5:00pm · 8h` layout.
+
+**Verified.** Brace + paren balance held across both touched
+files: DayView.js 293/293 + 230/230, Scheduling.css 428/428 +
+406/406. Modal opens / closes via backdrop, ✕, and ESC; ESC
+listener added in a `useEffect` so it cleans up when the modal
+unmounts.
+
+**Follow-ups.** None outstanding. If the GM ever wants the
+modal to also surface OT-approval status or a "edit clock entry"
+deep-link to Staff → Detail, the modal body is the place to
+hang those rows.
+
+---
+
 ### 2026-05-26 — Sprint 12.3: admin Calendar entries fetch needed auth
 
 Sprint 12's data-source switch swapped

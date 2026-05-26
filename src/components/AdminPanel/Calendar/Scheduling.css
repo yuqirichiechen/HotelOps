@@ -1243,6 +1243,22 @@
   pointer-events: none;
 }
 
+/* Sprint 12.4: faint dept-band underlay behind the timeline shift
+   columns. Each band is `top: 0; bottom: 0` so it spans the full
+   24h surface, sits at z-index 0 below the bars (which have an
+   implicit higher stacking via their `button` rendering and
+   absolute positioning). The dept's `bg` token tints the band;
+   `border` adds a thin separator between adjacent bands. */
+.day-timeline-dept-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  opacity: 0.35;
+  border-left: 1px solid;
+  border-right: 1px solid;
+}
+
 .day-shift-block {
   font: inherit;
   position: absolute;
@@ -1533,6 +1549,48 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Sprint 12.4: green pulsing dot in the name column to flag "this
+   staff is currently on shift" without depending on the bar's
+   live indicator (which can get ellipsised on narrow viewports). */
+.day-resource-name-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38a169;
+  flex-shrink: 0;
+  margin-left: 4px;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+}
+.day-resource-name-col.is-in-progress .day-resource-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Sprint 12.4: "ON SHIFT" pill inside the resource bar, replaces
+   the time-range text when the entry is in-progress. Compact even
+   on narrow bars; falls back to just the dot if the bar is too
+   small to fit "ON SHIFT". */
+.day-resource-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #276749;
+  white-space: nowrap;
+}
+.day-resource-live-pill .day-resource-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38a169;
+  flex-shrink: 0;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+  margin: 0;
 }
 
 /* The 24h track that holds the staff's shift bar (if any).
@@ -2405,4 +2463,143 @@
   .assign-panel-scrim {
     animation-duration: 1ms;
   }
+}
+
+/* ── Sprint 12.4: shift detail modal ────────────────────────────────────
+   Opened by clicking any shift bar (timeline + resource modes). Mobile
+   bars can't fit the full time range; modal shows the complete clock-
+   in / clock-out / hours summary. Backdrop click + ✕ button both
+   dismiss; ESC handled by the React component. */
+
+.day-shift-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+  animation: day-shift-detail-fade 160ms ease-out both;
+}
+@keyframes day-shift-detail-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.day-shift-detail-card {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.32);
+  padding: 18px 20px 18px 32px;
+  border: 1px solid var(--border);
+  font-family: 'TiemposText', Georgia, serif;
+  animation: day-shift-detail-pop 160ms ease-out both;
+}
+@keyframes day-shift-detail-pop {
+  from { transform: translateY(8px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+.day-shift-detail-dept-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  border-top-left-radius: 14px;
+  border-bottom-left-radius: 14px;
+}
+
+.day-shift-detail-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+.day-shift-detail-close:hover { background: var(--bg-raised); color: var(--text-primary); }
+
+.day-shift-detail-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 28px 4px 0; /* clear the close button */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.day-shift-detail-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #276749;
+  background: rgba(56, 161, 105, 0.12);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.day-shift-detail-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38a169;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+}
+
+.day-shift-detail-dept {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.day-shift-detail-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.day-shift-detail-rows > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-light);
+}
+.day-shift-detail-rows > div:first-child { border-top: 0; padding-top: 0; }
+.day-shift-detail-rows dt {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.day-shift-detail-rows dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-shift-detail-backdrop,
+  .day-shift-detail-card { animation-duration: 1ms; }
 }
