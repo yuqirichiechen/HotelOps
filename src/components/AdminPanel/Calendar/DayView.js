@@ -264,17 +264,26 @@ const TimelineMode = ({ shifts, onEdit }) => {
           {hours.map(h => (
             <div key={h} className="day-hour-line" style={{ top: `${(h / 24) * 100}%` }} />
           ))}
-          {laneShifts.length === 0 && <div className="day-empty">No shifts scheduled.</div>}
+          {laneShifts.length === 0 && <div className="day-empty">No clock entries for this day yet.</div>}
           {laneShifts.map(s => {
             const box   = verticalShiftBox(s.start_time, s.end_time);
             const left  = (s._lane / laneCount) * 100;
             const width = (1 / laneCount) * 100;
             const color = DEPT_COLORS[s.department_name] || DEFAULT_COLOR;
+            // Sprint 12: observed clock entries (is_actual) are
+            // display-only — admin manages the underlying time_entry
+            // via Staff → Detail. Scheduled-shift edit is still
+            // available for any legacy `s.schedule_id` that lacks
+            // the `entry-` prefix.
+            const interactive = !s.is_actual;
+            const endLabel    = s.is_in_progress
+              ? 'now'
+              : fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5)).split(' – ')[1];
             return (
               <button
                 key={s.schedule_id}
                 type="button"
-                className="day-shift-block"
+                className={`day-shift-block${s.is_in_progress ? ' is-in-progress' : ''}`}
                 style={{
                   top:    `${box.top}%`,
                   height: `calc(${box.height}% - 2px)`,
@@ -283,12 +292,16 @@ const TimelineMode = ({ shifts, onEdit }) => {
                   background:  color.bg,
                   borderColor: color.border,
                   color:       color.text,
+                  cursor:      interactive ? 'pointer' : 'default',
                 }}
-                onClick={() => onEdit(s)}
+                onClick={interactive ? () => onEdit(s) : undefined}
               >
-                <div className="day-shift-name">{s.employee_name}</div>
+                <div className="day-shift-name">
+                  {s.employee_name}
+                  {s.is_in_progress && <span className="day-shift-live-dot" aria-label="On the clock" />}
+                </div>
                 <div className="day-shift-meta">
-                  {s.department_name || 'Unassigned'} · {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))} · {computeShiftHours(s.start_time, s.end_time)}h
+                  {s.department_name || 'Unassigned'} · {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5)).split(' – ')[0]} – {endLabel} · {computeShiftHours(s.start_time, s.end_time)}h
                 </div>
                 {s.notes && <div className="day-shift-notes">Note: {s.notes}</div>}
               </button>
@@ -391,30 +404,40 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
                   <div className="day-resource-tick" style={{ left: '25%' }} />
                   <div className="day-resource-tick" style={{ left: '50%' }} />
                   <div className="day-resource-tick" style={{ left: '75%' }} />
-                  {s && box && (
-                    <button
-                      type="button"
-                      className={`day-resource-shift ${s.notes ? 'has-notes' : ''}`}
-                      style={{
-                        left:  `${box.left}%`,
-                        width: `${box.width}%`,
-                        background:  color.bg,
-                        borderColor: color.border,
-                        color:       color.text,
-                      }}
-                      title={`${fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))} · ${computeShiftHours(s.start_time, s.end_time)}h${s.notes ? ` · ${s.notes}` : ''}`}
-                      onClick={() => onEdit(s)}
-                    >
-                      <span className="day-resource-shift-time">
-                        {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5))}
-                        {' · '}
-                        <span className="day-resource-shift-hours">{computeShiftHours(s.start_time, s.end_time)}h</span>
-                      </span>
-                      {s.notes && (
-                        <span className="day-resource-shift-notes">{s.notes}</span>
-                      )}
-                    </button>
-                  )}
+                  {s && box && (() => {
+                    // Sprint 12: observed clock entries are display-only;
+                    // in-progress flag drives the live-dot indicator.
+                    const interactive = !s.is_actual;
+                    const startStr = s.start_time.slice(0,5);
+                    const endStr   = s.is_in_progress ? 'now' : s.end_time.slice(0,5);
+                    const rangeLabel = `${fmtTimeRange(startStr, endStr === 'now' ? '00:00' : endStr).split(' – ')[0]} – ${endStr === 'now' ? 'now' : fmtTimeRange(startStr, endStr).split(' – ')[1]}`;
+                    return (
+                      <button
+                        type="button"
+                        className={`day-resource-shift ${s.notes ? 'has-notes' : ''}${s.is_in_progress ? ' is-in-progress' : ''}`}
+                        style={{
+                          left:  `${box.left}%`,
+                          width: `${box.width}%`,
+                          background:  color.bg,
+                          borderColor: color.border,
+                          color:       color.text,
+                          cursor:      interactive ? 'pointer' : 'default',
+                        }}
+                        title={`${rangeLabel} · ${computeShiftHours(s.start_time, s.end_time)}h${s.notes ? ` · ${s.notes}` : ''}`}
+                        onClick={interactive ? () => onEdit(s) : undefined}
+                      >
+                        <span className="day-resource-shift-time">
+                          {rangeLabel}
+                          {' · '}
+                          <span className="day-resource-shift-hours">{computeShiftHours(s.start_time, s.end_time)}h</span>
+                          {s.is_in_progress && <span className="day-resource-live-dot" aria-label="On the clock" />}
+                        </span>
+                        {s.notes && (
+                          <span className="day-resource-shift-notes">{s.notes}</span>
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             );

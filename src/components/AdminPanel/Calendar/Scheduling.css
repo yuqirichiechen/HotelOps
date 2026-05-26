@@ -1262,6 +1262,38 @@
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
+
+/* Sprint 12: in-progress = staff still clocked in. Pulsing right
+   edge + live dot in the name row signals "live", matches the
+   colour language of the home-page on-the-clock badge. */
+.day-shift-block.is-in-progress {
+  position: relative;
+  box-shadow: inset -3px 0 0 0 #38a169;
+}
+.day-shift-block.is-in-progress::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #38a169;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+}
+.day-shift-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38a169;
+  margin-left: 8px;
+  vertical-align: middle;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes day-shift-live-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
 .day-shift-name {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
@@ -1542,6 +1574,33 @@
 .day-resource-shift:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   z-index: 2;
+}
+
+/* Sprint 12: in-progress = clocked in but not yet clocked out. Match
+   the timeline-mode pulsing edge + live dot from the day-shift-block
+   above so both modes read the same. */
+.day-resource-shift.is-in-progress {
+  box-shadow: inset -3px 0 0 0 #38a169;
+}
+.day-resource-shift.is-in-progress::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #38a169;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+}
+.day-resource-live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38a169;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
 }
 .day-resource-shift-time {
   font-family: 'TiemposText', Georgia, serif;

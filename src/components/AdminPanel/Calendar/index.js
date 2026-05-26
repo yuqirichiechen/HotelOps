@@ -128,13 +128,85 @@ const SchedulingManager = () => {
     return { start: fmtDate(cursor), end: fmtDate(cursor) };
   }, [view, cursor]);
 
+  // Sprint 12: calendar now displays actual clock-in/out data instead
+  // of admin-assigned shifts. Reason: the GM doesn't use the
+  // assign-shifts surface, so the original "scheduled shifts" feed
+  // (/api/admin/schedule) returned an empty calendar most of the time.
+  // We pull from /api/admin/entries (time_entries with the same
+  // user/department joins the export uses), merge clock-out→clock-in
+  // sequences that are <5min apart (accidental signouts), then shape
+  // each merged entry to match the schedule view's prop contract so
+  // the existing year/month/week/day renderers work without changes
+  // beyond a new is_in_progress flag.
+  const MERGE_GAP_MS = 5 * 60 * 1000;
+
+  const mergeAccidentalSignouts = useCallback((entries) => {
+    const byUser = new Map();
+    for (const e of entries) {
+      if (!byUser.has(e.user_id)) byUser.set(e.user_id, []);
+      byUser.get(e.user_id).push(e);
+    }
+    const out = [];
+    for (const list of byUser.values()) {
+      list.sort((a, b) => String(a.clock_in_time).localeCompare(String(b.clock_in_time)));
+      let curr = null;
+      for (const e of list) {
+        if (curr && curr.clock_out_time && e.clock_in_time) {
+          const gap = new Date(e.clock_in_time).getTime()
+                    - new Date(curr.clock_out_time).getTime();
+          if (gap >= 0 && gap < MERGE_GAP_MS) {
+            curr.clock_out_time = e.clock_out_time;
+            curr.hours = (curr.hours || 0) + (e.hours || 0);
+            curr._mergedCount = (curr._mergedCount || 1) + 1;
+            continue;
+          }
+        }
+        if (curr) out.push(curr);
+        curr = { ...e };
+      }
+      if (curr) out.push(curr);
+    }
+    return out;
+  }, []);
+
+  const entryToSchedule = useCallback((e) => {
+    const inDate  = new Date(e.clock_in_time);
+    const isInProgress = !e.clock_out_time;
+    const outDate = isInProgress ? new Date() : new Date(e.clock_out_time);
+    const pad = (n) => String(n).padStart(2, '0');
+    const localDate = (d) =>
+      `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const localTime = (d) =>
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return {
+      schedule_id:     `entry-${e.entry_id}`,
+      user_id:         e.user_id,
+      employee_name:   e.name,
+      department_id:   e.department_id,
+      department_name: e.department,
+      scheduled_date:  localDate(inDate),
+      start_time:      localTime(inDate),
+      end_time:        localTime(outDate),
+      // Sprint 12: flag-set so the views can render a live indicator
+      // and skip the edit affordance (these are observed, not planned).
+      is_actual:       true,
+      is_in_progress:  isInProgress,
+      clock_in_time:   e.clock_in_time,
+      clock_out_time:  e.clock_out_time,
+      hours:           e.hours,
+    };
+  }, []);
+
   const loadSchedules = useCallback(async () => {
     setLoading(true);
-    const res  = await fetch(`/api/admin/schedule?start=${fetchRange.start}&end=${fetchRange.end}`);
+    const res  = await fetch(`/api/admin/entries?from=${fetchRange.start}&to=${fetchRange.end}`);
     const data = await res.json();
-    if (data.success) setSchedules(data.schedules);
+    if (data.success) {
+      const merged = mergeAccidentalSignouts(data.entries || []);
+      setSchedules(merged.map(entryToSchedule));
+    }
     setLoading(false);
-  }, [fetchRange]);
+  }, [fetchRange, mergeAccidentalSignouts, entryToSchedule]);
 
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
 

@@ -792,6 +792,108 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 12: admin Calendar pulls from clock_in/out, not scheduled shifts
+
+The admin Calendar's original surface was "GM assigns shifts here";
+in practice the GM never used the assignment flow, so the Year /
+Month / Week / Day views all rendered an empty calendar against
+the unused `schedules` table. Sprint 12 rewires the calendar feed
+to *actual* clock-in/out data so the GM sees what's actually
+happening, not what was supposed to happen.
+
+(Logbook migration deferred — the GM is moving handoff / shift-
+notes into a future Logbook surface, but per "for this sprint we
+are not implementing logbook yet" the existing `NotesCenter` +
+`NotesDrawer` stay exactly where they are inside the Day view.)
+
+**Data source flip.**
+
+`SchedulingManager.loadSchedules` used to fetch
+`/api/admin/schedule?start=&end=` (rows from `schedules`). Now it
+hits `/api/admin/entries?from=&to=` (rows from `time_entries` with
+the same user + department joins the XLSX export already uses) and
+runs the result through two transforms before handing it to the
+views:
+
+1. **`mergeAccidentalSignouts(entries, gapMinutes=5)`** — groups by
+   `user_id`, sorts each user's entries by `clock_in_time`, and
+   collapses any consecutive pair where
+   `(next.clock_in - prev.clock_out) < 5 min` into a single span.
+   Catches the "oops, I clocked out by accident" pattern (auto-
+   signout fires, user signs back in, fresh entry created) — the
+   calendar should read those as one continuous shift.
+2. **`entryToSchedule(e)`** — maps the time-entry shape onto the
+   schedule shape the existing views already speak:
+   ```
+   { schedule_id: 'entry-<id>', user_id, employee_name, department_id,
+     department_name, scheduled_date, start_time, end_time,
+     is_actual: true, is_in_progress: bool, hours, ... }
+   ```
+   `scheduled_date` / `start_time` / `end_time` are derived from the
+   local-time interpretation of the ISO timestamps so the existing
+   `start_time.slice(0,5)` / `timeToMinutes` plumbing keeps
+   working. For an in-progress entry (`clock_out_time === null`),
+   `end_time` is set to *now* — the bar extends to current time on
+   load.
+
+Year, Month, and CalendarWeekView render the adapted entries
+unchanged — they only consume `scheduled_date`, `user_id`,
+`department_*`, and the time-range fields, all of which the
+adapter supplies. Only DayView grew new visual affordances.
+
+**DayView visual changes.**
+
+- **In-progress indicator.** Bars with `is_in_progress` get an
+  `is-in-progress` modifier class on both render modes (timeline +
+  resource). CSS: pulsing right-edge stripe (3px, success-green
+  `#38a169`) plus a small live-dot next to the name / time range.
+  Uses the same `day-shift-live-pulse` keyframes (1.6s) the
+  StaffManager rows already use for the "On the clock" badge, so
+  the live language reads consistently across the admin app.
+- **Time-range copy.** In-progress bars show `9:00am – now` instead
+  of `9:00am – 3:47pm`, since the end timestamp is synthetic.
+- **Read-only.** Observed entries (`is_actual: true`) no longer
+  open the AssignModal on click — admin manages individual
+  `time_entries` through Staff → Detail. Scheduled-shift entries
+  (legacy / not currently feeding the calendar) would still be
+  interactive if they ever flow back in.
+- **Empty copy.** "No shifts scheduled." → "No clock entries for
+  this day yet." Same selector (`.day-empty`), unchanged styling.
+
+**What stayed put.**
+
+- The `AssignPanel` + the `＋` Assign button stay accessible.
+  Posting to `/api/admin/schedule` still creates a row, it just
+  won't appear on the calendar — kept for now in case the GM ever
+  wants to wire it back. (If they confirm "we're never assigning
+  shifts," removing this in a later sprint is one button + one
+  panel component delete.)
+- `NotesCenter` / `NotesDrawer` / handoff-notes plumbing inside
+  the Day view — no changes, per the user's explicit request to
+  leave them until the Logbook surface lands.
+- Staff Calendar (`/pages/StaffCalendar`) — unchanged. Sprint 12's
+  ask was specifically the admin calendar. Staff still see
+  scheduled shifts when present; can revisit if staff want their
+  actual clock history surfaced too.
+
+**Verified.** All touched files parens + braces balance:
+`Calendar/index.js` 332/332 parens, 184/184 braces;
+`DayView.js` 220/220 + 180/180; `Scheduling.css` 379/379. Logic
+walk-through: merge collapses sub-5min gaps; in-progress entries
+render with a live edge; empty days show the new copy. (Node
+runtime still broken via the brew dylib mismatch from earlier in
+the day — fell back to bracket-balance + manual code review.)
+
+**Follow-ups.**
+- Sprint 12.1+ (Logbook): build the Logbook surface and migrate
+  handoff/shift notes into it; remove `NotesDrawer` from the Day
+  view at that point.
+- Optional polish: 60s tick on the Day view to extend in-progress
+  bars without a manual refresh. Currently the bar is anchored to
+  page-load time and only updates when the admin navigates.
+
+---
+
 ### 2026-05-26 — Sprint 11.6.3: pick the white-glyph variant per icon (not by suffix)
 
 Picking-by-suffix in 11.6.2 was wrong. The source files' suffix
