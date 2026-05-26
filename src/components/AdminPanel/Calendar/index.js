@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useAuth } from '../../../auth';
 import { useView } from '../../../shells/ViewContext';
@@ -8,10 +8,10 @@ import CalendarWeekView from '../../Calendar/views/CalendarWeekView';
 import DayView from './DayView';
 import AssignModal from './AssignModal';
 import AssignPanel from './AssignPanel';
-import NotesDrawer from '../../Calendar/atoms/NotesDrawer';
-import NotesCenter from '../../Calendar/atoms/NotesCenter';
 // Sprint 11.1: DayToggle removed from admin Day view (admins use the
 // outer prev/next day-nav). Staff Calendar still imports it.
+// Sprint 12.1: NotesCenter / NotesDrawer imports removed — those
+// affordances moved to the Logbook surface (AdminReports).
 import './Scheduling.css';
 import '../../Calendar/Calendar.css';
 
@@ -75,20 +75,11 @@ const SchedulingManager = () => {
   const [panelOpen,    setPanelOpen]    = useState(false);
   const [panelPrefill, setPanelPrefill] = useState(null);
 
-  // Sprint 11: Day-view-only state. The notes drawer's tab is
-  // controlled by the parent so the NotesCenter tiles can switch
-  // tabs on click. Default 'all'.
-  const [notesTab, setNotesTab] = useState('all');
-  const notesDrawerRef = useRef(null);
-
-  // Tile click on NotesCenter → switch drawer tab + scroll drawer
-  // into view so the user lands on the relevant content.
-  const handleNotesTile = (tabKey) => {
-    setNotesTab(tabKey);
-    if (notesDrawerRef.current) {
-      notesDrawerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
+  // Sprint 12.1: NotesCenter + NotesDrawer (and their `notesTab` /
+  // scroll-into-view state) moved out of the Calendar Day view and
+  // into the Logbook surface (admin "reports" view). The admin
+  // Calendar is now purely a clock-data visualization — no notes
+  // composition or feed lives here anymore.
 
   // Load base data once
   useEffect(() => {
@@ -441,6 +432,10 @@ const SchedulingManager = () => {
           // feed) per mockup #26. AdminWeekView (matrix-per-dept
           // from 10.1) is repurposed for Month view in Sprint 11.x
           // since the user spec moved that style to Month.
+          // Sprint 12.1: no onViewAllNotes prop passed — that
+          // tells CalendarWeekView to hide its notes feed, stat
+          // tile, and per-cell note badges (handoff notes moved
+          // to the Logbook surface).
           <CalendarWeekView
             weekStart={startOfWeek(cursor)}
             schedules={schedules}
@@ -449,43 +444,22 @@ const SchedulingManager = () => {
             currentUser={user}
             staffScope={false}
             onPickDate={(d) => zoomTo('day', new Date(d))}
-            onViewAllNotes={() => goTo('notes', { date: fmtDate(cursor) })}
           />
         )}
         {view === 'day' && (
-          <>
-            {/* Sprint 11 Day view shell. 11.1 dropped the
-                Today/Tomorrow toggle for admin — the outer prev/next
-                day-nav buttons already cover that motion, and the
-                toggle didn't update relative to the active cursor
-                so it read as broken. Staff Day view still uses the
-                toggle (no other day-nav surfaces). */}
-            <NotesCenter
-              forDate={fmtDate(cursor)}
-              onTileClick={handleNotesTile}
-              onViewAll={() => goTo('notes', { date: fmtDate(cursor) })}
-              currentUser={user}
-            />
-            <DayView
-              date={cursor}
-              schedules={schedules}
-              employees={employees}
-              departments={departments}
-              loading={loading}
-              onPickDate={(d)   => setCursor(new Date(d))}
-              onEdit={(schedule) => setModal({ type: 'edit', schedule })}
-            />
-            <div ref={notesDrawerRef}>
-              <NotesDrawer
-                forDate={fmtDate(cursor)}
-                departments={departments}
-                editable={true}
-                currentUser={user}
-                tab={notesTab}
-                onTabChange={setNotesTab}
-              />
-            </div>
-          </>
+          /* Sprint 12.1: Day view used to wrap DayView with
+              NotesCenter (above) and NotesDrawer (below). Both moved
+              to the Logbook surface; Day view now shows the clock-
+              entry timeline only. */
+          <DayView
+            date={cursor}
+            schedules={schedules}
+            employees={employees}
+            departments={departments}
+            loading={loading}
+            onPickDate={(d)   => setCursor(new Date(d))}
+            onEdit={(schedule) => setModal({ type: 'edit', schedule })}
+          />
         )}
       </div>
 

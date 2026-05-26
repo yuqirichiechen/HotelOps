@@ -792,6 +792,99 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 12.1: move notes out of admin Calendar into Logbook; hide 0-hour staff in Day view
+
+Three follow-ups to Sprint 12.
+
+**1. Notes UI moved from admin Calendar to Logbook.**
+
+12 swapped the calendar's data source but left the NotesCenter
+(stat tiles for unread/general/carryover) and the NotesDrawer
+(compose + feed) inside the Day view. The GM's intent was always
+for those to live in a separate Logbook surface; this sprint does
+the physical move so the calendar reads as pure clock-data and
+notes still work without waiting on the proper Logbook redesign
+(that's a Sprint 12.2+ rebuild).
+
+`src/pages/AdminReports/` (the placeholder "Reports" page that
+the sidebar now labels "Logbook") was rewritten end-to-end:
+- Topbar with `‹ Home` back, "Logbook" title, prev/next day buttons,
+  a `<input type="date">` picker, and a Today shortcut.
+- Body stacks `NotesCenter` + `NotesDrawer` with the same
+  tile-click → drawer-tab + scroll-into-view dance the Calendar
+  used to do. Departments are fetched once on mount;
+  `currentUser` flows in from `useAuth`.
+- New `Logbook.css` (under the same folder) carries the page +
+  topbar styles. Folder name kept `AdminReports/` because the
+  AdminShell maps `view='reports'` → that file and renaming the
+  folder costs more than it saves right now.
+
+`AdminShell` dropped the `notes` view mapping + its
+`ACTIVE_PARENT` entry — admin's only path to NotesPage was the
+"View all notes" link inside Calendar, which is gone. The staff
+shell still maps `view='notes'` → `NotesPage` because the staff
+Calendar still surfaces the link.
+
+**2. CalendarWeekView gates notes UI on the parent.**
+
+`CalendarWeekView` is shared by admin + staff Calendar. Sprint 12
+left the notes feed visible there even though admin's notes moved.
+Made the entire notes UI conditional on `typeof onViewAllNotes ===
+'function'` (a `showNotes` boolean inside the component):
+
+- Fetch of `/handoff-notes?from=&to=` runs only when
+  `showNotes` (no point polling an endpoint for data you'll never
+  render).
+- Admin stat-card row drops the "Handoff Notes" tile when
+  `showNotes=false`; flex grid reflows to 2 cards.
+- Matrix cell `cellNotes` count short-circuits to `0` when
+  `showNotes=false` so the per-cell 💬 badges don't render.
+- The `<section className="cal-week-notes">` block (header,
+  feed, "View all" link) is wrapped in `{showNotes && (...)}`.
+
+Admin Calendar simply omits the `onViewAllNotes` prop now; staff
+Calendar still passes it. No new prop surface needed.
+
+Admin Calendar's own JSX shrank significantly: the Day view
+fragment that used to wrap `NotesCenter` + `DayView` + a
+`notesDrawerRef`-wrapped `NotesDrawer` is now just `<DayView />`
+alone. State that only existed for those affordances
+(`notesTab`, `notesDrawerRef`, `handleNotesTile`, the `useRef`
+import) is gone with them.
+
+**3. DayView resource mode hides 0-hour staff.**
+
+Resource mode (the staff-rows × hours-x-axis layout) used to
+render one row per employee in the active department, with an
+empty track for anyone who hadn't been scheduled. Scheduled
+shifts → clock entries (Sprint 12) means an empty track now
+just signals "didn't clock in today" — noise. Filter the
+dept's staff to `dept.staff.filter(e => shiftByUser[e.user_id])`
+before the `.map`, hoist that to `onStaff`, skip the whole
+fragment when `onStaff.length === 0`. The "N / M on" count in
+the dept-header row still uses M = total dept headcount so the
+admin can compare worked-vs-total at a glance.
+
+**What stayed.** Staff Calendar's notes affordances + NotesPage
+route + StaffShell's `notes` view all unchanged. Both admin and
+staff Calendars still use `CalendarWeekView`; only the admin
+caller flips notes off.
+
+**Verified.** All five touched files balance: Calendar/index.js
+323/323 + 166/166, DayView.js 223/223 + 182/182, CalendarWeekView
+170/170 + 118/118, AdminReports/index.js 55/55 + 33/33,
+AdminShell.js 9/9 + 23/23. Logbook.css 13/13. (Node runtime
+still broken via the brew dylib mismatch — fell back to
+bracket-balance + manual review.)
+
+**Follow-ups.** Sprint 12.2+ rebuilds the Logbook surface
+proper (separate tabs for active/resolved, filter by author /
+scope, maybe a per-day timeline). For now the minimum-viable
+move is in place so the calendar stops carrying the notes
+weight.
+
+---
+
 ### 2026-05-26 — Sprint 12: admin Calendar pulls from clock_in/out, not scheduled shifts
 
 The admin Calendar's original surface was "GM assigns shifts here";

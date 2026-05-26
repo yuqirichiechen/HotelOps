@@ -375,7 +375,17 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
         </div>
       </div>
 
-      {deptGroups.map(dept => (
+{/* Sprint 12.1: drop staff who clocked 0h today from the
+            row list. Resource mode used to render *every* employee
+            in the dept (empty track for non-workers) but with the
+            data source now being actual clock entries, an empty
+            track just adds visual noise. Dept header still shows
+            "N on" so the admin can see at-a-glance who's
+            *not* in (compare against StaffManager for a roster). */}
+      {deptGroups.map(dept => {
+        const onStaff = dept.staff.filter(e => shiftByUser[e.user_id]);
+        if (onStaff.length === 0) return null;
+        return (
         <React.Fragment key={dept.department_id}>
           <div className="day-resource-dept-row">
             <span
@@ -384,10 +394,10 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
             />
             <span className="day-resource-dept-name">{dept.name}</span>
             <span className="day-resource-dept-count">
-              {dept.staff.filter(e => shiftByUser[e.user_id]).length} / {dept.staff.length} on
+              {onStaff.length} / {dept.staff.length} on
             </span>
           </div>
-          {dept.staff.map(emp => {
+          {onStaff.map(emp => {
             const s = shiftByUser[emp.user_id];
             const box = s ? horizontalShiftBox(s.start_time, s.end_time) : null;
             const color = s
@@ -443,7 +453,8 @@ const ResourceMode = ({ deptGroups, shifts, onEdit }) => {
             );
           })}
         </React.Fragment>
-      ))}
+        );
+      })}
     </div>
   );
 };

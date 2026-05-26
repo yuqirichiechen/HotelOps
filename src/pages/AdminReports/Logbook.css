@@ -1,0 +1,77 @@
+/* Sprint 12.1: Logbook page layout. Page header (back + title +
+   day-nav) on top, NotesCenter + NotesDrawer stacked below. Pattern
+   borrowed from the AdminSettings topbar so the affordances feel
+   consistent across the admin app. */
+
+.logbook-page {
+  padding: 24px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: adminSlideUp 0.3s ease;
+}
+
+.logbook-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.logbook-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.logbook-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brand-text);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.logbook-date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.logbook-nav-btn,
+.logbook-today {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.logbook-nav-btn { padding: 7px 10px; font-size: 14px; line-height: 1; }
+.logbook-nav-btn:hover,
+.logbook-today:hover { background: var(--bg-raised); color: var(--text-primary); }
+.logbook-date-input {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.logbook-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .logbook-page { padding: 18px 16px 48px; }
+  .logbook-title { font-size: 20px; }
+}

@@ -76,9 +76,17 @@ const CalendarWeekView = ({
   const fromIso = isoDay(days[0]);
   const toIso   = isoDay(days[6]);
 
+  // Sprint 12.1: notes UI is gated on the parent supplying an
+  // onViewAllNotes callback. Admin Calendar no longer passes it
+  // (handoff notes moved to the Logbook surface), staff Calendar
+  // still does. Skip the fetch entirely when notes are off so we
+  // don't poll an endpoint whose data we'll never render.
+  const showNotes = typeof onViewAllNotes === 'function';
+
   // Fetch notes for the week. We pull them all once for the feed +
   // for the count badges on stat cards.
   useEffect(() => {
+    if (!showNotes) return;
     let cancelled = false;
     setNotesLoading(true);
     const params = new URLSearchParams({ from: fromIso, to: toIso });
@@ -88,7 +96,7 @@ const CalendarWeekView = ({
       setNotesLoading(false);
     });
     return () => { cancelled = true; };
-  }, [fromIso, toIso]);
+  }, [showNotes, fromIso, toIso]);
 
   // ── staff matrix scope ──────────────────────────────────────────────────
   const staffDept = departments.find(d => d.department_id === staffDepartmentId);
@@ -256,13 +264,18 @@ const CalendarWeekView = ({
                 <div className="cal-week-stat-label">Open Shifts</div>
               </div>
             </div>
-            <div className="cal-week-stat">
-              <span className="cal-week-stat-icon cal-week-stat-icon-all" aria-hidden>💬</span>
-              <div className="cal-week-stat-text">
-                <div className="cal-week-stat-num">{deptNotes + allStaffNotes}</div>
-                <div className="cal-week-stat-label">Handoff Notes</div>
+            {/* Sprint 12.1: Handoff Notes tile only renders when the
+                parent surface owns the notes feed (staff Calendar);
+                admin Calendar hides it since notes moved to Logbook. */}
+            {showNotes && (
+              <div className="cal-week-stat">
+                <span className="cal-week-stat-icon cal-week-stat-icon-all" aria-hidden>💬</span>
+                <div className="cal-week-stat-text">
+                  <div className="cal-week-stat-num">{deptNotes + allStaffNotes}</div>
+                  <div className="cal-week-stat-label">Handoff Notes</div>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
@@ -301,12 +314,15 @@ const CalendarWeekView = ({
                   {days.map(d => {
                     const iso = isoDay(d);
                     const s = byStaffDay.get(`${emp.user_id}|${iso}`);
-                    const cellNotes = notes.filter(n =>
+                    // Sprint 12.1: only count shift-scoped notes when
+                    // the parent owns the notes UI; skip the filter
+                    // pass entirely on the admin Calendar.
+                    const cellNotes = showNotes ? notes.filter(n =>
                       !n.resolved_at &&
                       n.scope === 'shift' &&
                       n.for_date === iso &&
                       n.schedule_user_name === emp.name
-                    ).length;
+                    ).length : 0;
                     return (
                       <button
                         key={iso}
@@ -336,7 +352,8 @@ const CalendarWeekView = ({
         </div>
       )}
 
-      {/* ── Notes feed ────────────────────────────────────────────────── */}
+      {/* ── Notes feed (Sprint 12.1: only when parent owns notes) ─── */}
+      {showNotes && (
       <section className="cal-week-notes">
         <header className="cal-week-notes-header">
           <span className="cal-week-notes-icon" aria-hidden>💬</span>
@@ -393,6 +410,7 @@ const CalendarWeekView = ({
           )}
         </div>
       </section>
+      )}
     </div>
   );
 };

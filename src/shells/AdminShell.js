@@ -5,10 +5,13 @@ import AdminHome from '../pages/AdminHome';
 import StaffManager from '../components/AdminPanel/StaffManager';
 import StaffDetail from '../components/AdminPanel/StaffDetail';
 import SchedulingManager from '../components/AdminPanel/Calendar';
-import NotesPage from '../pages/NotesPage';
 import AdminReports from '../pages/AdminReports';
 import Assistant from '../pages/Assistant';
 import AdminSettings from '../components/AdminPanel/AdminSettings';
+// Sprint 12.1: NotesPage no longer reachable from the admin shell —
+// handoff notes moved to the Logbook surface (AdminReports). Staff
+// shell still maps view='notes' to NotesPage for the staff calendar
+// "view all notes" link.
 
 // Sprint 11.2.1: admin app is a single URL (`/:tenant/admin`).
 // Sub-views (StaffDetail, NotesPage) carry their identifiers through
@@ -33,7 +36,6 @@ const VIEWS = {
   staff:       StaffManager,
   staffDetail: StaffDetail,
   calendar:    SchedulingManager,
-  notes:       NotesPage,
   reports:     AdminReports,
   assistant:   Assistant,
   settings:    AdminSettings,
@@ -41,7 +43,6 @@ const VIEWS = {
 
 const ACTIVE_PARENT = {
   staffDetail: 'staff',
-  notes:       'calendar',
 };
 
 const Body = ({ theme, onToggleTheme }) => {
