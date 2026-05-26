@@ -792,6 +792,51 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 11.6.3: pick the white-glyph variant per icon (not by suffix)
+
+Picking-by-suffix in 11.6.2 was wrong. The source files' suffix
+convention is inconsistent: for `home`, `timesheet`, `calendar`,
+`logbook`, `assistant`, `settings` the `_dark.png` variant is the
+white-icon-on-dark-bg one (suffix = target theme); but for
+`stafficon` the suffix is *reversed* — `_dark.png` is the
+dark-glyph variant. Trusting the suffix gave us dark icons that
+disappeared into the sidebar.
+
+Replaced the suffix-based picker with a content-based one: for each
+icon, run a "whitify" pass over both variants (threshold by max
+RGB channel — pixels with brightness <100 → fully transparent,
+>200 → opaque white, linear ramp between) and keep the variant
+whose post-whitify bbox is *tighter*. The tighter bbox is the one
+where the white glyph survived thresholding (vs the variant where
+the white was the background and the glyph thresholded away).
+
+```python
+def whitify(im, low=100, high=200):
+    # threshold by max channel, recolor surviving pixels to (255,255,255)
+    ...
+for base in bases:
+    best = None
+    for v in ['dark', 'light']:
+        white = whitify(Image.open(f'logo/{base}_{v}.png'))
+        bbox = white.getbbox()
+        area_pct = bbox_area(bbox) / canvas_area
+        if best is None or area_pct < best[0]:
+            best = (area_pct, v, white, bbox)
+    # crop + square-pad + save as /public/logo/<base>.png
+```
+
+Results: every icon picked correctly. stafficon flipped to its
+`_light` source as expected; all others stayed on `_dark`. All
+output PNGs are pure white (255,255,255) on transparent bg with
+76–83% of pixels fully transparent, sized to the content bounding
+box (range 616–1018 square px). The Sidebar code is unchanged —
+`iconSrc(base)` still resolves to `/logo/${base}.png`.
+
+This also incidentally fixes the size-consistency issue from
+11.6.2 — same approach, just with the right source.
+
+---
+
 ### 2026-05-26 — Sprint 11.6.2: drop dark icon variants + trim PNGs for size consistency
 
 Two small follow-ups from 11.6.
