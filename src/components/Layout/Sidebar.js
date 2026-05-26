@@ -68,14 +68,14 @@ const Sidebar = ({
 
   const isActive = (item) => currentView === item.view;
 
-  // Sprint 11.6: nav icons are theme-aware PNGs in `/public/logo/`.
-  // Filename pattern: `<base>_<dark|light>.png` — the suffix names
-  // the *target theme*, not the icon's content color (mirrors the
-  // existing HotelOps logo convention). The sidebar bg is dark in
-  // both themes, but we still swap per theme so designers can tweak
-  // per-mode strokes/contrast without code changes.
-  const iconSrc = (base) =>
-    `/logo/${base}_${isDark ? 'dark' : 'light'}.png`;
+  // Sprint 11.6.2: icons are theme-agnostic now — single white-on-
+  // transparent PNG per nav item, no `_dark` / `_light` suffix. The
+  // sidebar bg is dark in both themes so a single light icon set is
+  // legible everywhere. Files live in `/public/logo/<base>.png`,
+  // pre-trimmed so each icon's content fills the canvas (the GM's
+  // AI-generated source had inconsistent inner padding — see
+  // Sprint 11.6.2 log).
+  const iconSrc = (base) => `/logo/${base}.png`;
 
   // Sprint 11.6: desktop brand block now shows the tenant logo (the
   // property the user is signed into) with a small "powered by

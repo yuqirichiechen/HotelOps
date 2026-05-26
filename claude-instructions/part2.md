@@ -792,6 +792,59 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 11.6.2: drop dark icon variants + trim PNGs for size consistency
+
+Two small follow-ups from 11.6.
+
+**1. One icon, not two.** The GM realized the nav icons are always
+rendered on a dark sidebar (both themes use a dark navy
+background — `--bg-sidebar` is `#1a365d` light / `#0b1420` dark),
+so the white icon set is legible everywhere and the `_dark` /
+`_light` variants were unnecessary work. Removed all 7 `_dark.png`
+files from `public/logo/`, dropped the suffix from the remaining
+`_light.png` files (→ `home.png`, `timesheet.png`, `calendar.png`,
+`stafficon.png`, `logbook.png`, `assistant.png`, `settings.png`).
+Sidebar's `iconSrc(base)` is now `/logo/${base}.png` — `isDark`
+stays in scope because the theme-toggle button copy still uses it.
+
+**2. Content-bounding-box trim to fix visual size inconsistency.**
+The AI-generated source icons all sat on identical 1254×1254
+canvases, but the actual glyph inside each one filled wildly
+different fractions of that canvas — `stafficon` filled the entire
+1254×1254, `assistant` only ~705×819, `home` ~797×817. With
+`object-fit: contain` in a 22×22 box, that variance reads as
+"some icons look 22px tall, others look 14px tall". Ran each PNG
+through Pillow:
+
+```python
+im = Image.open(path).convert('RGBA')
+bbox = im.getbbox()  # bounding box of non-transparent pixels
+cropped = im.crop(bbox)
+# Re-square so aspect ratio is preserved at render time
+side = max(cropped.size)
+square = Image.new('RGBA', (side, side), (0,0,0,0))
+square.paste(cropped, ((side-cropped.width)//2, (side-cropped.height)//2))
+square.save(...)
+```
+
+Each icon's content now fills its (smaller) square canvas. Render
+in a 22×22 box with `object-fit: contain` and they all look the
+same visual size. (Pillow had to be installed with
+`--break-system-packages` because macOS's system Python rejects
+unsanctioned global installs per PEP 668 — fine for a one-off
+preprocessing pass.)
+
+**Verified.** No stale `_dark` / `_light` references in src. The
+HotelOps brand PNGs (`/hotelops-{light,dark}.png` referenced from
+`config/tenant.js`'s `HOTELOPS_LOGOS`) are unaffected — separate
+file set from the nav icons.
+
+**Follow-ups.** None. If a future icon drop needs the same
+treatment, the Pillow snippet above can be saved as a small
+`scripts/trim-icons.py` — wasn't worth committing for one pass.
+
+---
+
 ### 2026-05-26 — Sprint 11.6.1: icon PNGs moved into the public/ asset root
 
 11.6 wired the sidebar to load PNGs from `/logo/<base>_<theme>.png`,
