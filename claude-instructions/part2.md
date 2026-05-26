@@ -792,6 +792,49 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 12.3: admin Calendar entries fetch needed auth
+
+Sprint 12's data-source switch swapped
+`/api/admin/schedule` (open) for `/api/admin/entries` (requireAuth
++ requireRole('admin')), but the call site stayed on a raw
+`fetch(...)` that doesn't ride the bearer token. Result: every
+calendar load 401'd, the calendar rendered empty, browser logged
+a wall of failed-resource messages, and the GM correctly noted
+that staff who clocked in weren't showing up.
+
+One-line fix: import `apiFetch` (which pulls
+`localStorage[hotelops-token]` into the `Authorization: Bearer`
+header on every request) and route the entries call through it.
+Also wrap with `if (ok && data?.success)` so a server hiccup
+no-ops instead of throwing. Path goes from
+`fetch('/api/admin/entries?...')` to
+`apiFetch('/admin/entries?...')` (apiFetch prepends `/api`).
+
+```js
+const { ok, data } = await apiFetch(
+  `/admin/entries?from=${fetchRange.start}&to=${fetchRange.end}`
+);
+if (ok && data?.success) {
+  const merged = mergeAccidentalSignouts(data.entries || []);
+  setSchedules(merged.map(entryToSchedule));
+} else {
+  setSchedules([]);
+}
+```
+
+The other admin Calendar fetches (`/api/admin/schedule` POST/PUT/
+DELETE for the AssignModal/AssignPanel) sit on un-authed routes
+and still work via raw `fetch()` — leaving those untouched to
+keep this fix surgical. They can move to apiFetch later in a
+broader auth-hardening pass if the GM ever turns auth on for
+the schedule endpoints.
+
+**Verified.** Brace + paren balance holds (Calendar/index.js
+324/324 + 168/168). Behavioral fix is one network call —
+the token attachment is the only thing that changed.
+
+---
+
 ### 2026-05-26 — Sprint 12.1: move notes out of admin Calendar into Logbook; hide 0-hour staff in Day view
 
 Three follow-ups to Sprint 12.

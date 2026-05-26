@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { useAuth } from '../../../auth';
+import { apiFetch, useAuth } from '../../../auth';
 import { useView } from '../../../shells/ViewContext';
 import YearView from './YearView';
 import MonthView from './MonthView';
@@ -190,11 +190,18 @@ const SchedulingManager = () => {
 
   const loadSchedules = useCallback(async () => {
     setLoading(true);
-    const res  = await fetch(`/api/admin/entries?from=${fetchRange.start}&to=${fetchRange.end}`);
-    const data = await res.json();
-    if (data.success) {
+    // Sprint 12.3: /admin/entries is requireAuth — switching from
+    // raw fetch() to apiFetch so the bearer token rides along.
+    // Plain fetch hit a 401 → empty calendar; apiFetch picks up
+    // the JWT from localStorage like the rest of the admin code.
+    const { ok, data } = await apiFetch(
+      `/admin/entries?from=${fetchRange.start}&to=${fetchRange.end}`
+    );
+    if (ok && data?.success) {
       const merged = mergeAccidentalSignouts(data.entries || []);
       setSchedules(merged.map(entryToSchedule));
+    } else {
+      setSchedules([]);
     }
     setLoading(false);
   }, [fetchRange, mergeAccidentalSignouts, entryToSchedule]);
