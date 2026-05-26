@@ -792,6 +792,87 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 11.6: sidebar icon swap (emoji → tenant PNGs) + tenant-branded sidebar brand
+
+Pure UI swap — wires up the custom icon set the GM dropped in,
+no functional changes.
+
+**1. Nav icons.** Each nav item used to carry an emoji `icon`
+string. The shells now pass an *icon base name* (e.g. `'home'`,
+`'timesheet'`, `'stafficon'`); the sidebar resolves it to
+`/logo/<base>_<dark|light>.png` keyed by the active theme.
+
+```js
+// Sidebar.js
+const iconSrc = (base) => `/logo/${base}_${isDark ? 'dark' : 'light'}.png`;
+```
+
+Both surfaces — desktop sidebar list (`.nav-icon-img`) and mobile
+bottom-nav (`.bottom-nav-icon-img`) — render the same PNG. The
+sidebar background is dark in both themes (`#1a365d` / `#0b1420`),
+but we still swap per theme so designers can tweak stroke
+weights / contrast per mode without code changes (mirrors the
+existing HotelOps-logo theme convention).
+
+**Expected PNGs (drop into `public/logo/`):**
+
+| Base name    | Where it appears             |
+| ------------ | ---------------------------- |
+| `home`       | Staff Home, Admin Home       |
+| `timesheet`  | Staff Timesheet              |
+| `calendar`   | Staff + Admin Calendar       |
+| `stafficon`  | Admin Staff                  |
+| `logbook`    | Admin Logbook (was Reports)  |
+| `assistant`  | Admin Assistant              |
+| `settings`   | Staff + Admin Settings       |
+
+Each base ships two files: `<base>_dark.png` and `<base>_light.png`.
+
+The admin "Reports" tab is **relabelled to "Logbook"** in this
+sprint (`label: 'Logbook'`, `view: 'reports'` kept for view-state
+diff-friendliness). The actual Reports → Logbook surface rebuild
+lands in Sprint 12 per the GM.
+
+**2. Sidebar brand block.** Desktop only — mobile bottom-nav
+has no brand. Old block was a 🏨 emoji + the literal text
+"HotelOps". Now:
+
+- Tenant logo (e.g. Snoqualmie Inn) housed in a white card
+  backdrop, sized to the sidebar's 220px width (58px tall card,
+  10px radius, drop shadow) — mirrors the login page's
+  `.login-tenant-logo-wrap` treatment so the colored PNG reads
+  in dark mode without per-tenant dark variants.
+- "powered by HotelOps" tagline beneath, right-aligned per the
+  GM's mockup direction. Italic, 10px,
+  `rgba(255,255,255,0.55)`.
+
+Tenant resolved from `localStorage['hotelops-tenant-slug']` (the
+same source RootRoute / Sidebar's sign-out flow uses), falling
+through to `DEFAULT_TENANT_SLUG` if missing. If the tenant has
+no `logoUrl`, the brand block falls back to the tenant's name
+as text (centered, Tiempos Headline, white).
+
+**3. What didn't change.** Mobile bottom-nav layout, the
+sidebar's footer (theme toggle + sign-out), the unread badge on
+Calendar, the live-dot indicators on `live: true` items, the
+view-context-driven nav callback shape — all untouched.
+
+**Verified.** Sidebar.js, StaffShell.js, AdminShell.js
+parens/braces balance (61/61, 6/6, 8/8 + their `{}` counts).
+Sidebar.css braces balance 37/37. Visual review needed for the
+PNGs themselves — that's a designer task; the wiring is
+complete. (Node's local runtime is currently broken via a
+missing `libsimdutf` dylib from a brew upgrade, so babel parse
+couldn't run — fell back to brace-count sanity check.)
+
+**Follow-ups.** Sprint 12 reworks the Reports/Logbook surface.
+If the GM wants a different sidebar brand variant when an admin
+manages multiple tenants (rare for the pilot), the brand block
+can grow a `tenant` prop and the shells pass the active slug
+explicitly — no localStorage lookup needed.
+
+---
+
 ### 2026-05-23 — Sprint 11.5: clock-action race fix, StaffManager sort, admin calendar gap
 
 Three small fixes.

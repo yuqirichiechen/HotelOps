@@ -9,22 +9,52 @@
   flex-shrink: 0;
 }
 
+/* Sprint 11.6: brand block is now the tenant logo + a small
+   "powered by HotelOps" tagline beneath. The tenant PNGs are
+   horizontal lockups with their own backgrounds (Snoqualmie Inn
+   has red/blue on white), so we house them in a white card —
+   same approach the login page uses (`.login-tenant-logo-wrap`).
+   The tagline is right-aligned per the GM's mockup direction
+   ("powered by hotelops down the logo, aligned to the right"). */
 .sidebar-brand {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 24px 20px 20px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 18px 16px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
 }
-
-.brand-icon { font-size: 24px; }
-
-.brand-name {
+.sidebar-brand-logo-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 58px;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.sidebar-brand-logo {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.sidebar-brand-name {
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 21px;
-  font-weight: 900;
+  font-size: 18px;
+  font-weight: 700;
   color: white;
   letter-spacing: -0.01em;
+  text-align: center;
+}
+.sidebar-brand-powered {
+  font-size: 10px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.04em;
+  text-align: right;
+  padding-right: 2px;
 }
 
 .sidebar-nav {
@@ -67,7 +97,16 @@
   font-weight: 600;
 }
 
-.nav-icon { font-size: 18px; }
+/* Sprint 11.6: nav icon was an emoji span; now a PNG <img>. Sized
+   to roughly match the visual weight of the old emoji. `flex-shrink:
+   0` so a long label doesn't shrink the icon. */
+.nav-icon-img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
 .sidebar-nav-label { flex: 1; }
 
 .sidebar-admin-item {
@@ -258,6 +297,15 @@
   .bottom-nav-icon {
     font-size: 20px;
     line-height: 1;
+  }
+
+  /* Sprint 11.6: bottom-nav icon is a PNG now; size it to roughly
+     match what the old 20px emoji occupied. */
+  .bottom-nav-icon-img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    display: block;
   }
 
   .bottom-nav-label {

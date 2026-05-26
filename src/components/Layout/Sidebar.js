@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../../auth';
+import { KNOWN_TENANTS, DEFAULT_TENANT_SLUG } from '../../config/tenant';
 import './Sidebar.css';
 
 // Sprint 11.2.1: sidebar is now props-driven. The owning shell
@@ -67,13 +68,42 @@ const Sidebar = ({
 
   const isActive = (item) => currentView === item.view;
 
+  // Sprint 11.6: nav icons are theme-aware PNGs in `/public/logo/`.
+  // Filename pattern: `<base>_<dark|light>.png` — the suffix names
+  // the *target theme*, not the icon's content color (mirrors the
+  // existing HotelOps logo convention). The sidebar bg is dark in
+  // both themes, but we still swap per theme so designers can tweak
+  // per-mode strokes/contrast without code changes.
+  const iconSrc = (base) =>
+    `/logo/${base}_${isDark ? 'dark' : 'light'}.png`;
+
+  // Sprint 11.6: desktop brand block now shows the tenant logo (the
+  // property the user is signed into) with a small "powered by
+  // HotelOps" tagline beneath. Tenant resolved from the same
+  // localStorage slug the rest of the app uses; fall through to the
+  // default tenant if the slug is missing.
+  const slug = (typeof window !== 'undefined'
+    && localStorage.getItem('hotelops-tenant-slug'))
+    || DEFAULT_TENANT_SLUG;
+  const tenant = KNOWN_TENANTS[slug] || KNOWN_TENANTS[DEFAULT_TENANT_SLUG];
+
   return (
     <>
       {/* Desktop sidebar */}
       <nav className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-icon">🏨</span>
-          <span className="brand-name">HotelOps</span>
+          {tenant?.logoUrl ? (
+            <span className="sidebar-brand-logo-wrap">
+              <img
+                src={tenant.logoUrl}
+                alt={tenant.name}
+                className="sidebar-brand-logo"
+              />
+            </span>
+          ) : (
+            <span className="sidebar-brand-name">{tenant?.name || 'HotelOps'}</span>
+          )}
+          <div className="sidebar-brand-powered">powered by HotelOps</div>
         </div>
         <ul className="sidebar-nav">
           {navItems.map((item) => (
@@ -84,7 +114,12 @@ const Sidebar = ({
                 className={`sidebar-link${isActive(item) ? ' active' : ''}`}
                 aria-current={isActive(item) ? 'page' : undefined}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <img
+                  className="nav-icon-img"
+                  src={iconSrc(item.icon)}
+                  alt=""
+                  aria-hidden="true"
+                />
                 <span className="sidebar-nav-label">{item.label}</span>
                 {item.view === 'calendar' && unread > 0 && (
                   <span
@@ -122,7 +157,12 @@ const Sidebar = ({
             aria-current={isActive(item) ? 'page' : undefined}
           >
             <span className="bottom-nav-icon">
-              {item.icon}
+              <img
+                className="bottom-nav-icon-img"
+                src={iconSrc(item.icon)}
+                alt=""
+                aria-hidden="true"
+              />
               {item.view === 'calendar' && unread > 0 && (
                 <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
               )}

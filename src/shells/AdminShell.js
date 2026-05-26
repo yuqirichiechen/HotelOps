@@ -14,13 +14,18 @@ import AdminSettings from '../components/AdminPanel/AdminSettings';
 // Sub-views (StaffDetail, NotesPage) carry their identifiers through
 // view params instead of URL params.
 
+// Sprint 11.6: nav `icon` is now an icon *base name* — Sidebar
+// resolves it to `/logo/<base>_<dark|light>.png` based on the
+// active theme. PNGs live in /public/logo/. "Reports" relabelled
+// to "Logbook" in step with the icon swap (a Sprint 12 surface
+// rebuild lands in the next iteration).
 const NAV = [
-  { view: 'home',      label: 'Home',      icon: '🏠', live: true },
-  { view: 'staff',     label: 'Staff',     icon: '👥', live: true },
-  { view: 'calendar',  label: 'Calendar',  icon: '📅', live: true },
-  { view: 'reports',   label: 'Reports',   icon: '📊' },
-  { view: 'assistant', label: 'Assistant', icon: '🤖' },
-  { view: 'settings',  label: 'Settings',  icon: '⚙️', live: true },
+  { view: 'home',      label: 'Home',      icon: 'home',       live: true },
+  { view: 'staff',     label: 'Staff',     icon: 'stafficon',  live: true },
+  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',   live: true },
+  { view: 'reports',   label: 'Logbook',   icon: 'logbook' },
+  { view: 'assistant', label: 'Assistant', icon: 'assistant' },
+  { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
 ];
 
 const VIEWS = {

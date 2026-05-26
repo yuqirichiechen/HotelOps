@@ -11,11 +11,14 @@ import Settings from '../pages/Settings';
 // (`/:tenant/staff`). Sidebar clicks set view state instead of
 // navigating; the URL never changes after login.
 
+// Sprint 11.6: nav `icon` is now an icon *base name* — Sidebar
+// resolves it to `/logo/<base>_<dark|light>.png` based on the
+// active theme. PNGs live in /public/logo/.
 const NAV = [
-  { view: 'home',      label: 'Home',      icon: '🏠', live: true },
-  { view: 'timesheet', label: 'Timesheet', icon: '⏱️', live: true },
-  { view: 'calendar',  label: 'Calendar',  icon: '📅', live: true },
-  { view: 'settings',  label: 'Settings',  icon: '⚙️' },
+  { view: 'home',      label: 'Home',      icon: 'home',      live: true },
+  { view: 'timesheet', label: 'Timesheet', icon: 'timesheet', live: true },
+  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',  live: true },
+  { view: 'settings',  label: 'Settings',  icon: 'settings' },
 ];
 
 const VIEWS = {
