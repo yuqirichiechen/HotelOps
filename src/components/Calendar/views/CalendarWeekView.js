@@ -280,8 +280,88 @@ const CalendarWeekView = ({
         )}
       </div>
 
-      {/* ── Team matrix (hidden when staff is on "All Staff Updates") ── */}
-      {(!staffScope || activeTab === 'dept') && visibleStaff.length > 0 && (
+      {/* ── Sprint 13.1: admin dept × day grid ──────────────────────────
+          Replaces the staff-row matrix for admin (staffScope=false).
+          Rows = departments, columns = the 7 days. Each cell stacks
+          one mini-card per shift in that dept on that day. Click
+          drills into Day view via onPickDate. */}
+      {!staffScope && (
+        <div className="cal-week-deptgrid-wrap">
+          <header className="cal-week-deptgrid-header">
+            <span className="cal-week-deptgrid-icon" aria-hidden>📅</span>
+            <h3 className="cal-week-deptgrid-title">Departments × Days</h3>
+          </header>
+          <div className="cal-week-deptgrid" role="grid">
+            <div className="cal-week-deptgrid-row cal-week-deptgrid-row-head" role="row">
+              <div className="cal-week-deptgrid-cell cal-week-deptgrid-cell-corner">Department</div>
+              {days.map(d => (
+                <div key={isoDay(d)} className="cal-week-deptgrid-cell cal-week-deptgrid-cell-day">
+                  <span className="cal-week-deptgrid-day-name">{DAY_NAMES[d.getDay()]}</span>
+                  <span className="cal-week-deptgrid-day-num">{d.getDate()}</span>
+                </div>
+              ))}
+            </div>
+            {departments.map(dept => {
+              const deptShifts = schedules.filter(s => s.department_id === dept.department_id);
+              if (deptShifts.length === 0) return null;
+              return (
+                <div key={dept.department_id} className="cal-week-deptgrid-row" role="row">
+                  <div className="cal-week-deptgrid-cell cal-week-deptgrid-cell-dept">
+                    <span
+                      className="cal-week-deptgrid-dot"
+                      style={{ background: dept.color || '#a0aec0' }}
+                      aria-hidden
+                    />
+                    <span className="cal-week-deptgrid-dept-name">{dept.name}</span>
+                    <span className="cal-week-deptgrid-dept-count">
+                      {deptShifts.length} {deptShifts.length === 1 ? 'shift' : 'shifts'}
+                    </span>
+                  </div>
+                  {days.map(d => {
+                    const iso = isoDay(d);
+                    const dayShifts = deptShifts
+                      .filter(s => (s.scheduled_date || '').split('T')[0] === iso)
+                      .sort((a, b) => a.start_time.localeCompare(b.start_time));
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        className={`cal-week-deptgrid-cell cal-week-deptgrid-cell-data ${dayShifts.length === 0 ? 'is-empty' : ''}`}
+                        onClick={() => onPickDate && onPickDate(d)}
+                      >
+                        {dayShifts.length === 0 ? (
+                          <span className="cal-week-deptgrid-empty">—</span>
+                        ) : (
+                          <ul className="cal-week-deptgrid-mini-list">
+                            {dayShifts.slice(0, 3).map(s => (
+                              <li key={s.schedule_id} className={`cal-week-deptgrid-mini${s.is_in_progress ? ' is-in-progress' : ''}`}>
+                                <span className="cal-week-deptgrid-mini-time">
+                                  {fmtTimeShort(s.start_time)}–{s.is_in_progress ? 'now' : fmtTimeShort(s.end_time)}
+                                </span>
+                                <span className="cal-week-deptgrid-mini-name">
+                                  {s.employee_name}
+                                </span>
+                              </li>
+                            ))}
+                            {dayShifts.length > 3 && (
+                              <li className="cal-week-deptgrid-mini-more">
+                                +{dayShifts.length - 3} more
+                              </li>
+                            )}
+                          </ul>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Team matrix (staff only — admin uses the dept grid above) ── */}
+      {staffScope && (!staffScope || activeTab === 'dept') && visibleStaff.length > 0 && (
         <div className="cal-week-matrix-wrap">
           <header className="cal-week-matrix-header">
             <span className="cal-week-matrix-icon" aria-hidden>👥</span>

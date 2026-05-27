@@ -792,6 +792,109 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13.1: Day-view internal redesign + admin Week-view dept × day grid
+
+Sprint 13 (foundation) landed the header collapse + at-a-glance /
+notes cards. Sprint 13.1 carries the bigger internal redesigns the
+GM mocked up.
+
+**1. Day view: Rows + Timeline rewrites.**
+
+Replaced both internal modes with new card-driven layouts. The
+existing `TimelineMode` (vertical hour rail + lane-pack) and
+`ResourceMode` (dept rows × hour columns) are left in the file as
+dead code for a sprint while the GM confirms — they're not
+referenced from the render path, so they can be deleted in a 13.x
+cleanup pass.
+
+**`ShiftCard`** — single card design shared between Rows and
+Timeline. Dept-color left stripe, dept-tinted initials avatar,
+name + on-shift live pill, dept · role meta line, time-range +
+hours line with clock-icon. Click anywhere on the card opens
+`ShiftDetailModal` (unchanged from Sprint 12.4). `.is-in-progress`
+class flips the left stripe to green + adds the live dot/pill.
+
+**`RowsListMode`** (image #15) — flat list of `ShiftCard`s
+sorted by start time. Header is `Scheduled Staff` + count. One
+component, same component on desktop and mobile (CSS handles the
+width changes). No more dept-grouped horizontal tracks; one staff
+= one card.
+
+**`TimelineBucketsMode`** (image #13) — hour-bucket sections,
+collapsible via the chevron in each bucket header. Bucket-hour
+assignment follows the GM's xx:45 rule:
+```js
+const bucketHourFor = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return m < 45 ? h : (h + 1) % 24;   // wraps at 24 → 0
+};
+```
+Buckets without any shifts are omitted entirely (image #12 skipped
+6 AM + 9 AM with that pattern). Shifts inside a bucket are
+sorted by start time. Same `ShiftCard` body — the wrapper is the
+only difference between Rows and Timeline.
+
+**`useIsMobile` hook** — `(max-width: 720px)` matcher, present for
+when the Day view needs a desktop-specific Timeline variant
+(13.2 will add the dept-row × hour-column grid from image #12 for
+non-touch viewports). Right now both surfaces use the bucket
+layout; the hook is here so the conditional render in 13.2 is a
+one-line change.
+
+Helpers added alongside: `initialsFor(name)` (two-letter initials
+from first/last name), `fmtCompactRange(start, end)` (compact
+"9:00am – 5:30pm" / "9:00am – now" formatter). The leftover
+helpers from the old modes (`timeToMinutes`, `laneAssign`,
+`verticalShiftBox`, `horizontalShiftBox`) stay until cleanup.
+
+**2. Admin Week view: dept × day grid.**
+
+Image #14 — rows = departments, columns = the seven days, cells
+stack one mini-card per shift on that day in that dept.
+Implemented as a new `.cal-week-deptgrid-wrap` block in
+`CalendarWeekView`, rendered only when `staffScope === false`
+(admin). Staff calendar keeps the existing staff-row matrix
+because the staff scope only ever shows the staff's own dept —
+a dept-row grid for staff would degenerate to a one-row table.
+
+The grid:
+- 8-column CSS grid (`120-200px` dept label + 7 day columns).
+- Day-header cells show day-letter + day-number (`Mon 25`).
+- Dept rows skip empty depts (`deptShifts.length === 0` ⇒
+  return null) so the grid only renders depts with activity in
+  the week.
+- Each cell shows up to 3 mini-cards; if a dept has > 3 shifts on
+  a day, the cell collapses the overflow to `+N more` (clicking
+  still drills into Day via `onPickDate`).
+- Mini-card = compact time + employee name with a left stripe
+  that flips green for in-progress entries.
+
+**3. Conflicts stat — same overlap-pair logic.**
+
+No change since Sprint 13; just confirming it scopes to the
+range the calendar's fetch returns. Day view → conflicts within
+that single day. Week view → conflicts across all 7 days
+(probably noisier, but matches the at-a-glance card's range).
+
+**Verified.** Brace + paren balance held across all four touched
+files: DayView.js 411/411 + 288/288, CalendarWeekView.js 200/200
++ 148/148, Scheduling.css 479/479 + 466/466, Calendar.css 255/255
++ 233/233. (Node runtime still broken — manual review + bracket
+balance check.)
+
+**Follow-ups (Sprint 13.x):**
+
+- Delete the orphan `TimelineMode` + `ResourceMode` once the GM
+  signs off on the new card layouts.
+- Desktop Timeline variant matching image #12 (dept row × hour
+  column with cards positioned by start time). `useIsMobile`
+  is in place; the conditional render is one extra component
+  away.
+- Conflict definition refinement once GM has time to use the new
+  layouts and tell us what's actually useful.
+
+---
+
 ### 2026-05-26 — Sprint 13: header collapse + Day/Week at-a-glance + notes-feed cards (foundation pass)
 
 Sprint 13 covers the calendar redesign the GM mocked up. Scope is

@@ -2753,3 +2753,217 @@
 @media (max-width: 480px) {
   .sched-glance-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ── Sprint 13.1: shared shift-card for the new Rows + Timeline layouts ─
+   Single card design powers both surfaces. Left edge = dept-color
+   stripe; avatar bubble in dept-tint; name/meta/time stacked vertically;
+   trailing chevron hints at the detail-modal affordance. */
+
+.day-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  box-shadow: var(--shadow-sm);
+}
+.day-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.day-card.is-compact {
+  padding: 10px 12px;
+  gap: 10px;
+  grid-template-columns: 36px minmax(0, 1fr) 14px;
+}
+.day-card.is-in-progress {
+  box-shadow: inset 3px 0 0 0 #38a169, var(--shadow-sm);
+  border-left-color: #38a169;
+}
+
+.day-card-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.day-card.is-compact .day-card-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.day-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.day-card-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.day-card-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.day-card-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.day-card-time-icon { opacity: 0.7; }
+.day-card-hours { color: var(--text-muted); }
+.day-card-chevron {
+  color: var(--text-lightest);
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 300;
+}
+.day-card-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #276749;
+  background: rgba(56, 161, 105, 0.12);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.day-card-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38a169;
+  animation: day-shift-live-pulse 1.6s ease-in-out infinite;
+}
+
+/* ── Sprint 13.1: Rows list (Scheduled Staff) ───────────────────────── */
+.day-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.day-rows-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+.day-rows-section-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-text);
+  letter-spacing: -0.01em;
+}
+.day-rows-section-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.day-rows-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Sprint 13.1: Timeline hour-bucket sections ─────────────────────── */
+.day-timeline-buckets {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.day-timeline-bucket {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.day-timeline-bucket-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  transition: background 0.12s ease;
+}
+.day-timeline-bucket-head:hover { background: var(--bg-surface); }
+.day-timeline-bucket-hour {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-text);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.day-timeline-bucket-count {
+  flex: 1;
+  text-align: left;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+.day-timeline-bucket-chev {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+.day-timeline-bucket.is-collapsed .day-timeline-bucket-chev {
+  transform: rotate(-90deg);
+}
+.day-timeline-bucket-items {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .day-timeline-bucket-items { padding-left: 0; }
+  .day-card { padding: 10px 12px; gap: 10px; grid-template-columns: 38px minmax(0, 1fr) 14px; }
+  .day-card-avatar { width: 38px; height: 38px; font-size: 12px; }
+  .day-card-name { font-size: 14px; }
+}

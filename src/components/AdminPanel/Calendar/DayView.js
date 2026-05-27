@@ -148,6 +148,56 @@ const horizontalShiftBox = (start, end) => {
   return { left: (s / 1440) * 100, width: ((e - s) / 1440) * 100 };
 };
 
+// Sprint 13.1: small media-query hook + helpers for the new
+// Rows / Timeline layouts.
+
+const useIsMobile = () => {
+  const q = '(max-width: 720px)';
+  const [m, setM] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia(q).matches;
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(q);
+    const handler = (e) => setM(e.matches);
+    setM(mq.matches);
+    mq.addEventListener?.('change', handler) ?? mq.addListener(handler);
+    return () => {
+      mq.removeEventListener?.('change', handler) ?? mq.removeListener(handler);
+    };
+  }, []);
+  return m;
+};
+
+// Two-letter initials ("Io Man Chan Yu" → "IC", "Jun" → "J").
+const initialsFor = (name) => {
+  if (!name) return '?';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
+// Sprint 13: hour-bucket rule for the mobile Timeline view.
+// Start times < xx:45 → bucket `xx`; ≥ xx:45 → bucket `xx+1` (wraps
+// at 24 → 0). Drives the section headers on the mobile day list.
+const bucketHourFor = (hhmm) => {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return m < 45 ? h : (h + 1) % 24;
+};
+
+// Compact time-range copy for the new card layouts. Treats
+// in-progress (end === 'now') as the literal "now" suffix.
+const fmtCompactRange = (start, end) => {
+  const startStr = String(start).slice(0, 5);
+  const endStr   = String(end).slice(0, 5);
+  if (end === 'now' || end === null || end === undefined) {
+    return `${fmtTimeRange(startStr, '00:00').split(' – ')[0]} – now`;
+  }
+  return fmtTimeRange(startStr, endStr);
+};
+
 // Sprint 12.4: friendly clock-time formatter for ISO timestamps in
 // the modal. Returns "8:38 AM"-ish; falls back to the HH:MM:SS slice
 // for the rare case the modal gets a synthesized (no-clock-out)
@@ -345,17 +395,22 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
         </div>
       </div>
 
+      {/* Sprint 13.1: Day view internal redesign.
+            - Rows   = Scheduled Staff list (image #15).
+            - Timeline = Hour-bucket sections per the xx:45 rule
+                         (image #13).
+          The old TimelineMode (hour-rail + lane-pack) and
+          ResourceMode (dept-row tracks) are kept further down as
+          dead code for a sprint while the GM confirms — they can
+          be deleted in Sprint 13.x cleanup. */}
       {viewMode === 'timeline' ? (
-        <TimelineMode
+        <TimelineBucketsMode
           shifts={filteredShifts}
-          onEdit={onEdit}
           onShowDetail={setDetailShift}
         />
       ) : (
-        <ResourceMode
-          deptGroups={empsByDept}
+        <RowsListMode
           shifts={filteredShifts}
-          onEdit={onEdit}
           onShowDetail={setDetailShift}
         />
       )}
@@ -376,6 +431,160 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
 // hours is identical (the prior 24-row layout had the first row's label
 // special-cased and the gap between 12 AM and 1 AM read smaller than the
 // others).
+// Sprint 13.1: shared shift-card body for the new Rows + Timeline
+// layouts. Same shape on both surfaces — only the wrapper differs
+// (flat list vs grouped under an hour-bucket header). Click opens
+// the existing ShiftDetailModal via onShowDetail.
+const ShiftCard = ({ shift, onClick, compact = false }) => {
+  const color = DEPT_COLORS[shift.department_name] || DEFAULT_COLOR;
+  const startStr = shift.start_time.slice(0, 5);
+  const endStr   = shift.is_in_progress ? null : shift.end_time.slice(0, 5);
+  const range    = fmtCompactRange(startStr, endStr);
+  const hours    = computeShiftHours(shift.start_time, shift.end_time);
+  const role     = shift.role || null;
+  return (
+    <button
+      type="button"
+      className={`day-card${shift.is_in_progress ? ' is-in-progress' : ''}${compact ? ' is-compact' : ''}`}
+      style={{
+        borderLeftColor: color.border,
+        // Background = dept-color tint at low alpha for the live edge;
+        // overall card stays surface-color so the list stays scannable.
+      }}
+      onClick={onClick}
+    >
+      <span
+        className="day-card-avatar"
+        style={{ background: color.bg, color: color.text, borderColor: color.border }}
+      >
+        {initialsFor(shift.employee_name)}
+      </span>
+      <span className="day-card-body">
+        <span className="day-card-name">
+          {shift.employee_name}
+          {shift.is_in_progress && (
+            <span className="day-card-live-pill" aria-label="On shift">
+              <span className="day-card-live-dot" /> ON SHIFT
+            </span>
+          )}
+        </span>
+        <span className="day-card-meta">
+          {shift.department_name || 'Unassigned'}
+          {role && <> · {role}</>}
+        </span>
+        <span className="day-card-time">
+          <span className="day-card-time-icon" aria-hidden>⏱</span>
+          {range}
+          <span className="day-card-hours"> · {hours}h</span>
+        </span>
+      </span>
+      <span className="day-card-chevron" aria-hidden>›</span>
+    </button>
+  );
+};
+
+// Sprint 13.1: Rows mode = scheduled-staff list. One card per
+// clock entry, sorted by start time. Mobile + desktop share the
+// same component (CSS handles widths). Replaces the previous
+// ResourceMode dept-track grid.
+const RowsListMode = ({ shifts, onShowDetail }) => {
+  const sorted = useMemo(
+    () => [...shifts].sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    [shifts]
+  );
+  return (
+    <div className="day-rows">
+      <header className="day-rows-section-head">
+        <span className="day-rows-section-title">Scheduled Staff</span>
+        <span className="day-rows-section-count">{sorted.length} {sorted.length === 1 ? 'staff' : 'staff'}</span>
+      </header>
+      {sorted.length === 0 ? (
+        <div className="day-empty">No clock entries for this day yet.</div>
+      ) : (
+        <ul className="day-rows-list">
+          {sorted.map(s => (
+            <li key={s.schedule_id}>
+              <ShiftCard shift={s} onClick={() => onShowDetail(s)} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// Sprint 13.1: Timeline mode = hour-bucket sections. Each section
+// header is `H AM/PM`; shifts under it are those whose start time
+// rounds into that bucket per the xx:45 rule. Empty buckets are
+// omitted. Section header is collapsible on mobile (per the GM's
+// image #13); chevron toggles the section body's visibility.
+const TimelineBucketsMode = ({ shifts, onShowDetail }) => {
+  const buckets = useMemo(() => {
+    const groups = new Map();
+    for (const s of shifts) {
+      const h = bucketHourFor(s.start_time);
+      if (!groups.has(h)) groups.set(h, []);
+      groups.get(h).push(s);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([h, items]) => ({
+        hour: h,
+        items: items.sort((a, b) => a.start_time.localeCompare(b.start_time)),
+      }));
+  }, [shifts]);
+
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const toggle = (h) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(h)) next.delete(h);
+      else             next.add(h);
+      return next;
+    });
+  };
+
+  if (buckets.length === 0) {
+    return <div className="day-empty">No clock entries for this day yet.</div>;
+  }
+
+  return (
+    <div className="day-timeline-buckets">
+      {buckets.map(({ hour, items }) => {
+        const isCollapsed = collapsed.has(hour);
+        return (
+          <section
+            key={hour}
+            className={`day-timeline-bucket${isCollapsed ? ' is-collapsed' : ''}`}
+          >
+            <button
+              type="button"
+              className="day-timeline-bucket-head"
+              onClick={() => toggle(hour)}
+              aria-expanded={!isCollapsed}
+            >
+              <span className="day-timeline-bucket-hour">{fmtHour(hour)}</span>
+              <span className="day-timeline-bucket-count">
+                {items.length} {items.length === 1 ? 'shift' : 'shifts'}
+              </span>
+              <span className="day-timeline-bucket-chev" aria-hidden>▾</span>
+            </button>
+            {!isCollapsed && (
+              <ul className="day-timeline-bucket-items">
+                {items.map(s => (
+                  <li key={s.schedule_id}>
+                    <ShiftCard shift={s} onClick={() => onShowDetail(s)} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+};
+
 const TimelineMode = ({ shifts, onEdit, onShowDetail }) => {
   const { shifts: laneShifts, laneCount, deptBands } = useMemo(
     () => laneAssign(shifts), [shifts]
