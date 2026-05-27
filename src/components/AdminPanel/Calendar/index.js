@@ -339,12 +339,27 @@ const SchedulingManager = () => {
 
   const loadSchedules = useCallback(async () => {
     setLoading(true);
-    // Sprint 12.3: /admin/entries is requireAuth — switching from
-    // raw fetch() to apiFetch so the bearer token rides along.
-    // Plain fetch hit a 401 → empty calendar; apiFetch picks up
-    // the JWT from localStorage like the rest of the admin code.
+    // Sprint 13.4: send the date range as ISO timestamps representing
+    // local-midnight bounds (`new Date(y, m, d, 0).toISOString()` gives
+    // the UTC instant corresponding to local 00:00). Server compares
+    // against `clock_in_time` (timestamptz) directly, so an entry at
+    // 11 PM local PT now correctly falls inside the *local* day and
+    // not the next UTC day — the prior 'YYYY-MM-DD' format had the
+    // server cast to ::date in UTC, dropping that entry off the
+    // operator's calendar.
+    const localStartIso = (yyyymmdd) => {
+      const [y, m, d] = String(yyyymmdd).split('-').map(Number);
+      return new Date(y, m - 1, d, 0, 0, 0).toISOString();
+    };
+    const localEndIso = (yyyymmdd) => {
+      const [y, m, d] = String(yyyymmdd).split('-').map(Number);
+      // end-exclusive: next day at local midnight
+      return new Date(y, m - 1, d + 1, 0, 0, 0).toISOString();
+    };
+    const from = localStartIso(fetchRange.start);
+    const to   = localEndIso(fetchRange.end);
     const { ok, data } = await apiFetch(
-      `/admin/entries?from=${fetchRange.start}&to=${fetchRange.end}`
+      `/admin/entries?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
     );
     if (ok && data?.success) {
       const merged = mergeAccidentalSignouts(data.entries || []);

@@ -2294,45 +2294,9 @@
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-/* Sprint 11.5: sort dropdown — sibling to the Include-inactive
-   toggle. Visually a chip with a small "Sort" label + native
-   <select>. Native select keeps the option list keyboard-accessible
-   and OS-themed; the wrapper matches the chip language so it sits
-   tidily next to the other toolbar controls. */
-.staff-mgr-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-surface);
-  font-family: 'TiemposText', Georgia, serif;
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  margin-left: 4px;
-}
-.staff-mgr-sort-label {
-  font-weight: 500;
-  color: var(--text-muted);
-}
-.staff-mgr-sort-select {
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  background: transparent;
-  border: 0;
-  padding: 4px 4px 4px 0;
-  cursor: pointer;
-  outline: none;
-}
-.staff-mgr-sort-select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+/* Sprint 13.4: `.staff-mgr-sort*` rules removed — Sprint 13.3
+   swapped for the shared DropdownSelect (carries its own
+   `.hop-dropdown*` styles). */
 
 /* Sprint 11.4: selection summary chip — sibling to the Include-
    inactive toggle, sits to its right with a small gap. Doubles as

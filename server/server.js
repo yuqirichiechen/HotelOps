@@ -1433,14 +1433,39 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
 
 app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res) => {
   const { from, to, user_ids, dept_id } = req.query;
-  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    return res.status(400).json({ success: false, message: 'from and to dates required (YYYY-MM-DD)' });
+  // Sprint 13.4: accept either YYYY-MM-DD (legacy, treated as server-
+  // local date) OR a full ISO timestamp (preferred — encodes the
+  // caller's local midnight in UTC so the range maps correctly
+  // across timezones). The 11 PM clock-in bug was the server casting
+  // 'YYYY-MM-DD' to ::date in UTC; an entry at 11 PM PT lives in the
+  // next UTC day and fell outside the day's date range, so today's
+  // calendar rendered empty while tomorrow's showed the entry.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const ISO_RE  = /^\d{4}-\d{2}-\d{2}T/;
+  const fromIsISO = ISO_RE.test(String(from || ''));
+  const toIsISO   = ISO_RE.test(String(to   || ''));
+  const fromIsDate = DATE_RE.test(String(from || ''));
+  const toIsDate   = DATE_RE.test(String(to   || ''));
+  if (!from || !to || (!fromIsISO && !fromIsDate) || (!toIsISO && !toIsDate)) {
+    return res.status(400).json({
+      success: false,
+      message: 'from and to required (YYYY-MM-DD or ISO timestamp)',
+    });
   }
 
-  const conditions = [
-    `te.clock_in_time >= $1::date`,
-    `te.clock_in_time <  ($2::date + INTERVAL '1 day')`,
-  ];
+  const conditions = fromIsISO && toIsISO
+    ? [
+        // Client passed UTC ISO timestamps representing local-midnight
+        // bounds; compare directly against timestamptz.
+        `te.clock_in_time >= $1::timestamptz`,
+        `te.clock_in_time <  $2::timestamptz`,
+      ]
+    : [
+        // Legacy date format — interpreted in the server's timezone.
+        // Older callers (and any cron / curl scripts) still work.
+        `te.clock_in_time >= $1::date`,
+        `te.clock_in_time <  ($2::date + INTERVAL '1 day')`,
+      ];
   const params = [from, to];
 
   if (user_ids) {

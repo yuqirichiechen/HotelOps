@@ -792,6 +792,118 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13.4: dead-CSS cleanup + timezone fix for late-evening clock-ins
+
+Two follow-ups: the Sprint 13.3 cleanup pass + a real production
+bug the GM caught at 11 PM live.
+
+**1. Cleanup — dead CSS removed.**
+
+Sprint 13.3 left four sets of dead selectors marked for removal
+once the new DropdownSelect-based toolbar was confirmed. Deleted:
+
+- `.day-filter-chips`, `.day-chip`, `.day-chip:hover`,
+  `.day-chip.is-active` (Scheduling.css lines 1390+) — the
+  pre-13.2 chip-row dept filter.
+- `.day-filter-dropdown`, `.day-filter-dropdown-label`,
+  `.day-filter-dropdown-select`,
+  `.day-filter-dropdown-select:focus-visible`
+  (Scheduling.css lines 2978+) — the Sprint 13.2 native-`<select>`
+  wrapper.
+- `.staff-mgr-sort`, `.staff-mgr-sort-label`,
+  `.staff-mgr-sort-select`,
+  `.staff-mgr-sort-select:focus-visible`
+  (AdminPanel.css lines 2302+) — same story on the StaffManager
+  sort.
+
+Replaced each block with a single-line `/* Sprint 13.4: removed,
+see DropdownSelect */` so future archaeology lands on the right
+trail. Total: 12 rules deleted, ~140 lines down.
+
+**2. Bug — 11 PM clock-ins falling into the next UTC day.**
+
+Live bug: GM at the hotel at 11 PM local Pacific. Staff just
+clocked in (entry stored as `2026-05-27T06:00:00Z` — the same
+UTC instant). Admin Calendar's Day view rendered empty for
+today (May 26), but yesterday/tomorrow showed the entry
+randomly.
+
+Root cause: `/api/admin/entries` did
+```sql
+te.clock_in_time >= $1::date AND te.clock_in_time < ($2::date + INTERVAL '1 day')
+```
+where `$1` / `$2` were `'YYYY-MM-DD'` strings. Postgres cast
+those to date *in the server's timezone* (UTC on Koyeb). So
+"May 26" became `2026-05-26 00:00 UTC`–`2026-05-27 00:00 UTC`,
+which is 5 PM May 25 PT through 5 PM May 26 PT. An 11 PM PT
+clock-in (= 6 AM May 27 UTC) sat outside that window — the
+calendar dropped it. The same entry queried for "May 27"
+showed up correctly (the entry IS in May 27 UTC), so the
+calendar appeared to put the staff on the *wrong day*.
+
+Fix is a three-touch:
+
+**Server (`/api/admin/entries`).** Now accepts either format:
+- Legacy `YYYY-MM-DD` (interpreted in server TZ — existing
+  callers and any cron jobs still work).
+- New: ISO timestamp (e.g.
+  `2026-05-26T07:00:00.000Z`) — compared directly against
+  `te.clock_in_time` (timestamptz), so the caller's local
+  midnight bound is honored regardless of server TZ.
+
+```js
+const conditions = fromIsISO && toIsISO
+  ? [`te.clock_in_time >= $1::timestamptz`,
+     `te.clock_in_time <  $2::timestamptz`]
+  : [`te.clock_in_time >= $1::date`,
+     `te.clock_in_time <  ($2::date + INTERVAL '1 day')`];
+```
+
+Regex switch picks the branch — `/^\d{4}-\d{2}-\d{2}T/` for ISO,
+`/^\d{4}-\d{2}-\d{2}$/` for legacy date.
+
+**Client #1: admin Calendar `loadSchedules`.** Builds the
+`from`/`to` as ISO strings representing local-midnight bounds:
+```js
+const localStartIso = (yyyymmdd) => {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0).toISOString();
+};
+const localEndIso = (yyyymmdd) => {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  return new Date(y, m - 1, d + 1, 0, 0, 0).toISOString();  // exclusive
+};
+```
+`new Date(y, m, d, 0, 0, 0)` interprets the components as
+*local time* — `.toISOString()` then gives the UTC instant
+matching that local moment. Pass both into the URL
+(`encodeURIComponent` since the value carries colons).
+
+**Client #2: StaffManager `runExport`.** Same helper applied —
+"today"/"biweekly"/"month" exports were quietly missing
+late-evening entries the same way. Less noisy than the calendar
+because the export range is longer than one day, but the same
+class of bug.
+
+**Verified.** Brace + paren balance held across all touched
+files (server.js had a pre-existing 1534→1547 paren imbalance in
+literals; my edit added 11/11 balanced — file is syntactically
+fine). Bug walk-through: ISO range
+`2026-05-26T07:00:00.000Z` → `2026-05-27T07:00:00.000Z` (PDT
+local midnight bounds) now contains the
+`2026-05-27T06:00:00Z` clock-in, so the entry renders on
+Calendar's May 26 column. Matching `tomorrow` query
+`2026-05-27T07:00:00Z` → `2026-05-28T07:00:00Z` doesn't —
+no double-counting.
+
+**Follow-ups.** Other date-range endpoints (`/me/hours`,
+`/admin/staff/:id/performance`, etc.) probably have the same
+class of bug — they're less visible because they're scoped to
+longer windows. Worth a TZ-aware pass when the GM has more
+incidents to share.
+
+---
+
 ### 2026-05-26 — Sprint 13.3: header `+` → inline "Assign", view toggle right-aligned, shared DropdownSelect
 
 Four GM-asked changes that all touch the same toolbar language.

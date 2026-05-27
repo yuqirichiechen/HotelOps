@@ -387,7 +387,23 @@ const StaffManager = () => {
       ({ from, to } = periodRange(csvPeriod, { payStartDay }));
     }
 
-    const params = new URLSearchParams({ from, to });
+    // Sprint 13.4: send ISO timestamps representing local-midnight
+    // bounds so the server can compare against `clock_in_time`
+    // (timestamptz) directly. Avoids the late-evening boundary bug
+    // where an 11 PM clock-in would land in the *next* UTC day and
+    // get dropped from a "today" / "this week" export.
+    const localStartIso = (yyyymmdd) => {
+      const [y, m, d] = String(yyyymmdd).split('-').map(Number);
+      return new Date(y, m - 1, d, 0, 0, 0).toISOString();
+    };
+    const localEndIso = (yyyymmdd) => {
+      const [y, m, d] = String(yyyymmdd).split('-').map(Number);
+      return new Date(y, m - 1, d + 1, 0, 0, 0).toISOString();
+    };
+    const params = new URLSearchParams({
+      from: localStartIso(from),
+      to:   localEndIso(to),
+    });
     let scopeLabel = 'all-staff';
     if (csvScope === 'department' && selectedDept !== 'all' && selectedDept !== '__none__') {
       params.set('dept_id', selectedDept);
