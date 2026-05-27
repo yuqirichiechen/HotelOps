@@ -792,6 +792,89 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13.2: Day view dual layout (Classic / Cards), dept dropdown, mobile header squeeze, Scheduled stat
+
+Four GM-asked changes.
+
+**1. Two Day-view layouts; user picks.**
+
+13.1 replaced the old hour-rail + dept-track modes with the new
+card-driven layouts. GM wants both available — Classic for desktop
+power-users, Cards for mobile / preference. Added a `layoutStyle`
+toggle:
+- New segmented control next to Rows/Timeline: `[Classic | Cards]`.
+- Default = `cards` on `(max-width: 720px)` else `classic`.
+- Persists to `localStorage['hotelops-cal-layout-style']` so the
+  admin's choice survives reloads.
+- 2×2 render routing (`layoutStyle × viewMode`):
+  - classic + timeline → original `TimelineMode` (hour rail +
+    lane-pack).
+  - classic + rows → original `ResourceMode` (dept-row tracks).
+  - cards + timeline → `TimelineBucketsMode` (Sprint 13.1
+    hour-bucket sections).
+  - cards + rows → `RowsListMode` (Sprint 13.1 staff-card list).
+
+All four components stay in the file; nothing is dead-coded
+anymore — both layouts are first-class.
+
+**2. Dept chips → dropdown; toggles consolidated on the right.**
+
+Per the GM's request, the All / dept chips row was eating
+multiple lines on mobile. Replaced with a native `<select>`
+labelled "Department" on the left of the controls row. Both
+toggle segments (Style + View mode) live on the right; flex-wrap
+so the toggle cluster drops below the dropdown only on
+viewport-too-narrow.
+
+Old `.day-filter-chips` / `.day-chip` rules left in CSS in case
+the chip pattern returns elsewhere — no JSX references them now.
+
+**3. Header single-row on mobile (image #16).**
+
+The `<` `Today` `>` + `Year Month Week Day` + `＋` cluster was
+wrapping on phone-class viewports. Tightened via
+`@media (max-width: 720px)` and `(max-width: 480px)` breakpoints:
+- `.nav-arrow` 30px (was 36); `.nav-today` smaller padding/font.
+- `.sched-view-toggle` padding 2px (was 3); buttons 5px 8px /
+  font 11px.
+- `.sched-add-btn` 30px square.
+- At ≤480px, the view-toggle buttons shrink another step
+  (font 10px, padding 5px 6px).
+
+All controls fit on one row at iPhone-SE width with the title
++ back link above.
+
+**4. Conflicts → Scheduled stat.**
+
+GM dropped "Conflicts" — overlap counting was noisy in a hotel
+where multi-staff coverage is normal. Replaced with "Scheduled":
+the count of admin-assigned shifts (rows in `schedules`) for
+the current range. Pulled from `/api/admin/schedule?start=&end=`
+in a new `useEffect` in `SchedulingManager`, separate from the
+`/admin/entries` fetch that drives the calendar visualisation
+itself. `countConflicts` helper deleted with a comment-stone.
+
+`computeDayStats` grew a third param (`scheduledCount`); the
+4th tile in `AtAGlanceCard` is now labelled "Scheduled" with no
+warn-tint (it's an informational count, not an alert).
+
+**Verified.** All three touched files balance: DayView.js
+429/429 + 304/304, Calendar/index.js 400/400 + 221/221,
+Scheduling.css 494/494 + 484/484. Default layout picks correctly
+based on initial viewport; the persist-to-localStorage round-trip
+survives reload by reading the stored value before falling back
+to the media-query default.
+
+**Follow-ups.** Week view's two layouts (staff matrix vs admin
+dept × day grid) are currently auto-picked by `staffScope`. If
+the GM also wants a user-side toggle there (e.g. admin sees
+matrix on demand), the same `layoutStyle` localStorage key + a
+Style toggle on the week toolbar would extend the pattern. Not
+in this sprint — the GM only mentioned the Day view layout
+choice.
+
+---
+
 ### 2026-05-26 — Sprint 13.1: Day-view internal redesign + admin Week-view dept × day grid
 
 Sprint 13 (foundation) landed the header collapse + at-a-glance /

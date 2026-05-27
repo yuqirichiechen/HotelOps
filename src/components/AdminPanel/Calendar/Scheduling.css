@@ -2967,3 +2967,112 @@
   .day-card-avatar { width: 38px; height: 38px; font-size: 12px; }
   .day-card-name { font-size: 14px; }
 }
+
+/* ── Sprint 13.2: dept dropdown + Style/View toggles ───────────────────
+   Replaces the chip-row dept filter with a native <select>, and adds
+   a second segmented toggle for the layout style (Classic / Cards)
+   next to Rows/Timeline. All three controls live on the same flex
+   row in `.day-controls`; on narrow viewports the dropdown stays at
+   the left and the toggles wrap as a unit on a new line. */
+
+.day-filter-dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  margin-right: auto;  /* push toggles to the right */
+}
+.day-filter-dropdown-label {
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.day-filter-dropdown-select {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  padding: 4px 4px 4px 0;
+  cursor: pointer;
+  outline: none;
+}
+.day-filter-dropdown-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.day-controls-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-style-toggle {
+  display: inline-flex;
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.day-style-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.day-style-btn.is-active {
+  background: var(--bg-surface);
+  color: var(--brand-text);
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Sprint 13.2: mobile header tightening (image #16) ──────────────────
+   Squeeze prev/today/next + Year/Month/Week/Day + ＋ onto a single
+   row by shrinking padding + font on phone-class viewports. */
+@media (max-width: 720px) {
+  .sched-header-controls {
+    gap: 4px;
+  }
+  .sched-header-controls .nav-arrow {
+    width: 30px;
+    height: 30px;
+    font-size: 18px;
+  }
+  .sched-header-controls .nav-today {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .sched-view-toggle { padding: 2px; gap: 1px; }
+  .sched-header-controls .view-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+  .sched-add-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 18px;
+  }
+}
+@media (max-width: 480px) {
+  .sched-header-controls .view-btn { padding: 5px 6px; font-size: 10px; }
+  .sched-header-controls .nav-today { padding: 5px 8px; font-size: 11px; }
+}

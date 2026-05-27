@@ -54,36 +54,25 @@ const fmtDate = (d) => {
 //                    a count to surface multi-staff coverage windows.
 //
 // Open Shifts intentionally dropped (Sprint 13 — see iteration log).
-const computeDayStats = (entries, notesCount = 0) => {
+const computeDayStats = (entries, notesCount = 0, scheduledCount = 0) => {
   let finished = 0;
   let onClock  = 0;
   for (const s of entries) {
     if (s.is_in_progress) onClock++;
     else                  finished++;
   }
-  return { finished, onClock, notes: notesCount, conflicts: countConflicts(entries) };
+  return {
+    finished,
+    onClock,
+    notes:     notesCount,
+    scheduled: scheduledCount,
+  };
 };
 
-const countConflicts = (entries) => {
-  // Pairs of *different* staff whose [in, out] intervals overlap. Same-
-  // staff pairs are filtered out — those would be a data anomaly we'd
-  // already have flagged elsewhere, not an operational overlap.
-  const items = entries.map(s => ({
-    user_id: s.user_id,
-    in:  new Date(s.clock_in_time).getTime(),
-    out: s.clock_out_time ? new Date(s.clock_out_time).getTime() : Date.now(),
-  }));
-  let n = 0;
-  for (let i = 0; i < items.length; i++) {
-    for (let j = i + 1; j < items.length; j++) {
-      const a = items[i];
-      const b = items[j];
-      if (a.user_id === b.user_id) continue;
-      if (a.in < b.out && b.in < a.out) n++;
-    }
-  }
-  return n;
-};
+// Sprint 13.2: `countConflicts` removed — the at-a-glance card's
+// 4th stat is now "Scheduled" (count of admin-assigned shifts via
+// the + scheduler), not "Conflicts." Overlap counting was a noisy
+// signal in a hotel where multi-staff coverage is the norm.
 
 // Day at a glance / Week at a glance share the same 4-stat layout.
 const AtAGlanceCard = ({ title, stats }) => (
@@ -106,8 +95,12 @@ const AtAGlanceCard = ({ title, stats }) => (
         <div className="sched-glance-label">Notes</div>
       </div>
       <div className="sched-glance-stat">
-        <div className={`sched-glance-num${stats.conflicts > 0 ? ' is-warn' : ''}`}>{stats.conflicts}</div>
-        <div className="sched-glance-label">Conflicts</div>
+        {/* Sprint 13.2: was "Conflicts" (overlap-pair count). Replaced
+            with "Scheduled" — count of shifts the admin assigned via
+            the + scheduler (rows in `schedules`). Distinct from the
+            clock-entry-derived top three stats. */}
+        <div className="sched-glance-num">{stats.scheduled}</div>
+        <div className="sched-glance-label">Scheduled</div>
       </div>
     </div>
   </section>
@@ -227,6 +220,15 @@ const SchedulingManager = () => {
   // window the calendar's data uses.
   const [notesData,    setNotesData]    = useState([]);
   const [notesLoading, setNotesLoading] = useState(true);
+
+  // Sprint 13.2: scheduled-shifts count for the AtAGlance card's
+  // new "Scheduled" stat (replaced "Conflicts"). Pulled from
+  // /admin/schedule — the table the + scheduler writes to. Kept
+  // separate from `schedules` (which Sprint 12 redirected to
+  // clock-entry data) because both surfaces want different things:
+  // the calendar wants the actual time-entry visualisation,
+  // the stat card wants the planned-shift count.
+  const [scheduledCount, setScheduledCount] = useState(0);
 
   // Load base data once
   useEffect(() => {
@@ -371,13 +373,30 @@ const SchedulingManager = () => {
     return () => { cancelled = true; };
   }, [view, fetchRange.start, fetchRange.end]);
 
+  // Sprint 13.2: scheduled-shifts count for the same range. Uses
+  // the open `/admin/schedule` endpoint (no auth) — just need the
+  // length, not the rows. Skip when not on Day/Week.
+  useEffect(() => {
+    if (view !== 'day' && view !== 'week') return;
+    let cancelled = false;
+    fetch(`/api/admin/schedule?start=${fetchRange.start}&end=${fetchRange.end}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (d?.success) setScheduledCount((d.schedules || []).length);
+        else            setScheduledCount(0);
+      })
+      .catch(() => { if (!cancelled) setScheduledCount(0); });
+    return () => { cancelled = true; };
+  }, [view, fetchRange.start, fetchRange.end]);
+
   // Stats for the AtAGlance card — same shape for both Day and Week.
   // `schedules` is already scoped to the active view's range by
   // loadSchedules, so finished/onClock just count over the array.
   const glanceStats = useMemo(() => {
     const notesUnread = notesData.filter(n => !n.resolved_at).length;
-    return computeDayStats(schedules, notesUnread);
-  }, [schedules, notesData]);
+    return computeDayStats(schedules, notesUnread, scheduledCount);
+  }, [schedules, notesData, scheduledCount]);
 
   // ── Save / delete / move (unchanged from prior sprint) ──────────────────
   const handleSave = async ({ startTime, endTime, shiftId, notes }) => {

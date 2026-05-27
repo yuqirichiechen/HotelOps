@@ -271,10 +271,28 @@ const ShiftDetailModal = ({ shift, onClose }) => {
 
 const DayView = ({ date, schedules, employees, departments, loading, onPickDate, onEdit }) => {
   const dateStr = fmtDate(date);
+  const isMobile = useIsMobile();
 
   // ── view state ──────────────────────────────────────────────────────────
   const [deptFilter, setDeptFilter] = useState('all'); // 'all' | dept_id
   const [viewMode,   setViewMode]   = useState('resource'); // 'resource' | 'timeline'
+  // Sprint 13.2: layout style — 'classic' (hour-rail timeline +
+  // dept-track rows; pre-13.1 behavior) vs 'cards' (Sprint 13.1
+  // bucket sections + scheduled-staff list). Default to 'cards'
+  // on mobile/tablet and 'classic' on desktop, but the user can
+  // toggle freely; choice persists in localStorage so reloads
+  // remember it.
+  const STYLE_KEY = 'hotelops-cal-layout-style';
+  const [layoutStyle, setLayoutStyle] = useState(() => {
+    if (typeof window === 'undefined') return 'classic';
+    const stored = localStorage.getItem(STYLE_KEY);
+    if (stored === 'cards' || stored === 'classic') return stored;
+    return window.matchMedia?.('(max-width: 720px)').matches ? 'cards' : 'classic';
+  });
+  const setStylePersist = (next) => {
+    setLayoutStyle(next);
+    if (typeof window !== 'undefined') localStorage.setItem(STYLE_KEY, next);
+  };
   // Sprint 12.4: tap-to-see-detail. Mobile rows can't fit the full
   // time range inside the bar (the screenshot showed "8:38am – ..."
   // truncated), so any bar (timeline or rows mode) opens a modal
@@ -282,6 +300,8 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
   // click affordance, no need to depend on hover/title tooltips.
   const [detailShift, setDetailShift] = useState(null);
   const closeDetail = () => setDetailShift(null);
+  // Silence the lint warning until we use isMobile in another branch.
+  void isMobile;
 
   // Smart default on filter change. Admin can still override the toggle
   // afterward — this just sets the *starting* mode.
@@ -362,53 +382,87 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
         })}
       </div>
 
-      {/* Filter + mode controls */}
+      {/* Sprint 13.2: dept chips → native <select> dropdown on the
+          left. Frees the full toolbar width for the mode toggles on
+          the right (Style + Rows/Timeline), all on a single row.
+          Style toggle persists to localStorage so the admin's last
+          choice survives reloads. */}
       <div className="day-controls">
-        <div className="day-filter-chips">
-          <button
-            type="button"
-            className={`day-chip ${deptFilter === 'all' ? 'is-active' : ''}`}
-            onClick={() => handleDeptFilterChange('all')}
-          >All</button>
-          {departments.map(d => (
+        <label className="day-filter-dropdown">
+          <span className="day-filter-dropdown-label">Department</span>
+          <select
+            className="day-filter-dropdown-select"
+            value={deptFilter}
+            onChange={(e) => {
+              const v = e.target.value;
+              handleDeptFilterChange(v === 'all' ? 'all' : parseInt(v, 10));
+            }}
+          >
+            <option value="all">All departments</option>
+            {departments.map(d => (
+              <option key={d.department_id} value={d.department_id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
+        <div className="day-controls-toggles">
+          <div className="day-style-toggle" role="group" aria-label="Layout style">
             <button
-              key={d.department_id}
               type="button"
-              className={`day-chip ${deptFilter === d.department_id ? 'is-active' : ''}`}
-              onClick={() => handleDeptFilterChange(d.department_id)}
-            >{d.name}</button>
-          ))}
-        </div>
-        <div className="day-mode-toggle">
-          <button
-            type="button"
-            className={`day-mode-btn ${viewMode === 'resource' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('resource')}
-            title="One row per person (best for many staff or all departments)"
-          >Rows</button>
-          <button
-            type="button"
-            className={`day-mode-btn ${viewMode === 'timeline' ? 'is-active' : ''}`}
-            onClick={() => setViewMode('timeline')}
-            title="Hours-on-Y stacked timeline (best for one department)"
-          >Timeline</button>
+              className={`day-style-btn ${layoutStyle === 'classic' ? 'is-active' : ''}`}
+              onClick={() => setStylePersist('classic')}
+              title="Classic calendar layout"
+            >Classic</button>
+            <button
+              type="button"
+              className={`day-style-btn ${layoutStyle === 'cards' ? 'is-active' : ''}`}
+              onClick={() => setStylePersist('cards')}
+              title="Card layout"
+            >Cards</button>
+          </div>
+          <div className="day-mode-toggle">
+            <button
+              type="button"
+              className={`day-mode-btn ${viewMode === 'resource' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('resource')}
+              title="Rows mode"
+            >Rows</button>
+            <button
+              type="button"
+              className={`day-mode-btn ${viewMode === 'timeline' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('timeline')}
+              title="Timeline mode"
+            >Timeline</button>
+          </div>
         </div>
       </div>
 
-      {/* Sprint 13.1: Day view internal redesign.
-            - Rows   = Scheduled Staff list (image #15).
-            - Timeline = Hour-bucket sections per the xx:45 rule
-                         (image #13).
-          The old TimelineMode (hour-rail + lane-pack) and
-          ResourceMode (dept-row tracks) are kept further down as
-          dead code for a sprint while the GM confirms — they can
-          be deleted in Sprint 13.x cleanup. */}
-      {viewMode === 'timeline' ? (
+      {/* Sprint 13.2: 2x2 component routing — layoutStyle × viewMode.
+            classic + timeline → original TimelineMode (hour rail)
+            classic + rows     → original ResourceMode (dept tracks)
+            cards   + timeline → TimelineBucketsMode (hour buckets)
+            cards   + rows     → RowsListMode (staff card list)        */}
+      {layoutStyle === 'classic' && viewMode === 'timeline' && (
+        <TimelineMode
+          shifts={filteredShifts}
+          onEdit={onEdit}
+          onShowDetail={setDetailShift}
+        />
+      )}
+      {layoutStyle === 'classic' && viewMode === 'resource' && (
+        <ResourceMode
+          deptGroups={empsByDept}
+          shifts={filteredShifts}
+          onEdit={onEdit}
+          onShowDetail={setDetailShift}
+        />
+      )}
+      {layoutStyle === 'cards' && viewMode === 'timeline' && (
         <TimelineBucketsMode
           shifts={filteredShifts}
           onShowDetail={setDetailShift}
         />
-      ) : (
+      )}
+      {layoutStyle === 'cards' && viewMode === 'resource' && (
         <RowsListMode
           shifts={filteredShifts}
           onShowDetail={setDetailShift}
