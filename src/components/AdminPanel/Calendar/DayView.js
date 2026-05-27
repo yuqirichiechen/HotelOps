@@ -221,7 +221,16 @@ const ShiftDetailModal = ({ shift, onClose }) => {
     ? 'On shift'
     : (fmtClockTime(shift.clock_out_time)
        || fmtTimeRange('00:00', shift.end_time.slice(0,5)).split(' – ')[1]);
-  const hours = computeShiftHours(shift.start_time, shift.end_time);
+  // Sprint 13.5: prefer the total entry hours that travels with the
+  // shift (set by the calendar adapter for clock-derived shifts).
+  // For an overnight shift, the segment's start/end span a single
+  // local day only (e.g. 10:29pm → 11:59pm = 1.5h), which would
+  // mis-report the modal's "Hours" line. The entry's `hours` field
+  // is the full span; fall back to per-segment math for legacy
+  // scheduled shifts that don't have a precomputed `hours` value.
+  const hours = (typeof shift.hours === 'number')
+    ? Math.round(shift.hours * 10) / 10
+    : computeShiftHours(shift.start_time, shift.end_time);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };

@@ -792,6 +792,129 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13.5: overnight-shift split (per-local-day segments) + modal hours fix
+
+Live bug, two surfaces:
+
+- **Image #18** — Jesse clocked in 10:29 PM Mon, clocked out
+  7:09 AM Tue. Calendar modal showed **1.5h** (10:29 PM →
+  midnight only). Should have been ~8.7h (8h 40m).
+- **Image #19** — StaffDetail's entry row showed the same shift
+  as **Mon May 25, 10:29 PM → 7:09 AM, 8h 40m**. Total is right
+  there, but the row pins the *entire* shift to Monday — there's
+  no record on Tuesday that anyone was working pre-7am.
+
+Root cause for the calendar bug: `entryToSchedule` flattened the
+ISO clock-in / clock-out timestamps to a single `(scheduled_date,
+start_time, end_time)` triple anchored on the clock-in's local
+day. `computeShiftHours` then clipped `end_time < start_time`
+to local midnight (the legacy "treat overnight as 24:00 cap"
+branch), giving a tiny 1.5h slice for a real 8.7h shift.
+
+**Fix: split overnight entries into per-local-day segments.**
+
+Renamed `entryToSchedule` → `entryToScheduleSegments` and changed
+its signature from a 1→1 mapping to 1→N. For each entry the
+adapter now walks forward in local-day chunks, emitting one
+segment per local day spanned:
+- Monday segment: `start_time = 10:29:00`, `end_time = 23:59:59`,
+  `scheduled_date = 2026-05-25`. 1.5h visible on Monday's view.
+- Tuesday segment: `start_time = 00:00:00`, `end_time = 07:09:00`,
+  `scheduled_date = 2026-05-26`. 7.2h visible on Tuesday's view.
+
+Both segments carry the *original* entry's `clock_in_time`,
+`clock_out_time`, total `hours` (from the server's
+`EXTRACT(EPOCH …)`), and a stable `entry_id`. The detail modal
+reads these passthrough fields so it shows the full shift
+(10:29 PM → 7:09 AM, 8.7h) no matter which segment the admin
+clicked. Per-day cards/bars still show their segment-local time
+range + segment-local computed hours so the daily picture stays
+honest.
+
+```js
+while (safety-- > 0) {
+  const nextMidnight = new Date(
+    cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1, 0, 0, 0
+  );
+  const isLastSegment = nextMidnight >= outDate;
+  const segEnd = isLastSegment ? outDate : nextMidnight;
+  // Display end = 23:59:59 for non-last segments so the
+  // legacy "end < start = 1440" branch in computeShiftHours /
+  // verticalShiftBox / horizontalShiftBox doesn't fire.
+  const displayEnd = isLastSegment
+    ? segEnd
+    : new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(),
+               23, 59, 59);
+  segments.push({ ...full segment shape..., is_overnight_segment: true });
+  if (isLastSegment) break;
+  cursor = nextMidnight;
+}
+```
+
+`is_in_progress` is now set on the **last** segment only — staff
+still on the clock at midnight today appear as "finished" on
+yesterday's view (their shift segment for yesterday is closed at
+23:59:59) and "ON SHIFT" on today's view. Matches what the GM
+would intuitively see opening either day.
+
+A 7-segment safety cap protects against a 7+ day "forgotten
+clock-out" data anomaly from spinning forever.
+
+**Modal hours fix.**
+
+`ShiftDetailModal` was computing `hours =
+computeShiftHours(shift.start_time, shift.end_time)` which after
+splitting would return the segment-local hours, not the entry
+total. Now:
+
+```js
+const hours = (typeof shift.hours === 'number')
+  ? Math.round(shift.hours * 10) / 10
+  : computeShiftHours(shift.start_time, shift.end_time);
+```
+
+Falls back to per-segment math for legacy scheduled shifts that
+don't carry `hours` (anything that comes from `/admin/schedule`
+without the entry-adapter touching it).
+
+**Audit — where else does overnight bite?**
+
+Grep found four other places that bucket time-entries by
+`clock_in_time::date`:
+
+| Surface                              | Issue                            | Status        |
+| ------------------------------------ | -------------------------------- | ------------- |
+| Admin Calendar (this fix)            | per-day segments missing         | FIXED 13.5    |
+| `ShiftDetailModal` hours             | computed off segment, not entry  | FIXED 13.5    |
+| `/me/hours` daily-breakdown          | overnight rolled to clock-in day | Sprint 13.6+  |
+| `/admin/staff/:id/performance`       | same per-day bucketing           | Sprint 13.6+  |
+| `Timesheet` weekly chart             | consumes `/me/hours`, inherits   | Sprint 13.6+  |
+| `StaffDetail` entries list (img #19) | row anchored on clock-in day     | Sprint 13.6+  |
+
+The server-side fixes need either a JS-side split before
+aggregation, or a Postgres `LATERAL` join that generates
+date-spans. Both are bigger surgeries than the client-side
+adapter; deferring while the calendar fix lands and the GM
+confirms the per-day visual matches their mental model.
+
+**Verified.** Calendar/index.js 436/436 + 227/227, DayView.js
+432/432 + 302/302. Walk-through with Jesse's
+2026-05-25T22:29 → 2026-05-26T07:09 entry: 2 segments emitted,
+Monday seg = 22:29-23:59 (1.5h displayed on bar), Tuesday seg =
+00:00-07:09 (7.2h). Modal opens with `clock_in_time =
+22:29:00Z`, `clock_out_time = 07:09:00Z`, `hours = 8.7h`. ✓
+
+**Follow-ups.** Track the server-side overnight fix as a Sprint
+13.6 task: `/me/hours` + `/admin/staff/:id/performance` need
+either client-side splitting (mirror this adapter on the staff
+side) or a server-side `generate_series` join. The StaffDetail
+entries-list view (image #19) could also surface the split — but
+since each row already shows total hours correctly, the visual
+"row says Monday 10:29 PM → 7:09 AM" reads as one shift the
+operator can mentally place on two days, so it's lower priority.
+
+---
+
 ### 2026-05-26 — Sprint 13.4: dead-CSS cleanup + timezone fix for late-evening clock-ins
 
 Two follow-ups: the Sprint 13.3 cleanup pass + a real production

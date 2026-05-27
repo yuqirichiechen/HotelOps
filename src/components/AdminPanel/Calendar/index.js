@@ -309,7 +309,25 @@ const SchedulingManager = () => {
     return out;
   }, []);
 
-  const entryToSchedule = useCallback((e) => {
+  // Sprint 13.5: overnight shifts now split into per-local-day
+  // segments. A clock-in at 10:29 PM Mon with clock-out at 7:09 AM
+  // Tue used to surface as a single 1.5h Monday entry (the
+  // computeShiftHours / verticalShiftBox helpers all clip to local
+  // midnight when end_time < start_time). Now we emit two
+  // segments:
+  //   Monday  10:29pm → 11:59:59pm  (1.5h, finished)
+  //   Tuesday 12:00am → 07:09am     (7.2h, finished)
+  // Both segments carry the original entry's `clock_in_time`,
+  // `clock_out_time`, and total `hours` so the detail modal still
+  // shows the full shift picture; only the per-day card uses the
+  // segment-local start/end for its display + bar geometry.
+  //
+  // `is_in_progress` is set on the LAST segment only — a staff
+  // currently on the clock with their clock-in yesterday gets a
+  // finished segment for yesterday + a live segment for today.
+  // `entry_id` is preserved on every segment so future dedup logic
+  // (counts per *entry* rather than per *segment*) can group them.
+  const entryToScheduleSegments = useCallback((e) => {
     const inDate  = new Date(e.clock_in_time);
     const isInProgress = !e.clock_out_time;
     const outDate = isInProgress ? new Date() : new Date(e.clock_out_time);
@@ -318,23 +336,62 @@ const SchedulingManager = () => {
       `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
     const localTime = (d) =>
       `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    return {
-      schedule_id:     `entry-${e.entry_id}`,
-      user_id:         e.user_id,
-      employee_name:   e.name,
-      department_id:   e.department_id,
-      department_name: e.department,
-      scheduled_date:  localDate(inDate),
-      start_time:      localTime(inDate),
-      end_time:        localTime(outDate),
-      // Sprint 12: flag-set so the views can render a live indicator
-      // and skip the edit affordance (these are observed, not planned).
-      is_actual:       true,
-      is_in_progress:  isInProgress,
-      clock_in_time:   e.clock_in_time,
-      clock_out_time:  e.clock_out_time,
-      hours:           e.hours,
-    };
+
+    const segments = [];
+    let cursor = new Date(inDate);
+    // Defensive cap: a 7+ day "open" entry is a data anomaly, not
+    // a normal shift. Don't spin forever building segments for a
+    // forgotten clock-out.
+    let safety = 7;
+    while (safety-- > 0) {
+      const nextMidnight = new Date(
+        cursor.getFullYear(),
+        cursor.getMonth(),
+        cursor.getDate() + 1,
+        0, 0, 0
+      );
+      const isLastSegment = nextMidnight >= outDate;
+      const segEnd = isLastSegment ? outDate : nextMidnight;
+      // For non-last segments emit end as 23:59:59 (same local day)
+      // so the existing fmtTimeRange / computeShiftHours math stays
+      // inside the [0:00, 23:59] envelope — those helpers have a
+      // "treat end < start as 1440" branch we explicitly don't
+      // want to trigger here.
+      const displayEnd = isLastSegment
+        ? segEnd
+        : new Date(
+            cursor.getFullYear(),
+            cursor.getMonth(),
+            cursor.getDate(),
+            23, 59, 59
+          );
+
+      segments.push({
+        schedule_id: segments.length === 0
+          ? `entry-${e.entry_id}`
+          : `entry-${e.entry_id}-seg${segments.length}`,
+        entry_id:        e.entry_id,
+        user_id:         e.user_id,
+        employee_name:   e.name,
+        department_id:   e.department_id,
+        department_name: e.department,
+        scheduled_date:  localDate(cursor),
+        start_time:      localTime(cursor),
+        end_time:        localTime(displayEnd),
+        // Full-entry context preserved on every segment for the
+        // detail modal and any future dedup logic.
+        clock_in_time:   e.clock_in_time,
+        clock_out_time:  e.clock_out_time,
+        hours:           e.hours,
+        is_actual:       true,
+        is_in_progress:  isLastSegment && isInProgress,
+        is_overnight_segment: segments.length > 0 || !isLastSegment,
+      });
+
+      if (isLastSegment) break;
+      cursor = nextMidnight;
+    }
+    return segments;
   }, []);
 
   const loadSchedules = useCallback(async () => {
@@ -363,12 +420,16 @@ const SchedulingManager = () => {
     );
     if (ok && data?.success) {
       const merged = mergeAccidentalSignouts(data.entries || []);
-      setSchedules(merged.map(entryToSchedule));
+      // Sprint 13.5: flatMap so overnight entries split into one
+      // schedule object per local day spanned. The downstream
+      // views filter by scheduled_date, so each segment appears
+      // on its own day.
+      setSchedules(merged.flatMap(entryToScheduleSegments));
     } else {
       setSchedules([]);
     }
     setLoading(false);
-  }, [fetchRange, mergeAccidentalSignouts, entryToSchedule]);
+  }, [fetchRange, mergeAccidentalSignouts, entryToScheduleSegments]);
 
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
 
