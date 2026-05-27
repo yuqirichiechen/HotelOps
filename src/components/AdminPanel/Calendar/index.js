@@ -38,6 +38,146 @@ const fmtDate = (d) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
+// ── Sprint 13: stats + notes-feed shared between Day / Week ──────────────
+//
+// Day at a glance / Week at a glance share four stats. With Sprint 12's
+// data source = `/admin/entries`, we already have the entries on the
+// client; just count them.
+//
+//   Finished shifts — clocked-out entries in the range.
+//   On clock       — in-progress entries (clock_out_time === null).
+//   Notes          — unresolved handoff_notes count for the range
+//                    (fetched separately; lives in the Logbook surface).
+//   Conflicts      — pairs of *different* staff whose entries overlap
+//                    in time (any dept). Mostly an attention signal —
+//                    overlap is normal in a hotel but the GM asked for
+//                    a count to surface multi-staff coverage windows.
+//
+// Open Shifts intentionally dropped (Sprint 13 — see iteration log).
+const computeDayStats = (entries, notesCount = 0) => {
+  let finished = 0;
+  let onClock  = 0;
+  for (const s of entries) {
+    if (s.is_in_progress) onClock++;
+    else                  finished++;
+  }
+  return { finished, onClock, notes: notesCount, conflicts: countConflicts(entries) };
+};
+
+const countConflicts = (entries) => {
+  // Pairs of *different* staff whose [in, out] intervals overlap. Same-
+  // staff pairs are filtered out — those would be a data anomaly we'd
+  // already have flagged elsewhere, not an operational overlap.
+  const items = entries.map(s => ({
+    user_id: s.user_id,
+    in:  new Date(s.clock_in_time).getTime(),
+    out: s.clock_out_time ? new Date(s.clock_out_time).getTime() : Date.now(),
+  }));
+  let n = 0;
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const a = items[i];
+      const b = items[j];
+      if (a.user_id === b.user_id) continue;
+      if (a.in < b.out && b.in < a.out) n++;
+    }
+  }
+  return n;
+};
+
+// Day at a glance / Week at a glance share the same 4-stat layout.
+const AtAGlanceCard = ({ title, stats }) => (
+  <section className="sched-glance-card" aria-label={title}>
+    <header className="sched-glance-header">
+      <span className="sched-glance-icon" aria-hidden>📋</span>
+      <h3 className="sched-glance-title">{title}</h3>
+    </header>
+    <div className="sched-glance-stats">
+      <div className="sched-glance-stat">
+        <div className="sched-glance-num">{stats.finished}</div>
+        <div className="sched-glance-label">Finished shifts</div>
+      </div>
+      <div className="sched-glance-stat">
+        <div className={`sched-glance-num${stats.onClock > 0 ? ' is-live' : ''}`}>{stats.onClock}</div>
+        <div className="sched-glance-label">On clock</div>
+      </div>
+      <div className="sched-glance-stat">
+        <div className="sched-glance-num">{stats.notes}</div>
+        <div className="sched-glance-label">Notes</div>
+      </div>
+      <div className="sched-glance-stat">
+        <div className={`sched-glance-num${stats.conflicts > 0 ? ' is-warn' : ''}`}>{stats.conflicts}</div>
+        <div className="sched-glance-label">Conflicts</div>
+      </div>
+    </div>
+  </section>
+);
+
+// Notes & updates / Weekly updates — purely presentational. Parent
+// fetches /handoff-notes for the current range (Day or Week) and
+// passes the array in via the `notes` prop. Same components, two
+// surfaces; the count surfaced in AtAGlanceCard's "Notes" tile
+// comes from the same fetch so we don't double-pull the endpoint.
+const NotesUpdatesCard = ({ title, notes, loading, onOpenLogbook }) => {
+  const visible = useMemo(
+    () => (notes || []).filter(n => !n.resolved_at).slice(0, 4),
+    [notes]
+  );
+
+  // Dept color dot — uses the schedule view's dept palette so the
+  // colour language is consistent across the calendar.
+  const dotFor = (scope, deptName) => {
+    if (scope === 'all') return '#3182ce';   // blue
+    const map = {
+      'Food & Beverage': '#805ad5',
+      'Front Desk':      '#3182ce',
+      'Housekeeping':    '#38a169',
+      'Maintenance':     '#dd6b20',
+      'Management':      '#4a5568',
+    };
+    return map[deptName] || '#718096';
+  };
+
+  return (
+    <section className="sched-notes-card" aria-label={title}>
+      <header className="sched-notes-header">
+        <span className="sched-notes-icon" aria-hidden>📝</span>
+        <h3 className="sched-notes-title">{title}</h3>
+      </header>
+      {loading ? (
+        <div className="sched-notes-empty">Loading…</div>
+      ) : visible.length === 0 ? (
+        <div className="sched-notes-empty">No notes in this range yet.</div>
+      ) : (
+        <ul className="sched-notes-list">
+          {visible.map(n => (
+            <li key={n.note_id} className="sched-notes-item">
+              <span
+                className="sched-notes-dot"
+                style={{ background: dotFor(n.scope, n.department_name) }}
+                aria-hidden
+              />
+              <span className="sched-notes-body">{n.body}</span>
+              <span className="sched-notes-time">
+                {new Date(n.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {visible.length > 0 && onOpenLogbook && (
+        <button
+          type="button"
+          className="sched-notes-view-all"
+          onClick={onOpenLogbook}
+        >
+          Open Logbook <span aria-hidden>›</span>
+        </button>
+      )}
+    </section>
+  );
+};
+
 // Browser-supported view transition wrapper. Sprint 8.5: takes an optional
 // `dir` ('prev' | 'next' | null) that's set on the document root for the
 // duration of the transition. CSS reads `[data-sched-dir]` to drive
@@ -80,6 +220,13 @@ const SchedulingManager = () => {
   // into the Logbook surface (admin "reports" view). The admin
   // Calendar is now purely a clock-data visualization — no notes
   // composition or feed lives here anymore.
+
+  // Sprint 13: handoff notes for the current cursor range. Used by
+  // the AtAGlanceCard ("Notes" stat) and the NotesUpdatesCard
+  // (recent items list). Single fetch keyed off the same range
+  // window the calendar's data uses.
+  const [notesData,    setNotesData]    = useState([]);
+  const [notesLoading, setNotesLoading] = useState(true);
 
   // Load base data once
   useEffect(() => {
@@ -207,6 +354,30 @@ const SchedulingManager = () => {
   }, [fetchRange, mergeAccidentalSignouts, entryToSchedule]);
 
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
+
+  // Sprint 13: notes fetch — runs alongside loadSchedules. Only on
+  // Day + Week views (the only surfaces that render the cards).
+  useEffect(() => {
+    if (view !== 'day' && view !== 'week') return;
+    let cancelled = false;
+    setNotesLoading(true);
+    const params = new URLSearchParams({ from: fetchRange.start, to: fetchRange.end });
+    apiFetch(`/handoff-notes?${params.toString()}`).then(({ ok, data }) => {
+      if (cancelled) return;
+      if (ok && data?.success) setNotesData(data.notes || []);
+      else                     setNotesData([]);
+      setNotesLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [view, fetchRange.start, fetchRange.end]);
+
+  // Stats for the AtAGlance card — same shape for both Day and Week.
+  // `schedules` is already scoped to the active view's range by
+  // loadSchedules, so finished/onClock just count over the array.
+  const glanceStats = useMemo(() => {
+    const notesUnread = notesData.filter(n => !n.resolved_at).length;
+    return computeDayStats(schedules, notesUnread);
+  }, [schedules, notesData]);
 
   // ── Save / delete / move (unchanged from prior sprint) ──────────────────
   const handleSave = async ({ startTime, endTime, shiftId, notes }) => {
@@ -377,6 +548,12 @@ const SchedulingManager = () => {
           "+" button moved down to share the nav-bar row with prev/today/next.
           Frees horizontal space on mobile so the segmented control no
           longer wraps to its own line on long Day labels. */}
+      {/* Sprint 13: header collapses prev/today/next + view toggle + the
+          assign-shifts button onto a single line with the back/title row.
+          Previously the back+title sat above the nav bar (which itself
+          carried prev/today/next + view toggle + ＋), leaving the right
+          half of the title row empty. flex-wrap means the controls drop
+          to their own row on viewports that can't fit them. */}
       <div className="sched-header">
         <div className="sched-header-left">
           {backTarget ? (
@@ -388,29 +565,28 @@ const SchedulingManager = () => {
           )}
           <h2 className="sched-title">{headerLabel}</h2>
         </div>
-      </div>
-
-      <div className="sched-nav-bar">
-        <button className="nav-arrow" onClick={goPrev} aria-label="Previous">‹</button>
-        <button className="nav-today" onClick={goToday}>Today</button>
-        <button className="nav-arrow" onClick={goNext} aria-label="Next">›</button>
-        <div className="sched-view-toggle">
-          {['year','month','week','day'].map(v => (
-            <button
-              key={v}
-              className={`view-btn${view === v ? ' active' : ''}`}
-              onClick={() => zoomTo(v)}
-            >
-              {v[0].toUpperCase() + v.slice(1)}
-            </button>
-          ))}
+        <div className="sched-header-controls">
+          <button className="nav-arrow" onClick={goPrev} aria-label="Previous">‹</button>
+          <button className="nav-today" onClick={goToday}>Today</button>
+          <button className="nav-arrow" onClick={goNext} aria-label="Next">›</button>
+          <div className="sched-view-toggle">
+            {['year','month','week','day'].map(v => (
+              <button
+                key={v}
+                className={`view-btn${view === v ? ' active' : ''}`}
+                onClick={() => zoomTo(v)}
+              >
+                {v[0].toUpperCase() + v.slice(1)}
+              </button>
+            ))}
+          </div>
+          <button
+            className="sched-add-btn"
+            aria-label="Assign shifts"
+            title="Assign shifts"
+            onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
+          >＋</button>
         </div>
-        <button
-          className="sched-add-btn"
-          aria-label="Assign shifts"
-          title="Assign shifts"
-          onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
-        >＋</button>
       </div>
 
       <div className="sched-content" style={{ viewTransitionName: 'sched-canvas' }}>
@@ -435,38 +611,53 @@ const SchedulingManager = () => {
           />
         )}
         {view === 'week' && (
-          // Sprint 11: combined Week view (matrix-per-staff + notes
-          // feed) per mockup #26. AdminWeekView (matrix-per-dept
-          // from 10.1) is repurposed for Month view in Sprint 11.x
-          // since the user spec moved that style to Month.
-          // Sprint 12.1: no onViewAllNotes prop passed — that
-          // tells CalendarWeekView to hide its notes feed, stat
-          // tile, and per-cell note badges (handoff notes moved
-          // to the Logbook surface).
-          <CalendarWeekView
-            weekStart={startOfWeek(cursor)}
-            schedules={schedules}
-            employees={employees}
-            departments={departments}
-            currentUser={user}
-            staffScope={false}
-            onPickDate={(d) => zoomTo('day', new Date(d))}
-          />
+          <>
+            {/* Sprint 13: at-a-glance + notes-feed cards above the
+                week grid. Same shape as the Day-view block below. */}
+            <div className="sched-glance-row">
+              <AtAGlanceCard title="Week at a glance" stats={glanceStats} />
+              <NotesUpdatesCard
+                title="Weekly updates"
+                notes={notesData}
+                loading={notesLoading}
+                onOpenLogbook={() => goTo('reports')}
+              />
+            </div>
+            <CalendarWeekView
+              weekStart={startOfWeek(cursor)}
+              schedules={schedules}
+              employees={employees}
+              departments={departments}
+              currentUser={user}
+              staffScope={false}
+              onPickDate={(d) => zoomTo('day', new Date(d))}
+            />
+          </>
         )}
         {view === 'day' && (
-          /* Sprint 12.1: Day view used to wrap DayView with
-              NotesCenter (above) and NotesDrawer (below). Both moved
-              to the Logbook surface; Day view now shows the clock-
-              entry timeline only. */
-          <DayView
-            date={cursor}
-            schedules={schedules}
-            employees={employees}
-            departments={departments}
-            loading={loading}
-            onPickDate={(d)   => setCursor(new Date(d))}
-            onEdit={(schedule) => setModal({ type: 'edit', schedule })}
-          />
+          <>
+            {/* Sprint 13: Day at a glance + Notes & updates above
+                the DayView body. Stacks on mobile via the CSS rules
+                in Scheduling.css. */}
+            <div className="sched-glance-row">
+              <AtAGlanceCard title="Day at a glance" stats={glanceStats} />
+              <NotesUpdatesCard
+                title="Notes & updates"
+                notes={notesData}
+                loading={notesLoading}
+                onOpenLogbook={() => goTo('reports')}
+              />
+            </div>
+            <DayView
+              date={cursor}
+              schedules={schedules}
+              employees={employees}
+              departments={departments}
+              loading={loading}
+              onPickDate={(d)   => setCursor(new Date(d))}
+              onEdit={(schedule) => setModal({ type: 'edit', schedule })}
+            />
+          </>
         )}
       </div>
 

@@ -792,6 +792,109 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13: header collapse + Day/Week at-a-glance + notes-feed cards (foundation pass)
+
+Sprint 13 covers the calendar redesign the GM mocked up. Scope is
+large enough that this iteration lays the **foundation** — header
+layout, stat cards, notes-feed card — and the bigger internal
+Day-view / Week-view redesigns land in 13.x. Per the GM,
+"conflicts" is overlap-based (pairs of *different* staff whose
+clock-in windows overlap); "open shifts" is dropped entirely
+(Sprint 12 moved off the `schedules` table; no data source).
+
+**1. Single-line header.**
+
+Calendar header used to take three rows on the GM's typical
+viewport: `‹ May` + title on row 1, `‹ Today ›` on row 2,
+`Year Month Week Day +` on row 3. Right side of every row sat
+empty. Sprint 13 collapses the nav controls + view toggle + ＋
+button onto the same row as the title block via a new
+`.sched-header-controls` flex cluster. Flex-wrap so the controls
+drop onto their own row when the viewport can't fit them, but on
+the GM's desktop the whole thing is one line. The old
+`.sched-nav-bar` class is kept (with the same shape as
+`.sched-header-controls`) so anything still pointing at it
+doesn't break.
+
+**2. `AtAGlanceCard` (Day at a glance / Week at a glance).**
+
+Four-stat card, shared between Day and Week views (just different
+`title` + range). Stats (per the GM's text, not the original
+mockup labels):
+
+- **Finished shifts** — clocked-out entries in the active range.
+- **On clock** — in-progress entries. Number turns green when > 0
+  to echo the live-dot language elsewhere.
+- **Notes** — unresolved `handoff_notes` count for the range
+  (pulled from the same fetch the notes card uses).
+- **Conflicts** — pairs of *different* staff whose entries
+  overlap in time (any dept). Number turns warn-orange when > 0.
+
+Conflicts implementation (`countConflicts`): O(n²) over the
+range's entries; for two entries to count, `user_id` must differ
+and `[in, out]` intervals must intersect. In-progress entries
+treat `out = now` for the test. The hotel can have lots of
+legitimate overlap (multiple housekeepers, etc.) — the count is a
+signal, not a hard error.
+
+**3. `NotesUpdatesCard` (Notes & updates / Weekly updates).**
+
+Presentational. Parent fetches `/handoff-notes?from=&to=` once
+for the active range; both AtAGlance and NotesUpdates consume
+the same data. Top 4 unresolved items, each row = colored
+dept-dot + body (ellipsised) + time. "Open Logbook ›" link at
+the bottom invokes `onOpenLogbook` (the parent wires this to
+`goTo('reports')` since the Logbook is the admin shell's
+`reports` view).
+
+Dept-dot color picker is a small inline `dotFor(scope,
+deptName)` — uses the same Front Desk / Housekeeping / etc.
+palette the DayView shift cards already use, so the colour
+language reads consistently across surfaces.
+
+**Plumbing in `SchedulingManager`:**
+
+- New state: `notesData`, `notesLoading`.
+- New `useEffect` keyed off `view + fetchRange` — fetches notes
+  only on Day + Week views (year/month don't render cards).
+- New `glanceStats` `useMemo` — computes the four stats from
+  `schedules` (already adapted from clock entries by Sprint 12)
+  + `notesData`.
+- Day + Week view render paths wrap their existing body in a
+  fragment that renders `.sched-glance-row` (two cards
+  side-by-side desktop / stacked mobile via the CSS grid
+  breakpoint) immediately before the existing `DayView` /
+  `CalendarWeekView`.
+
+**CSS:** equal-column grid for the card row, 4-stat grid inside
+each card, drops to 1-column at 880px and 2-stat (2x2 grid) at
+480px so the cards don't squish on phones.
+
+**Verified.** Calendar/index.js 389/389 parens + 220/220 braces;
+Scheduling.css 452/452 + 432/432. Logic walk-through: conflicts
+counter excludes same-user pairs and treats null `clock_out`
+as `now`; notes effect ignores year/month views; cards stack
+correctly under 880px.
+
+**Follow-ups (Sprint 13.1+):**
+
+- **Day view internal redesign** — hour-bucket grouping per the
+  GM's xx:45 rule (start < xx:45 → bucket `xx`, ≥ xx:45 < (xx+1):00
+  → bucket `xx+1`). Mobile Timeline = collapsible hour sections
+  (image #13). Desktop Timeline = clean dept-row × hour-column
+  grid with full names + clock times (image #12).
+- **Day view Rows mode rewrite** — mobile becomes a "Scheduled
+  Staff" + "Open Shifts" list of cards (image #15).
+- **Week view dept × day grid** — replaces the existing
+  staff-row CalendarWeekView with dept-row × day-column,
+  per-cell mini-shift cards (image #14).
+- "Conflicts" exact definition is provisional — overlap pairs
+  is a starting point; the GM may want a tighter rule (same
+  dept, more than dept's staffing target, etc.) once the
+  redesigned views are in.
+
+---
+
 ### 2026-05-26 — Sprint 12.4: shift-detail modal, dept-grouped timeline, rows-mode live indicator
 
 Three changes to the admin Calendar Day view.

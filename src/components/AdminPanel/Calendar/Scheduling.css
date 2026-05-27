@@ -67,10 +67,22 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Navigation bar — Sprint 8.5.1: also holds the view toggle + "+" button
-   that previously lived in the header. flex-wrap so anything that doesn't
-   fit drops to a new line. The toggle uses margin-left: auto to anchor
-   the right-side group. */
+/* Sprint 13: prev/today/next + view toggle + ＋ button moved onto the
+   header row itself (sched-header-controls). The old sched-nav-bar
+   wrapper is gone; the controls cluster sits on the right of the
+   header. flex-wrap inside both sched-header and the controls cluster
+   means the whole thing collapses gracefully on narrow viewports —
+   first the controls drop under the title, then the controls cluster
+   itself wraps internally. */
+.sched-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Sprint 13: legacy class kept (some older JSX paths used it). Same
+   shape as `.sched-header-controls` so removing it would be a noop. */
 .sched-nav-bar {
   display: flex;
   align-items: center;
@@ -2602,4 +2614,142 @@
 @media (prefers-reduced-motion: reduce) {
   .day-shift-detail-backdrop,
   .day-shift-detail-card { animation-duration: 1ms; }
+}
+
+/* ── Sprint 13: at-a-glance + notes-feed cards ─────────────────────────
+   Two cards side-by-side above the Day / Week body. Equal columns on
+   desktop, stacked on mobile. Reuses the surface + border tokens so
+   the cards drop into existing themes without per-card overrides. */
+
+.sched-glance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.sched-glance-card,
+.sched-notes-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+
+.sched-glance-header,
+.sched-notes-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.sched-glance-icon,
+.sched-notes-icon {
+  font-size: 16px;
+  opacity: 0.85;
+}
+.sched-glance-title,
+.sched-notes-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brand-text);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+/* Four-stat grid. On desktop sits as a single row; wraps to two
+   columns on tight viewports (480px breakpoint below). */
+.sched-glance-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+.sched-glance-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.sched-glance-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.sched-glance-num.is-live { color: #38a169; }
+.sched-glance-num.is-warn { color: #dd6b20; }
+.sched-glance-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+/* Notes feed list */
+.sched-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sched-notes-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.sched-notes-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+}
+.sched-notes-body {
+  font-family: 'TiemposText', Georgia, serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sched-notes-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sched-notes-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.sched-notes-view-all {
+  margin-top: 12px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text);
+  cursor: pointer;
+}
+.sched-notes-view-all:hover { text-decoration: underline; }
+
+@media (max-width: 880px) {
+  .sched-glance-row { grid-template-columns: 1fr; }
+  .sched-glance-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .sched-glance-num { font-size: 24px; }
+}
+@media (max-width: 480px) {
+  .sched-glance-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
