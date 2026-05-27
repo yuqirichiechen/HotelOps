@@ -1520,18 +1520,25 @@ app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res
     });
   }
 
+  // Sprint 13.7: predicate switches from "clock_in_time in [from, to)"
+  // to "entry OVERLAPS [from, to)". An overnight shift that started
+  // yesterday at 10pm and clocked out today at 7am has its Tuesday
+  // segment (via Sprint 13.5's adapter) only if today's fetch returns
+  // the entry — and the old predicate dropped it because
+  // clock_in_time was yesterday. The overlap predicate is
+  //   clock_in_time < to AND (clock_out_time IS NULL OR clock_out_time > from)
+  // The COALESCE collapses null clock_out_time to NOW(), so a staff
+  // still on the clock has their open entry surface on every day
+  // the segment touches.
   const conditions = fromIsISO && toIsISO
     ? [
-        // Client passed UTC ISO timestamps representing local-midnight
-        // bounds; compare directly against timestamptz.
-        `te.clock_in_time >= $1::timestamptz`,
-        `te.clock_in_time <  $2::timestamptz`,
+        `te.clock_in_time              <  $2::timestamptz`,
+        `COALESCE(te.clock_out_time, NOW()) > $1::timestamptz`,
       ]
     : [
         // Legacy date format — interpreted in the server's timezone.
-        // Older callers (and any cron / curl scripts) still work.
-        `te.clock_in_time >= $1::date`,
-        `te.clock_in_time <  ($2::date + INTERVAL '1 day')`,
+        `te.clock_in_time              <  ($2::date + INTERVAL '1 day')`,
+        `COALESCE(te.clock_out_time, NOW()) > $1::date`,
       ];
   const params = [from, to];
 

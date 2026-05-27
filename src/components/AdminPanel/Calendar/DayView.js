@@ -648,7 +648,22 @@ const TimelineMode = ({ shifts, onEdit, onShowDetail }) => {
   const hours = useMemo(() => Array.from({ length: 25 }, (_, h) => h), []);
   return (
     <div className="day-timeline-wrap">
-      <div className="day-timeline">
+      {/* Sprint 13.7: when many shifts overlap at once, lane-pack
+          spawns lots of skinny lanes. Below ~80px each they read as
+          unlabeled stripes (the GM's image #20 had cards "falling
+          to the bottom" because they were too narrow to render the
+          text + then visually disappeared into the timeline's
+          background). Set a min-width on the timeline grid based on
+          laneCount so wide cases scroll horizontally instead of
+          shrinking each lane into noise. */}
+      <div
+        className="day-timeline"
+        style={
+          laneCount > 4
+            ? { minWidth: `${64 + laneCount * 80}px` }
+            : undefined
+        }
+      >
         <div className="day-hour-rail">
           {hours.map(h => (
             <span

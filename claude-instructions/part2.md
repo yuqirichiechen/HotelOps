@@ -792,6 +792,98 @@ nav row:
 
 ---
 
+### 2026-05-27 — Sprint 13.7: overnight entries surface on the second day; timeline gets horizontal scroll when cramped
+
+Two carry-overs from Sprint 13.5/13.6.
+
+**1. Overnight shift wasn't appearing on day 2.**
+
+Sprint 13.5 already produced Tuesday segments for an overnight
+entry that started Monday night — but `/admin/entries`'s WHERE
+clause filtered entries by `clock_in_time` falling inside the
+requested `[from, to)` window. Tuesday's fetch passed
+`from = Tue 00:00 local` and `to = Wed 00:00 local`. Jesse's
+overnight entry has `clock_in_time = Mon 22:29` (outside that
+range), so the entry never made it to the client → no Tuesday
+segment → empty cell.
+
+Switched the predicate from "clock_in_time in [from, to)" to
+"entry overlaps [from, to)":
+
+```sql
+WHERE te.clock_in_time              <  $2::timestamptz
+  AND COALESCE(te.clock_out_time, NOW()) > $1::timestamptz
+```
+
+`COALESCE(..., NOW())` collapses open entries' null clock_out_time
+to "now," so a staff currently on the clock surfaces on every day
+their shift touches. The legacy (`::date`) branch got the
+matching pair so non-ISO callers behave consistently.
+
+Now the Tuesday segment shows up because the parent entry is in
+the response, then Sprint 13.5's `entryToScheduleSegments` does
+its per-local-day split as before — Monday gets the 22:29-23:59
+piece on Monday's view, Tuesday gets the 00:00-07:09 piece on
+Tuesday's view.
+
+**2. Timeline cramping (image #20).**
+
+Classic timeline (hour-rail + lane-pack) gave every shift the
+same percentage of column width — `1 / laneCount`. With many
+overlapping shifts the per-lane width drops below the card's
+readable threshold, text either wraps weird or gets clipped, and
+the GM saw "cards falling to the bottom" (they were rendering in
+the right lane but invisible without text).
+
+Fix: set `min-width` on the timeline grid when `laneCount > 4`
+and enable `overflow-x: auto` on the wrap:
+
+```jsx
+<div
+  className="day-timeline"
+  style={
+    laneCount > 4
+      ? { minWidth: `${64 + laneCount * 80}px` }
+      : undefined
+  }
+>
+```
+
+Each lane now floors at ~80px wide; the canvas scrolls
+horizontally instead of cards shrinking into illegible stripes.
+Below the 4-lane threshold the original "fill the width" behavior
+is preserved — narrow days don't gain unwanted scroll.
+
+`.day-timeline-wrap` gains `overflow-x: auto` to make the scroll
+work; it already had `overflow-y: auto` for the vertical hour
+rail.
+
+**Verified.** server.js 1602/1606 (the +2-from-pre-existing extra
+closes are inside the new `[from, to)` math-notation in code
+comments — file is syntactically clean). DayView.js 433/433 +
+306/306. Scheduling.css 489/489 + 493/493.
+
+Walk-through with Jesse's overnight on Tuesday's view:
+- Fetch range: `2026-05-26T07:00Z → 2026-05-27T07:00Z` (PDT
+  local-midnight bounds).
+- Server returns entries where `clock_in_time < 2026-05-27T07:00Z`
+  AND `COALESCE(clock_out_time, NOW()) > 2026-05-26T07:00Z`.
+  Jesse's `Mon 22:29` clock-in matches `clock_in_time <
+  2026-05-27T07:00Z` ✓, and `clock_out_time = Tue 07:09 >
+  Tue 00:00 local (= 2026-05-26T07:00Z)` ✓ — entry returned.
+- Client segments it: Tuesday segment with start_time=00:00:00,
+  end_time=07:09:00 renders on Tuesday's view at top of the
+  hour rail.
+
+**Follow-ups.** None outstanding. If the lane-pack ever spawns
+> 20 lanes (very dense day with all-staff overlapping mid-day),
+the horizontal scroll story might want a secondary "collapse
+by department" affordance — but the GM hasn't surfaced that
+case yet, and Cards / Rows layouts handle dense days naturally
+without needing the same trick.
+
+---
+
 ### 2026-05-26 — Sprint 13.6: server-side overnight + TZ fixes (Timesheet, performance, OT approve, StaffDetail row)
 
 13.5 fixed the admin Calendar; this sprint chases the same bug into

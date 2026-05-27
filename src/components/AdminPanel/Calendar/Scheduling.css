@@ -1205,6 +1205,10 @@
   border-radius: 12px;
   border: 1px solid var(--border);
   overflow-y: auto;
+  /* Sprint 13.7: allow horizontal scroll when lane-pack widens the
+     timeline grid past viewport width — cards stay legible instead
+     of squishing into stripes. */
+  overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   flex: 1 1 auto;
   min-height: 0;
