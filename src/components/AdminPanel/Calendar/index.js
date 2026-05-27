@@ -573,6 +573,13 @@ const SchedulingManager = () => {
           carried prev/today/next + view toggle + ＋), leaving the right
           half of the title row empty. flex-wrap means the controls drop
           to their own row on viewports that can't fit them. */}
+      {/* Sprint 13.3: ＋ assign-shifts button removed from the
+          controls row and replaced by a text "Assign" button inline
+          with the title. The view toggle (Year/Month/Week/Day) now
+          right-aligns inside the controls row on every viewport.
+          The drag-and-drop assign-shifts surface lands in a later
+          sprint; until then, "Assign" opens the existing
+          AssignPanel side panel. */}
       <div className="sched-header">
         <div className="sched-header-left">
           {backTarget ? (
@@ -583,6 +590,11 @@ const SchedulingManager = () => {
             <button className="btn-back" onClick={() => goTo('home')}>‹ Home</button>
           )}
           <h2 className="sched-title">{headerLabel}</h2>
+          <button
+            type="button"
+            className="sched-assign-btn"
+            onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
+          >Assign</button>
         </div>
         <div className="sched-header-controls">
           <button className="nav-arrow" onClick={goPrev} aria-label="Previous">‹</button>
@@ -599,12 +611,6 @@ const SchedulingManager = () => {
               </button>
             ))}
           </div>
-          <button
-            className="sched-add-btn"
-            aria-label="Assign shifts"
-            title="Assign shifts"
-            onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
-          >＋</button>
         </div>
       </div>
 

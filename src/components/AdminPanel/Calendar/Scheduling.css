@@ -3076,3 +3076,69 @@
   .sched-header-controls .view-btn { padding: 5px 6px; font-size: 10px; }
   .sched-header-controls .nav-today { padding: 5px 8px; font-size: 11px; }
 }
+
+/* ── Sprint 13.3: header + day-controls tightening ────────────────────
+   - "Assign" inline button replacing the old ＋ float.
+   - View toggle gets margin-left: auto so Year/Month/Week/Day pin to
+     the right edge of the controls row on every breakpoint.
+   - Day controls (dept dropdown + Style + Rows/Timeline toggles)
+     squeeze onto one row at mobile widths instead of wrapping. */
+
+.sched-assign-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.sched-assign-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+/* View toggle pins to the right edge of the controls cluster. */
+.sched-header-controls .sched-view-toggle {
+  margin-left: auto;
+}
+
+@media (max-width: 720px) {
+  .sched-assign-btn { font-size: 12px; padding: 5px 10px; margin-left: 4px; }
+}
+
+/* Day controls: no wrap on phone — instead shrink contents. */
+@media (max-width: 720px) {
+  .day-controls {
+    flex-wrap: nowrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .day-controls .hop-dropdown-button {
+    padding: 4px 8px 4px 10px;
+    font-size: 11px;
+  }
+  .day-controls .hop-dropdown-label { font-size: 9px; }
+  .day-controls-toggles { gap: 4px; }
+  .day-style-toggle, .day-mode-toggle { padding: 2px; gap: 1px; }
+  .day-style-btn, .day-mode-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}
+@media (max-width: 480px) {
+  .day-controls .hop-dropdown-button { padding: 4px 6px 4px 8px; font-size: 10px; }
+  .day-controls .hop-dropdown-current { font-weight: 600; }
+  .day-style-btn, .day-mode-btn { padding: 4px 6px; font-size: 10px; }
+}
+
+/* Sprint 13.3: position the dept DropdownSelect at the left of the
+   day-controls row; toggle cluster flows to the right via the
+   existing flex layout. Legacy `.day-filter-dropdown` styles remain
+   in the file as dead CSS for one sprint while the GM confirms. */
+.day-controls > .hop-dropdown { margin-right: auto; }

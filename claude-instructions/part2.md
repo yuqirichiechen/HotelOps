@@ -792,6 +792,100 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13.3: header `+` → inline "Assign", view toggle right-aligned, shared DropdownSelect
+
+Four GM-asked changes that all touch the same toolbar language.
+
+**1. ＋ assign-shifts button → inline "Assign" next to the title.**
+
+GM is preparing a drag-and-drop assign-shifts surface for a later
+sprint. The standalone `＋` button on the controls row is gone;
+the action moves inline to the header's left block, right after
+the title (`Tuesday | May 26, 2026  [Assign]`). Same handler —
+opens the existing `AssignPanel` for now; the drag-and-drop
+replacement lands later.
+
+CSS: `.sched-assign-btn` matches the accent-tinted pill the rest
+of the admin app uses. Tightened a step at `(max-width: 720px)`.
+
+**2. View toggle right-aligned.**
+
+With `＋` out of the way, `.sched-view-toggle` now gets
+`margin-left: auto` so Year / Month / Week / Day pin to the right
+edge of the controls cluster on every breakpoint. Matches the
+GM's image #17 mockup where the toggle was right-flush.
+
+**3. Day controls (dropdown + Style + Rows/Timeline) on one row.**
+
+The chip + toggle row was wrapping on mobile. New CSS forces
+`flex-wrap: nowrap` at `(max-width: 720px)` and shrinks the
+inner controls' font + padding so all three fit:
+- Dropdown trigger: 11px font / 4-10px padding.
+- Style + Mode toggles: 11px font / 5-8px padding, 2px container
+  padding.
+- At ≤480px, another step down to 10px font / 4-6px padding.
+
+**4. Shared `DropdownSelect` — replaces native `<select>` in two places.**
+
+The Calendar Day dept dropdown + StaffManager sort dropdown were
+both rendering with the OS picker, which looked foreign next to
+the chip/pill toolbar. Built a small reusable popover-style
+dropdown that matches the admin app's chip+popover language
+(same shape as the StaffManager export popover):
+
+```
+src/components/shared/
+  DropdownSelect.js
+  DropdownSelect.css
+```
+
+API:
+```jsx
+<DropdownSelect
+  label="Department"
+  value={deptFilter}
+  onChange={handleChange}
+  options={[{ value, label }, ...]}
+  align="left|right"  // menu anchor edge
+  placeholder="Select…"
+/>
+```
+
+Implementation:
+- Trigger = chip-shaped button with optional uppercase prefix
+  label + current value + chevron (rotates 180° when open).
+- Menu = surface-colored popover anchored to the trigger
+  (`top: calc(100% + 4px); z-index: 60`), max-height 280px,
+  scrolls if options overflow. Selected item gets the
+  `accent-bg` highlight.
+- Click-outside + ESC both dismiss (handlers in a `useEffect`
+  that cleans up on close).
+
+Both callers (DayView + StaffManager) drop the `className` prop —
+the legacy `.day-filter-dropdown` / `.staff-mgr-sort` rules
+carried conflicting visual styling (border/padding/background on
+the wrapper, redundant with the new `.hop-dropdown-button`
+chip). One `.day-controls > .hop-dropdown { margin-right: auto }`
+rule preserves the "dept pinned left, toggles pinned right"
+layout the controls row needs.
+
+Legacy `.day-filter-dropdown*` / `.staff-mgr-sort*` CSS left in
+the files as dead code for one sprint while the GM confirms.
+Cleanup in 13.x.
+
+**Verified.** Six touched files all balance: DropdownSelect.js
+36/36 + 28/28, DropdownSelect.css 19/19 + 18/18,
+DayView.js 428/428 + 302/302, Calendar/index.js 401/401 +
+222/222, Scheduling.css 502/502 + 501/501,
+StaffManager.js 486/486 + 295/295.
+
+**Follow-ups.** The drag-and-drop assign-shifts surface (Sprint
+14+ probably). Cleanup pass for the dead `.day-filter-chips` /
+`.day-chip` / `.day-filter-dropdown*` / `.staff-mgr-sort*`
+selectors once the GM has signed off on the new toolbar.
+
+---
+
 ### 2026-05-26 — Sprint 13.2: Day view dual layout (Classic / Cards), dept dropdown, mobile header squeeze, Scheduled stat
 
 Four GM-asked changes.

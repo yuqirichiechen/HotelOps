@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
+import DropdownSelect from '../shared/DropdownSelect';
 
 // List-as-dashboard pattern (Sprint 6.3): clickable stats banner drives the
 // list filter, rich rows show this-week metrics inline, Add Staff is a
@@ -661,24 +662,22 @@ const StaffManager = () => {
           Include inactive
         </button>
 
-        {/* Sprint 11.5: sort dropdown — lets the admin reorder the
-            list by name (A↔Z) or by activity signal (hours / hire
-            date) without losing their current filter. */}
-        <label className="staff-mgr-sort" aria-label="Sort staff list">
-          <span className="staff-mgr-sort-label">Sort</span>
-          <select
-            className="staff-mgr-sort-select"
-            value={sortMode}
-            onChange={e => setSortMode(e.target.value)}
-          >
-            <option value="name-asc">Name A → Z</option>
-            <option value="name-desc">Name Z → A</option>
-            <option value="hours-desc">Hours · most</option>
-            <option value="hours-asc">Hours · least</option>
-            <option value="hire-newest">Hired · newest</option>
-            <option value="hire-oldest">Hired · oldest</option>
-          </select>
-        </label>
+        {/* Sprint 11.5: sort dropdown — Sprint 13.3 swapped the native
+            <select> for the shared `DropdownSelect` so it matches the
+            chip+popover language elsewhere in the admin app. */}
+        <DropdownSelect
+          label="Sort"
+          value={sortMode}
+          onChange={(v) => setSortMode(v)}
+          options={[
+            { value: 'name-asc',    label: 'Name A → Z' },
+            { value: 'name-desc',   label: 'Name Z → A' },
+            { value: 'hours-desc',  label: 'Hours · most' },
+            { value: 'hours-asc',   label: 'Hours · least' },
+            { value: 'hire-newest', label: 'Hired · newest' },
+            { value: 'hire-oldest', label: 'Hired · oldest' },
+          ]}
+        />
 
         {/* Sprint 11.4: selection summary — only renders when at
             least one row is ticked. Lets the admin see how many

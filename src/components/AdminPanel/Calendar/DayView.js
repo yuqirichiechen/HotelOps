@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import DropdownSelect from '../../shared/DropdownSelect';
 
 // Sprint 8.4: DayView now supports two render modes — `timeline` (iOS-Calendar
 // hours-on-Y, lane-packed shifts) and `resource` (staff-on-Y / hours-on-X,
@@ -382,28 +383,20 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
         })}
       </div>
 
-      {/* Sprint 13.2: dept chips → native <select> dropdown on the
-          left. Frees the full toolbar width for the mode toggles on
-          the right (Style + Rows/Timeline), all on a single row.
-          Style toggle persists to localStorage so the admin's last
-          choice survives reloads. */}
+      {/* Sprint 13.3: dept dropdown is now the shared `DropdownSelect`
+          (matches the rest of the admin chip+popover language —
+          native <select> looked foreign next to the toggle pills).
+          Both toggles live to the right; everything on one row. */}
       <div className="day-controls">
-        <label className="day-filter-dropdown">
-          <span className="day-filter-dropdown-label">Department</span>
-          <select
-            className="day-filter-dropdown-select"
-            value={deptFilter}
-            onChange={(e) => {
-              const v = e.target.value;
-              handleDeptFilterChange(v === 'all' ? 'all' : parseInt(v, 10));
-            }}
-          >
-            <option value="all">All departments</option>
-            {departments.map(d => (
-              <option key={d.department_id} value={d.department_id}>{d.name}</option>
-            ))}
-          </select>
-        </label>
+        <DropdownSelect
+          label="Department"
+          value={deptFilter}
+          onChange={(v) => handleDeptFilterChange(v)}
+          options={[
+            { value: 'all', label: 'All departments' },
+            ...departments.map(d => ({ value: d.department_id, label: d.name })),
+          ]}
+        />
         <div className="day-controls-toggles">
           <div className="day-style-toggle" role="group" aria-label="Layout style">
             <button
