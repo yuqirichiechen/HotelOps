@@ -104,7 +104,9 @@ const Timesheet = () => {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    apiFetch(`/me/hours?weekStart=${weekStart}`).then(({ data }) => {
+    // Sprint 13.6: TZ-aware per-day bucketing — see Home.js.
+    const tzOff = new Date().getTimezoneOffset();
+    apiFetch(`/me/hours?weekStart=${weekStart}&tz_offset_minutes=${tzOff}`).then(({ data }) => {
       if (!active) return;
       if (data?.success) setData(data);
       setLoading(false);

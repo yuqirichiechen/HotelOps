@@ -792,6 +792,123 @@ nav row:
 
 ---
 
+### 2026-05-26 — Sprint 13.6: server-side overnight + TZ fixes (Timesheet, performance, OT approve, StaffDetail row)
+
+13.5 fixed the admin Calendar; this sprint chases the same bug into
+the remaining surfaces the audit flagged.
+
+**1. `/me/hours` per-day breakdown.**
+
+Was bucketing entries by `new Date(clock_in_time).toISOString().split('T')[0]`
+which (a) returns the UTC date — not the user's local — and (b)
+pins overnight shifts entirely to the clock-in day. Both issues
+fixed:
+
+- New `splitEntryByLocalDay(entry, tzOffsetMinutes)` walks an
+  entry from `clock_in_time` → `clock_out_time` (or now), emitting
+  `{ dateKey, hours }` chunks split at each *local* midnight per
+  the caller's timezone. 32-iteration safety cap.
+- Day labels iterate via `addDaysToYmd(weekStart, i)` — pure
+  string arithmetic, no Date-object timezone leak.
+- Endpoint accepts `tz_offset_minutes` query param (signed,
+  matching `new Date().getTimezoneOffset()`). Missing → 0,
+  preserves legacy behavior for any non-client caller.
+
+`totalHours` continues to be the sum of per-day buckets, so it's
+identical to before for same-day shifts and now correct for
+overnight ones.
+
+**2. Clients pass the TZ offset.**
+
+Three callers updated:
+- `pages/Home/index.js` → `/me/hours` (drives Home's "This week"
+  + recent-shifts list).
+- `pages/Timesheet/index.js` → `/me/hours` (drives the weekly
+  per-day chart + breakdown).
+- `components/AdminPanel/StaffDetail.js` → both
+  `/admin/staff/:id/performance` and `/admin/staff/:id/approve-ot`
+  (drives the performance dashboard + OT bulk-approve button).
+
+Each just appends `&tz_offset_minutes=${new Date().getTimezoneOffset()}`.
+
+**3. `periodRange` is now TZ-aware.**
+
+Used by the performance + bulk OT approve endpoints. The old
+implementation called `now.getDay()`, `setHours(0,0,0,0)`, etc.,
+which on a UTC server (Koyeb) computed Monday-UTC instead of
+Monday-local. With a Pacific user, the "this week" window was
+off by ~7–8 hours — early-Monday clock-ins could land in last
+week's bucket.
+
+```js
+function periodRange(period, tzOffsetMinutes = 0) {
+  const tzMs = tzOffsetMinutes * 60_000;
+  const local = new Date(Date.now() - tzMs);  // local Y/M/D via UTC accessors
+  const localYmdToUtcMs = (y, mZeroBased, d) =>
+    Date.UTC(y, mZeroBased, d, 0, 0, 0) + tzMs;
+  // ... computes from/to/prevFrom/prevTo on local boundaries ...
+}
+```
+
+Default tzOffsetMinutes=0 keeps legacy behavior (server-local =
+UTC on Koyeb). Both call sites now pass the user's actual offset
+from the query string.
+
+**4. StaffDetail entries list — overnight date label.**
+
+Image #19: a Monday 10:29pm → Tuesday 7:09am row used to render
+its date as just "Mon, May 25" — visually pinning the shift to
+Monday even though it crossed midnight. Added:
+
+```js
+const isOvernight = (a, b) =>
+  a.getFullYear() !== b.getFullYear() ||
+  a.getMonth()    !== b.getMonth()    ||
+  a.getDate()     !== b.getDate();
+
+const fmtEntryDateRange = (inIso, outIso) =>
+  isOvernight(...) ? `${fmtEntryDate(inIso)} → ${fmtEntryDate(outIso)}`
+                   : fmtEntryDate(inIso);
+```
+
+Row now reads "Mon, May 25 → Tue, May 26" with the same
+"10:29 PM → 7:09 AM, 8h 40m" beneath it. Total hours unchanged
+(server math was already correct via `EXTRACT(EPOCH)`).
+
+**Audit recap.** All six surfaces from the Sprint 13.5 audit
+table now ✅:
+
+| Surface                              | Fix sprint |
+| ------------------------------------ | ---------- |
+| Admin Calendar segments              | 13.5       |
+| `ShiftDetailModal` hours             | 13.5       |
+| `/me/hours` daily breakdown          | 13.6       |
+| `/admin/staff/:id/performance`       | 13.6       |
+| Timesheet weekly chart (via me/hrs)  | 13.6       |
+| StaffDetail entries list label      | 13.6       |
+
+Bonus: `/admin/staff/:id/approve-ot` was tied to the same
+`periodRange` helper, so it picks up the TZ fix for free — the
+"approve this week's OT" button now operates on the operator's
+week, not the server's.
+
+**Verified.** server.js opens/closes 1596/1598 (pre-existing
+2-paren imbalance is in literals — my edit added 62/62 balanced).
+Home.js 150/150 + 101/101, Timesheet.js 283/283 + 160/160,
+StaffDetail.js 361/361 + 295/295. Walk-through with Jesse's
+overnight: with `tz_offset_minutes=420` (PDT), `/me/hours` for
+weekStart=2026-05-25 now puts 1.5h on Monday and 7.2h on
+Tuesday (was 8.7h pinned to Monday).
+
+**Follow-ups.** None outstanding for the overnight bucket bug.
+The export ranges in `runExport` (`StaffManager`) still
+round to YYYY-MM-DD via `periodRange` (the StaffManager local
+helper, not the server's), and Sprint 13.4 already pushed those
+through as ISO local-midnight bounds — so the export workbook
+respects the operator's local week. No additional touch needed.
+
+---
+
 ### 2026-05-26 — Sprint 13.5: overnight-shift split (per-local-day segments) + modal hours fix
 
 Live bug, two surfaces:

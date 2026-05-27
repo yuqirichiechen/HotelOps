@@ -14,6 +14,25 @@ const fmtTime = (iso) =>
 const fmtEntryDate = (iso) =>
   new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
+// Sprint 13.6: visual overnight indicator. If clock-in and clock-out
+// fall on different *local* days, render the row's date as
+// "Mon, May 25 → Tue, May 26" so the operator can see at a glance
+// that the entry spans midnight (image #19 only showed the
+// clock-in day, which read as if the whole shift happened Monday).
+const isOvernight = (inIso, outIso) => {
+  if (!inIso || !outIso) return false;
+  const a = new Date(inIso);
+  const b = new Date(outIso);
+  return a.getFullYear() !== b.getFullYear()
+      || a.getMonth()    !== b.getMonth()
+      || a.getDate()     !== b.getDate();
+};
+const fmtEntryDateRange = (inIso, outIso) => (
+  isOvernight(inIso, outIso)
+    ? `${fmtEntryDate(inIso)} → ${fmtEntryDate(outIso)}`
+    : fmtEntryDate(inIso)
+);
+
 const hoursOf = (iso1, iso2) => {
   const start = new Date(iso1);
   const end   = iso2 ? new Date(iso2) : new Date();
@@ -102,7 +121,10 @@ const StaffDetail = ({ userId }) => {
   const reloadPerf = useCallback(async () => {
     setPerfLoad(true);
     setPerfErr('');
-    const { ok, status, data } = await apiFetch(`/admin/staff/${userId}/performance?period=${period}`);
+    // Sprint 13.6: pass the operator's local TZ offset so the
+    // performance window aligns to the *operator's* week/month/year.
+    const tzOff = new Date().getTimezoneOffset();
+    const { ok, status, data } = await apiFetch(`/admin/staff/${userId}/performance?period=${period}&tz_offset_minutes=${tzOff}`);
     if (ok && data?.success) {
       setPerf(data);
     } else {
@@ -121,7 +143,9 @@ const StaffDetail = ({ userId }) => {
   const approveOT = async () => {
     setOtBusy(true);
     setOtMsg('');
-    const { ok, data } = await apiFetch(`/admin/staff/${userId}/approve-ot?period=${period}`, {
+    // Sprint 13.6: same TZ alignment as performance fetch above.
+    const tzOff = new Date().getTimezoneOffset();
+    const { ok, data } = await apiFetch(`/admin/staff/${userId}/approve-ot?period=${period}&tz_offset_minutes=${tzOff}`, {
       method: 'POST',
     });
     setOtBusy(false);
@@ -612,7 +636,9 @@ const StaffDetail = ({ userId }) => {
                 return (
                   <li key={e.entry_id} className="emp-entry-row">
                     <div className="emp-entry-main">
-                      <div className="emp-entry-date">{fmtEntryDate(e.clock_in_time)}</div>
+                      <div className="emp-entry-date">
+                        {fmtEntryDateRange(e.clock_in_time, e.clock_out_time)}
+                      </div>
                       <div className="emp-entry-times">
                         {fmtTime(e.clock_in_time)} → {e.clock_out_time
                           ? fmtTime(e.clock_out_time)

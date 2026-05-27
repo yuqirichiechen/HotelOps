@@ -65,7 +65,11 @@ const Home = () => {
   const [clockEvent, setClockEvent] = useState(null);
 
   const refresh = useCallback(async () => {
-    const { data } = await apiFetch(`/me/hours?weekStart=${getMondayISO()}`);
+    // Sprint 13.6: pass the local TZ offset (signed minutes, matching
+    // `new Date().getTimezoneOffset()`) so the server can split
+    // overnight entries into the *user's* local days instead of UTC.
+    const tzOff = new Date().getTimezoneOffset();
+    const { data } = await apiFetch(`/me/hours?weekStart=${getMondayISO()}&tz_offset_minutes=${tzOff}`);
     if (data?.success) setData(data);
     setLoading(false);
   }, []);

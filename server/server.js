@@ -623,6 +623,56 @@ app.post('/api/clock-out-self', requireAuth, async (req, res) => {
 });
 
 // Dashboard data for the authed staff user. weekStart=YYYY-MM-DD (Monday).
+// Sprint 13.6: split a clock-in/clock-out entry into per-local-day
+// hour chunks, honoring the caller's local timezone (passed in as
+// `tz_offset_minutes`, matching `new Date().getTimezoneOffset()` —
+// positive for west-of-UTC, negative for east). Mirrors the
+// client-side adapter Sprint 13.5 added for the admin calendar —
+// keeps the per-day breakdown honest when a single shift spans
+// midnight (Monday 10pm → Tuesday 7am should put ~2h on Mon and
+// ~7h on Tue, not 9h pinned to Monday).
+const splitEntryByLocalDay = (entry, tzOffsetMinutes) => {
+  const tzMs   = tzOffsetMinutes * 60_000;
+  const inUtc  = new Date(entry.clock_in_time).getTime();
+  const outUtc = entry.clock_out_time
+    ? new Date(entry.clock_out_time).getTime()
+    : Date.now();
+  if (outUtc <= inUtc) return [];
+
+  const out = [];
+  let cursor = inUtc;
+  let safety = 32;  // a clock-in left open for > a month is a data anomaly
+  while (cursor < outUtc && safety-- > 0) {
+    // Treat (cursor - tzMs) as "this UTC instant rendered in local
+    // time" — its UTC-accessor fields are the local components.
+    const local = new Date(cursor - tzMs);
+    // Next local midnight: start of (local Y, M, D + 1) re-expressed
+    // as the original UTC instant by re-adding the offset.
+    const nextLocalMidnightAsLocalMs = Date.UTC(
+      local.getUTCFullYear(),
+      local.getUTCMonth(),
+      local.getUTCDate() + 1,
+      0, 0, 0
+    );
+    const nextLocalMidnightUtc = nextLocalMidnightAsLocalMs + tzMs;
+    const segEnd = Math.min(outUtc, nextLocalMidnightUtc);
+    const segHours = (segEnd - cursor) / 3_600_000;
+    const dateKey = `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, '0')}-${String(local.getUTCDate()).padStart(2, '0')}`;
+    out.push({ dateKey, hours: segHours });
+    cursor = segEnd;
+  }
+  return out;
+};
+
+// String-based day arithmetic — avoids the Date-object timezone trap
+// the old `new Date(weekStart + 'T00:00:00')` had (server-local
+// midnight, which is UTC on Koyeb).
+const addDaysToYmd = (ymd, n) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+};
+
 app.get('/api/me/hours', requireAuth, async (req, res) => {
   if (req.auth.type !== 'staff') {
     return res.status(403).json({ success: false, message: 'Staff only' });
@@ -632,6 +682,12 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
   if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
     return res.status(400).json({ success: false, message: 'weekStart=YYYY-MM-DD required' });
   }
+  // Sprint 13.6: caller's local timezone offset (mins, signed like
+  // `new Date().getTimezoneOffset()`). Defaults to 0 (UTC) to keep
+  // unauth'd / legacy callers behaving as before; the staff client
+  // passes its real offset.
+  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
 
   try {
     // Entries that INTERSECT the week. An entry counts if any portion of it
@@ -649,20 +705,26 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       [userId, weekStart]
     );
 
-    // Aggregate by day (Mon → Sun)
+    // Sprint 13.6: build per-local-day hour totals by splitting each
+    // entry across the local days it touches. `weekStart` is a
+    // YYYY-MM-DD string interpreted in the *caller's* local TZ; days
+    // are derived via plain string arithmetic so server TZ doesn't
+    // contaminate the bucket boundaries.
     const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const start    = new Date(weekStart + 'T00:00:00');
-    const days     = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const isoDate = d.toISOString().split('T')[0];
-      let hours = 0;
-      for (const e of entries) {
-        const eDate = new Date(e.clock_in_time).toISOString().split('T')[0];
-        if (eDate === isoDate) hours += parseFloat(e.hours);
+    const dayHours = new Map();
+    for (const e of entries) {
+      for (const { dateKey, hours } of splitEntryByLocalDay(e, tzOffset)) {
+        dayHours.set(dateKey, (dayHours.get(dateKey) || 0) + hours);
       }
-      days.push({ date: isoDate, dayName: dayNames[i], hours: Math.round(hours * 10) / 10 });
+    }
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const isoDate = addDaysToYmd(weekStart, i);
+      days.push({
+        date:    isoDate,
+        dayName: dayNames[i],
+        hours:   Math.round((dayHours.get(isoDate) || 0) * 10) / 10,
+      });
     }
     const totalHours = Math.round(days.reduce((s, d) => s + d.hours, 0) * 10) / 10;
 
@@ -1233,9 +1295,14 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
   const { userId } = req.params;
   const period = ['week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'week';
 
+  // Sprint 13.6: caller's local TZ offset so the week / month / year
+  // window aligns to the operator's day boundaries (not the server's).
+  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+
   try {
     const now = new Date();
-    const { from, to, prevFrom, prevTo, label } = periodRange(period);
+    const { from, to, prevFrom, prevTo, label } = periodRange(period, tzOffset);
 
     // 8 weeks back (this Monday) for the trend chart
     const trendStart = new Date(now);
@@ -1529,7 +1596,13 @@ app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res
 app.post('/api/admin/staff/:userId/approve-ot', requireAuth, requireRole('admin'), async (req, res) => {
   const { userId } = req.params;
   const period = ['week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'week';
-  const { from, to } = periodRange(period);
+  // Sprint 13.6: align the bulk-approve window with the operator's
+  // local week/month/year boundaries — mirrors the performance
+  // endpoint so "approve OT for this week" approves the same set
+  // of entries the performance dashboard counts.
+  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  const { from, to } = periodRange(period, tzOffset);
 
   try {
     const { rows: before } = await pool.query(
