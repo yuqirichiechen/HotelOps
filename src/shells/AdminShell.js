@@ -8,6 +8,7 @@ import SchedulingManager from '../components/AdminPanel/Calendar';
 import AdminReports from '../pages/AdminReports';
 import Assistant from '../pages/Assistant';
 import AdminSettings from '../components/AdminPanel/AdminSettings';
+import ShiftSheet from '../pages/ShiftSheet';
 // Sprint 12.1: NotesPage no longer reachable from the admin shell —
 // handoff notes moved to the Logbook surface (AdminReports). Staff
 // shell still maps view='notes' to NotesPage for the staff calendar
@@ -36,6 +37,7 @@ const VIEWS = {
   staff:       StaffManager,
   staffDetail: StaffDetail,
   calendar:    SchedulingManager,
+  sheet:       ShiftSheet,
   reports:     AdminReports,
   assistant:   Assistant,
   settings:    AdminSettings,
@@ -43,6 +45,10 @@ const VIEWS = {
 
 const ACTIVE_PARENT = {
   staffDetail: 'staff',
+  // Sprint 14: the Shift Sheet opens from the Calendar header's
+  // Assign pill — keep the Calendar nav item highlighted while
+  // the sheet is on screen.
+  sheet:       'calendar',
 };
 
 const Body = ({ theme, onToggleTheme }) => {

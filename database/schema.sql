@@ -189,6 +189,36 @@ CREATE INDEX idx_schedules_date      ON schedules(scheduled_date);
 -- it's stale and should map onto `handoff_notes`.
 
 
+-- ── SCHEDULE SHEET CELLS (Sprint 14) ───────────────────────────────────────────
+-- Excel-style weekly grid the GM uses to plan shifts. One row per
+-- (week_start, user_id, day_of_week). Stores the raw free-form text
+-- the GM typed (e.g., "3p-11p", "OFF", "BRK+help") plus, when
+-- parseable, structured start/end times. is_published flips when
+-- the cell is approved for the calendar overlay.
+-- Migration: database/migrations/017_schedule_sheet_cells.sql
+
+CREATE TABLE schedule_sheet_cells (
+  cell_id        UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  week_start     DATE         NOT NULL,
+  user_id        UUID         NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  day_of_week    SMALLINT     NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  display_text   TEXT         NOT NULL,
+  parsed_start   TIME,
+  parsed_end     TIME,
+  is_published   BOOLEAN      NOT NULL DEFAULT FALSE,
+  highlight      BOOLEAN      NOT NULL DEFAULT FALSE,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  CONSTRAINT schedule_sheet_cells_unique UNIQUE (week_start, user_id, day_of_week)
+);
+
+CREATE INDEX idx_sheet_cells_week ON schedule_sheet_cells(week_start);
+CREATE INDEX idx_sheet_cells_user ON schedule_sheet_cells(user_id);
+CREATE INDEX idx_sheet_cells_published_week
+  ON schedule_sheet_cells(week_start)
+  WHERE is_published = TRUE;
+
+
 -- ── HANDOFF NOTES (Sprint 10) ──────────────────────────────────────────────────
 -- The single first-class entity backing the Calendar surface's three
 -- note views: per-shift threads, general department / all-staff

@@ -666,10 +666,15 @@ const SchedulingManager = () => {
             <button className="btn-back" onClick={() => goTo('home')}>‹ Home</button>
           )}
           <h2 className="sched-title">{headerLabel}</h2>
+          {/* Sprint 14: Assign pill opens the new Shift Sheet
+              surface instead of the legacy AssignPanel side panel.
+              Old panel + AssignModal still exist in the file as
+              fallback; a settings toggle in 14.x will optionally
+              re-expose them. */}
           <button
             type="button"
             className="sched-assign-btn"
-            onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
+            onClick={() => goTo('sheet')}
           >Assign</button>
         </div>
         <div className="sched-header-controls">

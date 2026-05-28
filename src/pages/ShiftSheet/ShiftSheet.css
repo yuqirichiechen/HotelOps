@@ -1,0 +1,187 @@
+/* Sprint 14: Shift Sheet — Excel-style grid for shift planning.
+   Mirrors the GM's existing Excel layout (image #21): dept-grouped
+   rows × 7 day columns, free-form text per cell, yellow accents
+   for annotated cells (Sprint 14.x). */
+
+.sheet-page {
+  padding: 24px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: adminSlideUp 0.3s ease;
+}
+
+.sheet-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sheet-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.sheet-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brand-text);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.sheet-topbar-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sheet-nav-arrow,
+.sheet-nav-today {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.sheet-nav-arrow { padding: 7px 10px; font-size: 14px; line-height: 1; }
+.sheet-nav-arrow:hover,
+.sheet-nav-today:hover { background: var(--bg-raised); color: var(--text-primary); }
+.sheet-week-label {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-text);
+  margin-left: 6px;
+}
+
+.sheet-grid-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+}
+
+.sheet-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  table-layout: fixed;
+}
+
+.sheet-th {
+  text-align: center;
+  padding: 8px 6px;
+  font-weight: 700;
+  color: var(--brand-text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-light);
+  font-family: 'TiemposHeadline', Georgia, serif;
+}
+.sheet-th-staff {
+  text-align: left;
+  width: 160px;
+  padding-left: 14px;
+}
+.sheet-th-dayname {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.sheet-th-daynum {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text);
+}
+
+.sheet-dept-row {
+  background: var(--bg-base);
+  color: var(--brand-text);
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--border-light);
+}
+
+.sheet-row { background: var(--bg-surface); }
+.sheet-row:hover { background: var(--bg-raised); }
+
+.sheet-cell {
+  border: 1px solid var(--border-light);
+  padding: 0;
+  vertical-align: middle;
+}
+.sheet-cell-name {
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet-cell-input { padding: 0; }
+.sheet-cell-input input {
+  width: 100%;
+  padding: 8px 8px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: center;
+  outline: none;
+}
+.sheet-cell-input input:focus {
+  background: var(--accent-bg);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.sheet-cell-input.is-highlight input {
+  background: #fefcbf;
+  color: #744210;
+}
+
+.sheet-empty-row {
+  padding: 18px;
+  text-align: center;
+  font-style: italic;
+  color: var(--text-muted);
+}
+.sheet-empty { padding: 32px; text-align: center; color: var(--text-muted); }
+
+.sheet-add-staff {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 12px;
+}
+.sheet-add-staff-label {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+@media (max-width: 880px) {
+  .sheet-page { padding: 18px 14px 60px; }
+  .sheet-title { font-size: 20px; }
+  .sheet-th-staff { width: 110px; }
+  .sheet-cell-name { padding: 6px 10px; font-size: 12px; }
+  .sheet-cell-input input { padding: 6px 4px; font-size: 12px; }
+}

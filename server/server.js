@@ -1881,6 +1881,112 @@ app.delete('/api/admin/schedule/:id', async (req, res) => {
   }
 });
 
+// ── Shift Sheet (Sprint 14) ──────────────────────────────────────────────────
+//
+// Excel-style weekly planning grid. One row per (week_start, user_id,
+// day_of_week). Stores the GM's raw text per cell. Sprint 14 ships
+// draft-only CRUD; the publish-to-calendar workflow + parsed time
+// derivation lands in 14.x along with the calendar overlay.
+
+// GET /api/admin/sheet/week?week_start=YYYY-MM-DD
+// Returns all cells for that Monday-anchored week with user/dept
+// joins for the grid's row grouping.
+app.get('/api/admin/sheet/week', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start } = req.query;
+  if (!week_start || !/^\d{4}-\d{2}-\d{2}$/.test(week_start)) {
+    return res.status(400).json({ success: false, message: 'week_start required (YYYY-MM-DD)' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.cell_id, c.week_start::text, c.user_id, c.day_of_week,
+              c.display_text, c.parsed_start::text, c.parsed_end::text,
+              c.is_published, c.highlight, c.updated_at,
+              u.name AS user_name, u.department_id, d.name AS department_name
+       FROM schedule_sheet_cells c
+       JOIN users u        ON c.user_id = u.user_id
+       LEFT JOIN departments d ON u.department_id = d.department_id
+       WHERE c.week_start = $1::date
+       ORDER BY d.name NULLS LAST, u.name, c.day_of_week`,
+      [week_start]
+    );
+    return res.json({ success: true, week_start, cells: rows });
+  } catch (err) {
+    console.error('[sheet/week]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// PUT /api/admin/sheet/cell
+// Upsert one cell. Body: { week_start, user_id, day_of_week, display_text, highlight? }
+// Empty display_text deletes the cell (so backspacing-to-blank
+// clears the cell instead of leaving a phantom row).
+app.put('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start, user_id, day_of_week, display_text, highlight } = req.body || {};
+  if (!week_start || !user_id || day_of_week === undefined ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(week_start) ||
+      !(Number.isInteger(day_of_week) && day_of_week >= 0 && day_of_week <= 6)) {
+    return res.status(400).json({ success: false, message: 'week_start, user_id, day_of_week (0-6) required' });
+  }
+  try {
+    // Verify the user_id is an existing active employee — strict
+    // typeahead means we never get a string Jun that doesn't map
+    // to a real users row, but defensively check anyway.
+    const { rows: u } = await pool.query(
+      'SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL',
+      [user_id]
+    );
+    if (u.length === 0) {
+      return res.status(404).json({ success: false, message: 'user_id not found' });
+    }
+    const text = String(display_text || '').trim();
+    if (!text) {
+      // Blank cell → delete the row if present.
+      await pool.query(
+        `DELETE FROM schedule_sheet_cells
+         WHERE week_start = $1::date AND user_id = $2 AND day_of_week = $3`,
+        [week_start, user_id, day_of_week]
+      );
+      return res.json({ success: true, cell: null });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO schedule_sheet_cells
+         (week_start, user_id, day_of_week, display_text, highlight, updated_at)
+       VALUES ($1::date, $2, $3, $4, COALESCE($5, FALSE), NOW())
+       ON CONFLICT (week_start, user_id, day_of_week) DO UPDATE
+         SET display_text = EXCLUDED.display_text,
+             highlight    = COALESCE($5, schedule_sheet_cells.highlight),
+             updated_at   = NOW()
+       RETURNING cell_id, week_start::text, user_id, day_of_week,
+                 display_text, parsed_start::text, parsed_end::text,
+                 is_published, highlight, updated_at`,
+      [week_start, user_id, day_of_week, text, highlight]
+    );
+    return res.json({ success: true, cell: rows[0] });
+  } catch (err) {
+    console.error('[sheet/cell PUT]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// DELETE /api/admin/sheet/cell?week_start=&user_id=&day_of_week=
+app.delete('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start, user_id, day_of_week } = req.query;
+  if (!week_start || !user_id || day_of_week === undefined) {
+    return res.status(400).json({ success: false, message: 'week_start, user_id, day_of_week required' });
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM schedule_sheet_cells
+       WHERE week_start = $1::date AND user_id = $2 AND day_of_week = $3::int`,
+      [week_start, user_id, day_of_week]
+    );
+    return res.json({ success: true, deleted: rowCount });
+  } catch (err) {
+    console.error('[sheet/cell DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // ── Shifts board (employee-facing) ───────────────────────────────────────────
 
 // GET /api/shifts/range?from=YYYY-MM-DD&to=YYYY-MM-DD[&userId=UUID]

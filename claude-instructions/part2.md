@@ -792,6 +792,98 @@ nav row:
 
 ---
 
+### 2026-05-27 — Sprint 14: Shift Sheet foundation (Excel-style weekly grid replaces AssignPanel)
+
+GM never used the side-panel AssignPanel + AssignModal; their
+actual workflow is an Excel grid (image #21 — dept-grouped staff
+rows × 7 day columns, free-form cell text like "3p-11p", "OFF",
+"BRK+help"). Sprint 14 ships the foundation of a native Shift
+Sheet that matches that mental model.
+
+**Decisions confirmed by GM:**
+
+1. Legacy AssignPanel stays in the codebase as a fallback; an
+   admin-settings toggle (default **off**) will optionally re-expose
+   it. Sheet is the main surface. Toggle UI lands in 14.x — for now
+   the legacy panel's button is just unreachable from the Calendar.
+2. Sheet → calendar coupling is **deliberate**: cells live as
+   drafts until the admin publishes them; published cells become a
+   *separate* overlay on the calendar (alongside, not replacing,
+   the actual clock-entry rendering). Publish workflow + overlay
+   land in 14.x.
+3. Add-staff is **strict typeahead** — the dropdown only lists
+   existing active employees. No on-the-fly user creation.
+
+**What ships in 14 (this slice):**
+
+- **DB:** new `schedule_sheet_cells` table (migration 017 +
+  schema.sql). One row per `(week_start, user_id, day_of_week)`
+  with `display_text`, optional `parsed_start` / `parsed_end`,
+  `is_published` (default false), `highlight` (default false). PK
+  `cell_id` (UUID), unique constraint on the three-tuple so upserts
+  target it cleanly. Indexes on `week_start`, `user_id`, and a
+  partial on `(week_start) WHERE is_published = TRUE` for the
+  upcoming overlay query.
+- **Server:** three admin endpoints —
+  - `GET /api/admin/sheet/week?week_start=YYYY-MM-DD` (cells +
+    user/dept joins for the grid)
+  - `PUT /api/admin/sheet/cell` (upsert by the three-tuple; empty
+    text deletes the row so backspacing clears the cell)
+  - `DELETE /api/admin/sheet/cell?week_start=&user_id=&day_of_week=`
+
+  All `requireAuth + requireRole('admin')`. The PUT also
+  defensively re-checks the `user_id` exists + isn't soft-deleted
+  before writing.
+- **Client:** new `pages/ShiftSheet/` (index.js + ShiftSheet.css).
+  Table layout, dept-grouped row sections, contenteditable cells
+  via the local `ShiftCellInput` component. Autosaves on blur or
+  Enter; Escape reverts. Tab uses native browser focus order so
+  the GM can fly across the row without binding extra handlers.
+  Strict-typeahead "Add staff" row at the bottom uses the shared
+  `DropdownSelect` from Sprint 13.3, filtered to active employees
+  not already on the sheet.
+- **Shell wiring:** new `sheet` view in `AdminShell` →
+  `ShiftSheet`. `ACTIVE_PARENT` maps it to `calendar` so the
+  Calendar sidebar nav stays highlighted while the sheet is on
+  screen. Calendar header's "Assign" pill now calls
+  `goTo('sheet')` instead of opening the AssignPanel.
+
+**What's deferred to 14.x:**
+
+- `parsed_start` / `parsed_end` derivation. The free-form text
+  parser ("3p-11p" → `15:00` / `23:00`, "11p-7a" → overnight)
+  needs care; deferring until the publish workflow actually
+  needs the structured times.
+- "Publish to calendar" action (flip `is_published`, plus the
+  parser to populate parsed_start/end).
+- Calendar overlay rendering published cells as planned-shift
+  layer alongside actual clock entries.
+- XLSX export (via the existing `xlsx` dep) + PNG export (via
+  `dom-to-image-more` or `html2canvas`).
+- Yellow `highlight` toggle (cell right-click → "Mark as note").
+- Settings toggle to re-expose the legacy AssignPanel.
+
+**Migration note.** Production DB needs migration 017 applied
+before the new sheet endpoint will work. Server logs a clean 500
+("relation does not exist") otherwise.
+
+**Verified.** Five touched files balance: server.js 1663/1667
+(pre-existing +4 close imbalance in comment literals carried
+through; my edit was 61/61 balanced), AdminShell.js 9/9 + 23/23,
+Calendar/index.js 435/435 + 227/227, ShiftSheet/index.js 195/195
++ 86/86, ShiftSheet.css 32/32 + 34/34.
+
+**Follow-ups roadmap.**
+
+- **14.1**: text parser + publish endpoint + calendar overlay
+  (planned-shift layer).
+- **14.2**: XLSX + PNG export.
+- **14.3**: highlight toggle, optional split-shift handling
+  ("9-12 / 4-8" in one cell), settings toggle for legacy
+  AssignPanel.
+
+---
+
 ### 2026-05-27 — Sprint 13.7: overnight entries surface on the second day; timeline gets horizontal scroll when cramped
 
 Two carry-overs from Sprint 13.5/13.6.
