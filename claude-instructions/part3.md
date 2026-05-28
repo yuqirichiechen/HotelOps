@@ -345,6 +345,159 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.4: history-derived coverage algorithm + right-rail Week Overview
+
+The biggest sprint in the 15.x arc. Three coupled things:
+(a) a new server module that *learns* what each dept's typical
+coverage looks like from historical clock data, (b) a new
+endpoint that aggregates that baseline plus the current week's
+state into five UI-ready buckets, and (c) the right-rail UI
+itself, which adapts to a bottom strip on narrower viewports.
+
+**Schema (migration 021):**
+
+- `schedule_sheet_cells` gets a `last_published_at TIMESTAMPTZ`
+  column. Set to NOW() by the publish handler (via `CASE WHEN
+  newFlag THEN NOW() ELSE last_published_at END` so unpublishing
+  doesn't clear it). Backfill in the migration seeds it to
+  `updated_at` for any cell currently published, so freshly-
+  migrated DBs start the unpublished-changes counter at zero
+  instead of "everything's unpublished."
+- Publish + unpublish UPDATEs (3 spots, via the `replace_all`
+  edit) now also write `last_published_at`.
+
+**Server: coverage algorithm (`computeCoverageBaseline`).**
+
+For each (department_id × day_of_week), pull historical clock
+entries from the last N weeks (default 8 via the
+`coverage_history_weeks` setting from 15.0), bucket by
+(dept × DOW × week_start), then apply intelligent trimming:
+
+- `< 2 weeks of data` for that (dept × DOW) → return the mean of
+  whatever's there with `warning = 'low_sample'`. UI shows a
+  small italic notice so the GM understands the score is
+  preliminary.
+- `≥ 3 weeks` AND the most recent 2 weeks deviate from the
+  earlier weeks by `> 25%` (mean delta / earlier mean) → trim
+  to just the recent 2 and flag `warning = 'regime_change'`.
+  UI explains "schedule pattern changed — baseline auto-trimmed
+  to the recent stable window."
+- Otherwise → mean of all weeks. No warning.
+
+Bucketing respects `tz_offset_minutes` (matches the pattern from
+/me/hours and /admin/entries). The SQL pulls one row per
+(dept × DOW × week_start) with hours summed; the JS does the
+trimming so the algorithm logic is auditable in one place rather
+than spread across SQL window functions.
+
+**Server: helpers.**
+
+- `minutesBetween(start, end)` — duration of an HH:MM:SS interval
+  with overnight wrap (when end < start, adds 24h).
+- `cellHasSelfOverlap(segments)` — for the conflicts surface.
+  Detects multi-segment cells whose own segments overlap each
+  other (e.g. a "9-12 / 11-3" typo). Sorts the segments by
+  start, walks the list once; O(n log n).
+
+**Server: `GET /api/admin/sheet/week-overview`.**
+
+Single endpoint that returns the entire right-rail payload:
+
+```
+{
+  coverage_score: 0..100 | null,
+  dept_coverage: [{ department_id, name, color,
+                    planned_hours, target_hours, pct, has_baseline }],
+  open_shifts:   [{ department_id, department_name, day_of_week, target_hours }],
+  conflicts:     [{ cell_id, user_id, user_name, day_of_week,
+                    display_text, department_name, kind: 'self_overlap' }],
+  unpublished_changes_count: integer,
+  dataset_warning: 'low_sample' | 'regime_change' | null,
+  meta: { history_weeks: N }
+}
+```
+
+- `open_shifts` = (dept × DOW) tuples where
+  `baseline.target_hours > 0` and no published cell covers them.
+  Matches the GM's definition: "no one is filling the time in."
+- `conflicts` = self-overlapping multi-segment cells only for v1.
+  The schema's UNIQUE (week_start, user_id, day_of_week)
+  constraint makes cross-cell same-user same-DOW overlap
+  structurally impossible, so other conflict rules
+  (cross-dept, planned-vs-actual, min/max hours, break-missing)
+  are deferred to 16.x. Documented so we don't re-litigate
+  scope mid-sprint.
+- `unpublished_changes_count` = cells where
+  `last_published_at IS NULL OR updated_at > last_published_at`.
+  Brand-new cells count; freshly-published cells don't (the
+  publish UPDATE sets both timestamps to NOW() in the same
+  statement).
+
+**Client: right-rail UI (`SheetOverviewRail`).**
+
+Five collapsible cards. Coverage Score + Department Coverage
+default open; the lists (Open Shifts / Conflicts / Unpublished
+Changes) default closed so the rail stays scannable.
+
+- **Coverage Score card** — big number with green / amber / red
+  thresholds (≥90% / 70-89% / <70%). When dataset_warning is
+  set, a small italic notice with a left amber stripe explains
+  the caveat. "Baseline: last N weeks of clock data" caption.
+- **Department Coverage** — horizontal progress bars per dept
+  in the dept's color, with "Xh planned · Yh target" caption.
+  No-baseline depts show "no baseline" instead of "0%".
+- **Open Shifts** — count badge + collapsible list of (dept ·
+  DOW · ~target h) tuples.
+- **Conflicts** — count badge (red when > 0) + list with user
+  name + day + "overlapping segments — '<text>'" message.
+- **Unpublished Changes** — count + a contextual message
+  pointing the GM at "Publish week" / per-row publish.
+
+**Responsive behavior.**
+
+- ≥1200px: rail sits to the right of `.sheet-grid-wrap` inside a
+  new `.sheet-layout` flex container. Rail is 280px fixed; grid
+  flexes to fill the remainder.
+- <1200px: rail stacks below the grid and collapses into a
+  horizontal `.sheet-overview-strip` showing four chips —
+  Coverage / Open / Conflicts / Unpublished — with no detail
+  lists. The strip is the "at-a-glance" form factor for tablets;
+  full detail is on desktop.
+
+**Live invalidation.**
+
+Every mutation that affects the overview state (cell save,
+publish, unpublish, popover save, row remove) calls
+`reloadOverview()` after the response lands. Week navigation
+re-fetches via the `weekStart` effect dependency. The fetch is
+cheap (one endpoint, one round-trip) so we don't bother with
+optimistic updates.
+
+**Verified.** Five touched files balance. server.js shows
+parens:-5 / sq:5 noise (vs the prior -4/+4) — one extra from
+the new SQL string's parens inside the template literal. No real
+imbalance. New endpoint reachable; rail renders + collapses;
+dataset warnings surface; strip shows on narrower viewports.
+
+**Migration deploy.** `021_schedule_sheet_cells_last_published_at.sql`
+before code rollout. Safe to re-run (uses `ADD COLUMN IF NOT
+EXISTS`). The backfill UPDATE is idempotent (only touches rows
+where the column is NULL).
+
+**Open follow-ups for 15.5 + later:**
+
+- Conflict ruleset expansion (cross-cell same-day for users that
+  end up in multiple sheet rows, min/max hours, break-missing).
+- "Review unpublished changes" panel — currently the card just
+  shows a count + suggestion. A detail list comparing edits
+  against the last-published snapshot would land in 15.5 or
+  later if the GM asks for it.
+- N=8 default vs adaptive N: the regime-change detector already
+  adapts, but we might let the GM pick "Auto" vs a fixed number
+  if the UX clarity benefits.
+
+---
+
 ### 2026-05-28 — Sprint 15.3: per-cell Edit Shift popover + notes + contenteditable fast-path retained
 
 The thoughtful path. Same cells still tab-and-type as before, but

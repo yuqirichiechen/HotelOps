@@ -217,6 +217,12 @@ CREATE TABLE schedule_sheet_cells (
   -- Migration: database/migrations/020_schedule_sheet_cells_notes.sql
   notes          TEXT,
   is_published   BOOLEAN      NOT NULL DEFAULT FALSE,
+  -- Sprint 15.4: when the cell was last toggled to published. NULL
+  -- if it's never been published. Drives the "Unpublished Changes"
+  -- count in the Week Overview right rail (compared against
+  -- updated_at).
+  -- Migration: database/migrations/021_schedule_sheet_cells_last_published_at.sql
+  last_published_at TIMESTAMPTZ,
   highlight      BOOLEAN      NOT NULL DEFAULT FALSE,
   created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

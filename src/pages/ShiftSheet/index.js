@@ -69,6 +69,10 @@ const ShiftSheet = () => {
   // "9–5 / 11p–7a" presets), dept-scoped, used by the Edit Shift
   // popover's quick-pick pills.
   const [templates, setTemplates] = useState([]);
+  // Sprint 15.4: right-rail Week Overview aggregates. Refetched
+  // on week change + after publish/unpublish/cell-edit actions.
+  const [overview, setOverview] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -84,6 +88,21 @@ const ShiftSheet = () => {
   }, [weekStart]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Sprint 15.4: refetch the right-rail overview on week change.
+  // Mutation handlers (publish, cell edit) also call this manually
+  // via reloadOverview() so the counts stay live.
+  const reloadOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    const tz = new Date().getTimezoneOffset();
+    const { ok, data } = await apiFetch(
+      `/admin/sheet/week-overview?week_start=${weekStart}&tz_offset_minutes=${tz}`
+    );
+    if (ok && data?.success) setOverview(data);
+    else                     setOverview(null);
+    setOverviewLoading(false);
+  }, [weekStart]);
+  useEffect(() => { reloadOverview(); }, [reloadOverview]);
 
   // Sprint 15.2: status codes load once per mount — they don't
   // change between week navigations, so no point refetching on
@@ -306,8 +325,9 @@ const ShiftSheet = () => {
         if (res.data.cell) return [...filtered, res.data.cell];
         return filtered;
       });
+      reloadOverview();
     }
-  }, [weekStart]);
+  }, [weekStart, reloadOverview]);
 
   const applyCellChanges = (changed) => {
     if (!Array.isArray(changed) || changed.length === 0) return;
@@ -333,16 +353,22 @@ const ShiftSheet = () => {
       method: 'POST',
       body: JSON.stringify({ cell_ids: cellIds }),
     });
-    if (res.ok && res.data?.success) applyCellChanges(res.data.cells || []);
-  }, []);
+    if (res.ok && res.data?.success) {
+      applyCellChanges(res.data.cells || []);
+      reloadOverview();
+    }
+  }, [reloadOverview]);
 
   const publishWeek = useCallback(async (next) => {
     const res = await apiFetch(next ? '/admin/sheet/publish' : '/admin/sheet/unpublish', {
       method: 'POST',
       body: JSON.stringify({ week_start: weekStart }),
     });
-    if (res.ok && res.data?.success) applyCellChanges(res.data.cells || []);
-  }, [weekStart]);
+    if (res.ok && res.data?.success) {
+      applyCellChanges(res.data.cells || []);
+      reloadOverview();
+    }
+  }, [weekStart, reloadOverview]);
 
   const addStaffRow = (userId) => {
     setAddedUserIds(prev => {
@@ -450,7 +476,8 @@ const ShiftSheet = () => {
       next.delete(userId);
       return next;
     });
-  }, [cells, weekStart]);
+    reloadOverview();
+  }, [cells, weekStart, reloadOverview]);
 
   // Sprint 15.2: copy every cell on a row to the *next* week. Each
   // PUT goes through the standard upsert endpoint so the parser +
@@ -533,6 +560,7 @@ const ShiftSheet = () => {
       {loading && visibleRows.length === 0 ? (
         <div className="sheet-empty">Loading…</div>
       ) : (
+        <div className="sheet-layout">
         <div className="sheet-grid-wrap" ref={gridRef}>
           <table className="sheet-grid">
             <thead>
@@ -687,6 +715,14 @@ const ShiftSheet = () => {
             </tbody>
           </table>
         </div>
+        {/* Sprint 15.4: right-rail Week Overview. Rendered at
+            ≥1200px alongside the grid; collapses to a compact
+            bottom strip on narrower viewports (CSS-driven). */}
+        <SheetOverviewRail
+          overview={overview}
+          loading={overviewLoading}
+        />
+        </div>
       )}
 
       {/* Sprint 15.2: page-root row-action popover. Renders outside
@@ -782,6 +818,7 @@ const ShiftSheet = () => {
                   !(c.user_id === editPop.user_id && c.day_of_week === editPop.day_of_week)
                 ));
               }
+              reloadOverview();
             }
             setEditPop(null);
           }}
@@ -800,6 +837,255 @@ const ShiftSheet = () => {
 // Save / Cancel. The free-form input is the same one the cell uses
 // for fast inline editing, so power users get the same surface in
 // both flows.
+// Sprint 15.4: right-rail Week Overview surface. Renders five
+// collapsible cards (Coverage Score, Department Coverage, Open
+// Shifts, Conflicts, Unpublished Changes). On viewports < 1200px
+// the rail collapses into a horizontal strip showing just the
+// headline counts — full detail panels reachable by tapping a
+// strip chip on mobile.
+const SheetOverviewRail = ({ overview, loading }) => {
+  // Collapsed-state per card. Coverage + dept coverage default
+  // open; the lists default closed so the rail stays scannable
+  // unless the admin asks for detail.
+  const [openCard, setOpenCard] = useState({
+    coverage:    true,
+    dept:        true,
+    open_shifts: false,
+    conflicts:   false,
+    unpublished: false,
+  });
+  const toggle = (k) => setOpenCard(s => ({ ...s, [k]: !s[k] }));
+
+  if (loading && !overview) {
+    return <aside className="sheet-overview-rail is-loading">Loading overview…</aside>;
+  }
+  if (!overview) {
+    return <aside className="sheet-overview-rail is-empty">Overview unavailable.</aside>;
+  }
+
+  const score = overview.coverage_score;
+  const scoreColor = score == null ? '#a0aec0'
+    : score >= 90 ? '#38a169'
+    : score >= 70 ? '#dd6b20'
+    : '#c53030';
+  const scoreLabel = score == null ? 'No baseline yet'
+    : score >= 90 ? 'Good coverage'
+    : score >= 70 ? 'Watch tight days'
+    : 'Under-covered';
+
+  const datasetMsg = overview.dataset_warning === 'low_sample'
+    ? 'Dataset is small — coverage targets may be inaccurate until more weeks of clock data accumulate.'
+    : overview.dataset_warning === 'regime_change'
+    ? 'Recent scheduling pattern looks different from the older history; baseline auto-trimmed to the recent stable window.'
+    : null;
+
+  const dayShort = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  return (
+    <aside className="sheet-overview-rail">
+      {/* Compact strip — visible <1200px only via CSS. Counts only. */}
+      <div className="sheet-overview-strip">
+        <div className="sheet-overview-strip-cell" title={scoreLabel}>
+          <span className="sheet-overview-strip-num" style={{ color: scoreColor }}>
+            {score == null ? '—' : `${score}%`}
+          </span>
+          <span className="sheet-overview-strip-lbl">Coverage</span>
+        </div>
+        <div className="sheet-overview-strip-cell">
+          <span className="sheet-overview-strip-num">{overview.open_shifts.length}</span>
+          <span className="sheet-overview-strip-lbl">Open</span>
+        </div>
+        <div className="sheet-overview-strip-cell">
+          <span className="sheet-overview-strip-num">{overview.conflicts.length}</span>
+          <span className="sheet-overview-strip-lbl">Conflicts</span>
+        </div>
+        <div className="sheet-overview-strip-cell">
+          <span className="sheet-overview-strip-num">{overview.unpublished_changes_count}</span>
+          <span className="sheet-overview-strip-lbl">Unpublished</span>
+        </div>
+      </div>
+
+      {/* Coverage Score card */}
+      <section className="sheet-overview-card">
+        <button
+          type="button"
+          className="sheet-overview-card-head"
+          onClick={() => toggle('coverage')}
+          aria-expanded={openCard.coverage}
+        >
+          <span>Coverage Score</span>
+          <span className="sheet-overview-card-chev">{openCard.coverage ? '▴' : '▾'}</span>
+        </button>
+        {openCard.coverage && (
+          <div className="sheet-overview-card-body">
+            <div className="sheet-overview-score">
+              <div className="sheet-overview-score-num" style={{ color: scoreColor }}>
+                {score == null ? '—' : `${score}%`}
+              </div>
+              <div className="sheet-overview-score-label" style={{ color: scoreColor }}>
+                {scoreLabel}
+              </div>
+            </div>
+            {datasetMsg && (
+              <div className="sheet-overview-dataset-warning">{datasetMsg}</div>
+            )}
+            {overview.meta?.history_weeks && (
+              <div className="sheet-overview-meta">
+                Baseline: last {overview.meta.history_weeks} weeks of clock data
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Department Coverage card */}
+      <section className="sheet-overview-card">
+        <button
+          type="button"
+          className="sheet-overview-card-head"
+          onClick={() => toggle('dept')}
+          aria-expanded={openCard.dept}
+        >
+          <span>Department Coverage</span>
+          <span className="sheet-overview-card-chev">{openCard.dept ? '▴' : '▾'}</span>
+        </button>
+        {openCard.dept && (
+          <div className="sheet-overview-card-body">
+            {overview.dept_coverage.length === 0 && (
+              <div className="sheet-overview-empty">No departments configured.</div>
+            )}
+            {overview.dept_coverage.map(d => {
+              const pct = d.pct;
+              const barColor = pct == null ? '#a0aec0'
+                : pct >= 90 ? '#38a169'
+                : pct >= 70 ? '#dd6b20'
+                : '#c53030';
+              const width = pct == null ? 0 : Math.min(100, pct);
+              return (
+                <div key={d.department_id} className="sheet-overview-dept">
+                  <div className="sheet-overview-dept-head">
+                    <span
+                      className="sheet-overview-dept-dot"
+                      style={{ background: d.color || 'var(--border)' }}
+                      aria-hidden
+                    />
+                    <span className="sheet-overview-dept-name">{d.name}</span>
+                    <span className="sheet-overview-dept-pct" style={{ color: barColor }}>
+                      {pct == null ? 'no baseline' : `${pct}%`}
+                    </span>
+                  </div>
+                  <div className="sheet-overview-dept-bar">
+                    <div
+                      className="sheet-overview-dept-fill"
+                      style={{ width: `${width}%`, background: barColor }}
+                    />
+                  </div>
+                  {d.has_baseline && (
+                    <div className="sheet-overview-dept-meta">
+                      {d.planned_hours}h planned · {d.target_hours}h target
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Open Shifts card */}
+      <section className="sheet-overview-card">
+        <button
+          type="button"
+          className="sheet-overview-card-head"
+          onClick={() => toggle('open_shifts')}
+          aria-expanded={openCard.open_shifts}
+        >
+          <span>Open Shifts</span>
+          <span className="sheet-overview-card-count">{overview.open_shifts.length}</span>
+          <span className="sheet-overview-card-chev">{openCard.open_shifts ? '▴' : '▾'}</span>
+        </button>
+        {openCard.open_shifts && (
+          <div className="sheet-overview-card-body">
+            {overview.open_shifts.length === 0 ? (
+              <div className="sheet-overview-empty">No uncovered slots this week.</div>
+            ) : (
+              <ul className="sheet-overview-list">
+                {overview.open_shifts.map((s, i) => (
+                  <li key={`${s.department_id}-${s.day_of_week}-${i}`} className="sheet-overview-list-item">
+                    <span className="sheet-overview-list-pri">{s.department_name}</span>
+                    <span className="sheet-overview-list-sec">{dayShort[s.day_of_week]}</span>
+                    <span className="sheet-overview-list-meta">~{s.target_hours}h</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Conflicts card */}
+      <section className="sheet-overview-card">
+        <button
+          type="button"
+          className="sheet-overview-card-head"
+          onClick={() => toggle('conflicts')}
+          aria-expanded={openCard.conflicts}
+        >
+          <span>Conflicts</span>
+          <span className={`sheet-overview-card-count${overview.conflicts.length > 0 ? ' is-danger' : ''}`}>
+            {overview.conflicts.length}
+          </span>
+          <span className="sheet-overview-card-chev">{openCard.conflicts ? '▴' : '▾'}</span>
+        </button>
+        {openCard.conflicts && (
+          <div className="sheet-overview-card-body">
+            {overview.conflicts.length === 0 ? (
+              <div className="sheet-overview-empty">No conflicts detected.</div>
+            ) : (
+              <ul className="sheet-overview-list">
+                {overview.conflicts.map(c => (
+                  <li key={c.cell_id} className="sheet-overview-list-item">
+                    <span className="sheet-overview-list-pri">{c.user_name}</span>
+                    <span className="sheet-overview-list-sec">{dayShort[c.day_of_week]}</span>
+                    <span className="sheet-overview-list-meta sheet-overview-list-danger">
+                      overlapping segments — "{c.display_text}"
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Unpublished Changes card */}
+      <section className="sheet-overview-card">
+        <button
+          type="button"
+          className="sheet-overview-card-head"
+          onClick={() => toggle('unpublished')}
+          aria-expanded={openCard.unpublished}
+        >
+          <span>Unpublished Changes</span>
+          <span className={`sheet-overview-card-count${overview.unpublished_changes_count > 0 ? ' is-accent' : ''}`}>
+            {overview.unpublished_changes_count}
+          </span>
+          <span className="sheet-overview-card-chev">{openCard.unpublished ? '▴' : '▾'}</span>
+        </button>
+        {openCard.unpublished && (
+          <div className="sheet-overview-card-body">
+            <div className="sheet-overview-empty">
+              {overview.unpublished_changes_count === 0
+                ? 'Every cell on the sheet matches what is on the calendar overlay.'
+                : `${overview.unpublished_changes_count} cell${overview.unpublished_changes_count === 1 ? '' : 's'} edited since last publish. Use "Publish week" or per-row publish to push them.`}
+            </div>
+          </div>
+        )}
+      </section>
+    </aside>
+  );
+};
+
 const CellEditPopover = ({ state, templates, statusCodes, fgForBg, onSave, onClose }) => {
   const [text,  setText]  = useState(state.display_text || '');
   const [notes, setNotes] = useState(state.notes || '');

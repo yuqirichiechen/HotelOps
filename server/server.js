@@ -2248,7 +2248,9 @@ const setPublishedFlag = async (req, res, isPublished) => {
     try {
       const { rows } = await pool.query(
         `UPDATE schedule_sheet_cells
-           SET is_published = $1, updated_at = NOW()
+           SET is_published      = $1,
+               last_published_at = CASE WHEN $1 THEN NOW() ELSE last_published_at END,
+               updated_at        = NOW()
          WHERE cell_id = ANY($2::uuid[])
          RETURNING cell_id, week_start::text, user_id, day_of_week,
                    display_text, parsed_start::text, parsed_end::text,
@@ -2272,7 +2274,9 @@ const setPublishedFlag = async (req, res, isPublished) => {
       }
       const { rows } = await pool.query(
         `UPDATE schedule_sheet_cells
-           SET is_published = $1, updated_at = NOW()
+           SET is_published      = $1,
+               last_published_at = CASE WHEN $1 THEN NOW() ELSE last_published_at END,
+               updated_at        = NOW()
          WHERE week_start = $2::date${extra}
          RETURNING cell_id, week_start::text, user_id, day_of_week,
                    display_text, parsed_start::text, parsed_end::text,
@@ -2291,6 +2295,278 @@ const setPublishedFlag = async (req, res, isPublished) => {
 
 app.post('/api/admin/sheet/publish',   requireAuth, requireRole('admin'), (req, res) => setPublishedFlag(req, res, true));
 app.post('/api/admin/sheet/unpublish', requireAuth, requireRole('admin'), (req, res) => setPublishedFlag(req, res, false));
+
+// ── Sprint 15.4: history-derived coverage algorithm ─────────────────────────
+//
+// For each (department_id, day_of_week), compute the average hours
+// per day worked from `time_entries` over the last N weeks (default
+// 8, set via the `coverage_history_weeks` app setting). The
+// algorithm is *intelligent*:
+//   - < 2 weeks of data → return the mean of whatever is available
+//     with dataset_warning = 'low_sample'
+//   - ≥ 3 weeks but the most recent 2 deviate from earlier weeks by
+//     > 25% → trim to just the recent 2 and flag
+//     dataset_warning = 'regime_change' (assume scheduling pattern
+//     changed and the baseline should adapt)
+//   - Otherwise → mean of all weeks, no warning
+//
+// All bucketing respects the caller's local TZ via tz_offset_minutes
+// (matches the pattern used by /me/hours and /admin/entries).
+const computeCoverageBaseline = async (anchorWeekStart, weeks, tzOffsetMinutes) => {
+  const { rows } = await pool.query(
+    `WITH local_entries AS (
+       SELECT
+         u.department_id,
+         (te.clock_in_time - (INTERVAL '1 minute' * $3::int))::date AS local_in_date,
+         EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1 AS day_of_week,
+         EXTRACT(EPOCH FROM (te.clock_out_time - te.clock_in_time)) / 3600.0 AS hours
+       FROM time_entries te
+       JOIN users u ON te.user_id = u.user_id
+       WHERE te.clock_in_time   IS NOT NULL
+         AND te.clock_out_time  IS NOT NULL
+         AND te.clock_in_time >= ($1::date - (INTERVAL '7 days' * $2::int))::timestamptz
+         AND te.clock_in_time <  $1::date::timestamptz
+         AND u.deleted_at      IS NULL
+         AND u.department_id   IS NOT NULL
+     )
+     SELECT
+       department_id,
+       day_of_week,
+       (local_in_date - ((EXTRACT(ISODOW FROM local_in_date)::int - 1) * INTERVAL '1 day'))::date::text AS week_start,
+       SUM(hours)::float8 AS hours
+     FROM local_entries
+     GROUP BY department_id, day_of_week, week_start
+     ORDER BY department_id, day_of_week, week_start DESC`,
+    [anchorWeekStart, weeks, tzOffsetMinutes]
+  );
+
+  // dept_id|dow → [{week_start, hours}] sorted by week_start DESC.
+  const byDeptDow = new Map();
+  for (const r of rows) {
+    const key = `${r.department_id}|${r.day_of_week}`;
+    if (!byDeptDow.has(key)) byDeptDow.set(key, []);
+    byDeptDow.get(key).push({ week_start: r.week_start, hours: r.hours });
+  }
+
+  // Apply intelligent trimming per (dept × DOW).
+  const baseline = new Map();
+  for (const [key, weekly] of byDeptDow) {
+    const sorted = weekly; // already DESC
+    let trimmed = sorted;
+    let warning = null;
+    if (sorted.length === 0) continue;
+    if (sorted.length < 2) {
+      warning = 'low_sample';
+    } else if (sorted.length >= 3) {
+      const recent2 = sorted.slice(0, 2);
+      const earlier = sorted.slice(2);
+      const recentAvg  = recent2.reduce((s, w) => s + w.hours, 0) / recent2.length;
+      const earlierAvg = earlier.reduce((s, w) => s + w.hours, 0) / earlier.length;
+      const denom = Math.max(earlierAvg, 0.001);
+      const deviation = Math.abs(recentAvg - earlierAvg) / denom;
+      if (deviation > 0.25) {
+        trimmed = recent2;
+        warning = 'regime_change';
+      }
+    }
+    const targetHours = trimmed.reduce((s, w) => s + w.hours, 0) / trimmed.length;
+    baseline.set(key, {
+      target_hours: targetHours,
+      warning,
+      sample_size: weekly.length,
+      used_sample: trimmed.length,
+    });
+  }
+  return baseline;
+};
+
+// Helper: minutes between two HH:MM:SS strings, with overnight wrap.
+const minutesBetween = (startStr, endStr) => {
+  const [h1, m1] = startStr.split(':').map(Number);
+  const [h2, m2] = endStr.split(':').map(Number);
+  let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (mins < 0) mins += 24 * 60;
+  return mins;
+};
+
+// Helper: detect self-overlap inside a multi-segment cell. Returns
+// true if any two segments inside the cell overlap. Treats overnight
+// wraps as fixed [start, start+duration) intervals.
+const cellHasSelfOverlap = (segments) => {
+  if (!Array.isArray(segments) || segments.length < 2) return false;
+  const intervals = segments.map(s => {
+    const [h1, m1] = String(s.start).split(':').map(Number);
+    const [h2, m2] = String(s.end).split(':').map(Number);
+    const start = h1 * 60 + m1;
+    let end = h2 * 60 + m2;
+    if (end < start) end += 24 * 60;
+    return { start, end };
+  }).sort((a, b) => a.start - b.start);
+  for (let i = 1; i < intervals.length; i++) {
+    if (intervals[i].start < intervals[i - 1].end) return true;
+  }
+  return false;
+};
+
+// GET /api/admin/sheet/week-overview?week_start=YYYY-MM-DD&tz_offset_minutes=
+// Right-rail aggregates for the Shift Sheet.
+app.get('/api/admin/sheet/week-overview', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start } = req.query;
+  if (!week_start || !/^\d{4}-\d{2}-\d{2}$/.test(week_start)) {
+    return res.status(400).json({ success: false, message: 'week_start required (YYYY-MM-DD)' });
+  }
+  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+
+  try {
+    // 1. Pull coverage_history_weeks setting (default 8).
+    const { rows: settingRows } = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'coverage_history_weeks'`
+    );
+    const setN = settingRows.length > 0 ? parseInt(settingRows[0].value, 10) : NaN;
+    const weeks = Number.isInteger(setN) && setN >= 2 && setN <= 52 ? setN : 8;
+
+    // 2. Compute the history baseline.
+    const baseline = await computeCoverageBaseline(week_start, weeks, tzOffset);
+
+    // 3. Pull current week's cells.
+    const { rows: cells } = await pool.query(
+      `SELECT c.cell_id, c.user_id, c.day_of_week, c.display_text,
+              c.parsed_start::text, c.parsed_end::text, c.parsed_segments,
+              c.is_published, c.last_published_at, c.updated_at,
+              u.department_id, u.name AS user_name,
+              d.name AS department_name
+         FROM schedule_sheet_cells c
+         JOIN users u ON c.user_id = u.user_id
+         LEFT JOIN departments d ON u.department_id = d.department_id
+        WHERE c.week_start = $1::date`,
+      [week_start]
+    );
+
+    // 4. Planned hours per (dept × DOW) from published cells.
+    const plannedByDeptDow = new Map();
+    for (const cell of cells) {
+      if (!cell.is_published || !cell.department_id) continue;
+      const segs = Array.isArray(cell.parsed_segments) && cell.parsed_segments.length > 0
+        ? cell.parsed_segments
+        : (cell.parsed_start && cell.parsed_end
+            ? [{ start: cell.parsed_start, end: cell.parsed_end }]
+            : []);
+      let hours = 0;
+      for (const s of segs) hours += minutesBetween(s.start, s.end) / 60;
+      const key = `${cell.department_id}|${cell.day_of_week}`;
+      plannedByDeptDow.set(key, (plannedByDeptDow.get(key) || 0) + hours);
+    }
+
+    // 5. Build dept_coverage list + overall coverage_score.
+    const { rows: depts } = await pool.query(
+      `SELECT department_id, name, color FROM departments ORDER BY name`
+    );
+    const dept_coverage = [];
+    let totalPlanned = 0;
+    let totalTarget  = 0;
+    let anyLowSample    = false;
+    let anyRegimeChange = false;
+    for (const d of depts) {
+      let dPlanned = 0;
+      let dTarget  = 0;
+      let dHasBaseline = false;
+      for (let dow = 0; dow < 7; dow++) {
+        const key = `${d.department_id}|${dow}`;
+        const planned = plannedByDeptDow.get(key) || 0;
+        const base = baseline.get(key);
+        dPlanned += planned;
+        if (base && base.target_hours > 0) {
+          dTarget += base.target_hours;
+          dHasBaseline = true;
+          if (base.warning === 'low_sample')    anyLowSample    = true;
+          if (base.warning === 'regime_change') anyRegimeChange = true;
+        }
+      }
+      const pct = dTarget > 0 ? Math.round((dPlanned / dTarget) * 100) : null;
+      dept_coverage.push({
+        department_id: d.department_id,
+        name:          d.name,
+        color:         d.color,
+        planned_hours: Math.round(dPlanned * 10) / 10,
+        target_hours:  Math.round(dTarget  * 10) / 10,
+        pct,
+        has_baseline:  dHasBaseline,
+      });
+      totalPlanned += dPlanned;
+      totalTarget  += dTarget;
+    }
+    const coverage_score = totalTarget > 0 ? Math.round((totalPlanned / totalTarget) * 100) : null;
+
+    // 6. Open shifts — (dept × DOW) slots the baseline says need
+    // coverage but no published cell does. "no one is filling the
+    // time in" per GM Sprint-15.4 round-2 decision.
+    const open_shifts = [];
+    for (const d of depts) {
+      for (let dow = 0; dow < 7; dow++) {
+        const key = `${d.department_id}|${dow}`;
+        const base = baseline.get(key);
+        if (!base || base.target_hours <= 0) continue;
+        const planned = plannedByDeptDow.get(key) || 0;
+        if (planned === 0) {
+          open_shifts.push({
+            department_id:   d.department_id,
+            department_name: d.name,
+            day_of_week:     dow,
+            target_hours:    Math.round(base.target_hours * 10) / 10,
+          });
+        }
+      }
+    }
+
+    // 7. Conflicts — for v1 we surface multi-segment cells whose
+    // own segments overlap each other (a GM-typo guard: "9-12 /
+    // 11-3"). The unique (week_start, user_id, day_of_week)
+    // constraint makes cross-cell same-user same-DOW overlap
+    // structurally impossible, so other conflict rules are
+    // deferred to a future sprint when the schema supports them.
+    const conflicts = [];
+    for (const cell of cells) {
+      if (!cell.is_published) continue;
+      if (cellHasSelfOverlap(cell.parsed_segments)) {
+        conflicts.push({
+          cell_id:         cell.cell_id,
+          user_id:         cell.user_id,
+          user_name:       cell.user_name,
+          day_of_week:     cell.day_of_week,
+          display_text:    cell.display_text,
+          department_name: cell.department_name,
+          kind:            'self_overlap',
+        });
+      }
+    }
+
+    // 8. Unpublished changes — cells whose latest edit happened
+    // after the last publish. Brand-new cells (last_published_at
+    // NULL) count too; cells freshly published count zero because
+    // the publish handler sets last_published_at = NOW() and
+    // updated_at = NOW() in the same UPDATE.
+    const unpublished_changes_count = cells.filter(c => {
+      if (!c.last_published_at) return true;
+      return new Date(c.updated_at).getTime() > new Date(c.last_published_at).getTime();
+    }).length;
+
+    return res.json({
+      success: true,
+      week_start,
+      coverage_score,
+      dept_coverage,
+      open_shifts,
+      conflicts,
+      unpublished_changes_count,
+      dataset_warning: anyRegimeChange ? 'regime_change' : (anyLowSample ? 'low_sample' : null),
+      meta: { history_weeks: weeks },
+    });
+  } catch (err) {
+    console.error('[week-overview]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
 
 // PUT /api/admin/sheet/cell/highlight — toggle/set the highlight flag
 // on a single cell. Body: { cell_id, highlight: boolean }.

@@ -631,3 +631,260 @@
   border-color: #2f855a;
 }
 
+/* ── Sprint 15.4: layout + right-rail Week Overview ─────────────────── */
+
+.sheet-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.sheet-layout .sheet-grid-wrap {
+  flex: 1 1 auto;
+  min-width: 0; /* let the table shrink + scroll inside */
+}
+
+.sheet-overview-rail {
+  flex: 0 0 280px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: 'TiemposText', Georgia, serif;
+}
+.sheet-overview-rail.is-loading,
+.sheet-overview-rail.is-empty {
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+}
+
+.sheet-overview-strip { display: none; }
+
+.sheet-overview-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sheet-overview-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.sheet-overview-card-head:hover { background: var(--bg-raised); }
+.sheet-overview-card-head > span:first-child { flex: 1; }
+.sheet-overview-card-chev {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.sheet-overview-card-count {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+  background: var(--bg-base);
+  padding: 2px 8px;
+  border-radius: 999px;
+  min-width: 20px;
+  text-align: center;
+}
+.sheet-overview-card-count.is-danger {
+  background: rgba(197, 48, 48, 0.12);
+  color: #c53030;
+}
+.sheet-overview-card-count.is-accent {
+  background: rgba(56, 161, 105, 0.12);
+  color: #276749;
+}
+
+.sheet-overview-card-body {
+  padding: 0 14px 14px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* Coverage Score card */
+.sheet-overview-score {
+  text-align: center;
+  padding: 4px 0 8px;
+}
+.sheet-overview-score-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-overview-score-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.sheet-overview-dataset-warning {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  background: var(--bg-base);
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid #dd6b20;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+.sheet-overview-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* Department Coverage card */
+.sheet-overview-dept { margin-bottom: 10px; }
+.sheet-overview-dept:last-child { margin-bottom: 0; }
+.sheet-overview-dept-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.sheet-overview-dept-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 8px;
+}
+.sheet-overview-dept-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.sheet-overview-dept-pct {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-overview-dept-bar {
+  height: 6px;
+  background: var(--bg-base);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.sheet-overview-dept-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.24s ease;
+}
+.sheet-overview-dept-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* List card body (Open Shifts, Conflicts) */
+.sheet-overview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sheet-overview-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-base);
+}
+.sheet-overview-list-pri {
+  font-weight: 700;
+  color: var(--brand-text);
+}
+.sheet-overview-list-sec {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sheet-overview-list-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.sheet-overview-list-danger { color: #c53030; }
+
+.sheet-overview-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* Compact strip — replaces the rail below 1200px. */
+@media (max-width: 1199px) {
+  .sheet-layout { flex-direction: column; }
+  .sheet-overview-rail {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+  /* Hide the full card list; show the strip instead. */
+  .sheet-overview-rail > .sheet-overview-card { display: none; }
+  .sheet-overview-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+  }
+  .sheet-overview-strip-cell {
+    flex: 1 1 90px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 6px 4px;
+    border-radius: 8px;
+    background: var(--bg-base);
+  }
+  .sheet-overview-strip-num {
+    font-family: 'TiemposHeadline', Georgia, serif;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--brand-text);
+  }
+  .sheet-overview-strip-lbl {
+    margin-top: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+}
+
