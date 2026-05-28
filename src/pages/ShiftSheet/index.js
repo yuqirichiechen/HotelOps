@@ -65,6 +65,10 @@ const ShiftSheet = () => {
   // rendering on cells whose display_text matches an abbreviation
   // (case-insensitive, whole-string). Pulled once on mount.
   const [statusCodes, setStatusCodes] = useState([]);
+  // Sprint 15.3: pre-existing shift templates (the GM's saved
+  // "9–5 / 11p–7a" presets), dept-scoped, used by the Edit Shift
+  // popover's quick-pick pills.
+  const [templates, setTemplates] = useState([]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -90,8 +94,23 @@ const ShiftSheet = () => {
       if (cancelled) return;
       if (ok && data?.success) setStatusCodes(data.codes || []);
     });
+    fetch('/api/admin/shift-templates').then(r => r.json()).then(d => {
+      if (cancelled) return;
+      if (d?.success) setTemplates(d.templates || []);
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // Sprint 15.3: dept_id → templates[]. Saves the popover from
+  // re-filtering on every render.
+  const templatesByDept = useMemo(() => {
+    const m = new Map();
+    for (const t of templates) {
+      if (!m.has(t.department_id)) m.set(t.department_id, []);
+      m.get(t.department_id).push(t);
+    }
+    return m;
+  }, [templates]);
 
   // Sprint 15.2: abbreviation (upper-cased) → code map for O(1)
   // lookup from the cell renderer.
@@ -203,6 +222,38 @@ const ShiftSheet = () => {
   // expanded. Only one open at a time — clicking another dept's "+"
   // collapses the previous one. null = none open.
   const [addOpenDept, setAddOpenDept] = useState(null);
+
+  // Sprint 15.3: cell Edit Shift popover. Anchored on desktop,
+  // full-bleed bottom-sheet on mobile (<720px). Stores the target
+  // cell coordinates + current cell state + draft edits.
+  // Shape: null | { user_id, day_of_week, department_id, rect,
+  //                 display_text, notes, dayLabel, userName }
+  const [editPop, setEditPop] = useState(null);
+  const openEditPop = useCallback((row, dayIdx, triggerEl) => {
+    const existing = cellMap.get(`${row.user_id}|${dayIdx}`);
+    const rect = triggerEl?.getBoundingClientRect();
+    setEditPop({
+      user_id:       row.user_id,
+      day_of_week:   dayIdx,
+      department_id: row.department_id,
+      rect:          rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left } : null,
+      display_text:  existing?.display_text || '',
+      notes:         existing?.notes || '',
+      dayLabel:      DAY_LABELS[dayIdx],
+      userName:      row.name,
+    });
+  }, [cellMap]);
+  useEffect(() => {
+    if (!editPop) return;
+    const onKey = (e) => { if (e.key === 'Escape') setEditPop(null); };
+    const onScroll = () => setEditPop(null);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [editPop]);
 
   // Sprint 15.2: which row's "..." menu is open + its trigger's
   // bounding rect (so the popover can be position:fixed and escape
@@ -547,6 +598,7 @@ const ShiftSheet = () => {
                               <ShiftCellInput
                                 key={idx}
                                 value={cell?.display_text || ''}
+                                hasNotes={!!cell?.notes}
                                 highlight={!!cell?.highlight}
                                 published={!!cell?.is_published}
                                 statusByAbbr={statusByAbbr}
@@ -555,6 +607,7 @@ const ShiftSheet = () => {
                                 onToggleHighlight={
                                   cell ? () => toggleHighlight(cell.cell_id, !cell.highlight) : null
                                 }
+                                onOpenEdit={(e) => openEditPop(row, idx, e.currentTarget)}
                               />
                             );
                           })}
@@ -700,7 +753,195 @@ const ShiftSheet = () => {
           </div>
         );
       })()}
+
+      {/* Sprint 15.3: page-root cell Edit Shift popover. Anchored on
+          desktop, bottom-sheet on mobile. */}
+      {editPop && (
+        <CellEditPopover
+          state={editPop}
+          templates={templatesByDept.get(editPop.department_id) || []}
+          statusCodes={statusCodes}
+          fgForBg={fgForBg}
+          onSave={async (next) => {
+            const res = await apiFetch('/admin/sheet/cell', {
+              method: 'PUT',
+              body: JSON.stringify({
+                week_start:   weekStart,
+                user_id:      editPop.user_id,
+                day_of_week:  editPop.day_of_week,
+                display_text: next.display_text,
+                notes:        next.notes || null,
+              }),
+            });
+            if (res.ok && res.data?.success) {
+              applyCellChanges(res.data.cell ? [res.data.cell] : []);
+              // When display_text is blank the server returns null —
+              // remove the cell from local state in that case.
+              if (!res.data.cell) {
+                setCells(prev => prev.filter(c =>
+                  !(c.user_id === editPop.user_id && c.day_of_week === editPop.day_of_week)
+                ));
+              }
+            }
+            setEditPop(null);
+          }}
+          onClose={() => setEditPop(null)}
+        />
+      )}
     </div>
+  );
+};
+
+// Sprint 15.3: cell Edit Shift popover. Two layouts:
+//   - desktop (≥720px): anchored to the trigger via position:fixed
+//   - mobile (<720px): full-bleed bottom sheet
+// Both share the same body — template pills (dept-scoped), status
+// code pills (admin-defined), custom text input, notes textarea,
+// Save / Cancel. The free-form input is the same one the cell uses
+// for fast inline editing, so power users get the same surface in
+// both flows.
+const CellEditPopover = ({ state, templates, statusCodes, fgForBg, onSave, onClose }) => {
+  const [text,  setText]  = useState(state.display_text || '');
+  const [notes, setNotes] = useState(state.notes || '');
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 720;
+
+  // Compact pretty-time formatter for template pills. "07:00:00" →
+  // "7a", "15:00:00" → "3p", "14:30:00" → "2:30p". Matches the
+  // GM's own shorthand in the sheet.
+  const fmtT = (t) => {
+    if (!t) return '';
+    const [hStr, mStr] = String(t).split(':');
+    const h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    const period = h >= 12 ? 'p' : 'a';
+    const h12 = h % 12 || 12;
+    return m ? `${h12}:${String(m).padStart(2, '0')}${period}` : `${h12}${period}`;
+  };
+  const templateLabel = (t) => `${fmtT(t.start_time)}-${fmtT(t.end_time)}`;
+
+  // Anchored positioning (desktop). Open below the trigger; flip
+  // above when it'd go off-screen. Width fixed at 360px; left
+  // aligned to the trigger's left edge but pulled in if it would
+  // overflow the viewport.
+  const WIDTH = 360;
+  const HEIGHT_GUESS = 360;
+  let posStyle;
+  if (!isMobile && state.rect) {
+    const r = state.rect;
+    const flipUp = (r.bottom + HEIGHT_GUESS + 8) > window.innerHeight;
+    const top  = flipUp ? Math.max(8, r.top - HEIGHT_GUESS - 6) : (r.bottom + 6);
+    const left = Math.min(window.innerWidth - WIDTH - 8, Math.max(8, r.left));
+    posStyle = { top: `${top}px`, left: `${left}px`, width: `${WIDTH}px` };
+  }
+
+  return (
+    <>
+      <div className="sheet-edit-backdrop" onClick={onClose} role="presentation" />
+      <div
+        className={`sheet-edit-pop${isMobile ? ' is-mobile' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Edit ${state.userName}'s ${state.dayLabel} shift`}
+        style={posStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sheet-edit-head">
+          <div>
+            <div className="sheet-edit-title">Edit Shift</div>
+            <div className="sheet-edit-sub">{state.userName} · {state.dayLabel}</div>
+          </div>
+          <button
+            type="button"
+            className="sheet-edit-close"
+            onClick={onClose}
+            aria-label="Close"
+          >✕</button>
+        </div>
+
+        {templates.length > 0 && (
+          <div className="sheet-edit-section">
+            <div className="sheet-edit-section-label">Templates</div>
+            <div className="sheet-edit-pills">
+              {templates.map(t => (
+                <button
+                  key={t.shift_id}
+                  type="button"
+                  className={`sheet-edit-pill${text.trim() === templateLabel(t) ? ' is-active' : ''}`}
+                  onClick={() => setText(templateLabel(t))}
+                  title={t.name || ''}
+                >{templateLabel(t)}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {statusCodes.length > 0 && (
+          <div className="sheet-edit-section">
+            <div className="sheet-edit-section-label">Status codes</div>
+            <div className="sheet-edit-pills">
+              {statusCodes.map(c => {
+                const active = text.trim().toUpperCase() === c.abbreviation.toUpperCase();
+                return (
+                  <button
+                    key={c.code_id}
+                    type="button"
+                    className={`sheet-edit-pill sheet-edit-pill-status${active ? ' is-active' : ''}`}
+                    onClick={() => setText(c.abbreviation)}
+                    style={{
+                      background: c.color,
+                      color:      fgForBg(c.color),
+                      borderColor: c.color,
+                    }}
+                    title={c.label}
+                  >{c.abbreviation}</button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="sheet-edit-section">
+          <label className="sheet-edit-section-label" htmlFor="sheet-edit-text">Custom</label>
+          <input
+            id="sheet-edit-text"
+            type="text"
+            className="sheet-edit-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="e.g. 3p-11p, 9-12 / 4-8, OFF"
+            autoFocus={!isMobile}
+          />
+        </div>
+
+        <div className="sheet-edit-section">
+          <label className="sheet-edit-section-label" htmlFor="sheet-edit-notes">
+            Note <span className="sheet-edit-counter">{notes.length}/120</span>
+          </label>
+          <textarea
+            id="sheet-edit-notes"
+            className="sheet-edit-textarea"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value.slice(0, 120))}
+            placeholder="Add a note for this shift…"
+            rows={3}
+            maxLength={120}
+          />
+        </div>
+
+        <div className="sheet-edit-actions">
+          <button
+            type="button"
+            className="sheet-edit-btn sheet-edit-btn-cancel"
+            onClick={onClose}
+          >Cancel</button>
+          <button
+            type="button"
+            className="sheet-edit-btn sheet-edit-btn-save"
+            onClick={() => onSave({ display_text: text.trim(), notes: notes.trim() })}
+          >Save</button>
+        </div>
+      </div>
+    </>
   );
 };
 
@@ -716,7 +957,7 @@ const ShiftSheet = () => {
 // colored pill — admin-defined background + contrast-correct text.
 // The input stays an <input> so keyboard editing keeps working;
 // only its visual presentation changes.
-const ShiftCellInput = ({ value, highlight, published, statusByAbbr, fgForBg, onCommit, onToggleHighlight }) => {
+const ShiftCellInput = ({ value, hasNotes, highlight, published, statusByAbbr, fgForBg, onCommit, onToggleHighlight, onOpenEdit }) => {
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const ref = useRef(null);
@@ -743,6 +984,7 @@ const ShiftCellInput = ({ value, highlight, published, statusByAbbr, fgForBg, on
     highlight ? 'is-highlight' : '',
     published ? 'is-published' : '',
     matchedCode ? 'is-status' : '',
+    hasNotes ? 'has-notes' : '',
   ].filter(Boolean).join(' ');
   const inputStyle = matchedCode
     ? { background: matchedCode.color, color: fgForBg(matchedCode.color), fontWeight: 700 }
@@ -778,6 +1020,24 @@ const ShiftCellInput = ({ value, highlight, published, statusByAbbr, fgForBg, on
         style={inputStyle}
         title={matchedCode ? matchedCode.label : undefined}
       />
+      {/* Sprint 15.3: caret trigger for the Edit Shift popover. The
+          input itself stays the fast path (click → focus → type);
+          the caret is the thoughtful path that opens the full
+          popover with template pills + notes textarea. Visible on
+          hover/focus on desktop, always visible on touch (CSS). */}
+      {onOpenEdit && (
+        <button
+          type="button"
+          className="sheet-cell-edit"
+          onClick={onOpenEdit}
+          aria-label="Edit shift"
+          tabIndex={-1}
+        >▾</button>
+      )}
+      {/* Sprint 15.3: notes indicator. A small dot in the corner
+          when a cell has a note attached, so the GM can scan-spot
+          which cells carry extra context. */}
+      {hasNotes && <span className="sheet-cell-notes-dot" aria-label="Has note" />}
     </td>
   );
 };

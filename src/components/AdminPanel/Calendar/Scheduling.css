@@ -3200,6 +3200,11 @@
   color: #744210 !important;
   border-color: #d69e2e;
 }
+/* Sprint 15.3: tiny inset glow when a planned cell carries a note
+   from the Edit Shift popover. Hover title shows the note text. */
+.day-planned-pill.has-notes {
+  box-shadow: inset 0 0 0 1px rgba(214, 158, 46, 0.45);
+}
 .day-planned-pill-dot {
   width: 8px;
   height: 8px;

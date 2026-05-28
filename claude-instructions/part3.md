@@ -345,6 +345,118 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.3: per-cell Edit Shift popover + notes + contenteditable fast-path retained
+
+The thoughtful path. Same cells still tab-and-type as before, but
+each one now has a small caret affordance that opens an anchored
+popover with template pills, status code pills, free-form text,
+and a notes textarea. The popover is dept-scoped — only the row's
+dept templates show as quick-picks.
+
+**Schema (migration 020):**
+
+- `schedule_sheet_cells` gets a `notes TEXT` column. NULL = no
+  note. Backfill not needed — all existing rows are NULL by
+  default and the column is optional everywhere.
+
+**Server:**
+
+- `PUT /admin/sheet/cell` accepts an optional `notes` field. Three
+  cases:
+    - `notes` key omitted → preserve existing note via a
+      `CASE WHEN $provided THEN $value ELSE existing END` guard
+      in the ON CONFLICT branch.
+    - `notes: null` → clear note.
+    - `notes: '...'` → set.
+  The guard lives in SQL (not JS) so a partial PUT from any client
+  can't accidentally wipe a note that was written by a different
+  surface.
+- `GET /admin/sheet/week`, `GET /admin/sheet/published`, and all
+  four RETURNING blocks (PUT cell, publish-by-ids, publish-by-week,
+  highlight) return `notes`. Calendar overlay reads it.
+
+**Client: Edit Shift popover.**
+
+- New `CellEditPopover` component, rendered at page root when
+  `editPop` state is non-null (same fixed-position + viewport-flip
+  trick the 15.2 row menu uses, so `.sheet-grid-wrap`'s overflow
+  doesn't clip it).
+- Two layouts:
+    - **Desktop (≥720px):** anchored to the cell's caret trigger,
+      360px wide, opens below; flips above if it would overflow
+      the viewport bottom.
+    - **Mobile (<720px):** full-bleed bottom sheet, 16px top
+      corners, 80vh max-height. Backdrop click and the explicit
+      close button both dismiss.
+- Sections (in order):
+    1. **Templates** — dept-scoped quick-picks from the existing
+       `shift_templates` table (`/api/admin/shift-templates`).
+       Each pill shows the time range in the GM's shorthand
+       ("7a-3p", "11p-7a"). Clicking sets the custom-text input.
+    2. **Status codes** — admin-defined codes from
+       `/api/admin/status-codes`. Pills render in their assigned
+       color with contrast-correct text.
+    3. **Custom** — the same free-form `<input>` the cell uses
+       for inline editing, autofocused on desktop so the keyboard
+       flow continues immediately.
+    4. **Note** — 120-char-max textarea with live counter
+       ("47/120").
+- Save / Cancel actions. Escape cancels. Scroll auto-closes (so
+  the anchor rect doesn't go stale on a long page).
+
+**Client: cell affordances + indicators.**
+
+- Each cell now renders a small caret (`▾`) button at its right
+  edge, absolutely positioned. Hidden on desktop until the cell
+  is hovered or focused; always visible on touch devices
+  (`@media (hover: none)`). Tab order: the caret has
+  `tabIndex={-1}` so keyboard users keep flying through cells via
+  the input alone — the caret is mouse/touch-driven.
+- Notes indicator: tiny amber dot in the top-left corner of any
+  cell that has a non-null `notes` value. Lets the GM scan-spot
+  noted cells without opening each one.
+
+**Client: calendar overlay reads notes.**
+
+- The Sprint-14.2 `PlannedShiftsStrip` pill now picks up
+  `p.notes` via the hover `title` attribute. Title format:
+    - With note: `"<staff> — <text>\nNote: <note>"`
+    - Without:   `"<dept> • <text>"` (existing behavior)
+- Pills with notes get a subtle inset amber border-glow so the
+  calendar's planned strip mirrors the sheet's notes-dot signal.
+
+**Why the fast-path is preserved:**
+
+Resolved in §2.0 #2 — tab+type is the right loop for a full week
+of bulk entry. The popover is the right surface for *one*
+deliberate edit ("3p–11p, but flag her for the deep clean before
+service"). Two surfaces, one data path: PUT
+`/admin/sheet/cell` is the single write endpoint for both, so
+templates / status pills / custom text + notes all funnel through
+the same server logic (including the multi-segment parser from
+14.3).
+
+**Verified.** Seven touched files balance. server.js shows the
+same -4/+4 paren noise from the parseShiftTimes regex literal.
+Notes thread through SELECT / RETURNING / overlay.
+
+**Migration deploy.** `020_schedule_sheet_cells_notes.sql` before
+code rollout. Safe to apply at any time (column is NULL-default,
+nothing breaks for existing rows).
+
+**Follow-ups:**
+
+- **15.4** is next: right-rail Week Overview backed by the
+  history-derived coverage algorithm (new server module, two new
+  endpoints, plus migration 020-style `last_published_at` column
+  for unpublished-change tracking — actually that becomes
+  migration 021).
+- Possible later refinement: a "Save (no close)" variant of the
+  popover for power users who want to chain edits without
+  re-opening for the next cell.
+
+---
+
 ### 2026-05-28 — Sprint 15.2: inline status pills + per-row "..." menu
 
 First sprint where 15.0's `status_codes` table actually shows up

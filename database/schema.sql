@@ -211,6 +211,11 @@ CREATE TABLE schedule_sheet_cells (
   -- that need every range read parsed_segments instead.
   -- Migration: database/migrations/018_schedule_sheet_cells_segments.sql
   parsed_segments JSONB,
+  -- Sprint 15.3: free-form note attached to the cell, written via
+  -- the Edit Shift popover. Surfaced as a hover title on the
+  -- calendar planned-shift overlay. NULL = no note.
+  -- Migration: database/migrations/020_schedule_sheet_cells_notes.sql
+  notes          TEXT,
   is_published   BOOLEAN      NOT NULL DEFAULT FALSE,
   highlight      BOOLEAN      NOT NULL DEFAULT FALSE,
   created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

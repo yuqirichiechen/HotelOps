@@ -311,9 +311,16 @@ const PlannedShiftsStrip = ({ planned, departments }) => {
           return (
             <li
               key={p.cell_id}
-              className={`day-planned-pill${p.highlight ? ' is-highlight' : ''}${isSplit ? ' is-split' : ''}`}
+              className={`day-planned-pill${p.highlight ? ' is-highlight' : ''}${isSplit ? ' is-split' : ''}${p.notes ? ' has-notes' : ''}`}
               style={{ borderColor: color.border, color: color.text }}
-              title={p.department_name ? `${p.department_name} • ${p.display_text}` : p.display_text}
+              title={
+                // Sprint 15.3: notes from the Edit Shift popover
+                // surface as the hover title. Falls back to the
+                // dept · text form when there's no note.
+                p.notes
+                  ? `${p.user_name} — ${p.display_text}\nNote: ${p.notes}`
+                  : (p.department_name ? `${p.department_name} • ${p.display_text}` : p.display_text)
+              }
             >
               <span className="day-planned-pill-dot" style={{ background: color.border }} aria-hidden />
               <span className="day-planned-pill-name">{p.user_name}</span>

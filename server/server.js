@@ -2097,7 +2097,7 @@ app.get('/api/admin/sheet/week', requireAuth, requireRole('admin'), async (req, 
     const { rows } = await pool.query(
       `SELECT c.cell_id, c.week_start::text, c.user_id, c.day_of_week,
               c.display_text, c.parsed_start::text, c.parsed_end::text,
-              c.parsed_segments,
+              c.parsed_segments, c.notes,
               c.is_published, c.highlight, c.updated_at,
               u.name AS user_name, u.department_id, d.name AS department_name
        FROM schedule_sheet_cells c
@@ -2140,6 +2140,7 @@ app.get('/api/admin/sheet/published', requireAuth, requireRole('admin'), async (
               c.parsed_start::text,
               c.parsed_end::text,
               c.parsed_segments,
+              c.notes,
               c.is_published,
               c.highlight,
               (c.week_start + (c.day_of_week || ' day')::interval)::date::text AS scheduled_date,
@@ -2162,11 +2163,11 @@ app.get('/api/admin/sheet/published', requireAuth, requireRole('admin'), async (
 });
 
 // PUT /api/admin/sheet/cell
-// Upsert one cell. Body: { week_start, user_id, day_of_week, display_text, highlight? }
+// Upsert one cell. Body: { week_start, user_id, day_of_week, display_text, highlight?, notes? }
 // Empty display_text deletes the cell (so backspacing-to-blank
 // clears the cell instead of leaving a phantom row).
 app.put('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (req, res) => {
-  const { week_start, user_id, day_of_week, display_text, highlight } = req.body || {};
+  const { week_start, user_id, day_of_week, display_text, highlight, notes } = req.body || {};
   if (!week_start || !user_id || day_of_week === undefined ||
       !/^\d{4}-\d{2}-\d{2}$/.test(week_start) ||
       !(Number.isInteger(day_of_week) && day_of_week >= 0 && day_of_week <= 6)) {
@@ -2205,25 +2206,31 @@ app.put('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (req, 
     const segmentsJson = parsed.parsed_segments
       ? JSON.stringify(parsed.parsed_segments)
       : null;
+    // Sprint 15.3: notes is opt-in. `null` clears any existing
+    // note; `undefined` (key missing from body) preserves it via
+    // the COALESCE in the conflict branch.
+    const notesParam = (notes === undefined) ? null : (notes === null ? null : String(notes));
+    const notesProvided = (notes !== undefined);
     const { rows } = await pool.query(
       `INSERT INTO schedule_sheet_cells
          (week_start, user_id, day_of_week, display_text,
-          parsed_start, parsed_end, parsed_segments, highlight, updated_at)
+          parsed_start, parsed_end, parsed_segments, highlight, notes, updated_at)
        VALUES ($1::date, $2, $3, $4, $5::time, $6::time,
-               $7::jsonb, COALESCE($8, FALSE), NOW())
+               $7::jsonb, COALESCE($8, FALSE), $9, NOW())
        ON CONFLICT (week_start, user_id, day_of_week) DO UPDATE
          SET display_text    = EXCLUDED.display_text,
              parsed_start    = EXCLUDED.parsed_start,
              parsed_end      = EXCLUDED.parsed_end,
              parsed_segments = EXCLUDED.parsed_segments,
              highlight       = COALESCE($8, schedule_sheet_cells.highlight),
+             notes           = CASE WHEN $10::boolean THEN $9 ELSE schedule_sheet_cells.notes END,
              updated_at      = NOW()
        RETURNING cell_id, week_start::text, user_id, day_of_week,
                  display_text, parsed_start::text, parsed_end::text,
-                 parsed_segments,
+                 parsed_segments, notes,
                  is_published, highlight, updated_at`,
       [week_start, user_id, day_of_week, text,
-       parsed.parsed_start, parsed.parsed_end, segmentsJson, highlight]
+       parsed.parsed_start, parsed.parsed_end, segmentsJson, highlight, notesParam, notesProvided]
     );
     return res.json({ success: true, cell: rows[0] });
   } catch (err) {
@@ -2245,7 +2252,7 @@ const setPublishedFlag = async (req, res, isPublished) => {
          WHERE cell_id = ANY($2::uuid[])
          RETURNING cell_id, week_start::text, user_id, day_of_week,
                    display_text, parsed_start::text, parsed_end::text,
-                   parsed_segments,
+                   parsed_segments, notes,
                    is_published, highlight, updated_at`,
         [isPublished, cell_ids]
       );
@@ -2269,7 +2276,7 @@ const setPublishedFlag = async (req, res, isPublished) => {
          WHERE week_start = $2::date${extra}
          RETURNING cell_id, week_start::text, user_id, day_of_week,
                    display_text, parsed_start::text, parsed_end::text,
-                   parsed_segments,
+                   parsed_segments, notes,
                    is_published, highlight, updated_at`,
         params
       );
@@ -2299,7 +2306,7 @@ app.put('/api/admin/sheet/cell/highlight', requireAuth, requireRole('admin'), as
        WHERE cell_id = $2::uuid
        RETURNING cell_id, week_start::text, user_id, day_of_week,
                  display_text, parsed_start::text, parsed_end::text,
-                 parsed_segments,
+                 parsed_segments, notes,
                  is_published, highlight, updated_at`,
       [highlight, cell_id]
     );
