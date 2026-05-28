@@ -1895,6 +1895,88 @@ app.get('/api/admin/shift-templates', async (req, res) => {
   }
 });
 
+// Sprint 15.5: shift-template CRUD. The GET above predates 15.x;
+// the Shift Sheet's Templates modal needs create/edit/delete so
+// the GM can keep the dept-scoped quick-picks current without
+// touching SQL directly.
+const isValidTimeStr = (v) => typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v);
+
+app.post('/api/admin/shift-templates', requireAuth, requireRole('admin'), async (req, res) => {
+  const { name, department_id, start_time, end_time } = req.body || {};
+  if (!name || !department_id || !isValidTimeStr(start_time) || !isValidTimeStr(end_time)) {
+    return res.status(400).json({ success: false, message: 'name, department_id, start_time, end_time required (HH:MM)' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO shifts (name, department_id, start_time, end_time)
+       VALUES ($1, $2, $3::time, $4::time)
+       RETURNING shift_id, name, department_id, start_time::text, end_time::text`,
+      [String(name).trim(), department_id, start_time, end_time]
+    );
+    return res.json({ success: true, template: rows[0] });
+  } catch (err) {
+    console.error('[shift-templates:POST]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.patch('/api/admin/shift-templates/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { name, department_id, start_time, end_time } = req.body || {};
+  if (start_time !== undefined && !isValidTimeStr(start_time)) {
+    return res.status(400).json({ success: false, message: 'start_time must be HH:MM' });
+  }
+  if (end_time !== undefined && !isValidTimeStr(end_time)) {
+    return res.status(400).json({ success: false, message: 'end_time must be HH:MM' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE shifts
+          SET name          = COALESCE($1, name),
+              department_id = COALESCE($2, department_id),
+              start_time    = COALESCE($3::time, start_time),
+              end_time      = COALESCE($4::time, end_time)
+        WHERE shift_id = $5::uuid
+        RETURNING shift_id, name, department_id, start_time::text, end_time::text`,
+      [name ? String(name).trim() : null, department_id || null, start_time || null, end_time || null, id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'template not found' });
+    }
+    return res.json({ success: true, template: rows[0] });
+  } catch (err) {
+    console.error('[shift-templates:PATCH]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.delete('/api/admin/shift-templates/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Refuse if any schedule rows reference this shift; admin should
+    // reassign / clear first (mirrors the dept-delete guard).
+    const { rows: refs } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM schedules WHERE shift_id = $1::uuid`,
+      [id]
+    );
+    if (refs[0]?.n > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `${refs[0].n} scheduled shifts still reference this template — clear them first.`,
+      });
+    }
+    const { rowCount } = await pool.query(
+      `DELETE FROM shifts WHERE shift_id = $1::uuid`,
+      [id]
+    );
+    if (!rowCount) return res.status(404).json({ success: false, message: 'template not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[shift-templates:DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 app.get('/api/admin/schedule', async (req, res) => {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ success: false, message: 'start and end dates required' });
@@ -2564,6 +2646,176 @@ app.get('/api/admin/sheet/week-overview', requireAuth, requireRole('admin'), asy
     });
   } catch (err) {
     console.error('[week-overview]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// ── Sprint 15.5: Copy Previous Week ──────────────────────────────────────────
+// POST /api/admin/sheet/copy-from-previous
+// Body: { week_start, overwrite?: boolean }
+// Bulk-inserts cells from (week_start - 7 days) into week_start as
+// fresh drafts (is_published = FALSE). By default fills empty slots
+// only; overwrite=true also stomps existing target cells.
+app.post('/api/admin/sheet/copy-from-previous', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start, overwrite } = req.body || {};
+  if (!week_start || !/^\d{4}-\d{2}-\d{2}$/.test(week_start)) {
+    return res.status(400).json({ success: false, message: 'week_start required (YYYY-MM-DD)' });
+  }
+  const shouldOverwrite = overwrite === true;
+  try {
+    const { rows } = await pool.query(
+      `WITH src AS (
+         SELECT user_id, day_of_week, display_text,
+                parsed_start, parsed_end, parsed_segments, highlight, notes
+           FROM schedule_sheet_cells
+          WHERE week_start = ($1::date - INTERVAL '7 days')::date
+       ),
+       ins AS (
+         INSERT INTO schedule_sheet_cells
+           (week_start, user_id, day_of_week, display_text,
+            parsed_start, parsed_end, parsed_segments,
+            highlight, notes, is_published, updated_at)
+         SELECT $1::date, user_id, day_of_week, display_text,
+                parsed_start, parsed_end, parsed_segments,
+                highlight, notes, FALSE, NOW()
+           FROM src
+         ON CONFLICT (week_start, user_id, day_of_week) DO UPDATE
+           SET display_text    = CASE WHEN $2::boolean THEN EXCLUDED.display_text    ELSE schedule_sheet_cells.display_text    END,
+               parsed_start    = CASE WHEN $2::boolean THEN EXCLUDED.parsed_start    ELSE schedule_sheet_cells.parsed_start    END,
+               parsed_end      = CASE WHEN $2::boolean THEN EXCLUDED.parsed_end      ELSE schedule_sheet_cells.parsed_end      END,
+               parsed_segments = CASE WHEN $2::boolean THEN EXCLUDED.parsed_segments ELSE schedule_sheet_cells.parsed_segments END,
+               highlight       = CASE WHEN $2::boolean THEN EXCLUDED.highlight       ELSE schedule_sheet_cells.highlight       END,
+               notes           = CASE WHEN $2::boolean THEN EXCLUDED.notes           ELSE schedule_sheet_cells.notes           END,
+               is_published    = CASE WHEN $2::boolean THEN FALSE                    ELSE schedule_sheet_cells.is_published    END,
+               updated_at      = CASE WHEN $2::boolean THEN NOW()                    ELSE schedule_sheet_cells.updated_at      END
+         RETURNING cell_id
+       )
+       SELECT COUNT(*)::int AS n FROM ins`,
+      [week_start, shouldOverwrite]
+    );
+    return res.json({ success: true, copied: rows[0]?.n || 0, overwrite: shouldOverwrite });
+  } catch (err) {
+    console.error('[copy-from-previous]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// ── Sprint 15.5: Auto-Fill ───────────────────────────────────────────────────
+// For each (user_id × day_of_week), find the most-recent completed
+// clock entry from the last N weeks (the coverage_history_weeks
+// setting) and propose it as a shift suggestion. Returns suggestions
+// as plain `display_text` strings — the same free-form syntax the
+// parser already understands (e.g. "9a-5p").
+//
+// Preview (no DB writes):
+//   POST /api/admin/sheet/auto-fill-preview?tz_offset_minutes=
+//   Body: { week_start }
+//   Returns: { suggestions: [{ user_id, day_of_week, display_text }] }
+//
+// Apply (bulk insert):
+//   POST /api/admin/sheet/auto-fill-apply
+//   Body: { week_start, suggestions: [...], overwrite?: boolean }
+//   Returns: { applied: N }
+const fmtTimeShort = (timeStr) => {
+  // "07:00:00" → "7a"; "15:30:00" → "3:30p"
+  const [hStr, mStr] = String(timeStr).split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const period = h >= 12 ? 'p' : 'a';
+  const h12 = h % 12 || 12;
+  return m ? `${h12}:${String(m).padStart(2, '0')}${period}` : `${h12}${period}`;
+};
+
+app.post('/api/admin/sheet/auto-fill-preview', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start } = req.body || {};
+  if (!week_start || !/^\d{4}-\d{2}-\d{2}$/.test(week_start)) {
+    return res.status(400).json({ success: false, message: 'week_start required' });
+  }
+  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  try {
+    const { rows: settingRows } = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'coverage_history_weeks'`
+    );
+    const setN = settingRows.length > 0 ? parseInt(settingRows[0].value, 10) : NaN;
+    const weeks = Number.isInteger(setN) && setN >= 2 && setN <= 52 ? setN : 8;
+
+    // For each (user × DOW), pull the most-recent entry in the
+    // lookback window. DISTINCT ON keeps just the latest per group.
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (te.user_id, EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1)
+              te.user_id,
+              EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1 AS day_of_week,
+              (te.clock_in_time  - INTERVAL '1 minute' * $3::int)::time::text AS start_local,
+              (te.clock_out_time - INTERVAL '1 minute' * $3::int)::time::text AS end_local,
+              te.clock_in_time
+         FROM time_entries te
+         JOIN users u ON te.user_id = u.user_id
+        WHERE te.clock_in_time   IS NOT NULL
+          AND te.clock_out_time  IS NOT NULL
+          AND te.clock_in_time >= ($1::date - (INTERVAL '7 days' * $2::int))::timestamptz
+          AND te.clock_in_time <  $1::date::timestamptz
+          AND u.deleted_at IS NULL
+        ORDER BY te.user_id,
+                 EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1,
+                 te.clock_in_time DESC`,
+      [week_start, weeks, tzOffset]
+    );
+
+    const suggestions = rows.map(r => ({
+      user_id:      r.user_id,
+      day_of_week:  r.day_of_week,
+      display_text: `${fmtTimeShort(r.start_local)}-${fmtTimeShort(r.end_local)}`,
+    }));
+    return res.json({ success: true, suggestions, meta: { history_weeks: weeks } });
+  } catch (err) {
+    console.error('[auto-fill-preview]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.post('/api/admin/sheet/auto-fill-apply', requireAuth, requireRole('admin'), async (req, res) => {
+  const { week_start, suggestions, overwrite } = req.body || {};
+  if (!week_start || !/^\d{4}-\d{2}-\d{2}$/.test(week_start)) {
+    return res.status(400).json({ success: false, message: 'week_start required' });
+  }
+  if (!Array.isArray(suggestions) || suggestions.length === 0) {
+    return res.json({ success: true, applied: 0 });
+  }
+  const shouldOverwrite = overwrite === true;
+  try {
+    let applied = 0;
+    for (const s of suggestions) {
+      if (!s.user_id || !Number.isInteger(s.day_of_week) || !s.display_text) continue;
+      const parsed = parseShiftTimes(s.display_text) || {
+        parsed_start: null, parsed_end: null, parsed_segments: null,
+      };
+      const segmentsJson = parsed.parsed_segments ? JSON.stringify(parsed.parsed_segments) : null;
+      const { rowCount } = await pool.query(
+        shouldOverwrite
+          ? `INSERT INTO schedule_sheet_cells
+               (week_start, user_id, day_of_week, display_text,
+                parsed_start, parsed_end, parsed_segments, updated_at)
+             VALUES ($1::date, $2, $3, $4, $5::time, $6::time, $7::jsonb, NOW())
+             ON CONFLICT (week_start, user_id, day_of_week) DO UPDATE
+               SET display_text    = EXCLUDED.display_text,
+                   parsed_start    = EXCLUDED.parsed_start,
+                   parsed_end      = EXCLUDED.parsed_end,
+                   parsed_segments = EXCLUDED.parsed_segments,
+                   updated_at      = NOW()`
+          : `INSERT INTO schedule_sheet_cells
+               (week_start, user_id, day_of_week, display_text,
+                parsed_start, parsed_end, parsed_segments, updated_at)
+             VALUES ($1::date, $2, $3, $4, $5::time, $6::time, $7::jsonb, NOW())
+             ON CONFLICT (week_start, user_id, day_of_week) DO NOTHING`,
+        [week_start, s.user_id, s.day_of_week, s.display_text,
+         parsed.parsed_start, parsed.parsed_end, segmentsJson]
+      );
+      if (rowCount > 0) applied += 1;
+    }
+    return res.json({ success: true, applied });
+  } catch (err) {
+    console.error('[auto-fill-apply]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
 });

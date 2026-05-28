@@ -73,6 +73,17 @@ const ShiftSheet = () => {
   // on week change + after publish/unpublish/cell-edit actions.
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  // Sprint 15.5: toolbar tools.
+  const [showTemplates,  setShowTemplates]  = useState(false);
+  const [showCopyConfirm, setShowCopyConfirm] = useState(false);
+  const [showValidate,   setShowValidate]   = useState(false);
+  // Auto-fill suggestions overlay: `${user_id}|${dow}` → text.
+  // Empty until the admin runs Auto-Fill. Lives client-side only
+  // until "Apply all" pushes the approved set through the bulk
+  // endpoint.
+  const [autoFillSugg, setAutoFillSugg] = useState(new Map());
+  const [autoFillBusy, setAutoFillBusy] = useState(false);
+  const [toolError,    setToolError]    = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -103,6 +114,71 @@ const ShiftSheet = () => {
     setOverviewLoading(false);
   }, [weekStart]);
   useEffect(() => { reloadOverview(); }, [reloadOverview]);
+
+  // Sprint 15.5: tool handlers. Each one calls reload() + reloadOverview()
+  // after a successful mutation so the sheet + rail stay current.
+  const runCopyPrevWeek = useCallback(async (overwrite) => {
+    setToolError(null);
+    const { ok, data } = await apiFetch('/admin/sheet/copy-from-previous', {
+      method: 'POST',
+      body: JSON.stringify({ week_start: weekStart, overwrite: !!overwrite }),
+    });
+    if (!ok || !data?.success) {
+      setToolError(data?.message || 'Could not copy previous week.');
+      return;
+    }
+    setShowCopyConfirm(false);
+    await reload();
+    reloadOverview();
+  }, [weekStart, reload, reloadOverview]);
+
+  const runAutoFillPreview = useCallback(async () => {
+    setToolError(null);
+    setAutoFillBusy(true);
+    const tz = new Date().getTimezoneOffset();
+    const { ok, data } = await apiFetch(
+      `/admin/sheet/auto-fill-preview?tz_offset_minutes=${tz}`,
+      { method: 'POST', body: JSON.stringify({ week_start: weekStart }) }
+    );
+    setAutoFillBusy(false);
+    if (!ok || !data?.success) {
+      setToolError(data?.message || 'Auto-Fill preview failed.');
+      return;
+    }
+    // Drop suggestions whose cell already has content (empties-only
+    // default; admin can flip overwrite at Apply All time).
+    const occupied = new Set(cells.filter(c => c.display_text).map(c => `${c.user_id}|${c.day_of_week}`));
+    const m = new Map();
+    for (const s of (data.suggestions || [])) {
+      const key = `${s.user_id}|${s.day_of_week}`;
+      if (occupied.has(key)) continue;
+      m.set(key, s.display_text);
+    }
+    setAutoFillSugg(m);
+  }, [weekStart, cells]);
+
+  const applyAutoFill = useCallback(async (overwrite) => {
+    if (autoFillSugg.size === 0) return;
+    setAutoFillBusy(true);
+    const suggestions = [...autoFillSugg.entries()].map(([key, display_text]) => {
+      const [user_id, dowStr] = key.split('|');
+      return { user_id, day_of_week: parseInt(dowStr, 10), display_text };
+    });
+    const { ok, data } = await apiFetch('/admin/sheet/auto-fill-apply', {
+      method: 'POST',
+      body: JSON.stringify({ week_start: weekStart, suggestions, overwrite: !!overwrite }),
+    });
+    setAutoFillBusy(false);
+    if (!ok || !data?.success) {
+      setToolError(data?.message || 'Auto-Fill apply failed.');
+      return;
+    }
+    setAutoFillSugg(new Map());
+    await reload();
+    reloadOverview();
+  }, [autoFillSugg, weekStart, reload, reloadOverview]);
+
+  const discardAutoFill = () => setAutoFillSugg(new Map());
 
   // Sprint 15.2: status codes load once per mount — they don't
   // change between week navigations, so no point refetching on
@@ -557,6 +633,36 @@ const ShiftSheet = () => {
         </div>
       </div>
 
+      {/* Sprint 15.5: tool row — Templates / Copy Previous Week /
+          Auto-Fill / Validate. Sits between the topbar (week nav +
+          export) and the grid. */}
+      <div className="sheet-toolbar">
+        <button
+          type="button"
+          className="sheet-tool-btn"
+          onClick={() => setShowTemplates(true)}
+        >☰ Shift Templates</button>
+        <button
+          type="button"
+          className="sheet-tool-btn"
+          onClick={() => { setShowCopyConfirm(true); setToolError(null); }}
+        >⎘ Copy Previous Week</button>
+        <button
+          type="button"
+          className="sheet-tool-btn"
+          onClick={runAutoFillPreview}
+          disabled={autoFillBusy}
+        >{autoFillBusy ? '…' : '✨ Auto-Fill'}</button>
+        <button
+          type="button"
+          className="sheet-tool-btn"
+          onClick={() => setShowValidate(true)}
+        >✓ Validate Schedule</button>
+        {toolError && (
+          <span className="sheet-tool-err">{toolError}</span>
+        )}
+      </div>
+
       {loading && visibleRows.length === 0 ? (
         <div className="sheet-empty">Loading…</div>
       ) : (
@@ -629,6 +735,7 @@ const ShiftSheet = () => {
                                 hasNotes={!!cell?.notes}
                                 highlight={!!cell?.highlight}
                                 published={!!cell?.is_published}
+                                suggestion={!cell ? autoFillSugg.get(`${row.user_id}|${idx}`) : null}
                                 statusByAbbr={statusByAbbr}
                                 fgForBg={fgForBg}
                                 onCommit={(text) => saveCell(row.user_id, idx, text)}
@@ -825,6 +932,347 @@ const ShiftSheet = () => {
           onClose={() => setEditPop(null)}
         />
       )}
+
+      {/* Sprint 15.5: auto-fill sticky action bar. Visible whenever
+          there are pending suggestions; offers Apply all / Discard.
+          Includes an "Include existing cells" checkbox per the
+          §3 tuning resolution. */}
+      {autoFillSugg.size > 0 && (
+        <AutoFillBar
+          count={autoFillSugg.size}
+          busy={autoFillBusy}
+          onApply={(includeExisting) => applyAutoFill(includeExisting)}
+          onDiscard={discardAutoFill}
+        />
+      )}
+
+      {/* Sprint 15.5: Shift Templates modal — full CRUD. */}
+      {showTemplates && (
+        <ShiftTemplatesModal
+          templates={templates}
+          departments={departments}
+          onClose={() => setShowTemplates(false)}
+          onRefresh={async () => {
+            const d = await fetch('/api/admin/shift-templates').then(r => r.json()).catch(() => null);
+            if (d?.success) setTemplates(d.templates || []);
+          }}
+        />
+      )}
+
+      {/* Sprint 15.5: Copy Previous Week confirm dialog. */}
+      {showCopyConfirm && (
+        <CopyPrevWeekDialog
+          weekStart={weekStart}
+          onCancel={() => setShowCopyConfirm(false)}
+          onConfirm={(overwrite) => runCopyPrevWeek(overwrite)}
+        />
+      )}
+
+      {/* Sprint 15.5: Validate Schedule modal. Re-uses the
+          week-overview conflicts payload. */}
+      {showValidate && (
+        <ValidateScheduleModal
+          overview={overview}
+          loading={overviewLoading}
+          onClose={() => setShowValidate(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+// Sprint 15.5: sticky bottom bar that appears while there are
+// pending auto-fill suggestions. Two actions: Apply all (with an
+// "Include existing cells" override per §3 tuning) and Discard.
+const AutoFillBar = ({ count, busy, onApply, onDiscard }) => {
+  const [includeExisting, setIncludeExisting] = useState(false);
+  return (
+    <div className="sheet-autofill-bar" role="status">
+      <span className="sheet-autofill-bar-count">
+        <strong>{count}</strong> Auto-Fill suggestion{count === 1 ? '' : 's'} ready
+      </span>
+      <label className="sheet-autofill-bar-check">
+        <input
+          type="checkbox"
+          checked={includeExisting}
+          onChange={(e) => setIncludeExisting(e.target.checked)}
+        />
+        <span>Include existing cells (overwrite)</span>
+      </label>
+      <button
+        type="button"
+        className="sheet-tool-btn sheet-autofill-discard"
+        onClick={onDiscard}
+        disabled={busy}
+      >Discard</button>
+      <button
+        type="button"
+        className="sheet-tool-btn sheet-autofill-apply"
+        onClick={() => onApply(includeExisting)}
+        disabled={busy}
+      >{busy ? '…' : 'Apply all'}</button>
+    </div>
+  );
+};
+
+// Sprint 15.5: Shift Templates modal — CRUD over the existing
+// `shifts` table (which the GET endpoint exposes as
+// "templates"). Each template is dept-scoped + has a start/end
+// time the popover (15.3) renders as a quick-pick pill.
+const ShiftTemplatesModal = ({ templates, departments, onClose, onRefresh }) => {
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState(null);
+  const blank = { name: '', department_id: departments[0]?.department_id || '', start_time: '09:00', end_time: '17:00' };
+  const [draft, setDraft] = useState(blank);
+  const [editingId, setEditingId] = useState(null);
+  const fmtT = (t) => t ? String(t).slice(0, 5) : '';
+
+  const submit = async () => {
+    if (!draft.name.trim() || !draft.department_id || !draft.start_time || !draft.end_time) {
+      setErr('Name, department, start, and end are all required.');
+      return;
+    }
+    setBusy(true); setErr(null);
+    const path = editingId
+      ? `/admin/shift-templates/${editingId}`
+      : '/admin/shift-templates';
+    const { ok, data } = await apiFetch(path, {
+      method: editingId ? 'PATCH' : 'POST',
+      body: JSON.stringify({
+        name:          draft.name.trim(),
+        department_id: draft.department_id,
+        start_time:    draft.start_time,
+        end_time:      draft.end_time,
+      }),
+    });
+    setBusy(false);
+    if (!ok || !data?.success) {
+      setErr(data?.message || 'Save failed.');
+      return;
+    }
+    setDraft(blank);
+    setEditingId(null);
+    await onRefresh();
+  };
+
+  const remove = async (t) => {
+    if (!window.confirm(`Delete template "${t.name}"?`)) return;
+    setBusy(true); setErr(null);
+    const { ok, data } = await apiFetch(`/admin/shift-templates/${t.shift_id}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!ok || !data?.success) {
+      setErr(data?.message || 'Delete failed.');
+      return;
+    }
+    await onRefresh();
+  };
+
+  return (
+    <div className="sheet-modal-backdrop" onClick={onClose} role="presentation">
+      <div className="sheet-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="sheet-modal-head">
+          <h3>Shift Templates</h3>
+          <button type="button" className="sheet-modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="sheet-modal-body">
+          <p className="sheet-modal-help">
+            Templates show up as quick-pick pills in the Edit Shift popover, dept-scoped to the row.
+          </p>
+
+          {templates.length === 0 ? (
+            <div className="sheet-overview-empty">No templates yet — add one below.</div>
+          ) : (
+            <ul className="sheet-tpl-list">
+              {templates.map(t => (
+                <li key={t.shift_id} className="sheet-tpl-row">
+                  <span className="sheet-tpl-name">{t.name}</span>
+                  <span className="sheet-tpl-dept">{t.department_name}</span>
+                  <span className="sheet-tpl-time">{fmtT(t.start_time)} – {fmtT(t.end_time)}</span>
+                  <button
+                    type="button"
+                    className="settings-dept-btn"
+                    onClick={() => {
+                      setEditingId(t.shift_id);
+                      setDraft({
+                        name:          t.name,
+                        department_id: t.department_id,
+                        start_time:    fmtT(t.start_time),
+                        end_time:      fmtT(t.end_time),
+                      });
+                    }}
+                    disabled={busy}
+                  >Edit</button>
+                  <button
+                    type="button"
+                    className="settings-dept-btn settings-dept-btn-danger"
+                    onClick={() => remove(t)}
+                    disabled={busy}
+                  >Delete</button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="sheet-tpl-form">
+            <div className="sheet-tpl-form-title">
+              {editingId ? 'Edit template' : 'Add template'}
+            </div>
+            <div className="sheet-tpl-form-row">
+              <input
+                type="text"
+                className="sheet-edit-input"
+                value={draft.name}
+                onChange={(e) => setDraft(s => ({ ...s, name: e.target.value }))}
+                placeholder="Name (e.g. Front Desk AM)"
+              />
+            </div>
+            <div className="sheet-tpl-form-row">
+              <select
+                className="sheet-edit-input"
+                value={draft.department_id}
+                onChange={(e) => setDraft(s => ({ ...s, department_id: e.target.value }))}
+              >
+                {departments.map(d => (
+                  <option key={d.department_id} value={d.department_id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sheet-tpl-form-row sheet-tpl-form-times">
+              <input
+                type="time"
+                className="sheet-edit-input"
+                value={draft.start_time}
+                onChange={(e) => setDraft(s => ({ ...s, start_time: e.target.value }))}
+              />
+              <span>to</span>
+              <input
+                type="time"
+                className="sheet-edit-input"
+                value={draft.end_time}
+                onChange={(e) => setDraft(s => ({ ...s, end_time: e.target.value }))}
+              />
+            </div>
+            <div className="sheet-tpl-form-actions">
+              {editingId && (
+                <button
+                  type="button"
+                  className="sheet-edit-btn sheet-edit-btn-cancel"
+                  onClick={() => { setEditingId(null); setDraft(blank); }}
+                  disabled={busy}
+                >Cancel edit</button>
+              )}
+              <button
+                type="button"
+                className="sheet-edit-btn sheet-edit-btn-save"
+                onClick={submit}
+                disabled={busy}
+              >{editingId ? 'Save changes' : '+ Add template'}</button>
+            </div>
+          </div>
+
+          {err && <div className="sheet-modal-err">{err}</div>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sprint 15.5: Copy Previous Week confirm dialog. Warns about
+// overwrite + offers an opt-in "Include existing cells" toggle.
+const CopyPrevWeekDialog = ({ weekStart, onCancel, onConfirm }) => {
+  const [overwrite, setOverwrite] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // Pretty-print the source week ("week of <prev Monday>") for the
+  // confirm dialog's body so the GM has zero ambiguity about what
+  // they're about to copy from.
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const prev = new Date(y, m - 1, d - 7);
+  const prevLabel = `${prev.toLocaleString('en-US', { month: 'short' })} ${prev.getDate()}`;
+  return (
+    <div className="sheet-modal-backdrop" onClick={onCancel} role="presentation">
+      <div className="sheet-modal sheet-modal-narrow" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="sheet-modal-head">
+          <h3>Copy Previous Week</h3>
+          <button type="button" className="sheet-modal-close" onClick={onCancel}>✕</button>
+        </div>
+        <div className="sheet-modal-body">
+          <p>
+            Copy every cell from the week of <strong>{prevLabel}</strong> into this week as fresh drafts.
+          </p>
+          <label className="sheet-autofill-bar-check">
+            <input
+              type="checkbox"
+              checked={overwrite}
+              onChange={(e) => setOverwrite(e.target.checked)}
+            />
+            <span>Include existing cells (overwrite this week's edits)</span>
+          </label>
+          <div className="sheet-edit-actions">
+            <button
+              type="button"
+              className="sheet-edit-btn sheet-edit-btn-cancel"
+              onClick={onCancel}
+              disabled={busy}
+            >Cancel</button>
+            <button
+              type="button"
+              className="sheet-edit-btn sheet-edit-btn-save"
+              onClick={async () => { setBusy(true); await onConfirm(overwrite); setBusy(false); }}
+              disabled={busy}
+            >{busy ? '…' : 'Copy'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sprint 15.5: Validate Schedule modal — surfaces the
+// week-overview conflicts list. v1 only includes the
+// self-overlap rule (15.4 server-side); future sprints may
+// add cross-cell + min/max-hours / break-missing checks.
+const ValidateScheduleModal = ({ overview, loading, onClose }) => {
+  const dayShort = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const conflicts = overview?.conflicts || [];
+  return (
+    <div className="sheet-modal-backdrop" onClick={onClose} role="presentation">
+      <div className="sheet-modal sheet-modal-narrow" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="sheet-modal-head">
+          <h3>Validate Schedule</h3>
+          <button type="button" className="sheet-modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="sheet-modal-body">
+          {loading ? (
+            <div className="sheet-overview-empty">Checking…</div>
+          ) : conflicts.length === 0 ? (
+            <div className="sheet-validate-clean">
+              <div className="sheet-validate-clean-icon">✓</div>
+              <div className="sheet-validate-clean-title">No conflicts detected</div>
+              <div className="sheet-validate-clean-sub">Every published cell parses cleanly.</div>
+            </div>
+          ) : (
+            <>
+              <p>
+                <strong>{conflicts.length}</strong> conflict{conflicts.length === 1 ? '' : 's'} found.
+              </p>
+              <ul className="sheet-overview-list">
+                {conflicts.map(c => (
+                  <li key={c.cell_id} className="sheet-overview-list-item">
+                    <span className="sheet-overview-list-pri">{c.user_name}</span>
+                    <span className="sheet-overview-list-sec">{dayShort[c.day_of_week]}</span>
+                    <span className="sheet-overview-list-meta sheet-overview-list-danger">
+                      Overlapping segments — "{c.display_text}"
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="sheet-modal-help">
+                Open each cell's Edit popover to fix the time ranges.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -1243,7 +1691,7 @@ const CellEditPopover = ({ state, templates, statusCodes, fgForBg, onSave, onClo
 // colored pill — admin-defined background + contrast-correct text.
 // The input stays an <input> so keyboard editing keeps working;
 // only its visual presentation changes.
-const ShiftCellInput = ({ value, hasNotes, highlight, published, statusByAbbr, fgForBg, onCommit, onToggleHighlight, onOpenEdit }) => {
+const ShiftCellInput = ({ value, hasNotes, highlight, published, suggestion, statusByAbbr, fgForBg, onCommit, onToggleHighlight, onOpenEdit }) => {
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const ref = useRef(null);
@@ -1264,6 +1712,11 @@ const ShiftCellInput = ({ value, hasNotes, highlight, published, statusByAbbr, f
   const matchedCode = (!focused && statusByAbbr)
     ? statusByAbbr.get((draft || '').trim().toUpperCase())
     : null;
+  // Sprint 15.5: render a ghost suggestion when the cell is empty
+  // *and* the parent has an auto-fill suggestion at this slot. Once
+  // the admin types anything, the draft is non-empty so the ghost
+  // visual detaches automatically.
+  const showSuggestion = !!suggestion && (draft || '').trim() === '';
   const classes = [
     'sheet-cell',
     'sheet-cell-input',
@@ -1271,6 +1724,7 @@ const ShiftCellInput = ({ value, hasNotes, highlight, published, statusByAbbr, f
     published ? 'is-published' : '',
     matchedCode ? 'is-status' : '',
     hasNotes ? 'has-notes' : '',
+    showSuggestion ? 'has-suggestion' : '',
   ].filter(Boolean).join(' ');
   const inputStyle = matchedCode
     ? { background: matchedCode.color, color: fgForBg(matchedCode.color), fontWeight: 700 }
@@ -1278,6 +1732,7 @@ const ShiftCellInput = ({ value, hasNotes, highlight, published, statusByAbbr, f
   return (
     <td
       className={classes}
+      data-suggestion={showSuggestion ? suggestion : undefined}
       onContextMenu={(e) => {
         // Sprint 14.1: right-click toggles yellow highlight. Long-press
         // on touch devices fires contextmenu too. Only available for

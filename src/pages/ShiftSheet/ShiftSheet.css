@@ -888,3 +888,268 @@
   }
 }
 
+/* ── Sprint 15.5: toolbar row + tool modals + auto-fill overlay ─────── */
+
+.sheet-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+}
+.sheet-tool-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.sheet-tool-btn:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.sheet-tool-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sheet-tool-err {
+  margin-left: auto;
+  font-size: 12px;
+  color: #c53030;
+  font-family: 'TiemposText', Georgia, serif;
+  font-style: italic;
+}
+
+/* Auto-fill suggestion overlay on empty cells. The input stays
+   empty (so typing replaces immediately) — the suggestion shows as
+   a pseudo-element overlay. Pointer events disabled so clicks pass
+   through to the input. */
+.sheet-cell-input.has-suggestion { position: relative; }
+.sheet-cell-input.has-suggestion::after {
+  content: attr(data-suggestion);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+  color: rgba(86, 142, 220, 0.85);
+  background: rgba(86, 142, 220, 0.06);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.sheet-cell-input.has-suggestion input::placeholder { color: transparent; }
+.sheet-cell-input.has-suggestion input:focus { background: var(--bg-surface); }
+
+/* Sticky bottom action bar shown while auto-fill suggestions are
+   pending. Sits above the rest of the page; doesn't intercept
+   clicks outside its own footprint. */
+.sheet-autofill-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  max-width: calc(100vw - 32px);
+}
+.sheet-autofill-bar-count strong {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  color: var(--brand-text);
+  margin-right: 4px;
+}
+.sheet-autofill-bar-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.sheet-autofill-discard {
+  background: transparent;
+}
+.sheet-autofill-apply {
+  background: #38a169;
+  border-color: #38a169;
+  color: white;
+}
+.sheet-autofill-apply:hover:not(:disabled) {
+  background: #2f855a;
+  border-color: #2f855a;
+  color: white;
+}
+
+/* Tool modals (Templates / Copy / Validate). Backdrop + centered
+   card. Re-uses some Sprint-15.3 popover patterns. */
+.sheet-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+  padding: 16px;
+  animation: sheet-edit-fade-in 0.12s ease;
+}
+.sheet-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+}
+.sheet-modal-narrow { max-width: 420px; }
+.sheet-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-light);
+}
+.sheet-modal-head h3 {
+  margin: 0;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+.sheet-modal-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sheet-modal-close:hover { background: var(--bg-raised); color: var(--text-primary); }
+.sheet-modal-body {
+  padding: 16px 18px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sheet-modal-body p {
+  margin: 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.sheet-modal-help {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.sheet-modal-err {
+  font-size: 12px;
+  color: #c53030;
+  font-style: italic;
+}
+
+/* Shift Templates list rows */
+.sheet-tpl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sheet-tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-base);
+  font-size: 13px;
+}
+.sheet-tpl-name { font-weight: 700; color: var(--text-primary); }
+.sheet-tpl-dept { font-size: 12px; color: var(--text-secondary); }
+.sheet-tpl-time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sheet-tpl-form {
+  border-top: 1px dashed var(--border-light);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sheet-tpl-form-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+.sheet-tpl-form-row select {
+  width: 100%;
+}
+.sheet-tpl-form-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sheet-tpl-form-times input {
+  flex: 1;
+}
+.sheet-tpl-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Validate clean state */
+.sheet-validate-clean {
+  text-align: center;
+  padding: 20px 0;
+}
+.sheet-validate-clean-icon {
+  font-size: 32px;
+  color: #38a169;
+  line-height: 1;
+}
+.sheet-validate-clean-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brand-text);
+  margin-top: 6px;
+}
+.sheet-validate-clean-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+

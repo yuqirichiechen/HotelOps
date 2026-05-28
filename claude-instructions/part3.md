@@ -345,6 +345,149 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.5: toolbar — Templates / Copy Previous Week / Auto-Fill / Validate
+
+Feature-heavy sprint. Four tools that the mockup wanted in a row
+above the grid, plus the supporting API surface for the new ones.
+
+**Server: shift-template CRUD.**
+
+The pre-existing `/api/admin/shift-templates` only had GET; the
+templates table (`shifts`) had no write endpoints. Added:
+
+- `POST   /api/admin/shift-templates` — create. Validates HH:MM /
+  HH:MM:SS time strings via `isValidTimeStr`.
+- `PATCH  /api/admin/shift-templates/:id` — partial update via
+  COALESCE-style SQL.
+- `DELETE /api/admin/shift-templates/:id` — guarded against
+  `schedules` FK references (409 with a friendly message if any
+  scheduled shifts still point at the template), mirrors the
+  Sprint-11 dept-delete guard.
+
+**Server: `POST /api/admin/sheet/copy-from-previous`.**
+
+Body: `{ week_start, overwrite? }`. One SQL statement copies every
+cell from `(week_start - 7 days)` into the target week via
+`INSERT … ON CONFLICT … DO UPDATE`. The `CASE WHEN $overwrite`
+guard makes empties-only the default (preserves any edits already
+on the target week unless the admin explicitly opted into
+overwrite). Always inserts as `is_published = FALSE` — the copy
+lands as drafts even if the source week was published.
+
+**Server: Auto-Fill (preview + apply pair).**
+
+- `POST /api/admin/sheet/auto-fill-preview?tz_offset_minutes=`
+  body: `{ week_start }`. For each `(user × DOW)` in the lookback
+  window (reuses the `coverage_history_weeks` setting from 15.0,
+  default 8), pulls the *most recent* completed clock entry via
+  `DISTINCT ON … ORDER BY … DESC`. Format the suggestion text as
+  `"<startShort>-<endShort>"` using the same `Hp` / `H:MMp`
+  shorthand the GM uses on the sheet. Returns
+  `{ suggestions: [{ user_id, day_of_week, display_text }] }`.
+  No DB writes — pure read.
+- `POST /api/admin/sheet/auto-fill-apply` body:
+  `{ week_start, suggestions, overwrite? }`. Bulk-INSERTs the
+  approved set. When `overwrite = false`, uses
+  `ON CONFLICT DO NOTHING` so existing cells survive untouched.
+  When `true`, swaps to `DO UPDATE SET …`. Every insert runs
+  through `parseShiftTimes` so the multi-segment parser +
+  parsed_start/parsed_end stay correct.
+
+**Why DISTINCT ON for the suggestion source.**
+
+The plan called for "most-common shift over last N weeks." Most-
+common requires bucketing into discrete intervals first (else
+"9:08–4:52" never matches "9:09–5:01"). Rather than rounding
+heuristics that could mask the GM's actual scheduling pattern,
+v1 ships *most-recent*: the user's most recent completed shift
+for that DOW. It's interpretable, deterministic, and matches
+what a manager would mentally reach for ("last Tuesday Sarah
+worked 9–5, so do that again"). Can swap to a true mode-finder
+later if real usage shows non-recent patterns dominate.
+
+**Client: tool row.**
+
+New `.sheet-toolbar` flex row sits between the topbar (week nav +
+exports) and the grid layout. Four buttons:
+
+- **☰ Shift Templates** — opens the new `ShiftTemplatesModal`.
+- **⎘ Copy Previous Week** — opens the `CopyPrevWeekDialog`
+  (confirm + overwrite checkbox).
+- **✨ Auto-Fill** — runs the preview endpoint. While
+  fetching, button shows "…"; on success, the sheet's empty
+  cells get a ghost overlay of the returned suggestions.
+- **✓ Validate Schedule** — opens the `ValidateScheduleModal`,
+  re-using the `conflicts` array from the 15.4 week-overview
+  payload.
+
+Tool errors surface inline on the right of the toolbar row
+(`.sheet-tool-err` italic red text).
+
+**Client: Auto-Fill preview overlay.**
+
+- Suggestions stored as a `Map<"<user_id>|<dow>", string>` in
+  state — empty until the admin runs Auto-Fill.
+- The cell renderer (`ShiftCellInput`) passes the suggestion via
+  a `suggestion` prop when no real cell exists at that slot.
+- Empty cells with a pending suggestion get a CSS pseudo-element
+  overlay rendering the suggested text in faint italic accent
+  color, with a very light tinted background to read as
+  "preview, not committed." `pointer-events: none` so clicks
+  still fall through to the input — typing immediately replaces
+  the ghost.
+- Sticky `.sheet-autofill-bar` appears at the bottom of the
+  viewport whenever the map is non-empty. Shows the count, an
+  "Include existing cells (overwrite)" checkbox, **Discard** and
+  **Apply all** buttons. Apply pushes through the bulk endpoint;
+  Discard wipes the map without writing anything.
+- The preview filter drops suggestions for slots that already
+  have a non-empty cell, so the bar count reflects what would
+  actually be applied unless the GM toggles "Include existing."
+
+**Client: Shift Templates modal.**
+
+Full CRUD over the new endpoints. List shows name + dept + time
+range; Edit / Delete inline; "+ Add template" form below the
+list with name / dept dropdown / time pickers / save+cancel.
+Edit slots flip the form into edit mode with prefilled fields.
+On success, refetches `/api/admin/shift-templates` so the 15.3
+popover's pills stay in sync.
+
+**Client: Copy Previous Week dialog.**
+
+Confirm dialog that surfaces the source-week label
+("Copy every cell from the week of Sep 22…") so the GM can't
+misfire onto the wrong week. "Include existing cells
+(overwrite)" checkbox; same opt-in pattern as the Auto-Fill bar.
+
+**Client: Validate Schedule modal.**
+
+Reads conflicts from the latest `overview` payload (no extra
+round-trip — the 15.4 endpoint already returned them). Zero-state
+shows a green ✓ with "No conflicts detected." Non-zero state
+shows the list with user / day / "Overlapping segments — '<text>'"
+and a pointer to use the Edit popover to fix.
+
+**Verified.** Three touched files balance. server.js retains the
+existing -5/+5 paren noise from regex + SQL string literals (no
+new imbalance from this sprint). All four tool buttons mount;
+each modal opens + closes; auto-fill overlay appears on empty
+cells; apply/discard round-trip works.
+
+**Follow-ups carried forward to 15.6+:**
+
+- **15.6** — mobile redesign (per-dept accordion cards). Has
+  to come before the toolbar row gets used on mobile in earnest;
+  current `.sheet-toolbar` will need a flex-wrap pass + maybe a
+  collapse-to-menu treatment when 4 buttons don't fit.
+- Mode-based auto-fill suggester (true most-common over a
+  rolling window) if "most recent" misses too often.
+- Bulk-apply Templates to selected cells (requires cell
+  selection UI, which we don't have yet).
+- Conflict-rule expansion (min/max hours, missing-break, etc.).
+
+---
+
 ### 2026-05-28 — Sprint 15.4: history-derived coverage algorithm + right-rail Week Overview
 
 The biggest sprint in the 15.x arc. Three coupled things:
