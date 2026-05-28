@@ -21,6 +21,42 @@ import './ShiftSheet.css';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// Sprint 15.6: media-query hook for the mobile redesign. Subscribes
+// to the MQL change event so re-renders fire when the viewport
+// crosses the breakpoint. Default true at first paint on small
+// devices via the initial matches read.
+const MOBILE_QUERY = '(max-width: 720px)';
+const useIsMobile = () => {
+  const get = () => typeof window !== 'undefined'
+    && window.matchMedia
+    && window.matchMedia(MOBILE_QUERY).matches;
+  const [m, setM] = useState(get);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia(MOBILE_QUERY);
+    const onChange = () => setM(mql.matches);
+    mql.addEventListener?.('change', onChange);
+    return () => mql.removeEventListener?.('change', onChange);
+  }, []);
+  return m;
+};
+
+// Sprint 15.6: per-dept open/closed state, persisted in localStorage
+// so the GM's collapsed sections stick across reloads. Keyed by
+// dept_id only (not by weekStart) — collapsing Front Desk on one
+// week probably implies collapsing it everywhere.
+const ACCORDION_KEY = 'hotelops-sheet-acc';
+const readAcc = () => {
+  if (typeof window === 'undefined') return {};
+  try { return JSON.parse(localStorage.getItem(ACCORDION_KEY) || '{}'); }
+  catch { return {}; }
+};
+const writeAcc = (state) => {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(ACCORDION_KEY, JSON.stringify(state)); }
+  catch { /* localStorage full or disabled — ignore */ }
+};
+
 const pad = (n) => String(n).padStart(2, '0');
 const localYmd = (d) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -55,6 +91,19 @@ const dayDate = (weekStart, idx) => {
 
 const ShiftSheet = () => {
   const { goTo } = useView();
+  const isMobile = useIsMobile();
+  // Sprint 15.6: per-dept accordion open state (mobile only). Default
+  // every dept open until the GM collapses one. Persisted via
+  // localStorage so collapses survive reloads.
+  const [accState, setAccState] = useState(readAcc);
+  const toggleAcc = (deptKey) => setAccState(prev => {
+    const next = { ...prev, [deptKey]: prev[deptKey] === false ? true : false };
+    writeAcc(next);
+    return next;
+  });
+  // Sprint 15.6: dropdown shown by the topbar "More" button on
+  // mobile (Export XLSX / Export PNG / Publish week as menu items).
+  const [moreOpen, setMoreOpen] = useState(false);
   const [weekStart, setWeekStart]     = useState(() => localYmd(mondayOf(new Date())));
   const [cells, setCells]             = useState([]);
   const [employees, setEmployees]     = useState([]);
@@ -99,6 +148,14 @@ const ShiftSheet = () => {
   }, [weekStart]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Sprint 15.6: dept_id → coverage entry for the mobile accordion
+  // header (shows the dept's coverage % next to "N staff").
+  const deptCoverageBy = useMemo(() => {
+    const m = new Map();
+    for (const d of (overview?.dept_coverage || [])) m.set(d.department_id, d);
+    return m;
+  }, [overview]);
 
   // Sprint 15.4: refetch the right-rail overview on week change.
   // Mutation handlers (publish, cell edit) also call this manually
@@ -599,43 +656,96 @@ const ShiftSheet = () => {
           <button className="sheet-nav-today" onClick={goToToday}>Today</button>
           <button className="sheet-nav-arrow" onClick={() => shiftWeek(+1)} aria-label="Next week">›</button>
           <span className="sheet-week-label">{fmtWeekLabel(weekStart)}</span>
-          {/* Sprint 14.1: bulk-publish + XLSX export. Publish toggles
-              every cell on the current week; XLSX dumps the visible
-              grid into a workbook the GM can hand off to payroll. */}
-          <button
-            type="button"
-            className={`sheet-publish-btn${weekAllPublished ? ' is-published' : ''}`}
-            onClick={() => publishWeek(!weekAllPublished)}
-            disabled={cells.length === 0}
-            title={weekAllPublished
-              ? 'All cells published — click to unpublish this week'
-              : 'Publish every cell on this week to the calendar overlay'}
-          >
-            {weekAllPublished ? '● Published' : 'Publish week'}
-          </button>
-          <button
-            type="button"
-            className="sheet-export-btn"
-            onClick={exportXLSX}
-            disabled={cells.length === 0}
-            title="Download .xlsx"
-          >↓ XLSX</button>
-          {/* Sprint 14.2: PNG export. Snapshot of the rendered grid,
-              handy for Slack / text-message handoffs where opening a
-              spreadsheet would be friction. */}
-          <button
-            type="button"
-            className="sheet-export-btn"
-            onClick={exportPNG}
-            disabled={cells.length === 0 || exportingPng}
-            title="Download .png"
-          >{exportingPng ? '…' : '↓ PNG'}</button>
+          {/* Sprint 14.1 / 14.2 / 15.6: Publish + XLSX + PNG sit
+              inline on desktop. On mobile they collapse into the
+              "More" menu (rendered below) so the topbar can fit on
+              a phone width without forcing horizontal scroll. */}
+          {!isMobile && (
+            <>
+              <button
+                type="button"
+                className={`sheet-publish-btn${weekAllPublished ? ' is-published' : ''}`}
+                onClick={() => publishWeek(!weekAllPublished)}
+                disabled={cells.length === 0}
+                title={weekAllPublished
+                  ? 'All cells published — click to unpublish this week'
+                  : 'Publish every cell on this week to the calendar overlay'}
+              >
+                {weekAllPublished ? '● Published' : 'Publish week'}
+              </button>
+              <button
+                type="button"
+                className="sheet-export-btn"
+                onClick={exportXLSX}
+                disabled={cells.length === 0}
+                title="Download .xlsx"
+              >↓ XLSX</button>
+              <button
+                type="button"
+                className="sheet-export-btn"
+                onClick={exportPNG}
+                disabled={cells.length === 0 || exportingPng}
+                title="Download .png"
+              >{exportingPng ? '…' : '↓ PNG'}</button>
+            </>
+          )}
+          {isMobile && (
+            <div className="sheet-more-wrap">
+              <button
+                type="button"
+                className="sheet-more-btn"
+                onClick={() => setMoreOpen(v => !v)}
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+              >⋮ More</button>
+              {moreOpen && (
+                <>
+                  <div
+                    className="sheet-more-backdrop"
+                    onClick={() => setMoreOpen(false)}
+                    role="presentation"
+                  />
+                  <div className="sheet-more-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sheet-row-menu-item"
+                      onClick={() => { setMoreOpen(false); publishWeek(!weekAllPublished); }}
+                      disabled={cells.length === 0}
+                    >
+                      <span className={`sheet-row-menu-dot${weekAllPublished ? ' is-published' : ''}`}>
+                        {weekAllPublished ? '●' : '○'}
+                      </span>
+                      {weekAllPublished ? 'Unpublish week' : 'Publish week'}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sheet-row-menu-item"
+                      onClick={() => { setMoreOpen(false); exportXLSX(); }}
+                      disabled={cells.length === 0}
+                    >↓ Export XLSX</button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sheet-row-menu-item"
+                      onClick={() => { setMoreOpen(false); exportPNG(); }}
+                      disabled={cells.length === 0 || exportingPng}
+                    >↓ Export PNG</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Sprint 15.5: tool row — Templates / Copy Previous Week /
+      {/* Sprint 15.5 / 15.6: tool row — Templates / Copy Previous Week /
           Auto-Fill / Validate. Sits between the topbar (week nav +
-          export) and the grid. */}
+          export) and the grid on desktop. On mobile (<720px) the
+          row is hidden — same 4 tools render as a floating bottom
+          tab bar at the end of the layout. */}
+      {!isMobile && (
       <div className="sheet-toolbar">
         <button
           type="button"
@@ -662,9 +772,171 @@ const ShiftSheet = () => {
           <span className="sheet-tool-err">{toolError}</span>
         )}
       </div>
+      )}
 
       {loading && visibleRows.length === 0 ? (
         <div className="sheet-empty">Loading…</div>
+      ) : isMobile ? (
+        <div className="sheet-layout sheet-layout-mobile">
+          {/* Sprint 15.6: mobile accordion layout. Each dept is its
+              own collapsible card; staff rows scroll the 7-day
+              cells horizontally within the card body. */}
+          <div className="sheet-accordion">
+            {grouped.length === 0 && (
+              <div className="sheet-empty">No staff or departments yet. Add a department in Settings, then come back to start a row.</div>
+            )}
+            {grouped.map(group => {
+              const isClosed = accState[group.key] === false;
+              const addable = group.department_id != null
+                ? (addableByDept.get(group.department_id) || [])
+                : [];
+              const addOpen = addOpenDept === group.key;
+              const dotColor = group.color || 'var(--border)';
+              const cov = group.department_id != null ? deptCoverageBy.get(group.department_id) : null;
+              return (
+                <section
+                  key={group.key}
+                  className={`sheet-acc-card${isClosed ? ' is-closed' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="sheet-acc-head"
+                    onClick={() => toggleAcc(group.key)}
+                    aria-expanded={!isClosed}
+                  >
+                    <span
+                      className="sheet-acc-dot"
+                      style={{ background: dotColor }}
+                      aria-hidden
+                    />
+                    <span className="sheet-acc-name">{group.name}</span>
+                    <span className="sheet-acc-meta">
+                      <span className="sheet-acc-count">{group.rows.length} staff</span>
+                      {cov && cov.pct != null && (
+                        <span
+                          className="sheet-acc-cov"
+                          style={{
+                            color: cov.pct >= 90 ? '#38a169' : cov.pct >= 70 ? '#dd6b20' : '#c53030',
+                          }}
+                        >{cov.pct}% coverage</span>
+                      )}
+                    </span>
+                    <span className="sheet-acc-chev">{isClosed ? '▾' : '▴'}</span>
+                  </button>
+                  {!isClosed && (
+                    <div className="sheet-acc-body">
+                      {/* Day header strip pinned at the top of the
+                          card body's horizontal-scroll area. */}
+                      <div className="sheet-acc-days-wrap">
+                        <div className="sheet-acc-days">
+                          {DAY_LABELS.map((label, idx) => {
+                            const d = dayDate(weekStart, idx);
+                            return (
+                              <div key={label} className="sheet-acc-day">
+                                <div className="sheet-acc-day-name">{label}</div>
+                                <div className="sheet-acc-day-num">{d.getDate()}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {group.rows.length === 0 ? (
+                        <div className="sheet-acc-empty">No staff yet — add one below.</div>
+                      ) : (
+                        group.rows.map(row => {
+                          const allPub = rowAllPublished(row.user_id);
+                          return (
+                            <div key={row.user_id} className="sheet-acc-row">
+                              <div className="sheet-acc-row-info">
+                                <span
+                                  className="sheet-acc-avatar"
+                                  style={{ background: dotColor }}
+                                  aria-hidden
+                                >
+                                  {(row.name || '?').split(' ').slice(0, 2).map(s => s.charAt(0).toUpperCase()).join('')}
+                                </span>
+                                <span className="sheet-acc-row-name">{row.name}</span>
+                              </div>
+                              <div className="sheet-acc-row-cells">
+                                {DAY_LABELS.map((_, idx) => {
+                                  const cell = cellMap.get(`${row.user_id}|${idx}`);
+                                  return (
+                                    <ShiftCellInput
+                                      key={idx}
+                                      value={cell?.display_text || ''}
+                                      hasNotes={!!cell?.notes}
+                                      highlight={!!cell?.highlight}
+                                      published={!!cell?.is_published}
+                                      suggestion={!cell ? autoFillSugg.get(`${row.user_id}|${idx}`) : null}
+                                      statusByAbbr={statusByAbbr}
+                                      fgForBg={fgForBg}
+                                      onCommit={(text) => saveCell(row.user_id, idx, text)}
+                                      onToggleHighlight={
+                                        cell ? () => toggleHighlight(cell.cell_id, !cell.highlight) : null
+                                      }
+                                      onOpenEdit={(e) => openEditPop(row, idx, e.currentTarget)}
+                                    />
+                                  );
+                                })}
+                              </div>
+                              <button
+                                type="button"
+                                className={`sheet-row-menu sheet-acc-row-menu${allPub ? ' is-published' : ''}`}
+                                onClick={(e) => toggleRowMenu(row.user_id, e.currentTarget)}
+                                aria-haspopup="menu"
+                                aria-expanded={openRowMenu?.userId === row.user_id}
+                              >⋯</button>
+                            </div>
+                          );
+                        })
+                      )}
+                      {group.department_id != null && (
+                        addOpen ? (
+                          <div className="sheet-add-inline sheet-acc-add-inline">
+                            <DropdownSelect
+                              value=""
+                              placeholder={
+                                addable.length === 0
+                                  ? `All ${group.name} staff already on the sheet`
+                                  : `Add to ${group.name}…`
+                              }
+                              options={addable.map(e => ({
+                                value: e.user_id,
+                                label: e.name,
+                              }))}
+                              onChange={(uid) => {
+                                if (uid) {
+                                  addStaffRow(uid);
+                                  setAddOpenDept(null);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="sheet-add-cancel"
+                              onClick={() => setAddOpenDept(null)}
+                            >Cancel</button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="sheet-add-btn sheet-acc-add-btn"
+                            onClick={() => setAddOpenDept(group.key)}
+                            disabled={addable.length === 0}
+                          >+ Add to {group.name}</button>
+                        )
+                      )}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+          <SheetOverviewRail
+            overview={overview}
+            loading={overviewLoading}
+          />
+        </div>
       ) : (
         <div className="sheet-layout">
         <div className="sheet-grid-wrap" ref={gridRef}>
@@ -722,7 +994,6 @@ const ShiftSheet = () => {
                     </tr>
                     {group.rows.map(row => {
                       const allPub = rowAllPublished(row.user_id);
-                      const anyCells = rowAnyCells(row.user_id);
                       return (
                         <tr key={row.user_id} className="sheet-row">
                           <td className="sheet-cell sheet-cell-name">{row.name}</td>
@@ -976,6 +1247,47 @@ const ShiftSheet = () => {
           loading={overviewLoading}
           onClose={() => setShowValidate(false)}
         />
+      )}
+
+      {/* Sprint 15.6: mobile bottom tab bar. Mirrors the desktop
+          .sheet-toolbar but as a fixed-position dock. Sits above
+          the auto-fill bar via z-index when both are visible. */}
+      {isMobile && (
+        <nav className="sheet-mobile-dock" aria-label="Sheet tools">
+          <button
+            type="button"
+            className="sheet-mobile-dock-btn"
+            onClick={() => setShowTemplates(true)}
+          >
+            <span className="sheet-mobile-dock-ico">☰</span>
+            <span className="sheet-mobile-dock-lbl">Templates</span>
+          </button>
+          <button
+            type="button"
+            className="sheet-mobile-dock-btn"
+            onClick={() => { setShowCopyConfirm(true); setToolError(null); }}
+          >
+            <span className="sheet-mobile-dock-ico">⎘</span>
+            <span className="sheet-mobile-dock-lbl">Copy week</span>
+          </button>
+          <button
+            type="button"
+            className="sheet-mobile-dock-btn"
+            onClick={runAutoFillPreview}
+            disabled={autoFillBusy}
+          >
+            <span className="sheet-mobile-dock-ico">{autoFillBusy ? '…' : '✨'}</span>
+            <span className="sheet-mobile-dock-lbl">Auto-Fill</span>
+          </button>
+          <button
+            type="button"
+            className="sheet-mobile-dock-btn"
+            onClick={() => setShowValidate(true)}
+          >
+            <span className="sheet-mobile-dock-ico">✓</span>
+            <span className="sheet-mobile-dock-lbl">Validate</span>
+          </button>
+        </nav>
       )}
     </div>
   );
@@ -1323,6 +1635,7 @@ const SheetOverviewRail = ({ overview, loading }) => {
 
   const datasetMsg = overview.dataset_warning === 'low_sample'
     ? 'Dataset is small — coverage targets may be inaccurate until more weeks of clock data accumulate.'
+    
     : overview.dataset_warning === 'regime_change'
     ? 'Recent scheduling pattern looks different from the older history; baseline auto-trimmed to the recent stable window.'
     : null;

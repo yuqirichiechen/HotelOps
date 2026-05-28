@@ -345,6 +345,114 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.6: mobile redesign — per-dept accordion cards + bottom dock + "More" menu
+
+Restructures the sheet for phones. Desktop layout (the table)
+stays exactly as-is at ≥720px. Below that, a new accordion-card
+layout takes over and the chrome reshuffles to match a native-app
+pattern (top bar, scrollable content, bottom dock).
+
+**Shipping:**
+
+- **`useIsMobile` hook.** Subscribes to `(max-width: 720px)` via
+  `matchMedia.addEventListener('change')` so re-renders fire when
+  the viewport crosses the breakpoint mid-session (e.g. rotating
+  the device).
+- **Per-dept accordion cards.** Replaces the desktop table when
+  `isMobile === true`. Each dept group becomes a
+  `<section className="sheet-acc-card">`:
+    - **Header**: dept-color dot + dept name + "N staff" pill +
+      coverage % (pulled from the 15.4 overview's
+      `dept_coverage`) + chevron. Click toggles open/closed.
+    - **Body**: day-header strip (Mon 25 / Tue 26 / …) followed
+      by one row per staff member. Each row has the staff info
+      pinned to the left (avatar circle with initials + name) and
+      the 7 cells in a horizontal-scroll strip (with snap and
+      iOS momentum scrolling).
+    - **Row menu**: the same `.sheet-row-menu` "..." button used
+      on desktop; popover render is unchanged (page-root,
+      position:fixed).
+    - **Per-dept "+ Add"**: same affordance the desktop has,
+      adapted to render as a full-width pill under the rows.
+- **Avatar initials.** `(name).split(' ').slice(0,2).map(s =>
+  s.charAt(0).toUpperCase()).join('')` — up to two-letter
+  monogram, dept-color background. Matches the mockup vibe
+  without requiring a real avatar field.
+- **`localStorage` accordion persistence.** Per-dept open state
+  saved under `hotelops-sheet-acc`. Default is open; collapsing
+  a dept saves `{ [deptKey]: false }` so collapses survive
+  reloads. Keyed by dept_id only (not by week) — collapsing
+  Front Desk one week implies collapsing it everywhere.
+- **Mobile "More" menu in topbar.** Below 720px the inline
+  Publish week / Export XLSX / Export PNG buttons collapse into
+  a single `⋮ More` button next to the week label. Click opens
+  a dropdown with the same three actions as menu items. Uses
+  the same item style as the per-row menu for visual consistency.
+  Page-overlay backdrop catches outside clicks.
+- **Mobile bottom dock.** `.sheet-mobile-dock` is a fixed
+  bottom `<nav>` with the 4 tools (Templates / Copy week /
+  Auto-Fill / Validate). Each button is an icon-over-label
+  pair. Replaces the desktop `.sheet-toolbar` row (which is
+  hidden on mobile via `{!isMobile && ...}`).
+- **Safe-area + auto-fill stacking.** Dock padding-bottom uses
+  `env(safe-area-inset-bottom)` so it lifts above the iPhone
+  home indicator. When the auto-fill bar is also visible, a
+  `@media (max-width: 720px)` rule offsets it to
+  `bottom: 82px` so it doesn't sit underneath the dock.
+- **Page padding.** `.sheet-page` gets `padding-bottom: 84px`
+  below 720px so the last accordion card isn't hidden under the
+  dock.
+
+**Behavior nuances:**
+
+- The right-rail `SheetOverviewRail` still renders on mobile,
+  but its existing `<1200px` CSS already collapses it into a
+  4-chip horizontal strip. So phone users get *both* the
+  per-dept coverage % on each card header *and* the overall
+  strip below the accordion. Not redundant — the strip's
+  Open / Conflicts / Unpublished counts aren't surfaced on the
+  cards.
+- Removing a row, adding a row, applying auto-fill, etc. all
+  work the same on mobile because the data layer is unchanged —
+  the mobile layout just renders the same handlers in a
+  different visual frame.
+- The desktop table render path is *unmodified* — the conditional
+  is `isMobile ? <accordion> : <existing desktop block>`. So
+  bugs introduced here can't break desktop, and vice versa.
+
+**Limitations / acceptable trade-offs:**
+
+- Each row's cells have their own horizontal scroll container.
+  That means the day-header strip (which has its own padding
+  alignment) and the cells *don't* scroll in lockstep — if a
+  row is scrolled to Wed while the header sits at Mon, the
+  alignment is off. We accept this for v1 because lockstep would
+  require either sharing a scroll container across rows
+  (breaks the per-row card layout) or syncing scroll positions
+  via JS (cost > benefit for a small UX win). The day numbers
+  still serve as a coarse anchor.
+- Suggestion ghost rendering and status code pill rendering
+  inherit automatically because the cells share the same
+  `ShiftCellInput` component on both desktop and mobile.
+
+**Verified.** ShiftSheet/index.js + ShiftSheet.css balance.
+Mobile rendering branch isolated cleanly; desktop unchanged;
+overview rail still mounts; all four tool buttons reachable via
+the dock; topbar "More" menu opens + dismisses; accordion state
+persists across reloads.
+
+**Follow-ups carried into 15.7:**
+
+- Avatars + presence-dot polish that 15.6 brushed against
+  (initials-only on mobile) is the 15.7 focal point — gets
+  applied across mobile + desktop + ResourceMode for
+  consistency.
+- Possible later: lock the day-header strip + row cells into a
+  shared scroll context (probably needs a JS sync since flexbox
+  doesn't have a built-in "share scrollable").
+
+---
+
 ### 2026-05-28 — Sprint 15.5: toolbar — Templates / Copy Previous Week / Auto-Fill / Validate
 
 Feature-heavy sprint. Four tools that the mockup wanted in a row

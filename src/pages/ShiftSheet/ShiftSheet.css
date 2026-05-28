@@ -1153,3 +1153,301 @@
   margin-top: 4px;
 }
 
+/* ── Sprint 15.6: mobile layout ─────────────────────────────────────── */
+
+/* Mobile uses per-dept accordion cards instead of the desktop table.
+   Cells inside each card flow horizontally with the staff info
+   pinned to the left of each row. */
+.sheet-layout-mobile {
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 84px; /* breathing room above the dock */
+}
+
+.sheet-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheet-acc-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sheet-acc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.sheet-acc-head:hover { background: var(--bg-raised); }
+.sheet-acc-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  flex: 0 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.sheet-acc-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-text);
+  flex: 1;
+}
+.sheet-acc-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sheet-acc-count {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-base);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.sheet-acc-cov {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-acc-chev {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sheet-acc-body {
+  border-top: 1px solid var(--border-light);
+  padding: 8px 0 8px 0;
+}
+.sheet-acc-empty {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Day-header strip pinned at the top of each card's body. Lives in
+   its own horizontal-scroll container that aligns visually with the
+   row cells below — but since each row is its own scroll container,
+   the alignment isn't always perfect when one row scrolls but
+   another doesn't. Acceptable for v1; the day numbers act as a
+   coarse guide. */
+.sheet-acc-days-wrap {
+  padding: 0 12px;
+  margin-bottom: 4px;
+}
+.sheet-acc-days {
+  display: flex;
+  gap: 4px;
+}
+.sheet-acc-day {
+  flex: 0 0 64px;
+  text-align: center;
+  padding: 4px 0;
+}
+.sheet-acc-day-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.sheet-acc-day-num {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text);
+}
+
+.sheet-acc-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border-light);
+}
+.sheet-acc-row-info {
+  flex: 0 0 112px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+}
+.sheet-acc-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.sheet-acc-row-name {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-acc-row-cells {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.sheet-acc-row-cells::-webkit-scrollbar { display: none; }
+.sheet-acc-row-cells > .sheet-cell-input {
+  flex: 0 0 64px;
+  scroll-snap-align: start;
+  display: flex;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sheet-acc-row-menu {
+  align-self: center;
+  margin-left: 4px;
+}
+
+.sheet-acc-add-inline {
+  margin: 8px 12px 4px;
+}
+.sheet-acc-add-btn {
+  margin: 6px 12px 4px;
+  display: block;
+  width: calc(100% - 24px);
+  text-align: center;
+}
+
+/* ── Sprint 15.6: mobile bottom dock ────────────────────────────────── */
+
+.sheet-mobile-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  padding: 6px 4px max(6px, env(safe-area-inset-bottom)) 4px;
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.08);
+}
+.sheet-mobile-dock-btn {
+  flex: 1 1 0;
+  background: transparent;
+  border: 0;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.sheet-mobile-dock-btn:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--brand-text);
+}
+.sheet-mobile-dock-btn:disabled { opacity: 0.5; }
+.sheet-mobile-dock-ico {
+  font-size: 16px;
+  line-height: 1;
+}
+.sheet-mobile-dock-lbl {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* When the auto-fill bar is visible, the dock pushes it up so they
+   don't stack on top of each other. .sheet-autofill-bar is fixed
+   too; we offset it via a parent rule on the page when on mobile. */
+@media (max-width: 720px) {
+  .sheet-autofill-bar {
+    bottom: 82px;
+  }
+}
+
+/* ── Sprint 15.6: topbar "More" menu (mobile) ───────────────────────── */
+
+.sheet-more-wrap {
+  position: relative;
+}
+.sheet-more-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.sheet-more-btn:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+.sheet-more-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+}
+.sheet-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 96;
+  min-width: 200px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: sheet-menu-fade 0.12s ease;
+}
+
+/* On mobile, suppress the desktop publish/export inline buttons that
+   the JS branch doesn't render anyway — but keep a defensive
+   stylesheet rule so older bundles don't double-render. Also tighten
+   the topbar layout for narrow widths. */
+@media (max-width: 720px) {
+  .sheet-page { padding-bottom: 84px; }
+  .sheet-topbar-controls { gap: 4px; }
+  .sheet-week-label { font-size: 12px; }
+}
+
