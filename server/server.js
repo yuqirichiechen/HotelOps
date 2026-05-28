@@ -1881,18 +1881,27 @@ app.delete('/api/admin/schedule/:id', async (req, res) => {
   }
 });
 
-// Sprint 14.1: free-form text → structured start/end-time parser.
-// Recognises the GM's common shorthands ("3p-11p", "11p-7a",
-// "9a-5p", "9-5"). Free-form notes like "OFF", "BRK", "Deep clea"
-// don't match the regex and return null — parsed_start/end stay
-// null for those cells. Pure function, no side-effects.
-const parseShiftTimes = (text) => {
-  if (!text || typeof text !== 'string') return null;
-  const s = text.trim().toLowerCase();
-  // Quick-reject clear non-time codes (cheaper than regex).
-  if (s.length < 3) return null;
+// Sprint 14.1 / 14.3: free-form text → structured start/end-time
+// parser. Recognises the GM's common shorthands ("3p-11p", "11p-7a",
+// "9a-5p", "9-5") and Sprint-14.3 split shifts
+// ("9-12 / 4-8" → two segments). Free-form notes like "OFF", "BRK",
+// "Deep clea" don't match and return null. Pure function.
+//
+// Return shape:
+//   null  → unparseable (no valid range found)
+//   {
+//     parsed_start: 'HH:MM:SS',  // first segment's start
+//     parsed_end:   'HH:MM:SS',  // last segment's end
+//     parsed_segments: [{start, end}, ...]  // every parsed range
+//   }
+//
+// parsed_start/end are kept around because the calendar overlay's
+// bar-position math and most stat-card aggregates only want the
+// outer envelope. Multi-segment-aware surfaces (the planned strip,
+// the inline ghost bars) read parsed_segments instead.
+const parseSingleRange = (s) => {
   // Format: "<h>[:<mm>][a|p|am|pm] [-–to] <h>[:<mm>][a|p|am|pm]"
-  const re = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*[-–—to/]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/;
+  const re = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*[-–—to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/;
   const m = s.match(re);
   if (!m) return null;
   let [, h1s, mm1s, p1, h2s, mm2s, p2] = m;
@@ -1917,8 +1926,39 @@ const parseShiftTimes = (text) => {
   if (!p1 && !p2 && h2 < h1 && h2 < 12) h2 += 12;
   const pad = (n) => String(n).padStart(2, '0');
   return {
-    parsed_start: `${pad(h1)}:${pad(mm1)}:00`,
-    parsed_end:   `${pad(h2)}:${pad(mm2)}:00`,
+    start: `${pad(h1)}:${pad(mm1)}:00`,
+    end:   `${pad(h2)}:${pad(mm2)}:00`,
+  };
+};
+
+const parseShiftTimes = (text) => {
+  if (!text || typeof text !== 'string') return null;
+  const s = text.trim().toLowerCase();
+  if (s.length < 3) return null;
+  // Sprint 14.3: split on inter-segment separators before trying the
+  // single-range parser on each piece. "/" used to live inside the
+  // single-range regex (treated as "to"), but the GM's split-shift
+  // syntax "9-12 / 4-8" wants "/" as a segment delimiter — and the
+  // unlikely "9/5" can still parse via the dash on its way through
+  // the lone "9" piece's eventual rejection + fallback below.
+  const SEP = /\s*(?:\/|,|\+|&|\sand\s)\s*/i;
+  const pieces = s.split(SEP).map(p => p.trim()).filter(Boolean);
+  const segments = [];
+  for (const p of pieces) {
+    const r = parseSingleRange(p);
+    if (r) segments.push(r);
+  }
+  if (segments.length === 0) {
+    // Fall back to whole-string parse in case the separator split
+    // hurt us (e.g. an exotic punctuation pattern inside one range).
+    const r = parseSingleRange(s);
+    if (!r) return null;
+    segments.push(r);
+  }
+  return {
+    parsed_start:    segments[0].start,
+    parsed_end:      segments[segments.length - 1].end,
+    parsed_segments: segments,
   };
 };
 
@@ -1941,6 +1981,7 @@ app.get('/api/admin/sheet/week', requireAuth, requireRole('admin'), async (req, 
     const { rows } = await pool.query(
       `SELECT c.cell_id, c.week_start::text, c.user_id, c.day_of_week,
               c.display_text, c.parsed_start::text, c.parsed_end::text,
+              c.parsed_segments,
               c.is_published, c.highlight, c.updated_at,
               u.name AS user_name, u.department_id, d.name AS department_name
        FROM schedule_sheet_cells c
@@ -1982,6 +2023,7 @@ app.get('/api/admin/sheet/published', requireAuth, requireRole('admin'), async (
               c.display_text,
               c.parsed_start::text,
               c.parsed_end::text,
+              c.parsed_segments,
               c.is_published,
               c.highlight,
               (c.week_start + (c.day_of_week || ' day')::interval)::date::text AS scheduled_date,
@@ -2035,26 +2077,37 @@ app.put('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (req, 
       );
       return res.json({ success: true, cell: null });
     }
-    // Sprint 14.1: derive structured times on every write so the
-    // calendar overlay (14.2) has them ready without a second pass.
-    const parsed = parseShiftTimes(text) || { parsed_start: null, parsed_end: null };
+    // Sprint 14.1 / 14.3: derive structured times on every write.
+    // parsed_start/end stay = outer envelope (first segment start,
+    // last segment end); parsed_segments stores the full array for
+    // split-shift consumers.
+    const parsed = parseShiftTimes(text) || {
+      parsed_start:    null,
+      parsed_end:      null,
+      parsed_segments: null,
+    };
+    const segmentsJson = parsed.parsed_segments
+      ? JSON.stringify(parsed.parsed_segments)
+      : null;
     const { rows } = await pool.query(
       `INSERT INTO schedule_sheet_cells
          (week_start, user_id, day_of_week, display_text,
-          parsed_start, parsed_end, highlight, updated_at)
+          parsed_start, parsed_end, parsed_segments, highlight, updated_at)
        VALUES ($1::date, $2, $3, $4, $5::time, $6::time,
-               COALESCE($7, FALSE), NOW())
+               $7::jsonb, COALESCE($8, FALSE), NOW())
        ON CONFLICT (week_start, user_id, day_of_week) DO UPDATE
-         SET display_text = EXCLUDED.display_text,
-             parsed_start = EXCLUDED.parsed_start,
-             parsed_end   = EXCLUDED.parsed_end,
-             highlight    = COALESCE($7, schedule_sheet_cells.highlight),
-             updated_at   = NOW()
+         SET display_text    = EXCLUDED.display_text,
+             parsed_start    = EXCLUDED.parsed_start,
+             parsed_end      = EXCLUDED.parsed_end,
+             parsed_segments = EXCLUDED.parsed_segments,
+             highlight       = COALESCE($8, schedule_sheet_cells.highlight),
+             updated_at      = NOW()
        RETURNING cell_id, week_start::text, user_id, day_of_week,
                  display_text, parsed_start::text, parsed_end::text,
+                 parsed_segments,
                  is_published, highlight, updated_at`,
       [week_start, user_id, day_of_week, text,
-       parsed.parsed_start, parsed.parsed_end, highlight]
+       parsed.parsed_start, parsed.parsed_end, segmentsJson, highlight]
     );
     return res.json({ success: true, cell: rows[0] });
   } catch (err) {
@@ -2076,6 +2129,7 @@ const setPublishedFlag = async (req, res, isPublished) => {
          WHERE cell_id = ANY($2::uuid[])
          RETURNING cell_id, week_start::text, user_id, day_of_week,
                    display_text, parsed_start::text, parsed_end::text,
+                   parsed_segments,
                    is_published, highlight, updated_at`,
         [isPublished, cell_ids]
       );
@@ -2099,6 +2153,7 @@ const setPublishedFlag = async (req, res, isPublished) => {
          WHERE week_start = $2::date${extra}
          RETURNING cell_id, week_start::text, user_id, day_of_week,
                    display_text, parsed_start::text, parsed_end::text,
+                   parsed_segments,
                    is_published, highlight, updated_at`,
         params
       );
@@ -2128,6 +2183,7 @@ app.put('/api/admin/sheet/cell/highlight', requireAuth, requireRole('admin'), as
        WHERE cell_id = $2::uuid
        RETURNING cell_id, week_start::text, user_id, day_of_week,
                  display_text, parsed_start::text, parsed_end::text,
+                 parsed_segments,
                  is_published, highlight, updated_at`,
       [highlight, cell_id]
     );

@@ -1605,6 +1605,27 @@
   pointer-events: none;
 }
 
+/* Sprint 14.3: planned-shift ghost bar inside a resource-view
+   row. Sits behind the actual .day-resource-shift via z-index: 0
+   and a dashed border so the eye reads it as "planned, not actual".
+   Filled-but-faint background so the bar registers even with no
+   actual shift on top of it (no-show / not-yet-clocked-in case). */
+.day-resource-planned {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border: 1.5px dashed;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.04);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+}
+.day-resource-planned.is-highlight {
+  background: rgba(254, 252, 191, 0.65);
+  border-color: #d69e2e !important;
+}
+
 .day-resource-shift {
   position: absolute;
   top: 0;

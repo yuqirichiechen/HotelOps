@@ -205,6 +205,12 @@ CREATE TABLE schedule_sheet_cells (
   display_text   TEXT         NOT NULL,
   parsed_start   TIME,
   parsed_end     TIME,
+  -- Sprint 14.3: full multi-segment parse for split shifts
+  -- ("9-12 / 4-8" → [{start,end},{start,end}]). parsed_start /
+  -- parsed_end stay populated for single-range queries; clients
+  -- that need every range read parsed_segments instead.
+  -- Migration: database/migrations/018_schedule_sheet_cells_segments.sql
+  parsed_segments JSONB,
   is_published   BOOLEAN      NOT NULL DEFAULT FALSE,
   highlight      BOOLEAN      NOT NULL DEFAULT FALSE,
   created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

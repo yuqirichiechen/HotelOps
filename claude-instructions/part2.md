@@ -792,6 +792,129 @@ nav row:
 
 ---
 
+### 2026-05-28 — Sprint 14.3: split-shift parser + multi-segment overlay + inline ghost bars
+
+Closes everything the 14.2 entry deferred: split shifts ("9-12 /
+4-8"), parser edge cases for the common separators, and the
+optional inline ghost-bar treatment in the resource view. After
+this 14.4 is a bug-only sprint.
+
+**Schema (migration 018):**
+
+- New JSONB column `parsed_segments` on `schedule_sheet_cells`.
+  Stores the full array of {start, end} parsed ranges per cell.
+- `parsed_start` / `parsed_end` are retained as the *outer
+  envelope* (first segment start, last segment end) so existing
+  queries that scope a cell to a single range (stat aggregates,
+  calendar overlay's bar positioning, etc.) keep working without
+  conditional logic.
+- Backfill in the migration: every existing row with a parseable
+  single range gets a one-element segments array generated from
+  its parsed_start/parsed_end pair, so post-migration rows look
+  uniform regardless of when they were written.
+
+**Server: multi-segment parser.**
+
+Refactored `parseShiftTimes` into a private `parseSingleRange`
+helper plus a thin outer wrapper that splits on the GM's
+multi-segment separators before parsing each piece:
+
+- Separators: `/`, `,`, `+`, `&`, ` and `
+- Each piece runs through the existing 12-hour-aware single-range
+  parser. Pieces that don't parse are dropped (forgiving — a
+  trailing "Special note" after two valid ranges still gets the
+  two ranges, not nothing).
+- If splitting yields no valid range, falls back to whole-string
+  parse (covers edge cases where the separator regex split too
+  aggressively).
+- Removed `/` from the single-range separator class (it was
+  ambiguous: "9/5" could mean "9 to 5" or two pieces "9" and "5").
+  In practice the GM uses `-` / `–` for single ranges and `/` only
+  between two complete ranges, so this is safe.
+
+Updated three SELECT paths to return `parsed_segments`:
+`/admin/sheet/week` (the sheet grid), `/admin/sheet/published`
+(the calendar overlay), and the four RETURNING blocks (PUT cell,
+publish-by-ids, publish-by-week, highlight). PUT cell stores the
+JSON array via `$N::jsonb`.
+
+**Client: planned-strip pill renders every segment.**
+
+`PlannedShiftsStrip` now reads `parsed_segments` first, falling
+back to `parsed_start`/`parsed_end` for pre-migration cells. A
+split shift shows as "09:00–12:00 / 16:00–20:00" inside the
+time-range slot of the pill, with an `is-split` class on the pill
+for any future visual differentiation.
+
+**Client: inline ghost bars in ResourceMode (classic + rows).**
+
+The bigger UX win. Each staff row now renders one dashed,
+semi-transparent ghost bar per planned segment, sitting *behind*
+the actual clock-entry bar (`z-index: 0` vs the actual bar's
+`z-index: 1`). Same horizontal positioning math as actual bars,
+so 9–5 planned + 9:08–4:52 actual visually shows the small
+under/over the GM cares about for tardiness review.
+
+- Aggregated per user via a `plannedByUser` index built once from
+  the `planned` prop. Each user's segments get appended into a
+  single array so the row rendering is a flat `.map` of dashed
+  divs.
+- Row inclusion expanded: a staff member who has a planned shift
+  but didn't clock in still gets a row (otherwise the no-show /
+  not-yet-punched case is invisible). Without an actual bar, the
+  row is *just* the ghost bar — instantly readable as "planned
+  but unaccounted for."
+- Dashed border (1.5px) in the dept color, faint gray fill so the
+  bar registers even on planned-only rows. Highlighted cells (the
+  yellow "BRK+help" treatment from 14.1) propagate to the ghost
+  bar — slight yellow tint, dept-yellow border.
+- Title attribute carries the parsed range + the original
+  `display_text` so the GM can hover for context ("Planned:
+  09:00–12:00 (9-12 / 4-8)").
+
+**TimelineMode (classic + timeline) intentionally left without
+inline ghost bars.**
+
+TimelineMode is dept-grouped lanes with no first-class user
+dimension — putting per-user planned bars there would either
+require a new lane system on top of the lane packer or shrink the
+existing bars by half to make room. Cost > benefit. The
+`PlannedShiftsStrip` above the timeline already surfaces the
+day's planned info as scannable pills; TimelineMode users can
+flip to ResourceMode if they want the inline comparison.
+Documented this trade-off so we don't re-litigate it in 14.5+.
+
+**Cards modes (cards + timeline and cards + rows) — no inline
+ghost bars either.**
+
+Same reasoning: cards views consume cardified shift data via
+different render paths. The strip above is sufficient. ResourceMode
+is the workflow surface where the planned-vs-actual side-by-side
+comparison actually drives ops decisions, so that's where the
+inline overlay landed.
+
+**Migration deploy note.** `018_schedule_sheet_cells_segments.sql`
+must run before code rollout. Pre-migration rows backfill via
+the SQL in the migration; new writes populate `parsed_segments`
+directly. Server falls back gracefully (`null` segments → strip
+uses parsed_start/end) so an ordering mishap won't crash.
+
+**Verified.** Five touched files (server.js, DayView.js,
+Scheduling.css, schema.sql, migration 018) balance.
+parsed_segments threaded through SELECT/RETURNING; plannedByUser
++ ghost-bar render path wired; split-shift pill renders multiple
+ranges. server.js shows the same paren noise from the regex
+literals in the parser, unchanged in magnitude (-4/+4).
+
+**Follow-ups (14.4 = bug session):**
+
+Open the floor to whatever surfaces in real use:
+- Parser edge cases that escape the current separator set.
+- Visual tuning on the ghost bars (opacity / contrast).
+- Anything else the GM flags after running a full publish cycle.
+
+---
+
 ### 2026-05-28 — Sprint 14.2: planned-shift calendar overlay + PNG export
 
 14.1 wired publish + parsing; 14.2 finally closes the

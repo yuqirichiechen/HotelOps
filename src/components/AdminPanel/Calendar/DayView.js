@@ -299,20 +299,30 @@ const PlannedShiftsStrip = ({ planned, departments }) => {
       <ul className="day-planned-strip-list">
         {planned.map(p => {
           const color = deptColorFor(p.department_name);
-          const time = (p.parsed_start && p.parsed_end)
-            ? `${p.parsed_start.slice(0,5)}–${p.parsed_end.slice(0,5)}`
-            : null;
+          // Sprint 14.3: prefer the full segments array so split
+          // shifts render every range. Fall back to the parsed_start/
+          // parsed_end pair for cells written before migration 018.
+          const segs = Array.isArray(p.parsed_segments) && p.parsed_segments.length > 0
+            ? p.parsed_segments
+            : (p.parsed_start && p.parsed_end
+                ? [{ start: p.parsed_start, end: p.parsed_end }]
+                : []);
+          const isSplit = segs.length > 1;
           return (
             <li
               key={p.cell_id}
-              className={`day-planned-pill${p.highlight ? ' is-highlight' : ''}`}
+              className={`day-planned-pill${p.highlight ? ' is-highlight' : ''}${isSplit ? ' is-split' : ''}`}
               style={{ borderColor: color.border, color: color.text }}
               title={p.department_name ? `${p.department_name} • ${p.display_text}` : p.display_text}
             >
               <span className="day-planned-pill-dot" style={{ background: color.border }} aria-hidden />
               <span className="day-planned-pill-name">{p.user_name}</span>
               <span className="day-planned-pill-text">
-                {time ? <span className="day-planned-pill-time">{time}</span> : null}
+                {segs.length > 0 ? (
+                  <span className="day-planned-pill-time">
+                    {segs.map(s => `${s.start.slice(0,5)}–${s.end.slice(0,5)}`).join(' / ')}
+                  </span>
+                ) : null}
                 <span className="day-planned-pill-raw">{p.display_text}</span>
               </span>
             </li>
@@ -506,6 +516,7 @@ const DayView = ({ date, schedules, plannedShifts, employees, departments, loadi
       {layoutStyle === 'classic' && viewMode === 'timeline' && (
         <TimelineMode
           shifts={filteredShifts}
+          planned={todaysPlanned}
           onEdit={onEdit}
           onShowDetail={setDetailShift}
         />
@@ -514,6 +525,7 @@ const DayView = ({ date, schedules, plannedShifts, employees, departments, loadi
         <ResourceMode
           deptGroups={empsByDept}
           shifts={filteredShifts}
+          planned={todaysPlanned}
           onEdit={onEdit}
           onShowDetail={setDetailShift}
         />
@@ -701,7 +713,13 @@ const TimelineBucketsMode = ({ shifts, onShowDetail }) => {
   );
 };
 
-const TimelineMode = ({ shifts, onEdit, onShowDetail }) => {
+const TimelineMode = ({ shifts, planned, onEdit, onShowDetail }) => {
+  // Sprint 14.3: TimelineMode is dept-grouped lanes with no first-class
+  // user dimension, so inline ghost bars per user don't map cleanly
+  // onto its layout. The PlannedShiftsStrip above already surfaces
+  // the planned info for the current day; classic+timeline relies
+  // on that. ResourceMode (rows) gets the inline ghost-bar treatment.
+  void planned;
   const { shifts: laneShifts, laneCount, deptBands } = useMemo(
     () => laneAssign(shifts), [shifts]
   );
@@ -822,7 +840,7 @@ const TimelineMode = ({ shifts, onEdit, onShowDetail }) => {
 //   - bar ≥ 720px → step 1h (25 labels)
 // The first (h=0) and last (h=24) labels are anchored to their respective
 // edges via data-edge so they don't get clipped by translate(-50%).
-const ResourceMode = ({ deptGroups, shifts, onEdit, onShowDetail }) => {
+const ResourceMode = ({ deptGroups, shifts, planned, onEdit, onShowDetail }) => {
   // Build shift index by user_id for the per-row lookup. Limited to one
   // shift per user per day to match the data model the rest of the views
   // assume.
@@ -831,6 +849,30 @@ const ResourceMode = ({ deptGroups, shifts, onEdit, onShowDetail }) => {
     shifts.forEach(s => { m[s.user_id] = s; });
     return m;
   }, [shifts]);
+
+  // Sprint 14.3: per-user planned segments for the ghost-bar overlay.
+  // Aggregates every published cell's segments by user so each row
+  // gets a single array to render. Falls back to a one-element
+  // segments array for pre-migration-018 cells.
+  const plannedByUser = useMemo(() => {
+    const m = {};
+    (planned || []).forEach(p => {
+      const segs = Array.isArray(p.parsed_segments) && p.parsed_segments.length > 0
+        ? p.parsed_segments
+        : (p.parsed_start && p.parsed_end
+            ? [{ start: p.parsed_start, end: p.parsed_end }]
+            : []);
+      if (segs.length === 0) return;
+      if (!m[p.user_id]) m[p.user_id] = [];
+      m[p.user_id].push(...segs.map(seg => ({
+        start: seg.start,
+        end:   seg.end,
+        highlight: p.highlight,
+        display_text: p.display_text,
+      })));
+    });
+    return m;
+  }, [planned]);
 
   const hourBarRef = useRef(null);
   const [labelStep, setLabelStep] = useState(6);
@@ -884,7 +926,14 @@ const ResourceMode = ({ deptGroups, shifts, onEdit, onShowDetail }) => {
             "N on" so the admin can see at-a-glance who's
             *not* in (compare against StaffManager for a roster). */}
       {deptGroups.map(dept => {
-        const onStaff = dept.staff.filter(e => shiftByUser[e.user_id]);
+        // Sprint 14.3: include staff who have planned (but not yet
+        // clocked) shifts so the ghost overlay surfaces no-shows /
+        // not-yet-clocked-in cases. Without this, a planned cell
+        // for someone who didn't punch would be invisible in the
+        // resource view.
+        const onStaff = dept.staff.filter(
+          e => shiftByUser[e.user_id] || (plannedByUser[e.user_id]?.length > 0)
+        );
         if (onStaff.length === 0) return null;
         return (
         <React.Fragment key={dept.department_id}>
@@ -901,9 +950,13 @@ const ResourceMode = ({ deptGroups, shifts, onEdit, onShowDetail }) => {
           {onStaff.map(emp => {
             const s = shiftByUser[emp.user_id];
             const box = s ? horizontalShiftBox(s.start_time, s.end_time) : null;
+            // Sprint 14.3: fall back to the dept band's color when no
+            // actual shift exists (planned-only row), so the ghost
+            // bar still reads as "this department's planned shift"
+            // instead of a neutral gray.
             const color = s
               ? (DEPT_COLORS[s.department_name] || DEPT_COLORS[dept.name] || DEFAULT_COLOR)
-              : DEFAULT_COLOR;
+              : (DEPT_COLORS[dept.name] || DEFAULT_COLOR);
             return (
               <div key={emp.user_id} className="day-resource-row">
                 <div
@@ -926,6 +979,27 @@ const ResourceMode = ({ deptGroups, shifts, onEdit, onShowDetail }) => {
                   <div className="day-resource-tick" style={{ left: '25%' }} />
                   <div className="day-resource-tick" style={{ left: '50%' }} />
                   <div className="day-resource-tick" style={{ left: '75%' }} />
+                  {/* Sprint 14.3: planned-shift ghost bars. Rendered
+                      *before* the actual shift block so they sit behind
+                      it visually — same z-stack as the ticks. Dashed
+                      border + lower opacity so the actual bar stays
+                      the dominant signal. */}
+                  {(plannedByUser[emp.user_id] || []).map((seg, idx) => {
+                    const gb = horizontalShiftBox(seg.start, seg.end);
+                    return (
+                      <div
+                        key={`planned-${emp.user_id}-${idx}`}
+                        className={`day-resource-planned${seg.highlight ? ' is-highlight' : ''}`}
+                        style={{
+                          left:  `${gb.left}%`,
+                          width: `${gb.width}%`,
+                          borderColor: color.border,
+                        }}
+                        title={`Planned: ${seg.start.slice(0,5)}–${seg.end.slice(0,5)} (${seg.display_text})`}
+                        aria-hidden
+                      />
+                    );
+                  })}
                   {s && box && (() => {
                     const startStr = s.start_time.slice(0,5);
                     const endStr   = s.is_in_progress ? 'now' : s.end_time.slice(0,5);
