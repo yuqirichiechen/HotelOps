@@ -298,7 +298,13 @@
   text-align: center;
   padding: 0;
 }
-.sheet-row-publish {
+/* Sprint 14.1 had a per-row ○/● publish toggle. Sprint 15.2 folds
+   that affordance into a "..." menu (.sheet-row-menu); the publish
+   state still reads at a glance because the trigger goes green
+   when the row is fully published. The popover (.sheet-row-menu-pop)
+   renders at the page root via position:fixed so the .sheet-grid-wrap
+   overflow clip doesn't truncate it. */
+.sheet-row-menu {
   width: 26px;
   height: 26px;
   border-radius: 999px;
@@ -306,21 +312,75 @@
   background: var(--bg-surface);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 16px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-.sheet-row-publish:hover {
-  border-color: #38a169;
-  color: #38a169;
+.sheet-row-menu:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
 }
-.sheet-row-publish.is-published {
-  background: #38a169;
+.sheet-row-menu.is-published {
+  background: rgba(56, 161, 105, 0.12);
   border-color: #38a169;
-  color: white;
+  color: #276749;
+}
+
+.sheet-row-menu-pop {
+  position: fixed;
+  z-index: 100;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md, 0 6px 18px rgba(0, 0, 0, 0.16));
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: sheet-menu-fade 0.12s ease;
+}
+@keyframes sheet-menu-fade {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sheet-row-menu-item {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: background 0.12s ease;
+}
+.sheet-row-menu-item:hover {
+  background: var(--bg-raised);
+}
+.sheet-row-menu-item.sheet-row-menu-danger {
+  color: var(--danger-text, #c53030);
+}
+.sheet-row-menu-item.sheet-row-menu-danger:hover {
+  background: rgba(197, 48, 48, 0.08);
+}
+.sheet-row-menu-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sheet-row-menu-dot.is-published {
+  color: #38a169;
 }
 
 /* Published cells get a green left-edge stripe so the published
@@ -329,4 +389,25 @@
    inner input). */
 .sheet-cell-input.is-published {
   box-shadow: inset 3px 0 0 0 #38a169;
+}
+
+/* Sprint 15.2: inline status pill rendering. When a cell's text
+   matches a known status code (admin-defined in Settings), the
+   input is restyled as a pill — admin-picked background, contrast-
+   correct text, bold. The input remains for keyboard editing.
+   When focused the matched-style detaches (see the React onFocus)
+   so the raw text the admin is typing reads clearly. */
+.sheet-cell-input.is-status input {
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 2px 4px;
+  padding: 6px 4px;
+  width: calc(100% - 8px);
+}
+.sheet-cell-input.is-status input:focus {
+  /* Override the focused-pill look so editing stays readable. */
+  background: var(--accent-bg) !important;
+  color: var(--text-primary) !important;
+  font-weight: 400 !important;
 }

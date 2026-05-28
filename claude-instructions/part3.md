@@ -345,6 +345,99 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.2: inline status pills + per-row "..." menu
+
+First sprint where 15.0's `status_codes` table actually shows up
+on the sheet. Plus consolidates the per-row publish toggle into a
+proper row-actions menu so we have somewhere to land Copy / Remove
+/ View profile.
+
+**Shipped:**
+
+- **Status code fetch + lookup.** `ShiftSheet` mounts → fetches
+  `/admin/status-codes` once. Builds a `statusByAbbr` Map keyed by
+  the upper-cased abbreviation for O(1) lookup from the cell
+  renderer.
+- **Inline pill rendering.** `ShiftCellInput` checks whether the
+  current value (trimmed + upper-cased) matches a status code.
+  When it does AND the cell is not focused, the input gets a
+  colored background (the admin-picked hex from the code),
+  contrast-correct text color, bold weight, slight border radius,
+  and uppercase + letter-spacing. The input stays an `<input>` so
+  keyboard editing keeps working — only the visual style changes.
+- **Focus-aware behavior.** Local `focused` state on the input.
+  While focused (admin is typing), the pill style detaches so
+  half-typed text reads cleanly. As soon as blur fires, the match
+  is re-checked and the pill re-applied. No flicker because the
+  match is computed render-time, not on each keystroke during
+  focus.
+- **Contrast-correct foreground.** Small `fgForBg(hex)` helper
+  computes luminance and picks white text for dark backgrounds,
+  near-black for light. Simple weighted RGB; can swap for APCA
+  later if needed.
+- **Per-row "..." menu.** New `.sheet-row-menu` chip replaces the
+  Sprint-14.1 ○/● publish toggle. Menu items:
+    - Publish row / Unpublish row (existing handler, with a
+      colored dot reflecting current state)
+    - Copy row to next week (new)
+    - View staff profile (`goTo('staffDetail', { userId })`)
+    - Remove from sheet (new, with a confirm dialog)
+- **Publish state still readable at a glance.** The trigger gets
+  the same green-tint treatment the old standalone toggle had —
+  green background + border + text when the row is fully
+  published. No info lost going from "always-visible toggle" to
+  "menu trigger that doubles as a state pill."
+
+**Popover positioning gotcha (and the fix).**
+
+`.sheet-grid-wrap` has `overflow-x: auto` for horizontal table
+scroll. Per CSS spec, an `overflow-x` value of `auto` forces
+`overflow-y` to clip too. A naïve `position: absolute` popover
+anchored to the row's "..." trigger would get clipped by the
+wrap's edges on narrow viewports or when the menu opens at the
+bottom of the visible area.
+
+Fix: popover uses `position: fixed`, rendered as a page-root
+sibling of the table (outside the wrap). Toggle handler captures
+the trigger's `getBoundingClientRect()` and stores it in the
+`openRowMenu` state alongside the userId. The popover renders
+once at the page root, reading `top`/`left` from that rect.
+Auto-flips upward if it would overflow the viewport bottom.
+Auto-closes on document scroll (capture phase, catches scrolls
+in any nested overflow container too) so a stale rect can't leave
+the menu floating in mid-air.
+
+**Row action implementations:**
+
+- **Copy row to next week:** filters cells for the row, computes
+  `weekStart + 7` (local-date math), then `Promise.all` of 7 PUTs
+  through the existing `/admin/sheet/cell` upsert endpoint.
+  Parser + segments stay populated because every PUT goes through
+  the server's standard write path. For 7 cells the round-trips
+  are fine; we'll fold into a bulk endpoint later if this becomes
+  a frequent GM action.
+- **Remove from sheet:** `Promise.all` of DELETEs against the
+  existing `/admin/sheet/cell?…` route plus dropping the user
+  from the session's `addedUserIds` set so manually-added-but-
+  empty rows disappear too.
+
+**Verified.** ShiftSheet/index.js + ShiftSheet.css balance.
+Status codes load on mount; pill renders for HELP / BRK / DEEP
+CLEAN / H.M / OFF + any admin-added codes; per-row menu opens
+on the right viewport, escapes overflow, closes on outside click
++ Escape + scroll.
+
+**Follow-ups:**
+
+- **15.3** next: per-cell Edit Shift popover (pill-based time
+  templates, notes field, contenteditable fast-path retained).
+  The "..." pattern we built here gives us a popover layout
+  template to mirror.
+- Possible refinement: if "Copy row to next week" becomes a daily
+  GM action, fold the 7-PUT loop into a single bulk endpoint.
+
+---
+
 ### 2026-05-28 — Sprint 15.1: per-dept "+ Add staff" + dept header polish
 
 The narrow ask from the GM after the Sprint-14.3 review: scope the

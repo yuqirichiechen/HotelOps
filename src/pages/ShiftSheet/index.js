@@ -61,6 +61,10 @@ const ShiftSheet = () => {
   const [departments, setDepartments] = useState([]);
   const [addedUserIds, setAddedUserIds] = useState(new Set());
   const [loading, setLoading]         = useState(true);
+  // Sprint 15.2: admin-defined status codes drive inline pill
+  // rendering on cells whose display_text matches an abbreviation
+  // (case-insensitive, whole-string). Pulled once on mount.
+  const [statusCodes, setStatusCodes] = useState([]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -76,6 +80,40 @@ const ShiftSheet = () => {
   }, [weekStart]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Sprint 15.2: status codes load once per mount — they don't
+  // change between week navigations, so no point refetching on
+  // every reload.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/admin/status-codes').then(({ ok, data }) => {
+      if (cancelled) return;
+      if (ok && data?.success) setStatusCodes(data.codes || []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Sprint 15.2: abbreviation (upper-cased) → code map for O(1)
+  // lookup from the cell renderer.
+  const statusByAbbr = useMemo(() => {
+    const m = new Map();
+    for (const c of statusCodes) {
+      m.set(c.abbreviation.trim().toUpperCase(), c);
+    }
+    return m;
+  }, [statusCodes]);
+
+  // Sprint 15.2: pick a contrast-correct foreground for a given
+  // hex bg. Simple luminance threshold — good enough for the small
+  // palette we ship; can swap for proper APCA later if needed.
+  const fgForBg = (hex) => {
+    if (!hex || hex.length !== 7) return '#fff';
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.6 ? '#1a202c' : '#ffffff';
+  };
 
   // (user_id, day_of_week) → cell
   const cellMap = useMemo(() => {
@@ -165,6 +203,41 @@ const ShiftSheet = () => {
   // expanded. Only one open at a time — clicking another dept's "+"
   // collapses the previous one. null = none open.
   const [addOpenDept, setAddOpenDept] = useState(null);
+
+  // Sprint 15.2: which row's "..." menu is open + its trigger's
+  // bounding rect (so the popover can be position:fixed and escape
+  // the .sheet-grid-wrap's overflow clipping).
+  // Shape: null | { userId, rect: { top, right, bottom, left } }
+  const [openRowMenu, setOpenRowMenu] = useState(null);
+  useEffect(() => {
+    if (!openRowMenu) return;
+    const onDocClick = (e) => {
+      if (e.target.closest?.('.sheet-row-menu-pop, .sheet-row-menu')) return;
+      setOpenRowMenu(null);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpenRowMenu(null);
+    };
+    const onScroll = () => setOpenRowMenu(null);
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [openRowMenu]);
+  const toggleRowMenu = (userId, triggerEl) => {
+    setOpenRowMenu(prev => {
+      if (prev?.userId === userId) return null;
+      const rect = triggerEl.getBoundingClientRect();
+      return {
+        userId,
+        rect: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left },
+      };
+    });
+  };
 
   const saveCell = useCallback(async (user_id, day_of_week, displayText) => {
     const res = await apiFetch('/admin/sheet/cell', {
@@ -305,6 +378,53 @@ const ShiftSheet = () => {
     [cells]
   );
 
+  // Sprint 15.2: remove a user from the sheet entirely. Bulk-deletes
+  // every cell they have this week and drops them from the
+  // session-added set so the row disappears even if they had no
+  // cells (manually-added-but-empty case).
+  const removeRow = useCallback(async (userId) => {
+    const rowCells = cells.filter(c => c.user_id === userId);
+    if (rowCells.length > 0) {
+      const cellIds = rowCells.map(c => c.cell_id);
+      await Promise.all(rowCells.map(c =>
+        apiFetch(`/admin/sheet/cell?week_start=${weekStart}&user_id=${userId}&day_of_week=${c.day_of_week}`, {
+          method: 'DELETE',
+        })
+      ));
+      setCells(prev => prev.filter(c => !cellIds.includes(c.cell_id)));
+    }
+    setAddedUserIds(prev => {
+      if (!prev.has(userId)) return prev;
+      const next = new Set(prev);
+      next.delete(userId);
+      return next;
+    });
+  }, [cells, weekStart]);
+
+  // Sprint 15.2: copy every cell on a row to the *next* week. Each
+  // PUT goes through the standard upsert endpoint so the parser +
+  // segments stay in sync. Uses Promise.all — for 7 cells the
+  // serial-ization cost isn't worth a bulk endpoint, but if this
+  // becomes a common GM action we'll fold it into one.
+  const copyRowToNextWeek = useCallback(async (userId) => {
+    const rowCells = cells.filter(c => c.user_id === userId);
+    if (rowCells.length === 0) return;
+    const [y, m, d] = weekStart.split('-').map(Number);
+    const nextWeek = localYmd(new Date(y, m - 1, d + 7));
+    await Promise.all(rowCells.map(c =>
+      apiFetch('/admin/sheet/cell', {
+        method: 'PUT',
+        body: JSON.stringify({
+          week_start:   nextWeek,
+          user_id:      userId,
+          day_of_week:  c.day_of_week,
+          display_text: c.display_text,
+          highlight:    c.highlight,
+        }),
+      })
+    ));
+  }, [cells, weekStart]);
+
   // Week navigation
   const shiftWeek = (delta) => {
     const [y, m, d] = weekStart.split('-').map(Number);
@@ -429,6 +549,8 @@ const ShiftSheet = () => {
                                 value={cell?.display_text || ''}
                                 highlight={!!cell?.highlight}
                                 published={!!cell?.is_published}
+                                statusByAbbr={statusByAbbr}
+                                fgForBg={fgForBg}
                                 onCommit={(text) => saveCell(row.user_id, idx, text)}
                                 onToggleHighlight={
                                   cell ? () => toggleHighlight(cell.cell_id, !cell.highlight) : null
@@ -437,18 +559,23 @@ const ShiftSheet = () => {
                             );
                           })}
                           <td className="sheet-cell sheet-cell-actions">
-                            {anyCells && (
-                              <button
-                                type="button"
-                                className={`sheet-row-publish${allPub ? ' is-published' : ''}`}
-                                onClick={() => publishRow(row.user_id)}
-                                title={allPub
-                                  ? 'Row published — click to unpublish'
-                                  : 'Publish this row to the calendar overlay'}
-                              >
-                                {allPub ? '●' : '○'}
-                              </button>
-                            )}
+                            {/* Sprint 15.2: per-row "..." menu replaces
+                                the standalone publish toggle. Publish
+                                state still reads at a glance via the
+                                .is-published class on the trigger
+                                (chip goes green). The popover renders
+                                outside this td (page-root fixed) to
+                                escape .sheet-grid-wrap's overflow. */}
+                            <button
+                              type="button"
+                              className={`sheet-row-menu${allPub ? ' is-published' : ''}`}
+                              onClick={(e) => toggleRowMenu(row.user_id, e.currentTarget)}
+                              title={allPub
+                                ? 'Row published. Click for actions.'
+                                : 'Row actions'}
+                              aria-haspopup="menu"
+                              aria-expanded={openRowMenu?.userId === row.user_id}
+                            >⋯</button>
                           </td>
                         </tr>
                       );
@@ -508,16 +635,90 @@ const ShiftSheet = () => {
           </table>
         </div>
       )}
+
+      {/* Sprint 15.2: page-root row-action popover. Renders outside
+          .sheet-grid-wrap so its position:fixed escapes the wrap's
+          overflow clipping. Positioned right-aligned to the trigger,
+          opening downward; flips above if it would go off-screen. */}
+      {openRowMenu && (() => {
+        const r = openRowMenu.rect;
+        const menuWidth = 220;
+        const menuHeight = 200; // approx; only used for flip check
+        const flipUp = (r.bottom + menuHeight + 8) > window.innerHeight;
+        const top  = flipUp ? Math.max(8, r.top - menuHeight - 6) : (r.bottom + 6);
+        const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, r.right - menuWidth));
+        const row = visibleRows.find(x => x.user_id === openRowMenu.userId);
+        if (!row) return null;
+        const userId = row.user_id;
+        const allPub = rowAllPublished(userId);
+        const anyCells = rowAnyCells(userId);
+        return (
+          <div
+            className="sheet-row-menu-pop"
+            role="menu"
+            style={{ top: `${top}px`, left: `${left}px`, width: `${menuWidth}px` }}
+          >
+            {anyCells && (
+              <button
+                type="button"
+                role="menuitem"
+                className="sheet-row-menu-item"
+                onClick={() => { publishRow(userId); setOpenRowMenu(null); }}
+              >
+                <span className={`sheet-row-menu-dot${allPub ? ' is-published' : ''}`}>
+                  {allPub ? '●' : '○'}
+                </span>
+                {allPub ? 'Unpublish row' : 'Publish row'}
+              </button>
+            )}
+            {anyCells && (
+              <button
+                type="button"
+                role="menuitem"
+                className="sheet-row-menu-item"
+                onClick={() => { copyRowToNextWeek(userId); setOpenRowMenu(null); }}
+              >⎘ Copy row to next week</button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              className="sheet-row-menu-item"
+              onClick={() => { setOpenRowMenu(null); goTo('staffDetail', { userId }); }}
+            >→ View staff profile</button>
+            <button
+              type="button"
+              role="menuitem"
+              className="sheet-row-menu-item sheet-row-menu-danger"
+              onClick={() => {
+                const n = cells.filter(c => c.user_id === userId).length;
+                if (window.confirm(`Remove ${row.name} from this week's sheet? ${n ? `Their ${n} cells will be deleted.` : ''}`)) {
+                  removeRow(userId);
+                }
+                setOpenRowMenu(null);
+              }}
+            >✕ Remove from sheet</button>
+          </div>
+        );
+      })()}
     </div>
   );
 };
 
-// Sprint 14: per-cell <td> that lets the admin type a free-form
-// shift string. Autosaves on blur or on Enter; Tab moves focus to
-// the next cell via the browser's default focus order. Doesn't fire
-// a save if the value is unchanged from when the cell was focused.
-const ShiftCellInput = ({ value, highlight, published, onCommit, onToggleHighlight }) => {
+// Sprint 14 / 15.2: per-cell <td> that lets the admin type a
+// free-form shift string. Autosaves on blur or on Enter; Tab moves
+// focus to the next cell via the browser's default focus order.
+// Doesn't fire a save if the value is unchanged from when the cell
+// was focused.
+//
+// Sprint 15.2 adds status-code pill rendering: when the draft (or
+// last-saved value) matches a known status_codes.abbreviation
+// (case-insensitive, whole-string), the input is styled as a
+// colored pill — admin-defined background + contrast-correct text.
+// The input stays an <input> so keyboard editing keeps working;
+// only its visual presentation changes.
+const ShiftCellInput = ({ value, highlight, published, statusByAbbr, fgForBg, onCommit, onToggleHighlight }) => {
   const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
   const ref = useRef(null);
   const lastSavedRef = useRef(value);
   useEffect(() => {
@@ -530,12 +731,22 @@ const ShiftCellInput = ({ value, highlight, published, onCommit, onToggleHighlig
     lastSavedRef.current = next;
     onCommit(next);
   };
+  // Match against status code only when the cell is *not* focused.
+  // While typing the admin should see what they're typing in normal
+  // text, not a half-matched pill flicker.
+  const matchedCode = (!focused && statusByAbbr)
+    ? statusByAbbr.get((draft || '').trim().toUpperCase())
+    : null;
   const classes = [
     'sheet-cell',
     'sheet-cell-input',
     highlight ? 'is-highlight' : '',
     published ? 'is-published' : '',
+    matchedCode ? 'is-status' : '',
   ].filter(Boolean).join(' ');
+  const inputStyle = matchedCode
+    ? { background: matchedCode.color, color: fgForBg(matchedCode.color), fontWeight: 700 }
+    : undefined;
   return (
     <td
       className={classes}
@@ -554,7 +765,8 @@ const ShiftCellInput = ({ value, highlight, published, onCommit, onToggleHighlig
         type="text"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); commit(); }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); commit(); ref.current?.blur(); }
           if (e.key === 'Escape') {
@@ -563,6 +775,8 @@ const ShiftCellInput = ({ value, highlight, published, onCommit, onToggleHighlig
           }
         }}
         placeholder="—"
+        style={inputStyle}
+        title={matchedCode ? matchedCode.label : undefined}
       />
     </td>
   );
