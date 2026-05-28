@@ -1,0 +1,60 @@
+/* Sprint 15.7: shared staff avatar. Initials in a colored circle
+   with an optional presence dot in the bottom-right corner. */
+
+.staff-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-weight: 700;
+  text-align: center;
+  flex: 0 0 auto;
+  line-height: 1;
+  user-select: none;
+}
+
+.staff-avatar-sm {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+.staff-avatar-md {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+.staff-avatar-lg {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.staff-avatar-initials {
+  letter-spacing: 0.04em;
+}
+
+/* Presence dot — small green circle in the bottom-right with a
+   subtle ring so it reads against any avatar background. */
+.staff-avatar-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #38a169;
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+.staff-avatar-sm .staff-avatar-dot {
+  width: 7px;
+  height: 7px;
+  right: -1px;
+  bottom: -1px;
+}
+.staff-avatar-lg .staff-avatar-dot {
+  width: 11px;
+  height: 11px;
+}

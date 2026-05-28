@@ -205,8 +205,17 @@
   color: var(--brand-text);
 }
 
-.sheet-row { background: var(--bg-surface); }
-.sheet-row:hover { background: var(--bg-raised); }
+.sheet-row { background: var(--bg-surface); transition: background 0.12s ease; }
+/* Sprint 15.7: row hover uses a tinted accent overlay instead of
+   the full bg-raised swap — the bg-raised was too strong against
+   the dept-banded rows above and washed out the cell borders. The
+   tinted gradient keeps the row reading "scanned" without losing
+   any contrast on the borders. */
+.sheet-row:hover {
+  background:
+    linear-gradient(rgba(56, 161, 105, 0.045), rgba(56, 161, 105, 0.045)),
+    var(--bg-surface);
+}
 
 .sheet-cell {
   border: 1px solid var(--border-light);
@@ -217,6 +226,12 @@
   padding: 8px 12px;
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+.sheet-cell-name-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1279,6 +1294,11 @@
   gap: 6px;
   padding: 6px 12px;
   border-top: 1px solid var(--border-light);
+  transition: background 0.12s ease;
+}
+/* Sprint 15.7: same accent-tinted hover the desktop rows get. */
+.sheet-acc-row:hover {
+  background: linear-gradient(rgba(56, 161, 105, 0.045), rgba(56, 161, 105, 0.045));
 }
 .sheet-acc-row-info {
   flex: 0 0 112px;
@@ -1287,20 +1307,8 @@
   gap: 8px;
   padding-right: 4px;
 }
-.sheet-acc-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  flex: 0 0 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 11px;
-  font-weight: 700;
-  color: white;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
+/* Sprint 15.7: .sheet-acc-avatar replaced by the shared
+   <StaffAvatar size="md" /> component. Inline rule removed. */
 .sheet-acc-row-name {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;

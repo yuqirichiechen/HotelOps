@@ -345,6 +345,120 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.7: shared StaffAvatar + presence dot + row-hover polish (15.x closer)
+
+Final sprint of the Shift Sheet redesign arc. Polish-tier work
+that consolidates inline avatar implementations into one
+component and adds the "currently clocked in" signal across both
+sheet layouts.
+
+**Shipped:**
+
+- **`src/components/shared/StaffAvatar.js` (+ .css).** New shared
+  component. Props: `name`, `color`, `onShift`, `size`
+  ("sm"/"md"/"lg"), `title`. Returns a circle with two-letter
+  initials (first + second word) in the supplied background
+  color, contrast-correct text via the same luminance heuristic
+  the cell pills + edit popover use. Falls back to a neutral
+  gray when no color is supplied; "?" initial when the name is
+  empty.
+- **Presence dot.** When `onShift` is true, renders a small
+  green circle in the avatar's bottom-right corner with a
+  `var(--bg-surface)` ring so it reads against any background.
+  Three size variants scale the dot proportionally (7px / 9px /
+  11px). Screen-reader label switches to "<name> (on shift)" so
+  the dot has an accessible equivalent.
+- **`onShiftByUser` lookup in ShiftSheet.** Built once from the
+  existing `/admin/employees` payload (which has been returning
+  `is_on_clock` since Sprint 11.4). Keyed by user_id; threaded
+  to every avatar instance on both layouts.
+- **`deptColorById` lookup in ShiftSheet.** Built from
+  `departments`. Lets the desktop layout pass each row's dept
+  color into `<StaffAvatar>` without re-doing the lookup
+  inline.
+- **Desktop sheet rows** now render
+  `<StaffAvatar size="md" />` ahead of the name text. The
+  `.sheet-cell-name` cell becomes a flex container; name text
+  ellipsises when the avatar + name exceed the column width.
+- **Mobile accordion rows** swap their hand-rolled
+  `.sheet-acc-avatar` span for the shared component. Removed
+  the dead CSS rule + left a one-line comment pointer so future
+  refactors don't recreate it.
+- **Row hover affordance.** Replaced the previous full-swap
+  `--bg-raised` hover with a tinted 4.5%-opacity accent overlay
+  layered on top of the original background. The full swap was
+  too strong against the dept-banded rows above and washed out
+  the cell borders; the tint reads as "scanned" without losing
+  any structural contrast. Applied identically to
+  `.sheet-row:hover` (desktop) and `.sheet-acc-row:hover`
+  (mobile) for visual consistency.
+
+**Why a separate shared component and not just inline:**
+
+- StaffManager already has its own `.staff-mgr-avatar` rule with
+  a single-letter initial and no presence dot or dept color.
+  When the GM asks "why does the avatar look different on this
+  page?" we'll want to migrate it to `StaffAvatar` in a small
+  follow-up. The component lives in `src/components/shared/`
+  precisely so future surfaces can adopt it without duplicating
+  the initial / luminance / dot logic.
+- ResourceMode's `.day-resource-initial` (single letter) +
+  `.day-resource-name-live-dot` is a candidate too, but it's
+  inside the calendar's lane layout where avatar size is
+  already constrained. Migrating is plumbing, not policy —
+  skipped for 15.7 scope.
+
+**Intentionally not done (followed §2.0 #7 + §2.7 resolution):**
+
+- Role labels. The GM resolved this as "skip — dept name is
+  sufficient signal." The 15.7 plan had already removed role
+  labels from scope; this entry confirms.
+
+**Verified.** Four touched files (StaffAvatar.js / .css +
+ShiftSheet/index.js + ShiftSheet.css) balance. Avatar renders
+on both layouts; presence dot shows for on-clock staff;
+row-hover tint applies without breaking dept-row contrast.
+
+**Sprint 15 arc — done.**
+
+Sprint 15 set out to land the Shift Sheet redesign the GM
+requested after Sprint 14.x. Across 15.0 → 15.7 we shipped:
+
+- **15.0** Settings categorization + admin-defined status codes
+  + coverage_history_weeks setting
+- **15.1** Per-dept "+ Add staff" + dept header polish
+- **15.2** Inline status code pills + per-row "..." menu
+- **15.3** Per-cell Edit Shift popover + notes + contenteditable
+  fast-path retained
+- **15.4** History-derived coverage algorithm + right-rail
+  Week Overview
+- **15.5** Toolbar: Templates / Copy Previous Week / Auto-Fill
+  / Validate
+- **15.6** Mobile redesign: per-dept accordion cards + bottom
+  dock + "More" menu
+- **15.7** Shared StaffAvatar + presence dot + hover polish
+
+Schema landed: migrations 019 (status_codes), 020
+(schedule_sheet_cells.notes), 021
+(schedule_sheet_cells.last_published_at).
+
+**Open follow-ups for 16.x and beyond:**
+
+- Conflict-rule expansion (cross-cell overlap, min/max hours,
+  break-missing).
+- Mode-based Auto-Fill suggester if "most-recent" misses too
+  often in real usage.
+- Bulk-apply Templates (needs cell selection UI).
+- StaffManager + ResourceMode migration to `<StaffAvatar>` for
+  visual consistency across admin surfaces.
+- Lockstep horizontal scroll on the mobile accordion (day
+  header + row cells in the same scroll context).
+- Cross-dept staff (a user can sit in multiple sheet rows for
+  the same week) — this is the schema change needed before the
+  conflict ruleset can expand meaningfully.
+
+---
+
 ### 2026-05-28 — Sprint 15.6: mobile redesign — per-dept accordion cards + bottom dock + "More" menu
 
 Restructures the sheet for phones. Desktop layout (the table)

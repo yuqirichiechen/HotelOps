@@ -4,6 +4,7 @@ import html2canvas from 'html2canvas';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../../components/shared/DropdownSelect';
+import StaffAvatar from '../../components/shared/StaffAvatar';
 import './ShiftSheet.css';
 
 // Sprint 14: Shift Sheet — Excel-style weekly grid for shift
@@ -156,6 +157,26 @@ const ShiftSheet = () => {
     for (const d of (overview?.dept_coverage || [])) m.set(d.department_id, d);
     return m;
   }, [overview]);
+
+  // Sprint 15.7: dept_id → color lookup (used by row avatars when
+  // they need the dept color but aren't iterating inside the
+  // dept-grouped render).
+  const deptColorById = useMemo(() => {
+    const m = new Map();
+    for (const d of departments) m.set(d.department_id, d.color || null);
+    return m;
+  }, [departments]);
+
+  // Sprint 15.7: per-user "currently clocked in" lookup. Sourced
+  // from the existing /admin/employees payload which already
+  // includes is_on_clock (computed server-side from time_entries
+  // with NULL clock_out_time inside the current week). Used by
+  // the StaffAvatar presence dot in both sheet layouts.
+  const onShiftByUser = useMemo(() => {
+    const m = new Map();
+    for (const e of employees) m.set(e.user_id, !!e.is_on_clock);
+    return m;
+  }, [employees]);
 
   // Sprint 15.4: refetch the right-rail overview on week change.
   // Mutation handlers (publish, cell edit) also call this manually
@@ -848,13 +869,12 @@ const ShiftSheet = () => {
                           return (
                             <div key={row.user_id} className="sheet-acc-row">
                               <div className="sheet-acc-row-info">
-                                <span
-                                  className="sheet-acc-avatar"
-                                  style={{ background: dotColor }}
-                                  aria-hidden
-                                >
-                                  {(row.name || '?').split(' ').slice(0, 2).map(s => s.charAt(0).toUpperCase()).join('')}
-                                </span>
+                                <StaffAvatar
+                                  name={row.name}
+                                  color={group.color || deptColorById.get(row.department_id)}
+                                  onShift={onShiftByUser.get(row.user_id)}
+                                  size="md"
+                                />
                                 <span className="sheet-acc-row-name">{row.name}</span>
                               </div>
                               <div className="sheet-acc-row-cells">
@@ -996,7 +1016,15 @@ const ShiftSheet = () => {
                       const allPub = rowAllPublished(row.user_id);
                       return (
                         <tr key={row.user_id} className="sheet-row">
-                          <td className="sheet-cell sheet-cell-name">{row.name}</td>
+                          <td className="sheet-cell sheet-cell-name">
+                            <StaffAvatar
+                              name={row.name}
+                              color={deptColorById.get(row.department_id) || group.color}
+                              onShift={onShiftByUser.get(row.user_id)}
+                              size="md"
+                            />
+                            <span className="sheet-cell-name-text">{row.name}</span>
+                          </td>
                           {DAY_LABELS.map((_, idx) => {
                             const cell = cellMap.get(`${row.user_id}|${idx}`);
                             return (
