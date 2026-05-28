@@ -1050,6 +1050,143 @@
   line-height: 1.4;
 }
 
+/* ── Sprint 15.0: settings categories ─────────────────────────────────
+   Quiet horizontal header that announces a group of related sections.
+   No card background of its own — it just adds vertical rhythm and a
+   label between section cards. */
+.settings-category-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin: 18px 4px 4px 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+.settings-category-title:first-of-type {
+  margin-top: 0;
+}
+
+/* ── Sprint 15.0: status codes list ─────────────────────────────────── */
+.settings-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-base);
+}
+.settings-status-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex: 0 0 16px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.settings-status-abbr {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.settings-status-label {
+  flex: 1;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.settings-status-system-pill {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+}
+.settings-status-add {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+}
+.settings-status-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.settings-status-palette {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.settings-status-palette-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.settings-status-palette-swatch:hover {
+  transform: scale(1.08);
+}
+.settings-status-palette-swatch.is-active {
+  border-color: var(--brand-text);
+}
+.settings-status-palette-custom {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+}
+.settings-status-hex-input {
+  width: 88px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.settings-status-input {
+  flex: 1 1 140px;
+  min-width: 100px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.settings-status-input-abbr {
+  flex: 0 0 80px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
 .settings-options {
   display: flex;
   flex-direction: column;

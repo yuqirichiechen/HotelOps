@@ -24,6 +24,257 @@ const VISIBILITY_OPTIONS = [
   },
 ];
 
+// Sprint 15.0: preset color palette for status code swatches. Picked
+// to span the existing dept palette (green/amber/yellow/gray) plus
+// brand accents so codes read distinct from each other on the sheet.
+const STATUS_COLOR_PALETTE = [
+  '#38a169', // green     — HELP default
+  '#dd6b20', // amber     — BRK default
+  '#d69e2e', // yellow    — DEEP CLEAN default
+  '#4a5568', // slate     — H.M default
+  '#a0aec0', // gray      — OFF default
+  '#3182ce', // blue
+  '#805ad5', // purple
+  '#e53e3e', // red
+];
+
+const StatusCodesSection = () => {
+  const [codes, setCodes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  // Drafts cover both edit-in-place and the "Add code" form. label /
+  // abbreviation / color; sort_order is server-managed for now.
+  const blankDraft = { label: '', abbreviation: '', color: STATUS_COLOR_PALETTE[0] };
+  const [editDraft, setEditDraft] = useState(blankDraft);
+  const [addDraft,  setAddDraft]  = useState(blankDraft);
+  const [addOpen,   setAddOpen]   = useState(false);
+
+  const refresh = async () => {
+    setLoading(true);
+    const { ok, data } = await apiFetch('/admin/status-codes');
+    if (ok && data?.success) setCodes(data.codes || []);
+    setLoading(false);
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const startEdit = (c) => {
+    setEditingId(c.code_id);
+    setEditDraft({ label: c.label, abbreviation: c.abbreviation, color: c.color });
+    setErr(null);
+  };
+  const cancelEdit = () => { setEditingId(null); setEditDraft(blankDraft); setErr(null); };
+
+  const saveEdit = async () => {
+    if (!editDraft.label.trim() || !editDraft.abbreviation.trim()) return;
+    setBusy(true); setErr(null);
+    const { ok, data } = await apiFetch(`/admin/status-codes/${editingId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        label:        editDraft.label.trim(),
+        abbreviation: editDraft.abbreviation.trim().toUpperCase(),
+        color:        editDraft.color.toLowerCase(),
+      }),
+    });
+    setBusy(false);
+    if (!ok || !data?.success) { setErr(data?.message || 'Could not save.'); return; }
+    setCodes(prev => prev.map(c => c.code_id === editingId ? data.code : c));
+    cancelEdit();
+  };
+
+  const handleDelete = async (c) => {
+    if (c.is_system) return;
+    if (!window.confirm(`Delete status code "${c.label}"? Cells using "${c.abbreviation}" will fall back to plain text.`)) return;
+    setBusy(true); setErr(null);
+    const { ok, data } = await apiFetch(`/admin/status-codes/${c.code_id}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!ok || !data?.success) { setErr(data?.message || 'Could not delete.'); return; }
+    setCodes(prev => prev.filter(x => x.code_id !== c.code_id));
+  };
+
+  const handleAdd = async () => {
+    if (!addDraft.label.trim() || !addDraft.abbreviation.trim()) return;
+    setBusy(true); setErr(null);
+    const { ok, data } = await apiFetch('/admin/status-codes', {
+      method: 'POST',
+      body: JSON.stringify({
+        label:        addDraft.label.trim(),
+        abbreviation: addDraft.abbreviation.trim().toUpperCase(),
+        color:        addDraft.color.toLowerCase(),
+      }),
+    });
+    setBusy(false);
+    if (!ok || !data?.success) { setErr(data?.message || 'Could not add.'); return; }
+    setCodes(prev => [...prev, data.code]);
+    setAddDraft(blankDraft);
+    setAddOpen(false);
+  };
+
+  return (
+    <div className="settings-section">
+      <div className="settings-section-header">
+        <div className="settings-section-icon">🏷️</div>
+        <div>
+          <div className="settings-section-title">Status Codes</div>
+          <div className="settings-section-desc">
+            Short labels the Shift Sheet renders as colored pills instead of plain text (e.g. HELP, BRK, DEEP CLEAN). System codes can be renamed and re-colored but not removed.
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="settings-perf-help">Loading…</div>
+      ) : (
+        <div className="settings-status-list">
+          {codes.map(c => (
+            <div key={c.code_id} className="settings-status-row">
+              {editingId === c.code_id ? (
+                <ColorAndTextEditor
+                  draft={editDraft}
+                  setDraft={setEditDraft}
+                  onSave={saveEdit}
+                  onCancel={cancelEdit}
+                  busy={busy}
+                />
+              ) : (
+                <>
+                  <span
+                    className="settings-status-swatch"
+                    style={{ background: c.color }}
+                    aria-hidden
+                  />
+                  <span className="settings-status-abbr" style={{ background: c.color }}>
+                    {c.abbreviation}
+                  </span>
+                  <span className="settings-status-label">{c.label}</span>
+                  {c.is_system && (
+                    <span className="settings-status-system-pill" title="System code — can be renamed but not removed">SYSTEM</span>
+                  )}
+                  <button
+                    type="button"
+                    className="settings-dept-btn"
+                    onClick={() => startEdit(c)}
+                    disabled={busy}
+                  >Edit</button>
+                  <button
+                    type="button"
+                    className="settings-dept-btn settings-dept-btn-danger"
+                    onClick={() => handleDelete(c)}
+                    disabled={busy || c.is_system}
+                    title={c.is_system ? 'System codes cannot be deleted.' : 'Delete this code'}
+                  >Delete</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && (
+        addOpen ? (
+          <div className="settings-status-add">
+            <ColorAndTextEditor
+              draft={addDraft}
+              setDraft={setAddDraft}
+              onSave={handleAdd}
+              onCancel={() => { setAddOpen(false); setAddDraft(blankDraft); setErr(null); }}
+              busy={busy}
+              addMode
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="settings-dept-btn settings-dept-btn-save"
+            onClick={() => setAddOpen(true)}
+            disabled={busy}
+            style={{ marginTop: 12 }}
+          >+ Add status code</button>
+        )
+      )}
+
+      {err && (
+        <div className="settings-perf-help" style={{ color: 'var(--danger-text)' }}>
+          {err}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Sprint 15.0: shared inline editor used for both "add new" and
+// "edit existing" status codes. Preset color palette + custom hex
+// fallback (text input validated `^#[0-9a-f]{6}$`).
+const ColorAndTextEditor = ({ draft, setDraft, onSave, onCancel, busy, addMode }) => {
+  const [customOpen, setCustomOpen] = useState(false);
+  const setColor = (color) => setDraft(s => ({ ...s, color }));
+  const setLabel = (label) => setDraft(s => ({ ...s, label }));
+  const setAbbr  = (abbreviation) => setDraft(s => ({ ...s, abbreviation }));
+  const hexOk = /^#[0-9a-fA-F]{6}$/.test(draft.color);
+  return (
+    <div className="settings-status-edit">
+      <div className="settings-status-palette" role="radiogroup" aria-label="Pick color">
+        {STATUS_COLOR_PALETTE.map(c => (
+          <button
+            key={c}
+            type="button"
+            className={`settings-status-palette-swatch${draft.color === c ? ' is-active' : ''}`}
+            style={{ background: c }}
+            onClick={() => setColor(c)}
+            aria-label={`Color ${c}`}
+            aria-pressed={draft.color === c}
+          />
+        ))}
+        <button
+          type="button"
+          className={`settings-status-palette-swatch settings-status-palette-custom${customOpen ? ' is-active' : ''}`}
+          onClick={() => setCustomOpen(v => !v)}
+          title="Custom hex"
+        >#</button>
+      </div>
+      {customOpen && (
+        <input
+          type="text"
+          className="settings-status-hex-input"
+          value={draft.color}
+          onChange={e => setColor(e.target.value)}
+          placeholder="#RRGGBB"
+          aria-label="Custom hex color"
+          style={{ borderColor: hexOk ? undefined : 'var(--danger-text)' }}
+        />
+      )}
+      <input
+        type="text"
+        className="settings-status-input"
+        value={draft.label}
+        onChange={e => setLabel(e.target.value)}
+        placeholder="Label (e.g. Help / Extra Shift)"
+      />
+      <input
+        type="text"
+        className="settings-status-input settings-status-input-abbr"
+        value={draft.abbreviation}
+        onChange={e => setAbbr(e.target.value)}
+        placeholder="ABBR"
+        maxLength={16}
+      />
+      <button
+        type="button"
+        className="settings-dept-btn settings-dept-btn-save"
+        onClick={onSave}
+        disabled={busy || !draft.label.trim() || !draft.abbreviation.trim() || !hexOk}
+      >{addMode ? 'Add' : 'Save'}</button>
+      <button
+        type="button"
+        className="settings-dept-btn"
+        onClick={onCancel}
+        disabled={busy}
+      >Cancel</button>
+    </div>
+  );
+};
+
 const AdminSettings = () => {
   const { user, logout } = useAuth();
   const nav = useNavigate();
@@ -42,6 +293,11 @@ const AdminSettings = () => {
   // panel" button next to the primary Assign pill, re-exposing the
   // pre-Sprint-14 AssignPanel + AssignModal flow.
   const [legacyAssign, setLegacyAssign] = useState(false);
+  // Sprint 15.0: coverage-history lookback (weeks). Stored as a
+  // string for app_settings compat (the server validator requires
+  // an integer 2..52). Default 8 — applied client-side when the
+  // backing setting is missing.
+  const [coverageWeeks, setCoverageWeeks] = useState('8');
   // Sprint 9: which staff login methods are enabled. Stored as a CSV in
   // app_settings; treated as a Set in the UI for cheap toggle handling.
   const [loginMethods, setLoginMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
@@ -145,6 +401,9 @@ const AdminSettings = () => {
           }
           setHideAbc   (data.settings.hide_abc_keyboard === 'true');
           setLegacyAssign(data.settings.enable_legacy_assign_panel === 'true');
+          if (data.settings.coverage_history_weeks) {
+            setCoverageWeeks(String(data.settings.coverage_history_weeks));
+          }
           if (data.settings.staff_login_layout === 'fluid' || data.settings.staff_login_layout === 'hardcode') {
             setLoginLayout(data.settings.staff_login_layout);
           }
@@ -186,6 +445,7 @@ const AdminSettings = () => {
         auto_signout_seconds:      autoSign,
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
         enable_legacy_assign_panel: legacyAssign ? 'true' : 'false',
+        coverage_history_weeks:     String(parseInt(coverageWeeks, 10) || 8),
         staff_login_layout:        loginLayout,
         enabled_login_methods:     [...loginMethods].join(','),
         pay_period_start_day:      payStartDay,
@@ -245,6 +505,12 @@ const AdminSettings = () => {
       ) : (
         <div className="settings-body">
 
+          {/* Sprint 15.0: Settings are grouped into named categories so
+              related toggles cluster visually. Order:
+                Display → Operations → Departments → Staff Login →
+                Shift Sheet → Account. */}
+          <h3 className="settings-category-title">Display & Visibility</h3>
+
           {/* Shifts board section */}
           <div className="settings-section">
             <div className="settings-section-header">
@@ -282,6 +548,8 @@ const AdminSettings = () => {
             </div>
 
           </div>
+
+          <h3 className="settings-category-title">Operations</h3>
 
           {/* Performance section (Sprint 6B) */}
           <div className="settings-section">
@@ -358,6 +626,46 @@ const AdminSettings = () => {
               </div>
             </div>
           </div>
+
+          {/* Sprint 9.4: Payroll — pay-period start day. Drives the
+              biweekly range in the staff CSV/XLSX export and the
+              workweek boundary used for OT calculations. */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">💵</div>
+              <div>
+                <div className="settings-section-title">Payroll</div>
+                <div className="settings-section-desc">
+                  Day your biweekly pay period starts. Used by the Staff list export ("Biweekly" range) and to define the workweek boundary that drives overtime in payroll exports.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-perf-grid">
+              <div className="settings-perf-field">
+                <span className="settings-perf-label">Pay period starts on</span>
+                <div className="settings-perf-radio-group settings-pay-day-row">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, i) => (
+                    <label key={i} className="settings-perf-radio">
+                      <input
+                        type="radio"
+                        name="pay-period-start-day"
+                        value={String(i)}
+                        checked={String(i) === payStartDay}
+                        onChange={() => { setPayStartDay(String(i)); setSaved(false); }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+                <span className="settings-perf-help">
+                  Each biweekly cycle is 14 days starting on this weekday. "Biweekly" exports return the most recently completed cycle.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <h3 className="settings-category-title">Departments</h3>
 
           {/* Sprint 11: Departments — name + color management. Each
               dept's color shows up on Calendar chips and shift band
@@ -465,43 +773,7 @@ const AdminSettings = () => {
             )}
           </div>
 
-          {/* Sprint 9.4: Payroll — pay-period start day. Drives the
-              biweekly range in the staff CSV/XLSX export and the
-              workweek boundary used for OT calculations. */}
-          <div className="settings-section">
-            <div className="settings-section-header">
-              <div className="settings-section-icon">💵</div>
-              <div>
-                <div className="settings-section-title">Payroll</div>
-                <div className="settings-section-desc">
-                  Day your biweekly pay period starts. Used by the Staff list export ("Biweekly" range) and to define the workweek boundary that drives overtime in payroll exports.
-                </div>
-              </div>
-            </div>
-
-            <div className="settings-perf-grid">
-              <div className="settings-perf-field">
-                <span className="settings-perf-label">Pay period starts on</span>
-                <div className="settings-perf-radio-group settings-pay-day-row">
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, i) => (
-                    <label key={i} className="settings-perf-radio">
-                      <input
-                        type="radio"
-                        name="pay-period-start-day"
-                        value={String(i)}
-                        checked={String(i) === payStartDay}
-                        onChange={() => { setPayStartDay(String(i)); setSaved(false); }}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  ))}
-                </div>
-                <span className="settings-perf-help">
-                  Each biweekly cycle is 14 days starting on this weekday. "Biweekly" exports return the most recently completed cycle.
-                </span>
-              </div>
-            </div>
-          </div>
+          <h3 className="settings-category-title">Staff Login</h3>
 
           {/* Sprint 8.6: Staff auto sign-out section */}
           <div className="settings-section">
@@ -612,28 +884,6 @@ const AdminSettings = () => {
               </div>
             </label>
 
-            {/* Sprint 14.1: re-expose the legacy AssignPanel side panel.
-                Default off — the Shift Sheet (Sprint 14) is the primary
-                assignment surface. Turn this on if the old form-style
-                assign flow still fits a specific workflow. */}
-            <label className="settings-toggle-row" style={{ marginTop: 16 }}>
-              <input
-                type="checkbox"
-                className="hop-check"
-                checked={legacyAssign}
-                onChange={e => { setLegacyAssign(e.target.checked); setSaved(false); }}
-              />
-              <div className="settings-toggle-text">
-                <div className="settings-toggle-label">{legacyAssign ? 'On — Calendar shows a small “Legacy panel” button next to Assign' : 'Off — Calendar exposes only the new Shift Sheet'}</div>
-                <div className="settings-toggle-help">
-                  Pre-Sprint-14 the calendar's ＋ button opened a form-style side panel
-                  for assigning individual shifts. Sprint 14 swapped that for the
-                  Excel-style Shift Sheet. Turn this back on to keep the old panel
-                  available as a fallback.
-                </div>
-              </div>
-            </label>
-
             {/* Sprint 9.1.3: layout mode for staff login. Hardcode = fixed
                 breakpoints (current default). Fluid = clamp()-based sizing
                 that scales continuously with both viewport dimensions. */}
@@ -661,7 +911,84 @@ const AdminSettings = () => {
             </div>
           </div>
 
+          <h3 className="settings-category-title">Shift Sheet</h3>
+
+          {/* Sprint 14.1 / 15.0: re-expose the legacy AssignPanel side panel.
+              Default off — the Shift Sheet (Sprint 14) is the primary
+              assignment surface. Lives in its own section as of 15.0
+              (was previously folded under Hide ABC, which never made
+              sense). */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">📐</div>
+              <div>
+                <div className="settings-section-title">Legacy assign panel</div>
+                <div className="settings-section-desc">
+                  Pre-Sprint-14 the calendar's ＋ button opened a form-style side panel
+                  for assigning individual shifts. Sprint 14 swapped that for the
+                  Excel-style Shift Sheet. Turn this on to keep the old panel
+                  available as a fallback.
+                </div>
+              </div>
+            </div>
+            <label className="settings-toggle-row">
+              <input
+                type="checkbox"
+                className="hop-check"
+                checked={legacyAssign}
+                onChange={e => { setLegacyAssign(e.target.checked); setSaved(false); }}
+              />
+              <div className="settings-toggle-text">
+                <div className="settings-toggle-label">{legacyAssign ? 'On — Calendar shows a small “Legacy panel” button next to Assign' : 'Off — Calendar exposes only the new Shift Sheet'}</div>
+              </div>
+            </label>
+          </div>
+
+          {/* Sprint 15.0: coverage-history weeks. Drives the
+              Sprint-15.4 coverage algorithm's lookback window. The
+              algo still does its own intelligent trimming (regime-
+              change detection); this is just the upper bound. */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">📊</div>
+              <div>
+                <div className="settings-section-title">Coverage history window</div>
+                <div className="settings-section-desc">
+                  Maximum weeks of historical clock data the coverage algorithm considers when computing target hours per department.
+                  The algorithm intelligently trims this window if it detects a recent scheduling regime change, so this is just the upper bound.
+                </div>
+              </div>
+            </div>
+            <div className="settings-perf-grid">
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Weeks</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="2"
+                    max="52"
+                    step="1"
+                    value={coverageWeeks}
+                    onChange={e => { setCoverageWeeks(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">weeks</span>
+                </span>
+                <span className="settings-perf-help">
+                  Default 8. Minimum 2 (anything less and the dataset-too-small warning fires regardless).
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Sprint 15.0: Status Codes — admin-defined pill rendering
+              for cell text (HELP, BRK, DEEP CLEAN, H.M, OFF + any
+              custom codes). Read by the Shift Sheet's cell renderer
+              (15.2) and the calendar overlay. */}
+          <StatusCodesSection />
+
           {/* Account / Sign out section */}
+          <h3 className="settings-category-title">Account</h3>
+
           <div className="settings-section">
             <div className="settings-section-header">
               <div className="settings-section-icon">🔐</div>

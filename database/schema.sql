@@ -225,6 +225,29 @@ CREATE INDEX idx_sheet_cells_published_week
   WHERE is_published = TRUE;
 
 
+-- ── STATUS CODES (Sprint 15.0) ──────────────────────────────────────────────
+-- Admin-defined codes for the Shift Sheet's inline pill rendering.
+-- Cell display_text is matched (case-insensitive, whole-string)
+-- against `abbreviation` to render as a colored pill instead of raw
+-- text. Five seed rows are is_system = TRUE (renamable, not
+-- deletable).
+-- Migration: database/migrations/019_status_codes.sql
+
+CREATE TABLE status_codes (
+  code_id        UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  label          TEXT         NOT NULL,
+  abbreviation   TEXT         NOT NULL,
+  color          TEXT         NOT NULL,
+  is_system      BOOLEAN      NOT NULL DEFAULT FALSE,
+  sort_order     INTEGER      NOT NULL DEFAULT 0,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  CONSTRAINT status_codes_abbr_unique UNIQUE (abbreviation)
+);
+
+CREATE INDEX idx_status_codes_sort ON status_codes(sort_order, label);
+
+
 -- ── HANDOFF NOTES (Sprint 10) ──────────────────────────────────────────────────
 -- The single first-class entity backing the Calendar surface's three
 -- note views: per-shift threads, general department / all-staff

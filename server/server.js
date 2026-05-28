@@ -474,6 +474,122 @@ app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), asyn
   }
 });
 
+// ── Status Codes (Sprint 15.0) ────────────────────────────────────────────────
+// Admin-defined codes the Shift Sheet renders as colored pills.
+// CRUD lives under /api/admin/status-codes. is_system rows are
+// renamable / re-colorable but not deletable (preserved across
+// fresh installs via the seed in migration 019).
+
+const isValidHexColor = (v) =>
+  typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+
+app.get('/api/admin/status-codes', requireAuth, requireRole('admin'), async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT code_id, label, abbreviation, color, is_system, sort_order, updated_at
+         FROM status_codes
+        ORDER BY sort_order, label`
+    );
+    return res.json({ success: true, codes: rows });
+  } catch (err) {
+    console.error('[status-codes:GET]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.post('/api/admin/status-codes', requireAuth, requireRole('admin'), async (req, res) => {
+  const { label, abbreviation, color, sort_order } = req.body || {};
+  if (!label || !abbreviation || !color) {
+    return res.status(400).json({ success: false, message: 'label, abbreviation, color required' });
+  }
+  if (!isValidHexColor(color)) {
+    return res.status(400).json({ success: false, message: 'color must be #RRGGBB hex' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO status_codes (label, abbreviation, color, sort_order, is_system, updated_at)
+       VALUES ($1, $2, $3, COALESCE($4, 100), FALSE, NOW())
+       RETURNING code_id, label, abbreviation, color, is_system, sort_order, updated_at`,
+      [label.trim(), abbreviation.trim().toUpperCase(), color.toLowerCase(),
+       Number.isInteger(sort_order) ? sort_order : null]
+    );
+    return res.json({ success: true, code: rows[0] });
+  } catch (err) {
+    // Unique-violation on abbreviation → 409.
+    if (err && err.code === '23505') {
+      return res.status(409).json({ success: false, message: 'A status code with that abbreviation already exists.' });
+    }
+    console.error('[status-codes:POST]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.patch('/api/admin/status-codes/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const { label, abbreviation, color, sort_order } = req.body || {};
+  if (color !== undefined && !isValidHexColor(color)) {
+    return res.status(400).json({ success: false, message: 'color must be #RRGGBB hex' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE status_codes
+          SET label        = COALESCE($1, label),
+              abbreviation = COALESCE($2, abbreviation),
+              color        = COALESCE($3, color),
+              sort_order   = COALESCE($4, sort_order),
+              updated_at   = NOW()
+        WHERE code_id = $5::uuid
+        RETURNING code_id, label, abbreviation, color, is_system, sort_order, updated_at`,
+      [
+        label ? label.trim() : null,
+        abbreviation ? abbreviation.trim().toUpperCase() : null,
+        color ? color.toLowerCase() : null,
+        Number.isInteger(sort_order) ? sort_order : null,
+        id,
+      ]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'status code not found' });
+    }
+    return res.json({ success: true, code: rows[0] });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ success: false, message: 'A status code with that abbreviation already exists.' });
+    }
+    console.error('[status-codes:PATCH]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+app.delete('/api/admin/status-codes/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  try {
+    // System codes are protected — admin can rename / recolor them
+    // but not remove them entirely. Guard at the DB level via the
+    // WHERE clause so a stale client can't bypass it.
+    const { rowCount } = await pool.query(
+      `DELETE FROM status_codes WHERE code_id = $1::uuid AND is_system = FALSE`,
+      [id]
+    );
+    if (!rowCount) {
+      // Distinguish "not found" from "is_system protected" for a
+      // friendlier 409.
+      const { rows } = await pool.query(
+        `SELECT is_system FROM status_codes WHERE code_id = $1::uuid`,
+        [id]
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'status code not found' });
+      }
+      return res.status(409).json({ success: false, message: 'System codes can be renamed but not deleted.' });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[status-codes:DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // ── Employee clock-in / out ───────────────────────────────────────────────────
 
 app.post('/api/authenticate', async (req, res) => {
@@ -2440,6 +2556,16 @@ app.put('/api/admin/settings', async (req, res) => {
     // pre-Sprint-14 AssignPanel + AssignModal flow if the new
     // sheet doesn't fit their workflow.
     enable_legacy_assign_panel: v => v === 'true' || v === 'false',
+    // Sprint 15.0: weeks of historical data the coverage algorithm
+    // (Sprint 15.4) considers when computing the per-(dept × DOW)
+    // target hours. Stored as a string for app_settings compat;
+    // validated as an integer in [2, 52]. Default 8 — set by the
+    // client when missing rather than seeded here.
+    coverage_history_weeks: v => {
+      if (typeof v !== 'string') return false;
+      const n = parseInt(v, 10);
+      return Number.isInteger(n) && n >= 2 && n <= 52 && String(n) === v.trim();
+    },
   };
   const updates = req.body || {};
   if (Object.keys(updates).length === 0) {

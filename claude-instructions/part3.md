@@ -1,0 +1,446 @@
+# Claude Instructions — HotelOps (Part 3: Sprint 15+)
+
+> **Read this AND `part1.md` + `part2.md` (same folder) every iteration
+> before you start work.** Part 1 covers Sprints 1–9.4.1 plus the
+> original project brief. Part 2 covers Sprints 10–14.3. Part 3 starts
+> here with the Sprint 15 roadmap and continues with new sprint entries
+> from 15.1 onward.
+
+---
+
+## 1. Why this file exists
+
+`part2.md` crossed ~3,900 lines after Sprint 14.3 and was starting to
+get unwieldy to load every iteration. Rather than retroactively
+restructure, new sprint logs (15.x and later) land here. Project
+overview, tech stack, conventions, and the running glossary of
+internal concepts are all in part2 — don't duplicate them.
+
+If you're starting a fresh iteration:
+
+1. Skim `part1.md` for the deep architecture story (only if the task
+   touches early-sprint surfaces).
+2. Skim `part2.md` for the Sprint 10–14.3 work (most current code
+   relevant to anything you'll touch was written in that range).
+3. Read this file's most-recent entry for current ongoing work.
+4. Read `MEMORY.md` (auto memory pointer index) for any
+   user-preference / project-context memory.
+
+---
+
+## 2. Sprint 15.x roadmap — Shift Sheet redesign (GM-approved)
+
+Sprint 14 (foundation) and 14.1–14.3 (publish, parser, overlay, PNG,
+multi-segment) shipped the *minimum viable* Excel-style Shift Sheet.
+The GM signed off on the workflow but flagged a batch of UX
+improvements inspired by 7shifts / Sling / Houston designs (mockups
+referenced in chat 2026-05-28).
+
+The mockup is doing many separate things; jamming them into one
+sprint would turn a sprint into a quarter. Below is the sub-sprint
+split, **with the GM's decisions on the open questions baked in**
+(see §2.0 for the answers).
+
+### 2.0 GM decisions (2026-05-28)
+
+These are the resolutions to the open questions I flagged in the
+first draft of this plan. Use them as the source of truth when
+implementing each sprint.
+
+1. **Status codes** → admin-defined in **Settings**, not hardcoded.
+   Also: settings are getting busy, so categorize them while we're
+   in there. → New **Sprint 15.0** added before 15.1.
+2. **Edit popover** → keep contenteditable as the fast-path, popover
+   as the thoughtful-path (click input = type free-form, click cell
+   background or caret icon = open popover). Confirmed.
+3. **"Open shift"** → "no one is filling the time in" — an empty
+   cell on a day-of-week where the historical coverage algorithm
+   predicts the dept needs coverage. Ties 15.4's open-shifts list
+   to the same algorithm as the coverage score.
+4. **Coverage Score baseline** → **derive from history**. Algorithm:
+   for each (dept × day-of-week × hour-of-day), average the actual
+   clock-in/out hours from the last N weeks of `time_entries`. That
+   becomes the "target hours" denominator. No hardcoded numbers.
+5. **Auto-Fill behavior** → **preview flow only**. The button
+   generates a proposed diff (current sheet → suggested fills);
+   admin can edit individual suggested cells, then apply all (or
+   discard). Direct-apply not allowed.
+6. **Auto-Fill UX** → same as #5 (preview + edit + apply).
+7. **Role labels** → **skip**. Use dept name only. Sprint 15.7
+   drops role labels; admin already has dept add/remove in
+   `AdminSettings` so no new sprint for that either. 15.7 becomes
+   "avatars + presence dot" polish only.
+
+### 15.0 — Settings categorization + admin-defined status codes
+
+Prerequisite for 15.2's inline status pills, and a long-overdue
+cleanup of the increasingly busy `AdminSettings` page.
+
+**Shipping:**
+
+- **Settings categorization.** Group `AdminSettings.js` into named
+  sections: e.g. **Display** (schedule_visibility, hide_abc_keyboard,
+  staff_login_layout), **Staff Login** (login_methods, etc.),
+  **Shift Sheet** (enable_legacy_assign_panel, future
+  sheet-specific toggles), **Departments** (existing dept CRUD —
+  already in this file but unsectioned), and a new **Status Codes**
+  section.
+- **Status codes table** (migration 019_status_codes.sql):
+  ```
+  status_codes (
+    code_id UUID PK,
+    label TEXT NOT NULL,           -- "HELP"
+    abbreviation TEXT NOT NULL,    -- "HELP"
+    color TEXT NOT NULL,           -- hex / named color
+    is_system BOOLEAN DEFAULT FALSE -- protect seed codes from delete
+  )
+  ```
+- Seed defaults: HELP (green), BRK (amber), DEEP CLEAN (yellow),
+  H.M / "House Meeting" (gray), OFF (gray). `is_system = true` on
+  these so admin can't accidentally delete them; can rename / re-
+  color but not remove.
+- New endpoints: GET / POST / PATCH / DELETE
+  `/api/admin/status-codes`.
+- Settings UI: list existing codes with inline color swatch + edit
+  + delete; "Add code" button opens a small form.
+
+**Why this sprint comes first.** 15.2 reads from these codes for its
+inline pill rendering; building the codes table first means 15.2 is
+pure client wiring instead of "build the data layer too."
+
+### 15.1 — Per-dept "+ Add staff" + dept header polish
+
+The narrow ask the GM specifically called out. Smallest change with
+the highest workflow impact (less mental context-switch when adding
+a Front Desk vs. Housekeeping person).
+
+**Shipping:**
+
+- Replace the single bottom "Add staff" dropdown with one
+  "+ Add to <Dept>" button under each dept section.
+- Dept-scoped typeahead: dropdown filtered to `employees.filter(e =>
+  e.department_id === dept.id && !alreadyOnSheet(e.user_id))`.
+- "N staff" count next to each dept header (matches mockup vibe).
+- Small dept-color dot icon on the section header (mirrors the
+  ResourceMode header pattern from Sprint 13).
+- Drop the legacy single-bottom row.
+
+**No new endpoints, no schema changes.** Pure client refactor.
+
+### 15.2 — Per-row "..." menu + status pill rendering
+
+The mockup shows a `…` icon at the end of each row (for row-scoped
+actions) and color-coded pills inline ("HELP" green, "BRK" amber,
+"DEEP CLEAN" yellow, "H.M" gray, conflict-triangle red).
+
+**Shipping:**
+
+- Per-row `…` menu: "Remove from sheet", "Copy row to next week",
+  "View staff profile" (links to StaffDetail). Sit in the existing
+  Sprint 14.1 trailing actions column (currently houses the
+  per-row publish toggle — those two affordances merge into the menu).
+- Inline status pills: when the cell's `display_text` matches a known
+  status code (HELP, BRK, DEEP CLEAN, H.M, OFF), render it as a
+  colored pill instead of raw text. Falls back to raw text for free-
+  form entries.
+- Status code set comes from the table built in **15.0**. Cell
+  text matches against the `abbreviation` column; color comes from
+  the `color` column. Both render-time, no schema change to
+  `schedule_sheet_cells`.
+
+### 15.3 — Per-cell Edit Shift popover
+
+The biggest individual UX shift — replaces the contenteditable cell
+flow with a click-to-open popover. Pill-based common shifts +
+free-form fallback + per-shift notes.
+
+**Shipping:**
+
+- Cell click opens a small popover anchored to the cell with:
+  - Pill-style time options sourced from `shift_templates` (e.g.
+    7a-3p, 3p-11p, 11p-7a) plus OFF / BRK / HELP.
+  - "Custom…" toggle that reveals the current free-form text input
+    (so the existing power-user workflow doesn't disappear).
+  - Notes textarea (120-char limit, matches the mockup).
+  - Save / Cancel buttons. Escape cancels.
+- Schema: `notes TEXT` column on `schedule_sheet_cells` (migration
+  019). Server PUT extended to write notes; SELECTs return it; the
+  planned-strip pill on the calendar reads it for the hover title.
+- Mobile: same popover, full-bleed bottom sheet instead of anchored.
+
+**Resolved (per §2.0).** Both flows live. Tab+type stays the fast
+path; click on the cell *background* (or a small caret icon at the
+right edge of the cell) opens the popover. The existing
+contenteditable input renders inside the popover too, so editing
+free-form text remains one click away regardless of entry surface.
+
+### 15.4 — Right-rail Week Overview (Coverage / Conflicts / Open Shifts / Unpublished)
+
+The right sidebar in the mockup (Image #2 / #3). Aggregates that
+make the Shift Sheet a planning *insight* surface, not just a data
+entry table.
+
+**Shipping:**
+
+- **History-derived coverage algorithm.** New server module that,
+  per (dept_id, day_of_week, hour-of-day), averages the actual
+  hours worked from `time_entries` over the last N weeks (N = 8
+  starting point; tunable). The aggregated hours-per-day-per-dept
+  becomes the *target hours* for that dept on that DOW.
+  - Cached for the duration of a request (the week-overview
+    endpoint can compute it once and reuse for every dept).
+  - Excludes the current week (don't measure against in-progress
+    data).
+  - Falls back to zero if a dept has no history yet (new dept) —
+    shows "no baseline yet" in the UI instead of "0% coverage."
+- New endpoint: `GET /api/admin/sheet/week-overview?week_start=`
+  returns:
+  - `coverage_score` (overall % across all depts)
+  - `dept_coverage[]` (per-dept: planned_hours, target_hours, pct,
+    has_baseline)
+  - `open_shifts[]` — every (dept, day_of_week) where
+    target_hours > 0 AND no published cell covers that slot. So
+    "no one is filling the time in" — exactly per §2.0 #3.
+  - `conflicts[]` — overlapping published shifts for the same
+    user on the same day. Overlap-only for v1.
+  - `unpublished_changes_count` (cells where
+    `updated_at > last_published_at`)
+- Right-rail UI shows each section as a collapsible card. "View
+  open shifts" / "View conflicts" / "Review changes" open
+  detail panels (still on the right rail, no full-screen).
+- Hide on viewports < 1200px; below that breakpoint, the rail
+  becomes a single bottom strip with just the counts.
+
+**Schema touch needed.** `schedule_sheet_cells` gets a
+`last_published_at TIMESTAMPTZ` column (migration 020) so
+unpublished-changes detection is reliable (today the publish flag
+flips but we can't tell if subsequent edits land after that flip).
+Set on every successful publish.
+
+**Algorithm question still open.** N (weeks of history) and the
+hour-bucketing granularity (1h vs 30m vs whole-shift) are tuning
+parameters. Recommend N=8, granularity = whole-shift envelope
+(use parsed_start/end from history to compute hours-per-day), and
+make N an admin setting in 15.0's Settings refactor. Confirm
+during 15.4 implementation.
+
+**Conflict rules deferred.** Overlap-only for v1. Other rules
+(min/max hours, break-missing, back-to-back gaps, etc.) are
+opt-in rules in a later sprint (16.x) once the GM tells us which
+ones actually matter.
+
+### 15.5 — Toolbar: Shift Templates, Copy Previous Week, Auto-Fill, Validate
+
+The top toolbar row in the mockup (between header and grid).
+
+**Shipping:**
+
+- **Shift Templates**: modal that lists existing templates and lets
+  the GM apply one to selected cell(s) or create a new template
+  from the current selection. (Templates table already exists from
+  Sprint 7-ish.)
+- **Copy Previous Week**: button that takes the cells from
+  `week_start - 7d` and bulk-inserts them into the current week as
+  drafts. Confirmation dialog warns about overwriting existing
+  cells. Endpoint: `POST /api/admin/sheet/copy-from-previous`.
+- **Auto-Fill** (per §2.0 #5–6): generates a *preview diff* — for
+  each empty cell, suggests the staff member's most-common shift
+  for that DOW over the last N weeks (N = 4 starting point;
+  reuse the 15.0 setting). The diff renders inline on the sheet:
+  proposed cells appear with a distinct "suggested" treatment
+  (dashed border, lighter background, "Suggested" badge). The
+  admin can:
+    - Click any suggested cell to **edit** it (opens the 15.3
+      popover with the suggestion prefilled).
+    - "Apply all" commits every remaining suggestion.
+    - "Discard" wipes the suggestion overlay without writing.
+  Nothing hits the DB until apply. New endpoints:
+  `POST /api/admin/sheet/auto-fill-preview` (returns suggestions),
+  `POST /api/admin/sheet/auto-fill-apply` (bulk-inserts the
+  approved set).
+- **Validate Schedule**: runs the conflict checks from 15.4 and
+  surfaces them in a panel.
+
+**This sprint is feature-heavy.** Could legitimately split into 15.5a
+(Templates + Copy Previous Week) and 15.5b (Auto-Fill + Validate)
+if it gets crowded.
+
+### 15.6 — Mobile redesign: per-dept accordion cards
+
+Mockup Image #4 — restructures the entire mobile sheet layout.
+
+**Shipping:**
+
+- Replace the horizontally-scrolling table-on-mobile with per-dept
+  accordion cards (collapsible sections).
+- Each card header: dept icon + name + N staff + coverage %.
+- Inside each card: staff rows with horizontal scroll for the 7-day
+  cells (instead of the whole sheet scrolling).
+- Bottom floating tab bar with Shift Templates / Copy Previous Week
+  / Auto-Fill / Validate (mirrors the toolbar on desktop).
+- "More" menu in the top-right replacing the inline XLSX/PNG buttons
+  on mobile (those become menu items).
+- Collapsed-state persistence in `localStorage` per dept.
+
+**Depends on 15.5** for the toolbar contents.
+
+### 15.7 — Avatars + presence dot polish
+
+Per §2.0 #7: role labels are skipped (admin already has dept add/
+remove in `AdminSettings`; dept name is sufficient signal).
+What's left from the original mockup polish bucket:
+
+**Shipping:**
+
+- Initial-circle avatar component with dept-colored background.
+  Used in the sheet rows + calendar ResourceMode + StaffManager.
+- Extend the live presence dot (already exists in ResourceMode)
+  to the Shift Sheet — small green dot next to the staff name
+  when the staff is currently clocked in.
+- Subtle row hover affordance (background tint) — already partly
+  there but tune contrast.
+
+---
+
+## 3. Tuning-knob resolutions (GM 2026-05-28 round 2)
+
+All answered. Final answers below — use as the source of truth.
+
+- **15.0 categorization:** Claude decides. Rule: same-function
+  settings go in the same category. Working groupings:
+    - **Display & UX** — schedule_visibility, hide_abc_keyboard,
+      staff_login_layout
+    - **Staff Login** — login_methods (Username / PIN / Birthday
+      toggles)
+    - **Shift Sheet** — enable_legacy_assign_panel, the new
+      `coverage_history_weeks` (default 8, used by 15.4)
+    - **Departments** — existing dept CRUD
+    - **Status Codes** — new (15.0)
+- **15.0 color picker:** preset palette **+ hex fallback**.
+  Default palette: brand greens / ambers / yellows / reds / blues
+  / grays (≈8 swatches). "Custom hex" reveals an `<input type=text>`
+  validating against `^#[0-9a-f]{6}$`.
+- **15.4 N=8 default + intelligent:** N is a setting (default 8)
+  but the algorithm doesn't just blindly average N weeks. Spec:
+    - If history < 2 weeks → still compute a score, but flag the
+      output with `dataset_warning: 'low_sample'`. UI shows a
+      "predicted score may not reflect actual needs yet — dataset
+      too small" notice at the bottom.
+    - If history ≥ 2 weeks but the most recent 2 weeks deviate
+      from earlier weeks by > some threshold (e.g. > 25% on the
+      per-(dept, DOW) average), automatically *omit* the older
+      weeks and recompute from just the recent stable window. Flag
+      `dataset_warning: 'regime_change'` so the UI can surface
+      "schedule pattern changed N weeks ago — baseline reset."
+    - When dataset_warning is set, UI shows a small italic note
+      under the coverage cards, not a hard blocker.
+- **15.4 whole-shift envelope:** confirmed. Hours per
+  (dept × DOW) = average of (parsed_end - parsed_start) across
+  historical entries falling on that DOW for that dept.
+- **15.5 "Apply all":** empties-only by default. A small "Include
+  existing cells" checkbox in the preview panel lets the admin opt
+  in to overwriting.
+
+---
+
+## 4. Sprint logs (15.0 → present)
+
+### 2026-05-28 — Sprint 15.0: Settings categorization + admin-defined status codes + coverage-history setting
+
+First sprint of the Shift Sheet redesign arc. Foundational —
+nothing visible on the sheet yet, but every subsequent 15.x sprint
+reads from what this one shipped.
+
+**Schema (migration 019):**
+
+- New table `status_codes` (code_id / label / abbreviation / color
+  / is_system / sort_order / timestamps). UNIQUE on `abbreviation`.
+- Seeds five `is_system = TRUE` rows: HELP (green), BRK (amber),
+  DEEP CLEAN (yellow), H.M (slate), OFF (gray). System rows are
+  renamable / re-colorable via PATCH but the DELETE handler guards
+  them at the SQL level (`AND is_system = FALSE`).
+
+**Server endpoints:**
+
+- `GET /api/admin/status-codes` — list, sort_order ascending then
+  label.
+- `POST /api/admin/status-codes` — create custom code. Validates
+  hex color (`^#[0-9a-fA-F]{6}$`); 409 on duplicate abbreviation;
+  abbreviation upper-cased + trimmed.
+- `PATCH /api/admin/status-codes/:id` — rename / recolor / reorder.
+  Same validators; COALESCE-style update so partial bodies work.
+- `DELETE /api/admin/status-codes/:id` — non-system only. Returns
+  404 if not found, 409 with a friendly message if it's a system
+  code.
+
+**Settings validator extension:**
+
+- Added `coverage_history_weeks` to the ALLOWED settings map in PUT
+  `/admin/settings`. Validates "string that parses to an integer in
+  [2, 52]". Used by Sprint 15.4's coverage algorithm; client
+  defaults to "8" when missing.
+
+**AdminSettings refactor:**
+
+- Page is now categorized — sections grouped under uppercase
+  category headers:
+    1. **Display & Visibility** — Shifts Board Visibility
+    2. **Operations** — Performance Thresholds, Payroll (Payroll
+       was moved up from after Departments to sit next to
+       Performance, where it semantically belongs)
+    3. **Departments** — Departments CRUD
+    4. **Staff Login** — Staff auto sign-out, Staff login methods,
+       Hide ABC keyboard + Staff login layout (these two stay in
+       one section since both shape the login screen)
+    5. **Shift Sheet** — Legacy assign panel (pulled out of its
+       previous awkward home inside the Hide-ABC section),
+       Coverage history window, **Status Codes** (new)
+    6. **Account** — Sign out
+- Category header is a quiet uppercase label with a thin underline.
+  Not a card itself — section cards remain the visual unit. Rhythm
+  comes from the header's vertical margin.
+
+**Status Codes UI:**
+
+- New `<StatusCodesSection>` component (still in AdminSettings.js
+  for now; can move to its own file if it grows). Lists existing
+  codes with a color swatch, the abbreviation pill, the full
+  label, a "SYSTEM" tag on protected rows, plus Edit / Delete.
+- "+ Add status code" button opens an inline editor; same editor
+  is reused for in-place edits via the shared `<ColorAndTextEditor>`.
+- Color picker: 8-swatch preset palette + a "#" button that toggles
+  a hex input. Hex is validated against `^#[0-9a-fA-F]{6}$`; save
+  button stays disabled until the hex is valid (and label +
+  abbreviation are non-empty).
+- Delete on a system code is disabled with an explanatory tooltip.
+
+**Coverage history window UI:**
+
+- Number input (min 2, max 52, default 8) in its own Shift Sheet
+  section. Help text explicitly mentions that the algorithm does
+  its own intelligent trimming (regime-change detection) so the
+  number is just an upper bound, not a fixed window — set
+  expectations now so 15.4's algorithm doesn't feel like it's
+  ignoring the setting.
+
+**Migration deploy.** `019_status_codes.sql` must run before code
+rollout. The 15.2 inline pill renderer reads from this table; the
+sheet won't crash without it (cells fall back to plain text), but
+the Status Codes section in Settings will render empty until the
+seed runs.
+
+**Verified.** Five touched files balance (server.js shows the
+same -4/+4 paren noise from the parseShiftTimes regex literal).
+status_codes endpoints reachable; AdminSettings loads + saves
+the new coverage_history_weeks value; category headers render
+above each group.
+
+**Follow-ups:**
+
+- **15.1**: per-dept "+ Add staff" + dept-scoped typeahead. Pure
+  client refactor. No deps on 15.0.
+- **15.2**: status code → inline pill rendering on the Shift Sheet.
+  This is when 15.0's `status_codes` table starts being read by
+  the actual sheet UI.
+
+---
