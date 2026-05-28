@@ -99,15 +99,59 @@ const ShiftSheet = () => {
       }));
   }, [cells, addedUserIds, employees, departments]);
 
+  // Sprint 15.1: per-dept "addable" pool. Each dept gets its own
+  // typeahead listing only that dept's active employees who aren't
+  // already on the sheet. Replaces the Sprint-14 single-bottom
+  // dropdown — scoping the add action to the dept the GM is looking
+  // at is one less context switch.
+  const addableByDept = useMemo(() => {
+    const inSheet = new Set(visibleRows.map(r => r.user_id));
+    const byDept = new Map();
+    for (const e of employees) {
+      if (inSheet.has(e.user_id)) continue;
+      const key = e.department_id ?? '__unassigned';
+      if (!byDept.has(key)) byDept.set(key, []);
+      byDept.get(key).push(e);
+    }
+    return byDept;
+  }, [employees, visibleRows]);
+
   // Group by department. Order: by dept name, "Unassigned" last.
+  // Sprint 15.1: include depts even when they have zero rows yet,
+  // as long as they have addable staff — otherwise there'd be no
+  // surface for the admin to add the *first* row to that dept.
+  // Unassigned only appears when it has actual rows (you can't add
+  // a "to Unassigned" row from the typeahead).
   const grouped = useMemo(() => {
-    const m = new Map();
+    const rowsByDept = new Map();
     for (const r of visibleRows) {
       const key = r.department_id ?? '__unassigned';
-      if (!m.has(key)) m.set(key, { name: r.department || 'Unassigned', rows: [] });
-      m.get(key).rows.push(r);
+      if (!rowsByDept.has(key)) rowsByDept.set(key, []);
+      rowsByDept.get(key).push(r);
     }
-    const list = [...m.entries()].map(([key, v]) => ({ key, ...v }));
+    const byKey = new Map();
+    for (const d of departments) {
+      const rows = rowsByDept.get(d.department_id) || [];
+      const hasAddable = (addableByDept.get(d.department_id) || []).length > 0;
+      if (rows.length === 0 && !hasAddable) continue;
+      byKey.set(d.department_id, {
+        key:           d.department_id,
+        name:          d.name,
+        color:         d.color || null,
+        department_id: d.department_id,
+        rows,
+      });
+    }
+    if (rowsByDept.has('__unassigned')) {
+      byKey.set('__unassigned', {
+        key:           '__unassigned',
+        name:          'Unassigned',
+        color:         null,
+        department_id: null,
+        rows:          rowsByDept.get('__unassigned'),
+      });
+    }
+    const list = [...byKey.values()];
     list.forEach(g => g.rows.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     list.sort((a, b) => {
       if (a.name === 'Unassigned') return  1;
@@ -115,14 +159,12 @@ const ShiftSheet = () => {
       return a.name.localeCompare(b.name);
     });
     return list;
-  }, [visibleRows]);
+  }, [visibleRows, departments, addableByDept]);
 
-  // Pool for the "+ Add staff" dropdown: every active employee
-  // *not* already in the sheet (so we don't show duplicates).
-  const addablePool = useMemo(() => {
-    const inSheet = new Set(visibleRows.map(r => r.user_id));
-    return employees.filter(e => !inSheet.has(e.user_id));
-  }, [employees, visibleRows]);
+  // Sprint 15.1: which dept's "+ Add staff" affordance is currently
+  // expanded. Only one open at a time — clicking another dept's "+"
+  // collapses the previous one. null = none open.
+  const [addOpenDept, setAddOpenDept] = useState(null);
 
   const saveCell = useCallback(async (user_id, day_of_week, displayText) => {
     const res = await apiFetch('/admin/sheet/cell', {
@@ -343,76 +385,127 @@ const ShiftSheet = () => {
               {grouped.length === 0 && (
                 <tr>
                   <td colSpan={9} className="sheet-empty-row">
-                    No staff on the sheet yet. Use “Add staff” below to start a row.
+                    No staff or departments yet. Add a department in Settings, then come back to start a row.
                   </td>
                 </tr>
               )}
-              {grouped.map(group => (
-                <React.Fragment key={group.key}>
-                  <tr>
-                    <td colSpan={9} className="sheet-dept-row">
-                      {group.name}
-                    </td>
-                  </tr>
-                  {group.rows.map(row => {
-                    const allPub = rowAllPublished(row.user_id);
-                    const anyCells = rowAnyCells(row.user_id);
-                    return (
-                      <tr key={row.user_id} className="sheet-row">
-                        <td className="sheet-cell sheet-cell-name">{row.name}</td>
-                        {DAY_LABELS.map((_, idx) => {
-                          const cell = cellMap.get(`${row.user_id}|${idx}`);
-                          return (
-                            <ShiftCellInput
-                              key={idx}
-                              value={cell?.display_text || ''}
-                              highlight={!!cell?.highlight}
-                              published={!!cell?.is_published}
-                              onCommit={(text) => saveCell(row.user_id, idx, text)}
-                              onToggleHighlight={
-                                cell ? () => toggleHighlight(cell.cell_id, !cell.highlight) : null
-                              }
-                            />
-                          );
-                        })}
-                        <td className="sheet-cell sheet-cell-actions">
-                          {anyCells && (
+              {grouped.map(group => {
+                // Sprint 15.1: addable list for this dept's "+ Add"
+                // affordance. Empty when every active employee in the
+                // dept is already on the sheet.
+                const addable = group.department_id != null
+                  ? (addableByDept.get(group.department_id) || [])
+                  : [];
+                const addOpen = addOpenDept === group.key;
+                const dotColor = group.color || 'var(--border)';
+                return (
+                  <React.Fragment key={group.key}>
+                    <tr>
+                      <td colSpan={9} className="sheet-dept-row">
+                        <div className="sheet-dept-row-inner">
+                          <span
+                            className="sheet-dept-dot"
+                            style={{ background: dotColor }}
+                            aria-hidden
+                          />
+                          <span className="sheet-dept-name">{group.name}</span>
+                          <span className="sheet-dept-count">
+                            {group.rows.length} staff
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {group.rows.map(row => {
+                      const allPub = rowAllPublished(row.user_id);
+                      const anyCells = rowAnyCells(row.user_id);
+                      return (
+                        <tr key={row.user_id} className="sheet-row">
+                          <td className="sheet-cell sheet-cell-name">{row.name}</td>
+                          {DAY_LABELS.map((_, idx) => {
+                            const cell = cellMap.get(`${row.user_id}|${idx}`);
+                            return (
+                              <ShiftCellInput
+                                key={idx}
+                                value={cell?.display_text || ''}
+                                highlight={!!cell?.highlight}
+                                published={!!cell?.is_published}
+                                onCommit={(text) => saveCell(row.user_id, idx, text)}
+                                onToggleHighlight={
+                                  cell ? () => toggleHighlight(cell.cell_id, !cell.highlight) : null
+                                }
+                              />
+                            );
+                          })}
+                          <td className="sheet-cell sheet-cell-actions">
+                            {anyCells && (
+                              <button
+                                type="button"
+                                className={`sheet-row-publish${allPub ? ' is-published' : ''}`}
+                                onClick={() => publishRow(row.user_id)}
+                                title={allPub
+                                  ? 'Row published — click to unpublish'
+                                  : 'Publish this row to the calendar overlay'}
+                              >
+                                {allPub ? '●' : '○'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {/* Sprint 15.1: per-dept "+ Add staff" affordance.
+                        Sits at the end of every dept section (except
+                        Unassigned, which isn't an addable target).
+                        Collapsed by default — click reveals the
+                        dept-scoped typeahead inline. */}
+                    {group.department_id != null && (
+                      <tr className="sheet-add-row">
+                        <td colSpan={9} className="sheet-add-cell">
+                          {addOpen ? (
+                            <div className="sheet-add-inline">
+                              <DropdownSelect
+                                value=""
+                                placeholder={
+                                  addable.length === 0
+                                    ? `All ${group.name} staff already on the sheet`
+                                    : `Add to ${group.name}…`
+                                }
+                                options={addable.map(e => ({
+                                  value: e.user_id,
+                                  label: e.name,
+                                }))}
+                                onChange={(uid) => {
+                                  if (uid) {
+                                    addStaffRow(uid);
+                                    setAddOpenDept(null);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="sheet-add-cancel"
+                                onClick={() => setAddOpenDept(null)}
+                              >Cancel</button>
+                            </div>
+                          ) : (
                             <button
                               type="button"
-                              className={`sheet-row-publish${allPub ? ' is-published' : ''}`}
-                              onClick={() => publishRow(row.user_id)}
-                              title={allPub
-                                ? 'Row published — click to unpublish'
-                                : 'Publish this row to the calendar overlay'}
-                            >
-                              {allPub ? '●' : '○'}
-                            </button>
+                              className="sheet-add-btn"
+                              onClick={() => setAddOpenDept(group.key)}
+                              disabled={addable.length === 0}
+                              title={addable.length === 0
+                                ? `Every ${group.name} staff member is already on the sheet`
+                                : `Add a ${group.name} staff member`}
+                            >+ Add to {group.name}</button>
                           )}
                         </td>
                       </tr>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
-
-          <div className="sheet-add-staff">
-            <span className="sheet-add-staff-label">Add staff</span>
-            <DropdownSelect
-              value=""
-              placeholder={
-                addablePool.length === 0
-                  ? 'All staff already on the sheet'
-                  : 'Pick an employee…'
-              }
-              options={addablePool.map(e => ({
-                value: e.user_id,
-                label: `${e.name}${e.department ? ` · ${e.department}` : ''}`,
-              }))}
-              onChange={(uid) => uid && addStaffRow(uid)}
-            />
-          </div>
         </div>
       )}
     </div>

@@ -118,6 +118,93 @@
   border: 1px solid var(--border-light);
 }
 
+/* ── Sprint 15.1: dept header polish + per-dept add affordance ──────── */
+
+.sheet-dept-row-inner {
+  /* Flex on a wrapper div instead of the td so the table layout
+     stays well-behaved on every browser. */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sheet-dept-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.sheet-dept-name {
+  /* Dept name is the row's primary text. */
+}
+.sheet-dept-count {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  padding: 1px 8px;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Per-dept "+ Add" row sits at the end of every dept section. */
+.sheet-add-row {
+  background: transparent;
+}
+.sheet-add-cell {
+  padding: 6px 12px 14px 12px;
+  border: 0;
+}
+.sheet-add-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.sheet-add-btn:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--brand-text);
+  border-color: var(--text-muted);
+}
+.sheet-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sheet-add-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.sheet-add-cancel {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.sheet-add-cancel:hover {
+  background: var(--bg-raised);
+  color: var(--brand-text);
+}
+
 .sheet-row { background: var(--bg-surface); }
 .sheet-row:hover { background: var(--bg-raised); }
 
@@ -163,20 +250,10 @@
 }
 .sheet-empty { padding: 32px; text-align: center; color: var(--text-muted); }
 
-.sheet-add-staff {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-light);
-  margin-top: 12px;
-}
-.sheet-add-staff-label {
-  font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--brand-text);
-}
+/* Sprint 14 had a single bottom "Add staff" row (.sheet-add-staff +
+   .sheet-add-staff-label). Sprint 15.1 replaced it with per-dept
+   "+ Add" affordances inside each dept section. Those styles are
+   removed; the per-dept variants live near .sheet-dept-row above. */
 
 @media (max-width: 880px) {
   .sheet-page { padding: 18px 14px 60px; }

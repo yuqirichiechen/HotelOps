@@ -345,6 +345,65 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.1: per-dept "+ Add staff" + dept header polish
+
+The narrow ask from the GM after the Sprint-14.3 review: scope the
+add-staff action to each department instead of one bottom dropdown.
+Pure client refactor; no schema, no endpoints.
+
+**Shipped:**
+
+- **Per-dept "+ Add staff" affordance.** Each dept section now ends
+  with a dashed-border `+ Add to <Dept>` button. Click expands it
+  inline into a `DropdownSelect` filtered to that dept's active
+  employees not yet on the sheet, plus a Cancel button. Picking a
+  staff member adds the row and collapses the affordance.
+- **Single-open at a time.** New `addOpenDept` state (string |
+  null) tracks which dept's affordance is open; clicking a
+  different dept's "+ Add" collapses the previous one. Avoids
+  multiple open dropdowns competing for attention.
+- **Dropped the bottom single-add row.** The old
+  `.sheet-add-staff` row (and the global `addablePool` memo backing
+  it) is gone. Replaced by the per-dept variants.
+- **Dept header polish.** Each dept row is now a flex row containing
+  a colored dot (the dept's `color` from `/api/admin/departments`)
+  + the dept name + a small "N staff" count pill. Wrapped in a
+  `.sheet-dept-row-inner` div so the flex layout doesn't fight the
+  `<td colSpan={9}>` it sits inside.
+- **Empty depts now render.** `grouped` includes any dept that has
+  at least one *addable* staff member even when it has zero rows
+  yet — so the GM can add the very first row to a fresh dept.
+  Without this, an empty dept would never appear in the sheet and
+  the only way to start it would be the (now-removed) global
+  dropdown.
+
+**Behavior nuances:**
+
+- `Unassigned` (staff without a `department_id`) still shows up as
+  a section when it has rows, but never gets a `+ Add` button — you
+  can't add "to unassigned" from the typeahead because the
+  typeahead is dept-scoped.
+- If every active employee in a dept is on the sheet, the "+ Add"
+  button stays visible but disabled, with a tooltip explaining
+  why. Better than hiding it (which would make the section feel
+  "broken").
+- When no depts exist at all, the empty-state message now points
+  the admin at **Settings → Departments** instead of the gone
+  bottom dropdown.
+
+**Verified.** ShiftSheet/index.js + ShiftSheet.css balance.
+addableByDept + grouped restructure preserve every existing render
+path; per-dept add inline affordance renders + collapses; "N staff"
+count + dept dot show on header.
+
+**Follow-ups:**
+
+- **15.2** picks up next: per-row `...` menu (merging the existing
+  publish toggle into it) + inline status pill rendering driven by
+  the `status_codes` table seeded in 15.0.
+
+---
+
 ### 2026-05-28 — Sprint 15.0: Settings categorization + admin-defined status codes + coverage-history setting
 
 First sprint of the Shift Sheet redesign arc. Foundational —
