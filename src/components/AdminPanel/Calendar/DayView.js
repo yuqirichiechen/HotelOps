@@ -279,7 +279,51 @@ const ShiftDetailModal = ({ shift, onClose }) => {
   );
 };
 
-const DayView = ({ date, schedules, employees, departments, loading, onPickDate, onEdit }) => {
+// Sprint 14.2: planned-shift overlay surface. Renders one quiet pill
+// per published cell on the current day (post-deptFilter), labeled
+// with the staff name + the raw display_text the GM typed in the
+// Shift Sheet. Lives above the four day-render modes so the planned
+// vs actual comparison stays one glance apart — and so we don't
+// touch the lane-packing logic of TimelineMode/ResourceMode.
+const PlannedShiftsStrip = ({ planned, departments }) => {
+  if (!planned || planned.length === 0) return null;
+  const deptColorFor = (name) => (DEPT_COLORS[name] || DEFAULT_COLOR);
+  void departments; // dept list available if we want richer grouping later
+  return (
+    <div className="day-planned-strip" aria-label="Planned shifts from the Shift Sheet">
+      <div className="day-planned-strip-head">
+        <span className="day-planned-strip-title">Planned</span>
+        <span className="day-planned-strip-count">{planned.length}</span>
+        <span className="day-planned-strip-help">From the Shift Sheet — published cells overlay actual clock data.</span>
+      </div>
+      <ul className="day-planned-strip-list">
+        {planned.map(p => {
+          const color = deptColorFor(p.department_name);
+          const time = (p.parsed_start && p.parsed_end)
+            ? `${p.parsed_start.slice(0,5)}–${p.parsed_end.slice(0,5)}`
+            : null;
+          return (
+            <li
+              key={p.cell_id}
+              className={`day-planned-pill${p.highlight ? ' is-highlight' : ''}`}
+              style={{ borderColor: color.border, color: color.text }}
+              title={p.department_name ? `${p.department_name} • ${p.display_text}` : p.display_text}
+            >
+              <span className="day-planned-pill-dot" style={{ background: color.border }} aria-hidden />
+              <span className="day-planned-pill-name">{p.user_name}</span>
+              <span className="day-planned-pill-text">
+                {time ? <span className="day-planned-pill-time">{time}</span> : null}
+                <span className="day-planned-pill-raw">{p.display_text}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
+const DayView = ({ date, schedules, plannedShifts, employees, departments, loading, onPickDate, onEdit }) => {
   const dateStr = fmtDate(date);
   const isMobile = useIsMobile();
 
@@ -352,6 +396,16 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
       : enrichedShifts.filter(s => s.department_id === deptFilter),
     [enrichedShifts, deptFilter]
   );
+
+  // Sprint 14.2: planned-shift overlay — restrict to current day,
+  // then respect the dept filter so the planned strip mirrors the
+  // user's actual view.
+  const todaysPlanned = useMemo(() => {
+    const list = (plannedShifts || []).filter(p => p.scheduled_date === dateStr);
+    return deptFilter === 'all'
+      ? list
+      : list.filter(p => p.department_id === deptFilter);
+  }, [plannedShifts, dateStr, deptFilter]);
 
   // ── department-grouped staff for resource view ─────────────────────────
   const empsByDept = useMemo(() => {
@@ -437,6 +491,12 @@ const DayView = ({ date, schedules, employees, departments, loading, onPickDate,
           </div>
         </div>
       </div>
+
+      {/* Sprint 14.2: planned-shift overlay strip — renders above all
+          four render modes so the planned-vs-actual comparison is
+          one glance apart without complicating any of the four
+          layout paths. */}
+      <PlannedShiftsStrip planned={todaysPlanned} departments={departments} />
 
       {/* Sprint 13.2: 2x2 component routing — layoutStyle × viewMode.
             classic + timeline → original TimelineMode (hour rail)

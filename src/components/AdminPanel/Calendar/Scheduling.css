@@ -3043,6 +3043,29 @@
   color: white;
 }
 
+/* Sprint 14.1: opt-in legacy AssignPanel button. Sits next to the
+   primary Assign pill but is visually quieter — outlined, neutral
+   palette — so it reads as a fallback affordance, not a peer. */
+.sched-legacy-assign-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.sched-legacy-assign-btn:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
 /* View toggle pins to the right edge of the controls cluster. */
 .sched-header-controls .sched-view-toggle {
   margin-left: auto;
@@ -3050,6 +3073,7 @@
 
 @media (max-width: 720px) {
   .sched-assign-btn { font-size: 12px; padding: 5px 10px; margin-left: 4px; }
+  .sched-legacy-assign-btn { font-size: 11px; padding: 4px 8px; margin-left: 4px; }
 }
 
 /* Day controls: no wrap on phone — instead shrink contents. */
@@ -3082,3 +3106,110 @@
    existing flex layout. Legacy `.day-filter-dropdown` styles remain
    in the file as dead CSS for one sprint while the GM confirms. */
 .day-controls > .hop-dropdown { margin-right: auto; }
+
+/* ── Sprint 14.2: planned-shift overlay strip ─────────────────────────
+   Quiet horizontal strip above the day's main render. Each published
+   Shift Sheet cell renders as a pill: dept-color dot, staff name,
+   parsed time range (if available) + the raw display_text. Reads
+   as "what was planned" so the admin can scan-compare against the
+   actual clock-entry bars below. */
+.day-planned-strip {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+.day-planned-strip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.day-planned-strip-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.day-planned-strip-count {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-base);
+  padding: 1px 7px;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+}
+.day-planned-strip-help {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.day-planned-strip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.day-planned-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--border);
+  background: var(--bg-surface);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  line-height: 1.2;
+  max-width: 100%;
+  /* Dashed border distinguishes "planned" from the solid bars used
+     for actual clock entries below. */
+}
+.day-planned-pill.is-highlight {
+  background: #fefcbf;
+  color: #744210 !important;
+  border-color: #d69e2e;
+}
+.day-planned-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 8px;
+}
+.day-planned-pill-name {
+  font-weight: 700;
+}
+.day-planned-pill-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+.day-planned-pill-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.day-planned-pill-raw {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 720px) {
+  .day-planned-strip { padding: 8px 10px; }
+  .day-planned-pill { font-size: 11px; padding: 4px 8px; gap: 6px; }
+  .day-planned-pill-raw { max-width: 110px; }
+}

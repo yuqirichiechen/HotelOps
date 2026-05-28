@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../../components/shared/DropdownSelect';
@@ -141,6 +143,41 @@ const ShiftSheet = () => {
     }
   }, [weekStart]);
 
+  const applyCellChanges = (changed) => {
+    if (!Array.isArray(changed) || changed.length === 0) return;
+    setCells(prev => {
+      const map = new Map(prev.map(c => [c.cell_id, c]));
+      for (const c of changed) map.set(c.cell_id, c);
+      return [...map.values()];
+    });
+  };
+
+  const toggleHighlight = useCallback(async (cell_id, next) => {
+    const res = await apiFetch('/admin/sheet/cell/highlight', {
+      method: 'PUT',
+      body: JSON.stringify({ cell_id, highlight: next }),
+    });
+    if (res.ok && res.data?.success) applyCellChanges([res.data.cell]);
+  }, []);
+
+  const publishCellIds = useCallback(async (cellIds, next) => {
+    if (!cellIds || cellIds.length === 0) return;
+    const path = next ? '/admin/sheet/publish' : '/admin/sheet/unpublish';
+    const res = await apiFetch(path, {
+      method: 'POST',
+      body: JSON.stringify({ cell_ids: cellIds }),
+    });
+    if (res.ok && res.data?.success) applyCellChanges(res.data.cells || []);
+  }, []);
+
+  const publishWeek = useCallback(async (next) => {
+    const res = await apiFetch(next ? '/admin/sheet/publish' : '/admin/sheet/unpublish', {
+      method: 'POST',
+      body: JSON.stringify({ week_start: weekStart }),
+    });
+    if (res.ok && res.data?.success) applyCellChanges(res.data.cells || []);
+  }, [weekStart]);
+
   const addStaffRow = (userId) => {
     setAddedUserIds(prev => {
       const next = new Set(prev);
@@ -148,6 +185,83 @@ const ShiftSheet = () => {
       return next;
     });
   };
+
+  // Sprint 14.1: XLSX export mirrors the GM's Excel layout — header
+  // row of day-name + day-number, dept section rows in uppercase,
+  // staff rows with the display_text per day. Single sheet per
+  // workbook; filename includes the week_start date.
+  const exportXLSX = useCallback(() => {
+    const headerRow = ['Staff', ...DAY_LABELS.map((label, idx) => `${label} ${dayDate(weekStart, idx).getDate()}`)];
+    const aoa = [headerRow];
+    for (const group of grouped) {
+      aoa.push([group.name.toUpperCase(), '', '', '', '', '', '', '']);
+      for (const row of group.rows) {
+        const cells = DAY_LABELS.map((_, idx) => {
+          const c = cellMap.get(`${row.user_id}|${idx}`);
+          return c?.display_text || '';
+        });
+        aoa.push([row.name, ...cells]);
+      }
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 22 }, ...Array(7).fill({ wch: 14 })];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Schedule');
+    XLSX.writeFile(wb, `schedule-${weekStart}.xlsx`);
+  }, [weekStart, grouped, cellMap]);
+
+  // Sprint 14.2: PNG export. Snapshots the rendered sheet grid via
+  // html2canvas and triggers a download. Captures the .sheet-grid-wrap
+  // so headers + dept rows + cells are all in-frame. Pixel ratio is
+  // bumped for legibility on Retina (the snapshot is what gets
+  // texted/Slacked, not the live DOM).
+  const gridRef = useRef(null);
+  const [exportingPng, setExportingPng] = useState(false);
+  const exportPNG = useCallback(async () => {
+    if (!gridRef.current) return;
+    setExportingPng(true);
+    try {
+      const canvas = await html2canvas(gridRef.current, {
+        backgroundColor: '#ffffff',
+        scale: window.devicePixelRatio > 1 ? 2 : 1.5,
+        useCORS: true,
+        logging: false,
+      });
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `schedule-${weekStart}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('[exportPNG]', err);
+    } finally {
+      setExportingPng(false);
+    }
+  }, [weekStart]);
+
+  // Per-row publish toggle: collect every cell_id for the row, send
+  // them through the bulk endpoint. Computes the *target* flag from
+  // whether any cell in the row is still draft (next = true if not
+  // already fully published).
+  const publishRow = (userId) => {
+    const rowCells = cells.filter(c => c.user_id === userId);
+    if (rowCells.length === 0) return;
+    const allPublished = rowCells.every(c => c.is_published);
+    const next = !allPublished;
+    publishCellIds(rowCells.map(c => c.cell_id), next);
+  };
+  const rowAllPublished = (userId) => {
+    const rowCells = cells.filter(c => c.user_id === userId);
+    return rowCells.length > 0 && rowCells.every(c => c.is_published);
+  };
+  const rowAnyCells = (userId) =>
+    cells.some(c => c.user_id === userId);
+  const weekAllPublished = useMemo(
+    () => cells.length > 0 && cells.every(c => c.is_published),
+    [cells]
+  );
 
   // Week navigation
   const shiftWeek = (delta) => {
@@ -169,13 +283,44 @@ const ShiftSheet = () => {
           <button className="sheet-nav-today" onClick={goToToday}>Today</button>
           <button className="sheet-nav-arrow" onClick={() => shiftWeek(+1)} aria-label="Next week">›</button>
           <span className="sheet-week-label">{fmtWeekLabel(weekStart)}</span>
+          {/* Sprint 14.1: bulk-publish + XLSX export. Publish toggles
+              every cell on the current week; XLSX dumps the visible
+              grid into a workbook the GM can hand off to payroll. */}
+          <button
+            type="button"
+            className={`sheet-publish-btn${weekAllPublished ? ' is-published' : ''}`}
+            onClick={() => publishWeek(!weekAllPublished)}
+            disabled={cells.length === 0}
+            title={weekAllPublished
+              ? 'All cells published — click to unpublish this week'
+              : 'Publish every cell on this week to the calendar overlay'}
+          >
+            {weekAllPublished ? '● Published' : 'Publish week'}
+          </button>
+          <button
+            type="button"
+            className="sheet-export-btn"
+            onClick={exportXLSX}
+            disabled={cells.length === 0}
+            title="Download .xlsx"
+          >↓ XLSX</button>
+          {/* Sprint 14.2: PNG export. Snapshot of the rendered grid,
+              handy for Slack / text-message handoffs where opening a
+              spreadsheet would be friction. */}
+          <button
+            type="button"
+            className="sheet-export-btn"
+            onClick={exportPNG}
+            disabled={cells.length === 0 || exportingPng}
+            title="Download .png"
+          >{exportingPng ? '…' : '↓ PNG'}</button>
         </div>
       </div>
 
       {loading && visibleRows.length === 0 ? (
         <div className="sheet-empty">Loading…</div>
       ) : (
-        <div className="sheet-grid-wrap">
+        <div className="sheet-grid-wrap" ref={gridRef}>
           <table className="sheet-grid">
             <thead>
               <tr>
@@ -189,12 +334,15 @@ const ShiftSheet = () => {
                     </th>
                   );
                 })}
+                {/* Sprint 14.1: trailing column for per-row publish
+                    button. Narrower than the day cells. */}
+                <th className="sheet-th sheet-th-actions" aria-label="Row actions" />
               </tr>
             </thead>
             <tbody>
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="sheet-empty-row">
+                  <td colSpan={9} className="sheet-empty-row">
                     No staff on the sheet yet. Use “Add staff” below to start a row.
                   </td>
                 </tr>
@@ -202,26 +350,48 @@ const ShiftSheet = () => {
               {grouped.map(group => (
                 <React.Fragment key={group.key}>
                   <tr>
-                    <td colSpan={8} className="sheet-dept-row">
+                    <td colSpan={9} className="sheet-dept-row">
                       {group.name}
                     </td>
                   </tr>
-                  {group.rows.map(row => (
-                    <tr key={row.user_id} className="sheet-row">
-                      <td className="sheet-cell sheet-cell-name">{row.name}</td>
-                      {DAY_LABELS.map((_, idx) => {
-                        const cell = cellMap.get(`${row.user_id}|${idx}`);
-                        return (
-                          <ShiftCellInput
-                            key={idx}
-                            value={cell?.display_text || ''}
-                            highlight={!!cell?.highlight}
-                            onCommit={(text) => saveCell(row.user_id, idx, text)}
-                          />
-                        );
-                      })}
-                    </tr>
-                  ))}
+                  {group.rows.map(row => {
+                    const allPub = rowAllPublished(row.user_id);
+                    const anyCells = rowAnyCells(row.user_id);
+                    return (
+                      <tr key={row.user_id} className="sheet-row">
+                        <td className="sheet-cell sheet-cell-name">{row.name}</td>
+                        {DAY_LABELS.map((_, idx) => {
+                          const cell = cellMap.get(`${row.user_id}|${idx}`);
+                          return (
+                            <ShiftCellInput
+                              key={idx}
+                              value={cell?.display_text || ''}
+                              highlight={!!cell?.highlight}
+                              published={!!cell?.is_published}
+                              onCommit={(text) => saveCell(row.user_id, idx, text)}
+                              onToggleHighlight={
+                                cell ? () => toggleHighlight(cell.cell_id, !cell.highlight) : null
+                              }
+                            />
+                          );
+                        })}
+                        <td className="sheet-cell sheet-cell-actions">
+                          {anyCells && (
+                            <button
+                              type="button"
+                              className={`sheet-row-publish${allPub ? ' is-published' : ''}`}
+                              onClick={() => publishRow(row.user_id)}
+                              title={allPub
+                                ? 'Row published — click to unpublish'
+                                : 'Publish this row to the calendar overlay'}
+                            >
+                              {allPub ? '●' : '○'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </React.Fragment>
               ))}
             </tbody>
@@ -253,7 +423,7 @@ const ShiftSheet = () => {
 // shift string. Autosaves on blur or on Enter; Tab moves focus to
 // the next cell via the browser's default focus order. Doesn't fire
 // a save if the value is unchanged from when the cell was focused.
-const ShiftCellInput = ({ value, highlight, onCommit }) => {
+const ShiftCellInput = ({ value, highlight, published, onCommit, onToggleHighlight }) => {
   const [draft, setDraft] = useState(value);
   const ref = useRef(null);
   const lastSavedRef = useRef(value);
@@ -267,8 +437,25 @@ const ShiftCellInput = ({ value, highlight, onCommit }) => {
     lastSavedRef.current = next;
     onCommit(next);
   };
+  const classes = [
+    'sheet-cell',
+    'sheet-cell-input',
+    highlight ? 'is-highlight' : '',
+    published ? 'is-published' : '',
+  ].filter(Boolean).join(' ');
   return (
-    <td className={`sheet-cell sheet-cell-input${highlight ? ' is-highlight' : ''}`}>
+    <td
+      className={classes}
+      onContextMenu={(e) => {
+        // Sprint 14.1: right-click toggles yellow highlight. Long-press
+        // on touch devices fires contextmenu too. Only available for
+        // cells that exist in the DB (have an onToggleHighlight handler).
+        if (onToggleHighlight) {
+          e.preventDefault();
+          onToggleHighlight();
+        }
+      }}
+    >
       <input
         ref={ref}
         type="text"

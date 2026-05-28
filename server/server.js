@@ -1881,6 +1881,47 @@ app.delete('/api/admin/schedule/:id', async (req, res) => {
   }
 });
 
+// Sprint 14.1: free-form text → structured start/end-time parser.
+// Recognises the GM's common shorthands ("3p-11p", "11p-7a",
+// "9a-5p", "9-5"). Free-form notes like "OFF", "BRK", "Deep clea"
+// don't match the regex and return null — parsed_start/end stay
+// null for those cells. Pure function, no side-effects.
+const parseShiftTimes = (text) => {
+  if (!text || typeof text !== 'string') return null;
+  const s = text.trim().toLowerCase();
+  // Quick-reject clear non-time codes (cheaper than regex).
+  if (s.length < 3) return null;
+  // Format: "<h>[:<mm>][a|p|am|pm] [-–to] <h>[:<mm>][a|p|am|pm]"
+  const re = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*[-–—to/]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\b/;
+  const m = s.match(re);
+  if (!m) return null;
+  let [, h1s, mm1s, p1, h2s, mm2s, p2] = m;
+  let h1 = parseInt(h1s, 10);
+  let h2 = parseInt(h2s, 10);
+  const mm1 = mm1s ? parseInt(mm1s, 10) : 0;
+  const mm2 = mm2s ? parseInt(mm2s, 10) : 0;
+  if (h1 > 23 || h2 > 23 || mm1 > 59 || mm2 > 59) return null;
+  const isPm = (p) => p === 'p' || p === 'pm';
+  const isAm = (p) => p === 'a' || p === 'am';
+  const apply12 = (h, p) => {
+    if (isPm(p)) return h === 12 ? 12 : h + 12;
+    if (isAm(p)) return h === 12 ? 0  : h;
+    return h;
+  };
+  h1 = apply12(h1, p1);
+  h2 = apply12(h2, p2);
+  // Heuristic when periods are omitted: "9-5" reads as 9 AM → 5 PM
+  // (most hotel shifts cross noon, not midnight). If the explicit
+  // start period is PM and end has no period, leave end alone — the
+  // caller probably means an overnight (e.g., "11p-7" → 11 PM-7 AM).
+  if (!p1 && !p2 && h2 < h1 && h2 < 12) h2 += 12;
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    parsed_start: `${pad(h1)}:${pad(mm1)}:00`,
+    parsed_end:   `${pad(h2)}:${pad(mm2)}:00`,
+  };
+};
+
 // ── Shift Sheet (Sprint 14) ──────────────────────────────────────────────────
 //
 // Excel-style weekly planning grid. One row per (week_start, user_id,
@@ -1912,6 +1953,52 @@ app.get('/api/admin/sheet/week', requireAuth, requireRole('admin'), async (req, 
     return res.json({ success: true, week_start, cells: rows });
   } catch (err) {
     console.error('[sheet/week]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// Sprint 14.2: published-cells overlay for the calendar.
+// GET /api/admin/sheet/published?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Returns one row per published cell intersecting [from, to], with
+// the cell's *actual* scheduled date computed from week_start +
+// day_of_week. parsed_start/parsed_end are returned as 'HH:MM'
+// strings (or null when the cell text was unparseable). The
+// calendar uses these as a "planned" overlay alongside the
+// existing clock-entry visualization.
+app.get('/api/admin/sheet/published', requireAuth, requireRole('admin'), async (req, res) => {
+  const { from, to } = req.query;
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ success: false, message: 'from + to required (YYYY-MM-DD)' });
+  }
+  try {
+    // day_of_week column is 0..6 with 0 = Monday (matches the sheet's
+    // Mon-first column layout). Add it to week_start to get the
+    // calendar date the cell represents.
+    const { rows } = await pool.query(
+      `SELECT c.cell_id,
+              c.week_start::text,
+              c.user_id,
+              c.day_of_week,
+              c.display_text,
+              c.parsed_start::text,
+              c.parsed_end::text,
+              c.is_published,
+              c.highlight,
+              (c.week_start + (c.day_of_week || ' day')::interval)::date::text AS scheduled_date,
+              u.name AS user_name,
+              u.department_id,
+              d.name AS department_name
+         FROM schedule_sheet_cells c
+         JOIN users u            ON c.user_id = u.user_id
+         LEFT JOIN departments d ON u.department_id = d.department_id
+        WHERE c.is_published = TRUE
+          AND (c.week_start + (c.day_of_week || ' day')::interval)::date BETWEEN $1::date AND $2::date
+        ORDER BY scheduled_date, d.name NULLS LAST, u.name`,
+      [from, to]
+    );
+    return res.json({ success: true, planned: rows });
+  } catch (err) {
+    console.error('[sheet/published]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
 });
@@ -1948,22 +2035,108 @@ app.put('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (req, 
       );
       return res.json({ success: true, cell: null });
     }
+    // Sprint 14.1: derive structured times on every write so the
+    // calendar overlay (14.2) has them ready without a second pass.
+    const parsed = parseShiftTimes(text) || { parsed_start: null, parsed_end: null };
     const { rows } = await pool.query(
       `INSERT INTO schedule_sheet_cells
-         (week_start, user_id, day_of_week, display_text, highlight, updated_at)
-       VALUES ($1::date, $2, $3, $4, COALESCE($5, FALSE), NOW())
+         (week_start, user_id, day_of_week, display_text,
+          parsed_start, parsed_end, highlight, updated_at)
+       VALUES ($1::date, $2, $3, $4, $5::time, $6::time,
+               COALESCE($7, FALSE), NOW())
        ON CONFLICT (week_start, user_id, day_of_week) DO UPDATE
          SET display_text = EXCLUDED.display_text,
-             highlight    = COALESCE($5, schedule_sheet_cells.highlight),
+             parsed_start = EXCLUDED.parsed_start,
+             parsed_end   = EXCLUDED.parsed_end,
+             highlight    = COALESCE($7, schedule_sheet_cells.highlight),
              updated_at   = NOW()
        RETURNING cell_id, week_start::text, user_id, day_of_week,
                  display_text, parsed_start::text, parsed_end::text,
                  is_published, highlight, updated_at`,
-      [week_start, user_id, day_of_week, text, highlight]
+      [week_start, user_id, day_of_week, text,
+       parsed.parsed_start, parsed.parsed_end, highlight]
     );
     return res.json({ success: true, cell: rows[0] });
   } catch (err) {
     console.error('[sheet/cell PUT]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// Sprint 14.1: bulk publish / unpublish. Body accepts either a
+// list of cell_ids (most precise) or a (week_start, user_ids?)
+// shape that scopes by row/week. Returns the rows that changed.
+const setPublishedFlag = async (req, res, isPublished) => {
+  const { cell_ids, week_start, user_ids } = req.body || {};
+  if (Array.isArray(cell_ids) && cell_ids.length > 0) {
+    try {
+      const { rows } = await pool.query(
+        `UPDATE schedule_sheet_cells
+           SET is_published = $1, updated_at = NOW()
+         WHERE cell_id = ANY($2::uuid[])
+         RETURNING cell_id, week_start::text, user_id, day_of_week,
+                   display_text, parsed_start::text, parsed_end::text,
+                   is_published, highlight, updated_at`,
+        [isPublished, cell_ids]
+      );
+      return res.json({ success: true, cells: rows });
+    } catch (err) {
+      console.error('[sheet/publish ids]', err);
+      return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+    }
+  }
+  if (week_start && /^\d{4}-\d{2}-\d{2}$/.test(week_start)) {
+    try {
+      const params = [isPublished, week_start];
+      let extra = '';
+      if (Array.isArray(user_ids) && user_ids.length > 0) {
+        params.push(user_ids);
+        extra = ` AND user_id = ANY($${params.length}::uuid[])`;
+      }
+      const { rows } = await pool.query(
+        `UPDATE schedule_sheet_cells
+           SET is_published = $1, updated_at = NOW()
+         WHERE week_start = $2::date${extra}
+         RETURNING cell_id, week_start::text, user_id, day_of_week,
+                   display_text, parsed_start::text, parsed_end::text,
+                   is_published, highlight, updated_at`,
+        params
+      );
+      return res.json({ success: true, cells: rows });
+    } catch (err) {
+      console.error('[sheet/publish week]', err);
+      return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+    }
+  }
+  return res.status(400).json({ success: false, message: 'cell_ids[] or week_start required' });
+};
+
+app.post('/api/admin/sheet/publish',   requireAuth, requireRole('admin'), (req, res) => setPublishedFlag(req, res, true));
+app.post('/api/admin/sheet/unpublish', requireAuth, requireRole('admin'), (req, res) => setPublishedFlag(req, res, false));
+
+// PUT /api/admin/sheet/cell/highlight — toggle/set the highlight flag
+// on a single cell. Body: { cell_id, highlight: boolean }.
+app.put('/api/admin/sheet/cell/highlight', requireAuth, requireRole('admin'), async (req, res) => {
+  const { cell_id, highlight } = req.body || {};
+  if (!cell_id || typeof highlight !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'cell_id + highlight (bool) required' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE schedule_sheet_cells
+         SET highlight = $1, updated_at = NOW()
+       WHERE cell_id = $2::uuid
+       RETURNING cell_id, week_start::text, user_id, day_of_week,
+                 display_text, parsed_start::text, parsed_end::text,
+                 is_published, highlight, updated_at`,
+      [highlight, cell_id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'cell not found' });
+    }
+    return res.json({ success: true, cell: rows[0] });
+  } catch (err) {
+    console.error('[sheet/highlight]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
 });
@@ -2205,6 +2378,12 @@ app.put('/api/admin/settings', async (req, res) => {
       if (parts.length === 0) return false;
       return parts.every(p => allowed.includes(p));
     },
+    // Sprint 14.1: hidden by default. When 'true', the Calendar
+    // surface re-exposes a small "Legacy panel" button next to the
+    // primary "Assign" pill so the admin can fall back to the
+    // pre-Sprint-14 AssignPanel + AssignModal flow if the new
+    // sheet doesn't fit their workflow.
+    enable_legacy_assign_panel: v => v === 'true' || v === 'false',
   };
   const updates = req.body || {};
   if (Object.keys(updates).length === 0) {

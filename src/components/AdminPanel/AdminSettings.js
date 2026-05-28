@@ -38,6 +38,10 @@ const AdminSettings = () => {
   const [payStartDay, setPayStartDay] = useState('0'); // Sprint 9.4: 0=Sun .. 6=Sat
   const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
   const [loginLayout, setLoginLayout] = useState('hardcode'); // Sprint 9.1.3
+  // Sprint 14.1: when ON, the Calendar header shows a small "Legacy
+  // panel" button next to the primary Assign pill, re-exposing the
+  // pre-Sprint-14 AssignPanel + AssignModal flow.
+  const [legacyAssign, setLegacyAssign] = useState(false);
   // Sprint 9: which staff login methods are enabled. Stored as a CSV in
   // app_settings; treated as a Set in the UI for cheap toggle handling.
   const [loginMethods, setLoginMethods] = useState(() => new Set(['phone', 'username', 'employee_code', 'birthday']));
@@ -140,6 +144,7 @@ const AdminSettings = () => {
             setPayStartDay(String(data.settings.pay_period_start_day));
           }
           setHideAbc   (data.settings.hide_abc_keyboard === 'true');
+          setLegacyAssign(data.settings.enable_legacy_assign_panel === 'true');
           if (data.settings.staff_login_layout === 'fluid' || data.settings.staff_login_layout === 'hardcode') {
             setLoginLayout(data.settings.staff_login_layout);
           }
@@ -180,6 +185,7 @@ const AdminSettings = () => {
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
+        enable_legacy_assign_panel: legacyAssign ? 'true' : 'false',
         staff_login_layout:        loginLayout,
         enabled_login_methods:     [...loginMethods].join(','),
         pay_period_start_day:      payStartDay,
@@ -602,6 +608,28 @@ const AdminSettings = () => {
                 <div className="settings-toggle-help">
                   Independent of the Staff Login Methods toggles above — but they interact:
                   disabling Username already hides ABC, so this toggle only adds value when Username stays on.
+                </div>
+              </div>
+            </label>
+
+            {/* Sprint 14.1: re-expose the legacy AssignPanel side panel.
+                Default off — the Shift Sheet (Sprint 14) is the primary
+                assignment surface. Turn this on if the old form-style
+                assign flow still fits a specific workflow. */}
+            <label className="settings-toggle-row" style={{ marginTop: 16 }}>
+              <input
+                type="checkbox"
+                className="hop-check"
+                checked={legacyAssign}
+                onChange={e => { setLegacyAssign(e.target.checked); setSaved(false); }}
+              />
+              <div className="settings-toggle-text">
+                <div className="settings-toggle-label">{legacyAssign ? 'On — Calendar shows a small “Legacy panel” button next to Assign' : 'Off — Calendar exposes only the new Shift Sheet'}</div>
+                <div className="settings-toggle-help">
+                  Pre-Sprint-14 the calendar's ＋ button opened a form-style side panel
+                  for assigning individual shifts. Sprint 14 swapped that for the
+                  Excel-style Shift Sheet. Turn this back on to keep the old panel
+                  available as a fallback.
                 </div>
               </div>
             </label>

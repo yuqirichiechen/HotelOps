@@ -185,3 +185,71 @@
   .sheet-cell-name { padding: 6px 10px; font-size: 12px; }
   .sheet-cell-input input { padding: 6px 4px; font-size: 12px; }
 }
+
+/* ── Sprint 14.1: publish + export + highlight visuals ────────────────── */
+
+.sheet-publish-btn,
+.sheet-export-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.sheet-publish-btn:hover,
+.sheet-export-btn:hover { background: var(--bg-raised); color: var(--text-primary); }
+.sheet-publish-btn:disabled,
+.sheet-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sheet-publish-btn.is-published {
+  background: rgba(56, 161, 105, 0.12);
+  border-color: #38a169;
+  color: #276749;
+}
+
+/* Per-row publish toggle in the trailing actions column. */
+.sheet-th-actions,
+.sheet-cell-actions {
+  width: 40px;
+  text-align: center;
+  padding: 0;
+}
+.sheet-row-publish {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.sheet-row-publish:hover {
+  border-color: #38a169;
+  color: #38a169;
+}
+.sheet-row-publish.is-published {
+  background: #38a169;
+  border-color: #38a169;
+  color: white;
+}
+
+/* Published cells get a green left-edge stripe so the published
+   slice of the sheet is visible at a glance. Compounds with the
+   yellow highlight (border lives on the cell, background on the
+   inner input). */
+.sheet-cell-input.is-published {
+  box-shadow: inset 3px 0 0 0 #38a169;
+}

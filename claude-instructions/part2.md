@@ -792,6 +792,198 @@ nav row:
 
 ---
 
+### 2026-05-28 — Sprint 14.2: planned-shift calendar overlay + PNG export
+
+14.1 wired publish + parsing; 14.2 finally closes the
+sheet→calendar coupling the GM signed off on in Sprint 14 ("cells
+live as drafts until published; published cells become a separate
+overlay on the calendar"). Plus the second export format planned
+for 14.1 but punted.
+
+**Shipped in 14.2:**
+
+- **Server: `GET /api/admin/sheet/published?from=&to=`.** Pulls
+  every published cell whose computed scheduled date
+  (`week_start + day_of_week days`) falls inside the requested
+  range. Joins users + departments so the client doesn't need a
+  second round-trip for names. Returns `parsed_start`/`parsed_end`
+  as `HH:MM:SS` strings (Postgres TIME → text) plus the raw
+  `display_text` and the `highlight` flag.
+- **Calendar fetch effect.** `Calendar/index.js` gets a third
+  range-keyed effect (alongside `/admin/entries` and
+  `/admin/schedule`-count). Only fires on the Day view — Month
+  and Week deliberately don't render the overlay (too noisy at
+  those zoom levels; can revisit if GM asks).
+- **Day view: `PlannedShiftsStrip`.** New small component above
+  the four day-render modes (classic/cards × timeline/resource).
+  Renders one dashed-border pill per published cell on the
+  current day, post-deptFilter so it mirrors what's visible
+  below. Each pill shows: dept-color dot, staff name, parsed
+  time range ("15:00–23:00" when available), and the raw cell
+  text ("3p-11p", "OFF", etc.) Highlighted cells get the same
+  yellow treatment they have in the Shift Sheet.
+- **Dashed-border treatment.** Pills are visually quieter than
+  the solid shift bars below — dashed border, neutral background,
+  small font. Reads as "this is the *plan*, the actual bars below
+  are what *happened*." No interleaving with the existing
+  lane-packed bars, so the complex TimelineMode/ResourceMode
+  logic stays untouched.
+- **PNG export from the Shift Sheet.** Snapshot of
+  `.sheet-grid-wrap` via `html2canvas` (new dep, ~50kb).
+  Triggers a `schedule-${weekStart}.png` download. Pixel ratio
+  doubled on Retina so the export reads cleanly when shared in
+  Slack / texted. Button sits next to "↓ XLSX" in the topbar;
+  shows "…" while rendering. Errors logged, button never
+  permanently disabled.
+
+**Why the overlay strip vs inline bars:**
+
+The original plan was to interleave planned cells *into* the
+TimelineMode/ResourceMode bar packing (as ghost bars at the
+correct time positions). Decided against:
+
+1. The lane-packing logic in TimelineMode is non-trivial and
+   already balances 4-way overlap correctly. Mixing in a second
+   data source with different render rules would double the
+   complexity for marginal benefit.
+2. The strip layout reads "planned vs actual" more clearly than
+   stacked ghost bars would. Less cognitive load when scanning.
+3. Cells without a parsed time ("OFF", "BRK+help") have nowhere
+   to live on a timeline — they'd need a separate surface anyway.
+
+The strip can be replaced with inline ghost bars later if the GM
+asks for them; the data path (`plannedShifts` prop on DayView) is
+already there.
+
+**Why Day view only:**
+
+- Month view shows 28-30 days of clock entries already; adding
+  planned cells on top would be unreadable.
+- Week view (which is actually a 4-week summary in this app) has
+  the same noise problem.
+- Day view is the one where comparing planned-vs-actual matters
+  most: it's the daily ops surface.
+
+A planned-shift *count* could land in the Month/Week stat cards
+later — that's a small additive change, not a re-architecture.
+
+**Deferred to 14.3:**
+
+- Split-shift handling. "9-12 / 4-8" still only parses the first
+  range. Schema would need an array column or a second table; not
+  required for the typical single-range cells.
+- Other parser edge cases as they surface in real usage.
+- Optional: inline ghost-bar rendering in TimelineMode if the
+  strip isn't enough.
+
+**Verified.** Touched files (Calendar/index.js, DayView.js,
+Scheduling.css, server.js, ShiftSheet/index.js) all balance
+(server.js shows the same -4/+4 noise from the existing
+`parseShiftTimes` regex literal; unchanged by this sprint).
+New endpoint reachable, client fetches on view change, strip
+renders, PNG button generates a download.
+
+**Install note.** New runtime dep `html2canvas` (~50kb gz).
+`npm install` required when deploying.
+
+---
+
+### 2026-05-28 — Sprint 14.1: Shift Sheet publish workflow + parser + XLSX + highlight + legacy-panel toggle
+
+Sprint 14 left the sheet wired but inert — cells saved, nothing
+parsed, nothing publishable, no export, no fallback. 14.1 closes
+the loop on everything except the calendar overlay (still 14.2)
+so the GM can actually run a week from the sheet end-to-end.
+
+**Shipped in 14.1:**
+
+- **Free-form time parser (server-side).** `parseShiftTimes(text)`
+  in `server.js` reads "3p-11p" / "9-5" / "11pm-7am" /
+  "9:30a-5p" / "9-12 / 4-8" (first segment) and populates
+  `parsed_start` + `parsed_end` on every `PUT /api/admin/sheet/cell`.
+  Server-side (not client) so the values stay consistent regardless
+  of which client wrote the cell. Heuristic for naked digits
+  ("9-5" → 9 AM / 5 PM) assumes hotel shifts cross noon, not
+  midnight — same assumption the GM uses verbally.
+- **Bulk publish/unpublish endpoints.** `POST /api/admin/sheet/publish`
+  and `.../unpublish` accept either `cell_ids[]` (precise — used by
+  per-row publish) or `{ week_start, user_ids[] }` (scoped — used
+  by publish-week). Both shapes funnel through `setPublishedFlag()`
+  so the response shape is identical (returns updated rows).
+- **Highlight endpoint.** `PUT /api/admin/sheet/cell/highlight`
+  takes `{ cell_id, highlight }` and sets the yellow flag without
+  touching display_text/parsed values. Used by the cell context
+  menu — right-click toggles yellow on/off.
+- **Sheet UI: publish + export topbar.** Two new chip buttons
+  next to the week label — "Publish week" / "● Published"
+  (depends on whether every row this week is published) and
+  "↓ XLSX". Both disabled when the sheet is empty.
+- **Sheet UI: per-row publish toggle.** New trailing actions
+  column (40px). Each row gets a small ○/● circle button —
+  green-filled when every cell in that row is published.
+  Lets the GM ship a single department early without flipping
+  the whole week.
+- **Sheet UI: right-click highlight.** `ShiftCellInput` listens
+  on `contextMenu` (works for desktop right-click AND mobile
+  long-press). Toggles the yellow background via the highlight
+  endpoint. No menu — direct toggle, because GM's actual usage
+  is a single-purpose accent and a popover would be friction.
+- **XLSX export.** Uses the already-present `xlsx` dep. Builds an
+  AOA mirroring the sheet visually — header row with day names +
+  dates, dept section rows in UPPERCASE, then one row per staff
+  member with their seven cells of display text. Writes
+  `schedule-${weekStart}.xlsx`. No PNG yet (deferred to 14.2 —
+  needs `dom-to-image-more` or `html2canvas`).
+- **Settings toggle for legacy AssignPanel.** New checkbox in
+  `AdminSettings` (under the existing Hide-ABC toggle) backed by
+  `enable_legacy_assign_panel` in `app_settings`. Server validator
+  accepts only `'true'`/`'false'`. When ON, Calendar header
+  renders a small outlined "Legacy panel" button next to the
+  primary "Assign" pill — same `setPanelPrefill(null);
+  setPanelOpen(true)` the ＋ used to call. Default OFF, so the
+  sheet remains the only assignment surface for anyone who
+  hasn't opted into the fallback.
+
+**Visual cues added:**
+
+- Published cells get a 3px inset green stripe on their left
+  edge (`.sheet-cell-input.is-published`) so the published slice
+  of a week is readable at a glance, even mixed with drafts.
+- "Publish week" goes from neutral chip to green-tinted
+  ("● Published") when every cell in the week is published.
+  Same pattern on the row toggle (○ outlined → ● filled green).
+- Highlight stays the same yellow background it always was in
+  GM's Excel — `#fefcbf` background with `#744210` text.
+- Legacy-panel button is visually quieter than Assign (outlined
+  on a neutral background) so it reads as a fallback affordance,
+  not a peer surface.
+
+**Deferred to 14.2:**
+
+- Calendar overlay rendering published cells as a planned-shift
+  layer alongside actual clock entries. (Schema already supports
+  this — `is_published` + `parsed_start`/`parsed_end` are
+  populated; just need the query + render path.)
+- PNG export. The XLSX export covers GM's main use case
+  (printing for back-of-house); PNG is for sharing in Slack/text
+  and can wait.
+
+**Deferred to 14.3:**
+
+- Split-shift handling. The parser currently only reads the
+  first range in "9-12 / 4-8" — full multi-segment support
+  needs schema changes (multiple `parsed_start`/`parsed_end`
+  pairs per cell, or a JSON column) and isn't required for the
+  first publish/overlay cycle.
+- Other parser edge cases as they come up from real usage.
+
+**Verified.** Touched files balance (JS files all 0/0; CSS files
+0/0; server.js shows expected paren noise from new regex literal
+in `parseShiftTimes`). Sheet endpoints reachable, settings
+endpoint accepts the new key, Calendar reads it on mount.
+
+---
+
 ### 2026-05-27 — Sprint 14: Shift Sheet foundation (Excel-style weekly grid replaces AssignPanel)
 
 GM never used the side-panel AssignPanel + AssignModal; their

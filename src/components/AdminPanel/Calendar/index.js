@@ -207,6 +207,18 @@ const SchedulingManager = () => {
   const [modal,        setModal]        = useState(null);
   const [panelOpen,    setPanelOpen]    = useState(false);
   const [panelPrefill, setPanelPrefill] = useState(null);
+  // Sprint 14.1: opt-in fallback to the pre-Sprint-14 AssignPanel.
+  // Settings → enable_legacy_assign_panel toggles a small "Legacy
+  // panel" button next to the Assign pill that opens the same side
+  // panel the ＋ button used to open.
+  const [legacyPanelEnabled, setLegacyPanelEnabled] = useState(false);
+
+  // Sprint 14.2: planned-shift overlay sourced from the Shift Sheet.
+  // One entry per published cell in the current view's date range,
+  // already date-resolved by the server (week_start + day_of_week).
+  // DayView renders these as ghost bars alongside actual clock
+  // entries so the admin can compare planned vs actual at a glance.
+  const [plannedShifts, setPlannedShifts] = useState([]);
 
   // Sprint 12.1: NotesCenter + NotesDrawer (and their `notesTab` /
   // scroll-into-view state) moved out of the Calendar Day view and
@@ -241,6 +253,20 @@ const SchedulingManager = () => {
       if (dept.success) setDepartments(dept.departments);
       if (tmpl.success) setTemplates(tmpl.templates);
     });
+  }, []);
+
+  // Sprint 14.1: pull the legacy-panel setting once on mount. Cheap
+  // GET, no auth header needed (the route is already behind admin
+  // session middleware).
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.success && data.settings) {
+          setLegacyPanelEnabled(data.settings.enable_legacy_assign_panel === 'true');
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Range to fetch is driven by the current view + cursor. We always fetch a
@@ -466,6 +492,23 @@ const SchedulingManager = () => {
     return () => { cancelled = true; };
   }, [view, fetchRange.start, fetchRange.end]);
 
+  // Sprint 14.2: planned-shift overlay. Only pulled for Day view —
+  // it's the only surface that renders the ghost bars. Week/Month
+  // could surface it as a count badge later, but for now the
+  // single-day comparison is the primary use case.
+  useEffect(() => {
+    if (view !== 'day') { setPlannedShifts([]); return; }
+    let cancelled = false;
+    apiFetch(
+      `/admin/sheet/published?from=${fetchRange.start}&to=${fetchRange.end}`
+    ).then(({ ok, data }) => {
+      if (cancelled) return;
+      if (ok && data?.success) setPlannedShifts(data.planned || []);
+      else                     setPlannedShifts([]);
+    }).catch(() => { if (!cancelled) setPlannedShifts([]); });
+    return () => { cancelled = true; };
+  }, [view, fetchRange.start, fetchRange.end]);
+
   // Stats for the AtAGlance card — same shape for both Day and Week.
   // `schedules` is already scoped to the active view's range by
   // loadSchedules, so finished/onClock just count over the array.
@@ -669,13 +712,21 @@ const SchedulingManager = () => {
           {/* Sprint 14: Assign pill opens the new Shift Sheet
               surface instead of the legacy AssignPanel side panel.
               Old panel + AssignModal still exist in the file as
-              fallback; a settings toggle in 14.x will optionally
-              re-expose them. */}
+              fallback; Sprint 14.1 added a settings toggle that
+              re-exposes them via the small button below. */}
           <button
             type="button"
             className="sched-assign-btn"
             onClick={() => goTo('sheet')}
           >Assign</button>
+          {legacyPanelEnabled && (
+            <button
+              type="button"
+              className="sched-legacy-assign-btn"
+              onClick={() => { setPanelPrefill(null); setPanelOpen(true); }}
+              title="Open the pre-Sprint-14 assign panel"
+            >Legacy panel</button>
+          )}
         </div>
         <div className="sched-header-controls">
           <button className="nav-arrow" onClick={goPrev} aria-label="Previous">‹</button>
@@ -757,6 +808,7 @@ const SchedulingManager = () => {
             <DayView
               date={cursor}
               schedules={schedules}
+              plannedShifts={plannedShifts}
               employees={employees}
               departments={departments}
               loading={loading}
