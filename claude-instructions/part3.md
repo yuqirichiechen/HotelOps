@@ -345,6 +345,124 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.8: bug-fix pass — icons, smarter Auto-Fill, mobile alignment, Week→Day filter
+
+Five fixes the GM flagged after a hands-on session.
+
+**1. Icon standardization.**
+
+Mixed emoji-vs-text-glyph rendering was making the toolbar / dock
+/ row-menu icons look mismatched (some tiny black text, some
+big color emoji depending on the browser's font fallback).
+Fixes:
+  - Added `font-variant-emoji: text` to every icon-bearing button
+    + dock icon + chevron in `ShiftSheet.css`. This is a CSS hint
+    that tells the browser "prefer the text glyph for ambiguous
+    Unicode code points." Modern browsers honor it; older ones
+    ignore it harmlessly.
+  - Swapped the Auto-Fill `✨` (color-emoji sparkles on most
+    platforms) for `★` (universally text-glyph). The toolbar and
+    bottom dock now match.
+  - Bottom-bar nav icons (the AdminShell nav: Home / Staff /
+    Calendar / Logbook / Assistant / Settings) intentionally
+    untouched — they use the existing icon system from
+    `RoleIcon` and are correctly sized.
+
+**2. Smarter Auto-Fill (Sprint 15.5 algorithm upgrade).**
+
+Replaced `DISTINCT ON` most-recent with **mode-finding**:
+
+- Pull every completed entry for each `(user × DOW)` in the
+  lookback window.
+- Round each entry's start + end to the nearest 15 minutes.
+- Tally the rounded `(start, end)` pairs.
+- Pick the pair with the highest count. Ties broken by the
+  most-recent clock-in.
+- New `confidence: 'high' | 'low'` field on each suggestion —
+  `high` when the pattern appears ≥3 times or the user has only
+  one distinct pattern, otherwise `low`. Lets future UI tune the
+  ghost-bar opacity if we want to surface confidence visually.
+
+This catches "she usually works 9–5 even though last week was a
+one-off 11–7" — the most-common pattern dominates over the
+most-recent anomaly. 15-minute rounding handles small clock-in
+drift ("9:03 vs 8:58") so the tallies aggregate correctly.
+
+**3. Week-view per-day cap of 3 with "+X more".**
+
+Audited the Calendar Week view. The cap already exists in the
+admin dept-grid section (`cal-week-deptgrid-mini-list` slices at
+3 entries and renders `+{n - 3} more`), and the staff matrix
+view shows one cell per (staff × day) so there's no overflow
+problem. No code change needed — verified in place. If the GM
+sees uncapped overflow on a specific surface, they'll point it
+out and we'll target that one.
+
+**4. Mobile sheet layout fix.**
+
+The image #5 issue: the avatar + name on the left was eating
+~112px per row, squeezing the 7 cells down to ~4 visible columns
+that didn't line up with the day-header strip above them. Row
+restructured:
+
+- **Per-staff row** is now `flex-direction: column` instead of
+  `row`. Avatar + name + per-row `…` menu sit on a top
+  `.sheet-acc-row-head` line. The 7 cells live on a second line
+  below.
+- **Cells use CSS Grid `repeat(7, 1fr)`** — each cell takes
+  exactly 1/7 of the row width. No more horizontal scroll on
+  phones at typical widths; cells shrink to fit instead.
+- **Day-header strip** above uses the same `repeat(7, 1fr)`
+  grid, so day numbers and cells share column positions
+  perfectly. No more off-by-N misalignment.
+- **Cell input font/padding** shrunk on mobile (`font-size: 11px`,
+  `padding: 6px 2px`) so values like "11p-7a" still fit in the
+  ~50px column on a 360px-wide phone.
+- **`SheetOverviewRail` moved to the TOP** of the mobile layout
+  (was below the accordion). Coverage / Open / Conflicts /
+  Unpublished now read as the first thing on screen, matching
+  the GM's request and the standard dashboard pattern.
+- **Removed dead `.sheet-acc-days-wrap`** rule + restructured the
+  surrounding CSS for clarity.
+
+**5. Week → Day passes dept filter.**
+
+When the admin clicks a (dept × day) cell in the Week view's
+dept-grid, the Day view should open already filtered to that
+dept. Wire-up:
+
+- `CalendarWeekView`'s deptgrid cell `onClick` now calls
+  `onPickDate(d, dept.department_id)` (was `onPickDate(d)` —
+  one-arg).
+- `Calendar/index.js` adds `pendingDeptFilter` state. The
+  Week-view's onPickDate captures the `deptId` and sets it
+  before calling `zoomTo('day', date)`.
+- `DayView` gains two props: `initialDeptFilter` (initial
+  value for its local `deptFilter` state) and
+  `onConsumeInitialDeptFilter` (callback that clears the parent
+  state so we don't re-apply on subsequent renders).
+- DayView's `useState` initializer uses `initialDeptFilter ?? 'all'`
+  for first-paint correctness; a `useEffect` watches for prop
+  changes (when the admin drills again to a *different* dept
+  cell) and re-seeds + fires the consume callback.
+- The day-pill / heading clicks don't pass a dept_id, so
+  drilling from those falls back to "all departments" as
+  before.
+
+**Verified.** Six touched files balance. server.js retains the
+same -5/+5 paren noise from existing regex + SQL literals (no
+new imbalance from this sprint).
+
+**Notes:**
+
+- No new migrations. All changes are server logic, client logic,
+  and CSS.
+- No new endpoints. The Auto-Fill algorithm change is in-place
+  inside `/admin/sheet/auto-fill-preview`; payload shape gained
+  a `confidence` field but old clients ignore it gracefully.
+
+---
+
 ### 2026-05-28 — Sprint 15.7: shared StaffAvatar + presence dot + row-hover polish (15.x closer)
 
 Final sprint of the Shift Sheet redesign arc. Polish-tier work

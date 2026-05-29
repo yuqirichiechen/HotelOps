@@ -2740,11 +2740,17 @@ app.post('/api/admin/sheet/auto-fill-preview', requireAuth, requireRole('admin')
     const setN = settingRows.length > 0 ? parseInt(settingRows[0].value, 10) : NaN;
     const weeks = Number.isInteger(setN) && setN >= 2 && setN <= 52 ? setN : 8;
 
-    // For each (user × DOW), pull the most-recent entry in the
-    // lookback window. DISTINCT ON keeps just the latest per group.
+    // Sprint 15.8: smarter algorithm. Pull *every* completed entry
+    // in the lookback window, then per (user × DOW):
+    //   1. Round each entry's start + end to the nearest 15 min.
+    //   2. Tally the rounded (start, end) pairs.
+    //   3. Pick the pair with the most occurrences (the *mode*).
+    //   4. Ties broken by most recent.
+    // This catches "she usually works 9-5 even though last week was
+    // a one-off 11-7" — the most-common pattern dominates the
+    // suggestion instead of the most-recent anomaly.
     const { rows } = await pool.query(
-      `SELECT DISTINCT ON (te.user_id, EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1)
-              te.user_id,
+      `SELECT te.user_id,
               EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1 AS day_of_week,
               (te.clock_in_time  - INTERVAL '1 minute' * $3::int)::time::text AS start_local,
               (te.clock_out_time - INTERVAL '1 minute' * $3::int)::time::text AS end_local,
@@ -2756,17 +2762,62 @@ app.post('/api/admin/sheet/auto-fill-preview', requireAuth, requireRole('admin')
           AND te.clock_in_time >= ($1::date - (INTERVAL '7 days' * $2::int))::timestamptz
           AND te.clock_in_time <  $1::date::timestamptz
           AND u.deleted_at IS NULL
-        ORDER BY te.user_id,
-                 EXTRACT(ISODOW FROM (te.clock_in_time - INTERVAL '1 minute' * $3::int))::int - 1,
-                 te.clock_in_time DESC`,
+        ORDER BY te.user_id, day_of_week, te.clock_in_time DESC`,
       [week_start, weeks, tzOffset]
     );
 
-    const suggestions = rows.map(r => ({
-      user_id:      r.user_id,
-      day_of_week:  r.day_of_week,
-      display_text: `${fmtTimeShort(r.start_local)}-${fmtTimeShort(r.end_local)}`,
-    }));
+    // Round HH:MM:SS to the nearest 15 minutes; returns "HH:MM".
+    const roundTo15 = (timeStr) => {
+      const [h, m] = String(timeStr).split(':').map(Number);
+      const total = h * 60 + m;
+      const rounded = Math.round(total / 15) * 15;
+      const wrap = ((rounded % 1440) + 1440) % 1440;
+      const rh = Math.floor(wrap / 60);
+      const rm = wrap % 60;
+      return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`;
+    };
+
+    // Group: user|dow → Map(pairKey → { count, latest_in })
+    const byUserDow = new Map();
+    for (const r of rows) {
+      const key = `${r.user_id}|${r.day_of_week}`;
+      const startR = roundTo15(r.start_local);
+      const endR   = roundTo15(r.end_local);
+      const pairKey = `${startR}-${endR}`;
+      let bucket = byUserDow.get(key);
+      if (!bucket) { bucket = new Map(); byUserDow.set(key, bucket); }
+      const entry = bucket.get(pairKey);
+      if (!entry) {
+        bucket.set(pairKey, { count: 1, start: startR, end: endR, latest_in: r.clock_in_time });
+      } else {
+        entry.count += 1;
+        // SQL ORDER BY clock_in_time DESC means the first row we
+        // see for a pair is already the most recent — leave it.
+      }
+    }
+
+    // Pick the winning pair per (user × DOW): highest count, tie
+    // broken by latest_in.
+    const suggestions = [];
+    for (const [key, bucket] of byUserDow) {
+      const [user_id, dowStr] = key.split('|');
+      let best = null;
+      for (const v of bucket.values()) {
+        if (!best
+          || v.count > best.count
+          || (v.count === best.count && v.latest_in > best.latest_in)) {
+          best = v;
+        }
+      }
+      if (best) {
+        suggestions.push({
+          user_id,
+          day_of_week:  parseInt(dowStr, 10),
+          display_text: `${fmtTimeShort(best.start + ':00')}-${fmtTimeShort(best.end + ':00')}`,
+          confidence:   bucket.size === 1 ? 'high' : (best.count >= 3 ? 'high' : 'low'),
+        });
+      }
+    }
     return res.json({ success: true, suggestions, meta: { history_weeks: weeks } });
   } catch (err) {
     console.error('[auto-fill-preview]', err);

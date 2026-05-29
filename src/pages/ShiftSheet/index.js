@@ -783,7 +783,7 @@ const ShiftSheet = () => {
           className="sheet-tool-btn"
           onClick={runAutoFillPreview}
           disabled={autoFillBusy}
-        >{autoFillBusy ? '…' : '✨ Auto-Fill'}</button>
+        >{autoFillBusy ? '…' : '★ Auto-Fill'}</button>
         <button
           type="button"
           className="sheet-tool-btn"
@@ -799,6 +799,15 @@ const ShiftSheet = () => {
         <div className="sheet-empty">Loading…</div>
       ) : isMobile ? (
         <div className="sheet-layout sheet-layout-mobile">
+          {/* Sprint 15.8: rail moves to the TOP on mobile so the
+              week summary (coverage / open / conflicts /
+              unpublished) is the first thing on screen. Used to
+              sit below the accordion, which buried it under a
+              long scroll. */}
+          <SheetOverviewRail
+            overview={overview}
+            loading={overviewLoading}
+          />
           {/* Sprint 15.6: mobile accordion layout. Each dept is its
               own collapsible card; staff rows scroll the 7-day
               cells horizontally within the card body. */}
@@ -846,20 +855,21 @@ const ShiftSheet = () => {
                   </button>
                   {!isClosed && (
                     <div className="sheet-acc-body">
-                      {/* Day header strip pinned at the top of the
-                          card body's horizontal-scroll area. */}
-                      <div className="sheet-acc-days-wrap">
-                        <div className="sheet-acc-days">
-                          {DAY_LABELS.map((label, idx) => {
-                            const d = dayDate(weekStart, idx);
-                            return (
-                              <div key={label} className="sheet-acc-day">
-                                <div className="sheet-acc-day-name">{label}</div>
-                                <div className="sheet-acc-day-num">{d.getDate()}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                      {/* Sprint 15.8: day-header strip lives inside
+                          the same width as the row cells below, so
+                          column positions align. 7 cells × ~13% =
+                          ~91% of the row width, leaving the row-menu
+                          space at the right edge. */}
+                      <div className="sheet-acc-days">
+                        {DAY_LABELS.map((label, idx) => {
+                          const d = dayDate(weekStart, idx);
+                          return (
+                            <div key={label} className="sheet-acc-day">
+                              <div className="sheet-acc-day-name">{label}</div>
+                              <div className="sheet-acc-day-num">{d.getDate()}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                       {group.rows.length === 0 ? (
                         <div className="sheet-acc-empty">No staff yet — add one below.</div>
@@ -868,7 +878,13 @@ const ShiftSheet = () => {
                           const allPub = rowAllPublished(row.user_id);
                           return (
                             <div key={row.user_id} className="sheet-acc-row">
-                              <div className="sheet-acc-row-info">
+                              {/* Sprint 15.8: row header sits *above*
+                                  the cells (used to sit alongside,
+                                  squeezing cell width). Avatar + name
+                                  + per-row "..." menu live on the
+                                  same line; name ellipsises so long
+                                  names don't push the menu offscreen. */}
+                              <div className="sheet-acc-row-head">
                                 <StaffAvatar
                                   name={row.name}
                                   color={group.color || deptColorById.get(row.department_id)}
@@ -876,6 +892,13 @@ const ShiftSheet = () => {
                                   size="md"
                                 />
                                 <span className="sheet-acc-row-name">{row.name}</span>
+                                <button
+                                  type="button"
+                                  className={`sheet-row-menu sheet-acc-row-menu${allPub ? ' is-published' : ''}`}
+                                  onClick={(e) => toggleRowMenu(row.user_id, e.currentTarget)}
+                                  aria-haspopup="menu"
+                                  aria-expanded={openRowMenu?.userId === row.user_id}
+                                >⋯</button>
                               </div>
                               <div className="sheet-acc-row-cells">
                                 {DAY_LABELS.map((_, idx) => {
@@ -899,13 +922,6 @@ const ShiftSheet = () => {
                                   );
                                 })}
                               </div>
-                              <button
-                                type="button"
-                                className={`sheet-row-menu sheet-acc-row-menu${allPub ? ' is-published' : ''}`}
-                                onClick={(e) => toggleRowMenu(row.user_id, e.currentTarget)}
-                                aria-haspopup="menu"
-                                aria-expanded={openRowMenu?.userId === row.user_id}
-                              >⋯</button>
                             </div>
                           );
                         })
@@ -952,10 +968,6 @@ const ShiftSheet = () => {
               );
             })}
           </div>
-          <SheetOverviewRail
-            overview={overview}
-            loading={overviewLoading}
-          />
         </div>
       ) : (
         <div className="sheet-layout">
@@ -1304,7 +1316,7 @@ const ShiftSheet = () => {
             onClick={runAutoFillPreview}
             disabled={autoFillBusy}
           >
-            <span className="sheet-mobile-dock-ico">{autoFillBusy ? '…' : '✨'}</span>
+            <span className="sheet-mobile-dock-ico">{autoFillBusy ? '…' : '★'}</span>
             <span className="sheet-mobile-dock-lbl">Auto-Fill</span>
           </button>
           <button

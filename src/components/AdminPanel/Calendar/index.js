@@ -220,6 +220,12 @@ const SchedulingManager = () => {
   // entries so the admin can compare planned vs actual at a glance.
   const [plannedShifts, setPlannedShifts] = useState([]);
 
+  // Sprint 15.8: when drilling Week → Day on a specific dept cell,
+  // carry the dept_id through so DayView opens already filtered to
+  // that department. Cleared after the drill completes; consumed via
+  // DayView's `initialDeptFilter` prop + effect.
+  const [pendingDeptFilter, setPendingDeptFilter] = useState(null);
+
   // Sprint 12.1: NotesCenter + NotesDrawer (and their `notesTab` /
   // scroll-into-view state) moved out of the Calendar Day view and
   // into the Logbook surface (admin "reports" view). The admin
@@ -787,7 +793,14 @@ const SchedulingManager = () => {
               departments={departments}
               currentUser={user}
               staffScope={false}
-              onPickDate={(d) => zoomTo('day', new Date(d))}
+              onPickDate={(d, deptId) => {
+                // Sprint 15.8: when a dept-grid cell is clicked, carry
+                // the dept_id through so the Day view opens already
+                // filtered to that dept. Day-pill / heading clicks
+                // pass no dept_id and land on "all departments".
+                if (deptId != null) setPendingDeptFilter(deptId);
+                zoomTo('day', new Date(d));
+              }}
             />
           </>
         )}
@@ -812,6 +825,8 @@ const SchedulingManager = () => {
               employees={employees}
               departments={departments}
               loading={loading}
+              initialDeptFilter={pendingDeptFilter}
+              onConsumeInitialDeptFilter={() => setPendingDeptFilter(null)}
               onPickDate={(d)   => setCursor(new Date(d))}
               onEdit={(schedule) => setModal({ type: 'edit', schedule })}
             />

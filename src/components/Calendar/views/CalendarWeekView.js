@@ -327,7 +327,7 @@ const CalendarWeekView = ({
                         key={iso}
                         type="button"
                         className={`cal-week-deptgrid-cell cal-week-deptgrid-cell-data ${dayShifts.length === 0 ? 'is-empty' : ''}`}
-                        onClick={() => onPickDate && onPickDate(d)}
+                        onClick={() => onPickDate && onPickDate(d, dept.department_id)}
                       >
                         {dayShifts.length === 0 ? (
                           <span className="cal-week-deptgrid-empty">—</span>

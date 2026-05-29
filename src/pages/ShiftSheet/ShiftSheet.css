@@ -380,6 +380,27 @@
 .sheet-row-menu-item:hover {
   background: var(--bg-raised);
 }
+/* Sprint 15.8: force text-style rendering on the symbol glyphs we
+   use as icons so they don't render as color emoji on some browsers
+   (which made the toolbar / dock / row menu icons look mismatched —
+   some tiny black text, some big color emoji). */
+.sheet-publish-btn,
+.sheet-export-btn,
+.sheet-more-btn,
+.sheet-modal-close,
+.sheet-cell-edit,
+.sheet-acc-chev,
+.sheet-overview-card-chev,
+.sheet-row-menu,
+.sheet-row-menu-item,
+.sheet-tool-btn,
+.sheet-mobile-dock-ico,
+.sheet-edit-close,
+.sheet-validate-clean-icon,
+.sheet-autofill-bar-count strong {
+  font-variant-emoji: text;
+}
+
 .sheet-row-menu-item.sheet-row-menu-danger {
   color: var(--danger-text, #c53030);
 }
@@ -1259,18 +1280,20 @@
    the alignment isn't always perfect when one row scrolls but
    another doesn't. Acceptable for v1; the day numbers act as a
    coarse guide. */
-.sheet-acc-days-wrap {
-  padding: 0 12px;
-  margin-bottom: 4px;
-}
+/* Sprint 15.8: day header strip + each row's cells share the same
+   width and use CSS grid with 7 equal columns so each cell sits
+   directly under its day header. No more horizontal scroll on
+   phones at typical widths — cells shrink instead. */
 .sheet-acc-days {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
   gap: 4px;
+  padding: 6px 12px 4px;
 }
 .sheet-acc-day {
-  flex: 0 0 64px;
   text-align: center;
-  padding: 4px 0;
+  padding: 2px 0;
+  min-width: 0;
 }
 .sheet-acc-day-name {
   font-family: 'TiemposText', Georgia, serif;
@@ -1290,9 +1313,9 @@
 
 .sheet-acc-row {
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border-light);
   transition: background 0.12s ease;
 }
@@ -1300,16 +1323,15 @@
 .sheet-acc-row:hover {
   background: linear-gradient(rgba(56, 161, 105, 0.045), rgba(56, 161, 105, 0.045));
 }
-.sheet-acc-row-info {
-  flex: 0 0 112px;
+/* Sprint 15.8: row header now sits on its own line above the cells
+   so cell width isn't being eaten by the avatar + name. */
+.sheet-acc-row-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-right: 4px;
 }
-/* Sprint 15.7: .sheet-acc-avatar replaced by the shared
-   <StaffAvatar size="md" /> component. Inline rule removed. */
 .sheet-acc-row-name {
+  flex: 1;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 13px;
   font-weight: 600;
@@ -1319,28 +1341,28 @@
   white-space: nowrap;
 }
 
+/* Cells use the same 7-column grid as the day header strip above so
+   each cell sits directly beneath its day-number column. No
+   horizontal scroll = no day-header / row misalignment. */
 .sheet-acc-row-cells {
-  flex: 1 1 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
   gap: 4px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  min-width: 0;
 }
-.sheet-acc-row-cells::-webkit-scrollbar { display: none; }
 .sheet-acc-row-cells > .sheet-cell-input {
-  flex: 0 0 64px;
-  scroll-snap-align: start;
-  display: flex;
+  min-width: 0;
   border: 1px solid var(--border-light);
   border-radius: 6px;
   overflow: hidden;
 }
+.sheet-acc-row-cells > .sheet-cell-input input {
+  font-size: 11px;
+  padding: 6px 2px;
+}
 
 .sheet-acc-row-menu {
-  align-self: center;
-  margin-left: 4px;
+  flex: 0 0 auto;
 }
 
 .sheet-acc-add-inline {

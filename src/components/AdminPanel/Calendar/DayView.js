@@ -340,12 +340,23 @@ const PlannedShiftsStrip = ({ planned, departments }) => {
   );
 };
 
-const DayView = ({ date, schedules, plannedShifts, employees, departments, loading, onPickDate, onEdit }) => {
+const DayView = ({ date, schedules, plannedShifts, employees, departments, loading, initialDeptFilter, onConsumeInitialDeptFilter, onPickDate, onEdit }) => {
   const dateStr = fmtDate(date);
   const isMobile = useIsMobile();
 
   // ── view state ──────────────────────────────────────────────────────────
-  const [deptFilter, setDeptFilter] = useState('all'); // 'all' | dept_id
+  const [deptFilter, setDeptFilter] = useState(initialDeptFilter ?? 'all'); // 'all' | dept_id
+  // Sprint 15.8: when the parent passes a fresh initialDeptFilter
+  // (e.g. drilling Week → Day on a specific dept's cell), adopt it
+  // and tell the parent we've consumed it so it doesn't re-apply on
+  // subsequent renders. The admin can still manually change the
+  // filter via the dropdown after — we only seed it on entry.
+  useEffect(() => {
+    if (initialDeptFilter != null) {
+      setDeptFilter(initialDeptFilter);
+      if (onConsumeInitialDeptFilter) onConsumeInitialDeptFilter();
+    }
+  }, [initialDeptFilter, onConsumeInitialDeptFilter]);
   const [viewMode,   setViewMode]   = useState('resource'); // 'resource' | 'timeline'
   // Sprint 13.2: layout style — 'classic' (hour-rail timeline +
   // dept-track rows; pre-13.1 behavior) vs 'cards' (Sprint 13.1
