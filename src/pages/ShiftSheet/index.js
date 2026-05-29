@@ -127,6 +127,11 @@ const ShiftSheet = () => {
   const [showTemplates,  setShowTemplates]  = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [showValidate,   setShowValidate]   = useState(false);
+  // Sprint 15.9: Auto-Fill is now a modal-driven flow with a
+  // source picker (smart predict vs mirror previous week) so the
+  // admin understands *what* is being suggested before the ghost
+  // cells appear.
+  const [showAutoFill,   setShowAutoFill]   = useState(false);
   // Auto-fill suggestions overlay: `${user_id}|${dow}` → text.
   // Empty until the admin runs Auto-Fill. Lives client-side only
   // until "Apply all" pushes the approved set through the bulk
@@ -149,6 +154,21 @@ const ShiftSheet = () => {
   }, [weekStart]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Sprint 15.9: clear week-scoped session state on week change.
+  // Without this, addedUserIds + open popovers + auto-fill
+  // suggestions from week A leak into week B, causing stale rows
+  // and layout regressions when the underlying data doesn't
+  // include those users on the new week.
+  useEffect(() => {
+    setAddedUserIds(new Set());
+    setOpenRowMenu(null);
+    setEditPop(null);
+    setAutoFillSugg(new Map());
+    setAddOpenDept(null);
+    setMoreOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart]);
 
   // Sprint 15.6: dept_id → coverage entry for the mobile accordion
   // header (shows the dept's coverage % next to "N staff").
@@ -210,29 +230,77 @@ const ShiftSheet = () => {
     reloadOverview();
   }, [weekStart, reload, reloadOverview]);
 
-  const runAutoFillPreview = useCallback(async () => {
+  // Sprint 15.9: Auto-Fill now supports two sources. `mode` is one
+  // of 'smart' (the 15.8 mode-finder from clock history) or
+  // 'mirror' (use the previous week's published cells verbatim).
+  // Either way the suggestions land in `autoFillSugg` and render as
+  // ghost cells; nothing hits the DB until Apply.
+  const runAutoFillPreview = useCallback(async (mode = 'smart') => {
     setToolError(null);
     setAutoFillBusy(true);
-    const tz = new Date().getTimezoneOffset();
-    const { ok, data } = await apiFetch(
-      `/admin/sheet/auto-fill-preview?tz_offset_minutes=${tz}`,
-      { method: 'POST', body: JSON.stringify({ week_start: weekStart }) }
-    );
-    setAutoFillBusy(false);
-    if (!ok || !data?.success) {
-      setToolError(data?.message || 'Auto-Fill preview failed.');
+    let suggestionsList = [];
+    try {
+      if (mode === 'mirror') {
+        // Pull published cells from week-7d and offer them as
+        // suggestions for the current week.
+        const [y, m, d] = weekStart.split('-').map(Number);
+        const prev = new Date(y, m - 1, d - 7);
+        const prevYmd = localYmd(prev);
+        const { ok, data } = await apiFetch(
+          `/admin/sheet/week?week_start=${prevYmd}`
+        );
+        if (!ok || !data?.success) {
+          setAutoFillBusy(false);
+          setToolError(data?.message || 'Could not load previous week.');
+          return;
+        }
+        suggestionsList = (data.cells || [])
+          .filter(c => c.is_published && c.display_text)
+          .map(c => ({
+            user_id:      c.user_id,
+            day_of_week:  c.day_of_week,
+            display_text: c.display_text,
+          }));
+      } else {
+        const tz = new Date().getTimezoneOffset();
+        const { ok, data } = await apiFetch(
+          `/admin/sheet/auto-fill-preview?tz_offset_minutes=${tz}`,
+          { method: 'POST', body: JSON.stringify({ week_start: weekStart }) }
+        );
+        if (!ok || !data?.success) {
+          setAutoFillBusy(false);
+          setToolError(data?.message || 'Auto-Fill preview failed.');
+          return;
+        }
+        suggestionsList = data.suggestions || [];
+      }
+    } catch (err) {
+      setAutoFillBusy(false);
+      setToolError('Auto-Fill request failed.');
       return;
     }
+    setAutoFillBusy(false);
+
     // Drop suggestions whose cell already has content (empties-only
     // default; admin can flip overwrite at Apply All time).
     const occupied = new Set(cells.filter(c => c.display_text).map(c => `${c.user_id}|${c.day_of_week}`));
-    const m = new Map();
-    for (const s of (data.suggestions || [])) {
+    const map = new Map();
+    for (const s of suggestionsList) {
       const key = `${s.user_id}|${s.day_of_week}`;
       if (occupied.has(key)) continue;
-      m.set(key, s.display_text);
+      map.set(key, s.display_text);
     }
-    setAutoFillSugg(m);
+    setAutoFillSugg(map);
+    // Sprint 15.9: empty-state feedback. If nothing came back the
+    // admin would otherwise see nothing happen and assume the
+    // button is broken.
+    if (map.size === 0) {
+      setToolError(
+        mode === 'mirror'
+          ? 'No published cells on last week to mirror.'
+          : 'No predictable patterns yet — need more clock history.'
+      );
+    }
   }, [weekStart, cells]);
 
   const applyAutoFill = useCallback(async (overwrite) => {
@@ -745,14 +813,20 @@ const ShiftSheet = () => {
                       className="sheet-row-menu-item"
                       onClick={() => { setMoreOpen(false); exportXLSX(); }}
                       disabled={cells.length === 0}
-                    >↓ Export XLSX</button>
+                    >
+                      <span className="sheet-row-menu-icon">↓</span>
+                      Export XLSX
+                    </button>
                     <button
                       type="button"
                       role="menuitem"
                       className="sheet-row-menu-item"
                       onClick={() => { setMoreOpen(false); exportPNG(); }}
                       disabled={cells.length === 0 || exportingPng}
-                    >↓ Export PNG</button>
+                    >
+                      <span className="sheet-row-menu-icon">↓</span>
+                      Export PNG
+                    </button>
                   </div>
                 </>
               )}
@@ -781,7 +855,7 @@ const ShiftSheet = () => {
         <button
           type="button"
           className="sheet-tool-btn"
-          onClick={runAutoFillPreview}
+          onClick={() => { setToolError(null); setShowAutoFill(true); }}
           disabled={autoFillBusy}
         >{autoFillBusy ? '…' : '★ Auto-Fill'}</button>
         <button
@@ -1184,14 +1258,20 @@ const ShiftSheet = () => {
                 role="menuitem"
                 className="sheet-row-menu-item"
                 onClick={() => { copyRowToNextWeek(userId); setOpenRowMenu(null); }}
-              >⎘ Copy row to next week</button>
+              >
+                <span className="sheet-row-menu-icon">⎘</span>
+                Copy row to next week
+              </button>
             )}
             <button
               type="button"
               role="menuitem"
               className="sheet-row-menu-item"
               onClick={() => { setOpenRowMenu(null); goTo('staffDetail', { userId }); }}
-            >→ View staff profile</button>
+            >
+              <span className="sheet-row-menu-icon">→</span>
+              View staff profile
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -1203,7 +1283,10 @@ const ShiftSheet = () => {
                 }
                 setOpenRowMenu(null);
               }}
-            >✕ Remove from sheet</button>
+            >
+              <span className="sheet-row-menu-icon">✕</span>
+              Remove from sheet
+            </button>
           </div>
         );
       })()}
@@ -1289,6 +1372,22 @@ const ShiftSheet = () => {
         />
       )}
 
+      {/* Sprint 15.9: Auto-Fill source-picker modal. Two modes —
+          smart predict (clock history) or mirror previous week
+          (published sheet). Either way the ghost-cell overlay
+          + AutoFillBar take over once preview returns. */}
+      {showAutoFill && (
+        <AutoFillModal
+          busy={autoFillBusy}
+          weekStart={weekStart}
+          onClose={() => setShowAutoFill(false)}
+          onPreview={async (mode) => {
+            await runAutoFillPreview(mode);
+            setShowAutoFill(false);
+          }}
+        />
+      )}
+
       {/* Sprint 15.6: mobile bottom tab bar. Mirrors the desktop
           .sheet-toolbar but as a fixed-position dock. Sits above
           the auto-fill bar via z-index when both are visible. */}
@@ -1313,7 +1412,7 @@ const ShiftSheet = () => {
           <button
             type="button"
             className="sheet-mobile-dock-btn"
-            onClick={runAutoFillPreview}
+            onClick={() => { setToolError(null); setShowAutoFill(true); }}
             disabled={autoFillBusy}
           >
             <span className="sheet-mobile-dock-ico">{autoFillBusy ? '…' : '★'}</span>
@@ -1623,6 +1722,86 @@ const ValidateScheduleModal = ({ overview, loading, onClose }) => {
               </p>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sprint 15.9: Auto-Fill source-picker modal. Two modes:
+//   - 'smart'  — mode-finder over the user's clock history (the
+//                 algorithm from Sprint 15.5 / 15.8)
+//   - 'mirror' — copy the previous week's published cells as
+//                 suggestions
+// Either way the modal closes after the preview lands; ghost
+// cells render in place + the auto-fill bar takes over.
+const AutoFillModal = ({ busy, weekStart, onClose, onPreview }) => {
+  const [mode, setMode] = useState('smart');
+  // Pretty-print the previous-week label for the mirror option.
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const prev = new Date(y, m - 1, d - 7);
+  const prevLabel = `${prev.toLocaleString('en-US', { month: 'short' })} ${prev.getDate()}`;
+  return (
+    <div className="sheet-modal-backdrop" onClick={onClose} role="presentation">
+      <div className="sheet-modal sheet-modal-narrow" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="sheet-modal-head">
+          <h3>Auto-Fill</h3>
+          <button type="button" className="sheet-modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="sheet-modal-body">
+          <p>
+            Pick how to predict suggestions for this week. Suggestions render as ghost cells that you can edit individually or apply in bulk.
+          </p>
+
+          <label className={`sheet-autofill-radio${mode === 'smart' ? ' is-active' : ''}`}>
+            <input
+              type="radio"
+              name="autofill-mode"
+              value="smart"
+              checked={mode === 'smart'}
+              onChange={() => setMode('smart')}
+            />
+            <div>
+              <div className="sheet-autofill-radio-label">Smart predict</div>
+              <div className="sheet-autofill-radio-help">
+                Look at each staff member's clock history. For every weekday they tend to work,
+                pick the shift pattern they work most often (15-min rounding).
+                Needs ≥2 weeks of clock data per pattern to give a confident answer.
+              </div>
+            </div>
+          </label>
+
+          <label className={`sheet-autofill-radio${mode === 'mirror' ? ' is-active' : ''}`}>
+            <input
+              type="radio"
+              name="autofill-mode"
+              value="mirror"
+              checked={mode === 'mirror'}
+              onChange={() => setMode('mirror')}
+            />
+            <div>
+              <div className="sheet-autofill-radio-label">Mirror previous week</div>
+              <div className="sheet-autofill-radio-help">
+                Copy every published cell from the week of <strong>{prevLabel}</strong> as a suggestion.
+                Use this when last week was a representative "normal" week and you want it to repeat.
+              </div>
+            </div>
+          </label>
+
+          <div className="sheet-edit-actions">
+            <button
+              type="button"
+              className="sheet-edit-btn sheet-edit-btn-cancel"
+              onClick={onClose}
+              disabled={busy}
+            >Cancel</button>
+            <button
+              type="button"
+              className="sheet-edit-btn sheet-edit-btn-save"
+              onClick={() => onPreview(mode)}
+              disabled={busy}
+            >{busy ? '…' : 'Preview'}</button>
+          </div>
         </div>
       </div>
     </div>

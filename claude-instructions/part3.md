@@ -345,6 +345,120 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-28 — Sprint 15.9: second bug-fix pass — menu icons, Auto-Fill modal, week-nav reset, +N more expandable
+
+Four follow-ups to 15.8.
+
+**1. Menu-item icon standardization.**
+
+The row "..." menu and topbar "More" menu showed mismatched icon
+sizes — the publish indicator used a styled `.sheet-row-menu-dot`
+span (16px wide, centered) while the other items had bare inline
+text glyphs (`↓`, `⎘`, `→`, `✕`) at the default font size, so
+they looked tiny and unaligned.
+
+Fix:
+  - Wrapped every bare leading glyph in
+    `<span className="sheet-row-menu-icon">`.
+  - Merged `.sheet-row-menu-dot` + `.sheet-row-menu-icon` into one
+    rule (18px width, 13px font-size, `font-variant-emoji: text`,
+    centered). Every menu item now reserves the same icon slot
+    regardless of which glyph it carries.
+  - `.sheet-row-menu-danger .sheet-row-menu-icon` overrides the
+    color so the `✕ Remove` icon picks up the danger tint without
+    needing a class on the icon element itself.
+
+**2. Week-nav layout regression.**
+
+The GM reported that hitting prev/next-week broke the per-dept
+accordion layout — cards "wrong size", page scrolling weirdly.
+Diagnosed as session state leaking across week boundaries: an
+admin who added a staff member on week A without typing any
+shifts kept that row visible when navigating to week B, where
+the underlying cells had nothing for them, producing inconsistent
+grouping + addable-pool math.
+
+Fix: a new `useEffect` keyed on `weekStart` resets every
+session-scoped piece of state on week change:
+  - `addedUserIds` (manually-added-but-empty rows)
+  - `openRowMenu`, `editPop`, `addOpenDept`, `moreOpen` (open
+    popovers / dropdowns)
+  - `autoFillSugg` (pending Auto-Fill suggestions from the
+    previous week's run)
+
+The grid now starts each week from a clean state. ESLint
+override on the deps array because we intentionally exclude
+the setters (they're stable refs from React).
+
+**3. Auto-Fill modal with source picker + empty-state feedback.**
+
+15.5's Auto-Fill button silently did nothing when the algorithm
+returned zero suggestions (no clock history yet, or every cell
+already had content). Plus the GM specifically asked for an
+*option* — pick how the algo runs.
+
+Rebuilt as a modal-driven flow:
+
+- **`AutoFillModal`** opens when the tool button is clicked
+  (replacing the direct invocation). Two radio-card options:
+    - **Smart predict** — the 15.8 mode-finder over clock
+      history. Reuses the existing
+      `/admin/sheet/auto-fill-preview` endpoint.
+    - **Mirror previous week** — client-side fetch of
+      `/admin/sheet/week?week_start=<prevWeek>`, build
+      suggestions from cells where `is_published = TRUE`. No
+      new server endpoint needed.
+- **Empty-state feedback** in `runAutoFillPreview`: if the
+  filtered suggestions map ends up empty, set `toolError` with
+  a context-aware message —
+    - mirror mode → "No published cells on last week to mirror."
+    - smart mode → "No predictable patterns yet — need more
+      clock history."
+  This surfaces inline on the toolbar (`.sheet-tool-err`) so the
+  admin knows the button worked, just had nothing useful to
+  return.
+- **`mode` arg** added to `runAutoFillPreview`. Defaults to
+  `'smart'` so any future direct callers stay compatible.
+
+**4. Calendar week deptgrid: "+N more" is now expandable.**
+
+15.5/15.8 confirmed the cap was in place but only let admins
+drill to Day view to see overflow. The GM wanted to expand the
+cell in-place instead of switching surfaces.
+
+Changes:
+- New `expandedCells` state on `CalendarWeekView`
+  (`Set<"<dept_id>|<iso>">`).
+- Each deptgrid cell now branches on `dayShifts.length > 3`:
+    - **≤ 3 shifts**: renders as a `<button>` exactly like
+      before. Click drills to Day view.
+    - **> 3 shifts**: renders as a `<div role="button"
+      tabIndex={0}>` (because we can't nest a `<button>` inside
+      a `<button>`, and we need the "+ N more" toggle to be its
+      own button). Body click still drills; the inner
+      `+N more` button calls `stopPropagation()` + toggles the
+      cell key in `expandedCells`.
+- Toggle label flips between `"+N more"` and `"Show less"`.
+- `.cal-week-deptgrid-cell-data.is-expanded` gets a subtle
+  inset outline so it's clear which cell is opened.
+- `.cal-week-deptgrid-mini-more` upgraded from a passive `<li>`
+  styled rule to a real button (background hover, accent color,
+  text-align left, width 100%).
+
+**Verified.** Four touched files balance.
+
+**Notes.**
+
+- The `runAutoFillPreview` callback is now only invoked from
+  inside `AutoFillModal` via the `onPreview` prop — the previous
+  direct dock/toolbar callers were replaced with
+  `setShowAutoFill(true)`. The IDE briefly flagged
+  `runAutoFillPreview` as unused while the modal mount was
+  being assembled; that resolved once the prop was wired.
+- No new endpoints, no migrations.
+
+---
+
 ### 2026-05-28 — Sprint 15.8: bug-fix pass — icons, smarter Auto-Fill, mobile alignment, Week→Day filter
 
 Five fixes the GM flagged after a hands-on session.

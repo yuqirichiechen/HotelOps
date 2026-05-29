@@ -64,6 +64,11 @@ const CalendarWeekView = ({
   const [notesFilter, setNotesFilter] = useState('dept'); // 'dept' | 'all'
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(true);
+  // Sprint 15.9: expanded (dept × day) cells in the deptgrid —
+  // when a "+N more" indicator is tapped, that cell renders the
+  // full shift list in-place instead of drilling into Day view.
+  // Set of `${dept_id}|${iso}` keys.
+  const [expandedCells, setExpandedCells] = useState(() => new Set());
 
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, i) => {
@@ -319,21 +324,45 @@ const CalendarWeekView = ({
                   </div>
                   {days.map(d => {
                     const iso = isoDay(d);
+                    const cellKey = `${dept.department_id}|${iso}`;
+                    const isExpanded = expandedCells.has(cellKey);
                     const dayShifts = deptShifts
                       .filter(s => (s.scheduled_date || '').split('T')[0] === iso)
                       .sort((a, b) => a.start_time.localeCompare(b.start_time));
-                    return (
-                      <button
-                        key={iso}
-                        type="button"
-                        className={`cal-week-deptgrid-cell cal-week-deptgrid-cell-data ${dayShifts.length === 0 ? 'is-empty' : ''}`}
-                        onClick={() => onPickDate && onPickDate(d, dept.department_id)}
-                      >
-                        {dayShifts.length === 0 ? (
-                          <span className="cal-week-deptgrid-empty">—</span>
-                        ) : (
+                    // Sprint 15.9: cells with overflow render as a
+                    // <div> so the inner +N more button is valid HTML
+                    // (button-in-button isn't allowed). The div still
+                    // drills to Day view via onClick + keyboard
+                    // handlers; the +N more button stops propagation
+                    // so it can toggle expand without drilling.
+                    const hasOverflow = dayShifts.length > 3;
+                    const visibleShifts = isExpanded ? dayShifts : dayShifts.slice(0, 3);
+                    const drill = () => onPickDate && onPickDate(d, dept.department_id);
+                    const toggleExpand = () => setExpandedCells(prev => {
+                      const next = new Set(prev);
+                      if (next.has(cellKey)) next.delete(cellKey);
+                      else next.add(cellKey);
+                      return next;
+                    });
+                    const commonClasses = `cal-week-deptgrid-cell cal-week-deptgrid-cell-data ${dayShifts.length === 0 ? 'is-empty' : ''}${isExpanded ? ' is-expanded' : ''}`;
+                    if (hasOverflow) {
+                      return (
+                        <div
+                          key={iso}
+                          className={commonClasses}
+                          role="button"
+                          tabIndex={0}
+                          onClick={drill}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              drill();
+                            }
+                          }}
+                          aria-label={`${dept.name} ${d.getDate()}: ${dayShifts.length} shifts`}
+                        >
                           <ul className="cal-week-deptgrid-mini-list">
-                            {dayShifts.slice(0, 3).map(s => (
+                            {visibleShifts.map(s => (
                               <li key={s.schedule_id} className={`cal-week-deptgrid-mini${s.is_in_progress ? ' is-in-progress' : ''}`}>
                                 <span className="cal-week-deptgrid-mini-time">
                                   {fmtTimeShort(s.start_time)}–{s.is_in_progress ? 'now' : fmtTimeShort(s.end_time)}
@@ -343,11 +372,38 @@ const CalendarWeekView = ({
                                 </span>
                               </li>
                             ))}
-                            {dayShifts.length > 3 && (
-                              <li className="cal-week-deptgrid-mini-more">
-                                +{dayShifts.length - 3} more
+                          </ul>
+                          <button
+                            type="button"
+                            className="cal-week-deptgrid-mini-more"
+                            onClick={(e) => { e.stopPropagation(); toggleExpand(); }}
+                          >
+                            {isExpanded ? 'Show less' : `+${dayShifts.length - 3} more`}
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        className={commonClasses}
+                        onClick={drill}
+                      >
+                        {dayShifts.length === 0 ? (
+                          <span className="cal-week-deptgrid-empty">—</span>
+                        ) : (
+                          <ul className="cal-week-deptgrid-mini-list">
+                            {visibleShifts.map(s => (
+                              <li key={s.schedule_id} className={`cal-week-deptgrid-mini${s.is_in_progress ? ' is-in-progress' : ''}`}>
+                                <span className="cal-week-deptgrid-mini-time">
+                                  {fmtTimeShort(s.start_time)}–{s.is_in_progress ? 'now' : fmtTimeShort(s.end_time)}
+                                </span>
+                                <span className="cal-week-deptgrid-mini-name">
+                                  {s.employee_name}
+                                </span>
                               </li>
-                            )}
+                            ))}
                           </ul>
                         )}
                       </button>

@@ -407,16 +407,29 @@
 .sheet-row-menu-item.sheet-row-menu-danger:hover {
   background: rgba(197, 48, 48, 0.08);
 }
-.sheet-row-menu-dot {
+.sheet-row-menu-dot,
+.sheet-row-menu-icon {
+  /* Sprint 15.9: standardize the leading-icon slot across every
+     menu item so the publish dot, copy glyph, arrow, X, etc. all
+     sit on the same baseline and consume the same horizontal
+     space. The original .sheet-row-menu-dot only sized the
+     publish indicator; the others were bare inline text and
+     rendered at default font size. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  font-size: 11px;
+  width: 18px;
+  flex: 0 0 18px;
+  font-size: 13px;
+  line-height: 1;
   color: var(--text-muted);
+  font-variant-emoji: text;
 }
 .sheet-row-menu-dot.is-published {
   color: #38a169;
+}
+.sheet-row-menu-danger .sheet-row-menu-icon {
+  color: #c53030;
 }
 
 /* Published cells get a green left-edge stripe so the published
@@ -1187,6 +1200,44 @@
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+/* Sprint 15.9: Auto-Fill modal — radio-card style for the source
+   options. Clicking anywhere on the card selects that mode. */
+.sheet-autofill-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--bg-surface);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.sheet-autofill-radio:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-raised);
+}
+.sheet-autofill-radio.is-active {
+  border-color: #38a169;
+  background: rgba(56, 161, 105, 0.06);
+}
+.sheet-autofill-radio input[type='radio'] {
+  margin-top: 2px;
+}
+.sheet-autofill-radio-label {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-text);
+  margin-bottom: 3px;
+}
+.sheet-autofill-radio-help {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 /* ── Sprint 15.6: mobile layout ─────────────────────────────────────── */
