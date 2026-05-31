@@ -80,6 +80,11 @@ CREATE TABLE users (
   pin_hash         TEXT,                            -- bcrypt; NULL = no PIN set
   pin_required     BOOLEAN      NOT NULL DEFAULT FALSE,  -- admin-controlled
   pin_must_set     BOOLEAN      NOT NULL DEFAULT FALSE,  -- forces set-PIN interstitial after admin reset
+  -- Sprint 16.2: which language the staff-facing UI renders in
+  -- (login → focused-action → home → auto-signout banner).
+  -- Migration: database/migrations/022_users_preferred_language.sql
+  preferred_language TEXT       NOT NULL DEFAULT 'en'
+    CHECK (preferred_language IN ('en', 'es', 'zh')),
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   CONSTRAINT users_at_least_one_identifier CHECK (

@@ -345,6 +345,147 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-31 — Sprint 16.2: i18n + Spanish + Chinese for staff-facing screens
+
+Second of the Sprint-16 clock-workflow arc. The GM's working
+theory for why staff don't clock in/out reliably is partly a
+language barrier — many of them speak Spanish or Mandarin, not
+English. Sprint 16.2 ships a lightweight in-house i18n layer and
+translates the *staff-facing* surfaces. Admin pages stay English
+because the GM is monolingual.
+
+**Schema (migration 022):**
+
+- `users.preferred_language TEXT NOT NULL DEFAULT 'en'` with
+  `CHECK (preferred_language IN ('en', 'es', 'zh'))`. New
+  staff default to English; admin can change per-staff in the
+  StaffManager add/edit form.
+- The CHECK constraint is added in a `DO $$ … $$` block so
+  re-runs against a DB that already has the constraint don't
+  error.
+
+**Server:**
+
+- `preferred_language` threaded through every user-shaped
+  endpoint:
+    - `POST /api/auth/staff/login` — login response includes it.
+      Auth select query SELECTs the column.
+    - `GET /api/me` — returns it.
+    - `GET /api/admin/employees` — returns it.
+    - `GET /api/admin/employees/:id` — returns it.
+    - `POST /api/admin/employees` — accepts `preferredLanguage`
+      in the body; defaults to 'en' when omitted or invalid.
+    - `PUT /api/admin/employees/:id` — accepts
+      `preferredLanguage` via COALESCE so a partial PUT from an
+      older client doesn't wipe the admin's choice.
+
+**Client — `src/i18n/index.js`:**
+
+Tiny in-house i18n module. No external dep.
+
+- **Flat keys** (`focused.clock_in`, `home.this_week`) — one
+  lookup per string, no nested object accessors in JSX.
+- **English fallback** — missing es/zh key falls back to en;
+  missing en falls back to the key itself (loud in dev).
+- **{var} interpolation** — `t('focused.countdown', { n: 4 })`
+  → "Signing out in 4s". No date/plural rules in v1; staff
+  strings are short and we'll keep them that way.
+- **LanguageProvider** with `fromUser` prop. Mounted via a
+  small `I18nBridge` component in App.js that lives inside
+  AuthProvider and reads `user?.preferred_language`. When no
+  user is signed in, the provider falls back to a localStorage
+  key (`hotelops-staff-lang`) then to `navigator.language`,
+  then to 'en'.
+- **`useLang()`** returns `{ lang, setLang }` for the picker.
+- **`useT()`** returns a memoised `t(key, vars)` curried with
+  the current language.
+
+**Dictionary scope (~50 strings × 3 languages):**
+
+- `greeting.*` — morning / afternoon / evening
+- `focused.*` — clock_in, clock_out, sub_in, sub_out, skip,
+  countdown
+- `auto.*` — auto-signout banner (in_n, stay, now)
+- `home.*` — ready, this_week, recent, on_clock, not_clocked,
+  clock_in/out, just_in/out, elapsed
+- `notif.*` — clocked_in, clocked_out, failures
+- `login.*` — title, subtitle, enter_pin, continue, invalid,
+  tap_to_start, language
+
+Spanish translations are mirror translations using forms common
+in US Spanish; Mandarin uses Simplified Chinese (matches the
+Snoqualmie Inn workforce per GM).
+
+**Translated surfaces:**
+
+- **FocusedAction** (the giant CLOCK IN / OUT screen from 16.1)
+  — every string flows through `useT()`. The greeting prop is
+  now a *key* (`greeting.morning`) instead of a rendered string,
+  so the same key translates per the staff member's
+  preferred_language.
+- **AutoSignoutBanner** — "Stay signed in" / "Signing out in 4s"
+  / "Sign out now".
+- **Home** — greeting, on-clock label, clock-in/out buttons,
+  "Just clocked in/out" transient states, the "Clocked in!" /
+  "Clocked out!" success confirmations.
+- **StaffLogin** — title + a compact language picker at the top
+  of the card (EN / Español / 中文), accent on the active
+  language. Picker writes the choice to localStorage so the
+  next visitor at the same kiosk inherits it as their default
+  pre-login language.
+
+**Admin: language assignment:**
+
+- `StaffManager` Add Staff form gets a "Preferred language"
+  dropdown (English / Español / 中文). Default 'en'.
+- `StaffDetail` edit form gets the same dropdown, prefilled
+  from the user's current `preferred_language`.
+- Both submit `preferredLanguage` in the POST/PUT body; server
+  defaults / COALESCEs missing values.
+
+**Why a tiny in-house module instead of `react-i18next`:**
+
+- Total dict is ~50 strings; a real i18n library would be more
+  config than payload.
+- No date / number / plural formatting needed for these
+  surfaces (timestamps are still locale-formatted via
+  `toLocaleTimeString` — that's not in the dict).
+- Easier to inspect + audit during the GM's review pass than
+  pulling in a translation-pipeline dep.
+- The module's surface (`useT`, `useLang`, `translate`) maps
+  cleanly to react-i18next if we ever need to migrate.
+
+**What's *not* translated (and why):**
+
+- Admin surfaces (`AdminSettings`, `StaffManager` itself,
+  `Calendar`, `ShiftSheet`, etc.) — only the GM uses these and
+  the GM reads English. Translating them would 3x the dict for
+  zero workforce benefit.
+- Date/time strings (`toLocaleDateString`, `toLocaleTimeString`)
+  — these already respect the browser locale. The login screen
+  greeting + day name will read in the user's browser locale
+  even when our dict translations are English.
+- The PIN keypad — the digit labels (0-9) and `OK` / `←` are
+  universal-ish, no string content to translate.
+
+**Verified.** Twelve touched files balance. server.js retains
+the same -5/+5 paren noise from prior literals (no new
+imbalance from this sprint).
+
+**Migration deploy.** `022_users_preferred_language.sql` must
+run before code rollout — the server SELECTs the column. The
+ADD COLUMN + DO-block CHECK are both `IF NOT EXISTS`-style so
+re-runs are safe.
+
+**Up next:**
+
+- **16.3** — admin dashboard "Still clocked in past scheduled
+  end" alert list.
+- **16.4 (optional)** — auto clock-out at scheduled end + N
+  hours with `system_generated` flag on `time_entries`.
+
+---
+
 ### 2026-05-31 — Sprint 16.1: focused clock-in/out screen + idle-logout setting
 
 Sprint 16 opens a new arc focused on the staff clock-in/out

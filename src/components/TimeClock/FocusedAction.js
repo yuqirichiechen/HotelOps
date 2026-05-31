@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useT } from '../../i18n';
 import './FocusedAction.css';
 
 // Sprint 16.1: the focused-action screen the GM asked for. Staff
@@ -24,13 +25,17 @@ import './FocusedAction.css';
 const FocusedAction = ({
   mode,                  // 'in' | 'out'
   staffName,
-  greeting,
+  greetingKey,           // 'greeting.morning' | '.afternoon' | '.evening'
   idleSeconds = 15,
   busy = false,
   onAction,
   onSkip,
   onIdleLogout,
 }) => {
+  // Sprint 16.2: every staff-facing string flows through the i18n
+  // dict. Defaults to English when the user's preferred_language
+  // is unset or unknown.
+  const t = useT();
   const [remaining, setRemaining] = useState(idleSeconds);
   const [tapped, setTapped] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -84,21 +89,21 @@ const FocusedAction = ({
 
   const showCountdown = remaining <= 5;
   const isIn = mode === 'in';
-  const label = isIn ? 'Clock In' : 'Clock Out';
-  const subline = isIn
-    ? 'Tap once when you start your shift'
-    : 'Tap once when your shift ends';
+  const label   = isIn ? t('focused.clock_in') : t('focused.clock_out');
+  const subline = isIn ? t('focused.sub_in')   : t('focused.sub_out');
+  const greetingStr = greetingKey ? t(greetingKey) : '';
+  const firstName   = staffName ? staffName.split(' ')[0] : '';
 
   return (
     <div className={`focused-action${exiting ? ' is-exiting' : ''}`}>
       {showCountdown && (
         <div className="focused-action-countdown" role="status" aria-live="polite">
-          Signing out in {Math.ceil(remaining)}s
+          {t('focused.countdown', { n: Math.ceil(remaining) })}
         </div>
       )}
       <div className="focused-action-inner">
         <div className="focused-action-greeting">
-          {greeting}{staffName ? `, ${staffName.split(' ')[0]}` : ''}.
+          {greetingStr}{firstName ? `, ${firstName}` : ''}.
         </div>
         <div className="focused-action-subline">{subline}</div>
 
@@ -119,7 +124,7 @@ const FocusedAction = ({
           className="focused-action-skip"
           onClick={handleSkip}
           disabled={busy || tapped}
-        >Just checking, skip</button>
+        >{t('focused.skip')}</button>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { useAuth, apiFetch } from '../../auth';
 import ClockWidget from '../../components/TimeClock/ClockWidget';
 import AutoSignoutBanner from '../../components/shared/AutoSignoutBanner';
 import FocusedAction from '../../components/TimeClock/FocusedAction';
+import { useT } from '../../i18n';
 import '../../components/TimeClock/TimeClock.css'; // for .clock-widget styles
 import './Home.css';
 
@@ -19,10 +20,14 @@ const FOCUSED_DISMISS_KEY = 'hotelops-staff-focused-dismissed';
 // timer + Clock Out. The rest of the page surfaces this-week hours and a
 // short recent-shifts list. Detailed breakdowns live on /timesheet.
 
+// Sprint 16.2: greeting now returns an i18n *key* rather than the
+// rendered string. The display layer (FocusedAction, the inline
+// greeting block) resolves it through useT() so the same key
+// translates per the staff member's preferred_language.
 const greetingFor = (h) => {
-  if (h >= 5  && h < 12) return 'Good morning';
-  if (h >= 12 && h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h >= 5  && h < 12) return 'greeting.morning';
+  if (h >= 12 && h < 18) return 'greeting.afternoon';
+  return 'greeting.evening';
 };
 
 const formatTime = (iso) =>
@@ -52,6 +57,7 @@ const getMondayISO = (d = new Date()) => {
 const Home = () => {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  const t = useT();
 
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -232,7 +238,7 @@ const Home = () => {
         <FocusedAction
           mode={focusedMode}
           staffName={user?.name}
-          greeting={greeting}
+          greetingKey={greeting}
           busy={busy}
           idleSeconds={data?.idleLogoutSeconds || 15}
           onAction={() => {
@@ -263,7 +269,7 @@ const Home = () => {
           {now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
         <h1 className="home-greeting-title">
-          {greeting}{firstName ? `, ${firstName}` : ''}.
+          {t(greeting)}{firstName ? `, ${firstName}` : ''}.
         </h1>
       </div>
 
@@ -294,7 +300,7 @@ const Home = () => {
                 onClick={handleClockIn}
                 disabled={busy || loading || clockEvent?.type === 'out'}
               >
-                {busy ? '…' : (clockEvent?.type === 'out' ? 'Just clocked out' : 'Clock In')}
+                {busy ? '…' : (clockEvent?.type === 'out' ? t('home.just_out') : t('home.clock_in'))}
               </button>
             </div>
 
@@ -302,11 +308,11 @@ const Home = () => {
             <div className="home-clock-face home-clock-face-back">
               <div className="home-active">
                 <div className="home-active-eyebrow">
-                  <span className="home-live-dot" /> On the clock
+                  <span className="home-live-dot" /> {t('home.on_clock')}
                 </div>
                 <div className="home-active-elapsed">{fmtElapsed(elapsed)}</div>
                 <div className="home-active-since">
-                  Started at {clockInTime ? formatTime(clockInTime) : '—'}
+                  {clockInTime ? formatTime(clockInTime) : '—'}
                 </div>
               </div>
               <button
@@ -314,7 +320,7 @@ const Home = () => {
                 onClick={handleClockOut}
                 disabled={busy || clockEvent?.type === 'in'}
               >
-                {busy ? '…' : (clockEvent?.type === 'in' ? 'Just clocked in' : 'Clock Out')}
+                {busy ? '…' : (clockEvent?.type === 'in' ? t('home.just_in') : t('home.clock_out'))}
               </button>
             </div>
 
@@ -342,10 +348,10 @@ const Home = () => {
           <div className="home-flip-face home-flip-face-back home-hero-event">
             <div className={`home-hero-event-icon ${clockEvent?.type || ''}`}>✓</div>
             <div className="home-hero-event-title">
-              {clockEvent?.type === 'out' ? 'Clocked out!' : 'Clocked in!'}
+              {clockEvent?.type === 'out' ? t('notif.clocked_out') : t('notif.clocked_in')}
             </div>
             <div className="home-hero-event-sub">
-              {clockEvent?.type === 'out' ? 'Have a good one' : 'You’re on the clock'}
+              {clockEvent?.type === 'out' ? '' : t('home.on_clock')}
             </div>
           </div>
         </div>

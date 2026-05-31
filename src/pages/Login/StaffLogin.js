@@ -5,6 +5,7 @@ import { resolveTenant, TENANT } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import RoleIcon from '../../components/shared/RoleIcon';
 import { TransitionLink } from './TransitionLink';
+import { useT, useLang, SUPPORTED_LANGS, LANG_LABELS } from '../../i18n';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 import '../../components/shared/RoleIcon.css';
@@ -136,6 +137,12 @@ const StaffLogin = ({ onRoleSwitch }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
+  // Sprint 16.2: i18n. Pre-login the language comes from
+  // localStorage (set by the picker rendered below) or the
+  // browser default; post-login the bridge in App.js will swap
+  // to the user's preferred_language.
+  const t = useT();
+  const { lang, setLang } = useLang();
   // Sprint 9: optional /:tenant prefix on the URL. Look up the slug in the
   // tenant registry — unknown slugs fall through to the default tenant
   // rather than 404'ing, so a typo in the URL still gives the user a way
@@ -363,9 +370,27 @@ const StaffLogin = ({ onRoleSwitch }) => {
             )}
           </div>
 
+          {/* Sprint 16.2: language picker. Lets the staff member
+              flip the UI language *before* identifying, since the
+              auth-stored preferred_language only kicks in after
+              login. Compact 3-button row; selected lang gets the
+              accent. Choice persists in localStorage. */}
+          <div className="login-lang-picker" role="radiogroup" aria-label={t('login.language')}>
+            {SUPPORTED_LANGS.map(code => (
+              <button
+                key={code}
+                type="button"
+                className={`login-lang-btn${lang === code ? ' is-active' : ''}`}
+                onClick={() => setLang(code)}
+                aria-pressed={lang === code}
+                aria-label={LANG_LABELS[code].native}
+              >{LANG_LABELS[code].native}</button>
+            ))}
+          </div>
+
           <div className="login-headline-row">
             <div className="login-headline-text">
-              <h1 className="login-title">Welcome back</h1>
+              <h1 className="login-title">{t('login.title')}</h1>
               <p className="login-sub">{subSentence}</p>
             </div>
             <div className="login-headline-actions">

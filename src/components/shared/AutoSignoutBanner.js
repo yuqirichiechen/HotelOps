@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useT } from '../../i18n';
 import './AutoSignoutBanner.css';
 
 // Sprint 8.6: appears after a successful clock-in/out so a shared
@@ -16,6 +17,7 @@ import './AutoSignoutBanner.css';
 const AutoSignoutBanner = ({ seconds, onCancel, onSignOut }) => {
   const [remaining, setRemaining] = useState(seconds);
   const intervalRef = useRef(null);
+  const t = useT();
 
   // Sprint 8.6.1: hold onSignOut in a ref so we can call the latest version
   // without it being a useEffect dep. The previous shape included
@@ -61,15 +63,15 @@ const AutoSignoutBanner = ({ seconds, onCancel, onSignOut }) => {
         type="button"
         className="auto-signout-stay"
         onClick={cancel}
-        aria-label="Stay signed in"
+        aria-label={t('auto.stay')}
       >
-        Stay signed in
+        {t('auto.stay')}
       </button>
       <div className="auto-signout-info" onClick={cancel}>
         <div className="auto-signout-text">
-          <div className="auto-signout-title">Auto sign-out</div>
+          <div className="auto-signout-title">{t('auto.now')}</div>
           <div className="auto-signout-sub">
-            Signing out in {Math.ceil(remaining)}s
+            {t('auto.in_n', { n: Math.ceil(remaining) })}
           </div>
         </div>
         <div className="auto-signout-ring" aria-hidden>

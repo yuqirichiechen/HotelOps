@@ -170,6 +170,7 @@ const StaffDetail = ({ userId }) => {
       departmentId:   emp.department_id || '',
       hireDate:       emp.hire_date ? emp.hire_date.split('T')[0] : '',
       baseHourlyRate: emp.base_hourly_rate || '',
+      preferredLanguage: emp.preferred_language || 'en',
     });
     setError('');
     setEditing(true);
@@ -199,6 +200,7 @@ const StaffDetail = ({ userId }) => {
         hireDate:       form.hireDate,
         departmentId:   form.departmentId || null,
         baseHourlyRate: form.baseHourlyRate || null,
+        preferredLanguage: form.preferredLanguage || 'en',
       }),
     });
     const data = await res.json();
@@ -513,6 +515,19 @@ const StaffDetail = ({ userId }) => {
             <div className="admin-field">
               <label>Hourly Rate ($)</label>
               <input type="number" step="0.01" min="0" value={form.baseHourlyRate} onChange={e => setForm(f => ({ ...f, baseHourlyRate: e.target.value }))} placeholder="0.00" />
+            </div>
+            {/* Sprint 16.2: per-staff UI language. Drives every
+                staff-facing screen post-login. */}
+            <div className="admin-field">
+              <label>Preferred language</label>
+              <select
+                value={form.preferredLanguage || 'en'}
+                onChange={e => setForm(f => ({ ...f, preferredLanguage: e.target.value }))}
+              >
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="zh">中文</option>
+              </select>
             </div>
             <div className="admin-field add-form-section">
               <div className="add-form-section-label">Login identifiers — at least one required</div>

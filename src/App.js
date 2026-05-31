@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, RequireRole, RedirectIfAuthed, useAuth } from './auth';
+import { LanguageProvider } from './i18n';
 import { DEFAULT_TENANT_SLUG } from './config/tenant';
 import ShiftsView from './components/ShiftsView';
 import TenantLogin from './pages/Login/TenantLogin';
@@ -36,6 +37,20 @@ const RootRoute = () => {
   return <Navigate to={user.role === 'admin' ? `/${slug}/admin` : `/${slug}/staff`} replace />;
 };
 
+// Sprint 16.2: bridges the authed user's `preferred_language`
+// into the i18n LanguageProvider. Lives inside AuthProvider so
+// it can `useAuth`. When no user is signed in, the provider falls
+// back to localStorage / browser language so the login screen
+// still translates correctly.
+const I18nBridge = ({ children }) => {
+  const { user } = useAuth();
+  return (
+    <LanguageProvider fromUser={user?.preferred_language}>
+      {children}
+    </LanguageProvider>
+  );
+};
+
 const App = () => {
   const [theme, setTheme] = useState(getInitialTheme);
 
@@ -58,6 +73,7 @@ const App = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <I18nBridge>
         <Routes>
           {/* ── Root: picker or redirect to per-tenant shell ────────────── */}
           <Route path="/" element={<RootRoute />} />
@@ -110,6 +126,7 @@ const App = () => {
           {/* ── Catch-all ───────────────────────────────────────────────── */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </I18nBridge>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -9,10 +9,19 @@ import DropdownSelect from '../shared/DropdownSelect';
 // low-key tile at the bottom that inline-expands the existing form.
 
 const ROLES     = ['employee', 'front_desk', 'admin'];
+// Sprint 16.2: admin-assignable UI language per staff member.
+// English / Spanish / Mandarin Chinese match the seed list in the
+// i18n dict + migration 022's CHECK constraint.
+const LANG_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Español' },
+  { value: 'zh', label: '中文' },
+];
 const today     = () => new Date().toISOString().split('T')[0];
 const emptyForm = () => ({
   name: '', phone: '', username: '', employeeCode: '', birthday: '', role: 'employee',
   departmentId: '', hireDate: today(), baseHourlyRate: '',
+  preferredLanguage: 'en',
 });
 
 const fmtHireDate = (d) => {
@@ -249,6 +258,7 @@ const StaffManager = () => {
         hireDate:       form.hireDate,
         departmentId:   form.departmentId || null,
         baseHourlyRate: form.baseHourlyRate || null,
+        preferredLanguage: form.preferredLanguage || 'en',
       }),
     });
     const data = await res.json();
@@ -911,6 +921,20 @@ const StaffManager = () => {
               <div className="admin-field">
                 <label>Hourly Rate ($)</label>
                 <input type="number" step="0.01" min="0" value={form.baseHourlyRate} onChange={e => setForm(f => ({ ...f, baseHourlyRate: e.target.value }))} placeholder="0.00" />
+              </div>
+              {/* Sprint 16.2: per-staff UI language. The selection
+                  drives every staff-facing screen post-login (focused
+                  action / home / auto-signout). */}
+              <div className="admin-field">
+                <label>Preferred language</label>
+                <select
+                  value={form.preferredLanguage || 'en'}
+                  onChange={e => setForm(f => ({ ...f, preferredLanguage: e.target.value }))}
+                >
+                  {LANG_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
               <div className="admin-field add-form-section">
                 <div className="add-form-section-label">Login identifiers — at least one required</div>

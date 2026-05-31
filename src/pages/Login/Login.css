@@ -1021,3 +1021,37 @@ html[data-tenant-logo-strategy="invert"] .login-tenant-logo-wrap {
   cursor: pointer;
 }
 .dev-signout:hover { text-decoration: underline; }
+
+/* Sprint 16.2: language picker at the top of the staff login card.
+   Compact horizontal row, accent on the selected language. Sized
+   so a non-English reader spots their language immediately —
+   "Español" / "中文" render in their native scripts. */
+.login-lang-picker {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  align-self: flex-start;
+}
+.login-lang-btn {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.login-lang-btn:hover {
+  color: var(--text-primary);
+}
+.login-lang-btn.is-active {
+  background: var(--brand-text);
+  color: var(--bg-surface);
+}

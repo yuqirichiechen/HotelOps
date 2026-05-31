@@ -193,7 +193,7 @@ app.post('/api/auth/staff/login', async (req, res) => {
                 :                          'LOWER(username) = LOWER($1)';
     const { rows } = await pool.query(
       `SELECT user_id, name, phone_number, username, employee_code, birthday, role, department_id,
-              pin_hash, pin_required, pin_must_set
+              pin_hash, pin_required, pin_must_set, preferred_language
        FROM users WHERE ${where} AND active = true`,
       [id.value]
     );
@@ -227,16 +227,19 @@ app.post('/api/auth/staff/login', async (req, res) => {
       success: true,
       token,
       user: {
-        user_id:       user.user_id,
-        name:          user.name,
-        phone_number:  user.phone_number,
-        username:      user.username,
-        employee_code: user.employee_code,
-        role:          user.role,
-        department_id: user.department_id,
-        pin_required:  user.pin_required,
-        pin_must_set:  user.pin_must_set,
-        type:          'staff',
+        user_id:            user.user_id,
+        name:               user.name,
+        phone_number:       user.phone_number,
+        username:           user.username,
+        employee_code:      user.employee_code,
+        role:               user.role,
+        department_id:      user.department_id,
+        pin_required:       user.pin_required,
+        pin_must_set:       user.pin_must_set,
+        // Sprint 16.2: staff UI language. The client uses this to
+        // drive the i18n t() lookup once the user is identified.
+        preferred_language: user.preferred_language || 'en',
+        type:               'staff',
       },
     });
   } catch (err) {
@@ -312,6 +315,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code,
               u.role, u.department_id,
               u.pin_required, u.pin_must_set,
+              u.preferred_language,
               (u.pin_hash IS NOT NULL) AS has_pin,
               d.name AS department
        FROM users u
@@ -1065,6 +1069,7 @@ app.get('/api/admin/employees', async (req, res) => {
          u.role, u.hire_date,
          u.base_hourly_rate, u.active, u.department_id, d.name AS department,
          u.pin_required, u.pin_must_set,
+         u.preferred_language,
          (u.pin_hash IS NOT NULL) AS has_pin,
          COALESCE(wa.hours, 0)::float                AS hours_this_week,
          COALESCE(wa.is_on_clock, false)             AS is_on_clock,
@@ -1102,6 +1107,7 @@ app.get('/api/admin/employees/:id', async (req, res) => {
               u.role, u.hire_date,
               u.base_hourly_rate, u.active, u.department_id, d.name AS department,
               u.pin_required, u.pin_must_set,
+              u.preferred_language,
               (u.pin_hash IS NOT NULL) AS has_pin
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
@@ -1118,19 +1124,25 @@ app.get('/api/admin/employees/:id', async (req, res) => {
 
 app.post('/api/admin/employees', async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
-          phoneNumber, username, employeeCode, birthday } = req.body;
+          phoneNumber, username, employeeCode, birthday,
+          preferredLanguage } = req.body;
   if (!name || !hireDate) {
     return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
   const v = validateIdentifiers({ phoneNumber, username, employeeCode, birthday });
   if (!v.ok) return res.status(400).json({ success: false, message: v.message });
+  // Sprint 16.2: preferred_language. Default to 'en' when omitted
+  // or invalid so the column's CHECK constraint stays satisfied.
+  const lang = (preferredLanguage && ['en', 'es', 'zh'].includes(preferredLanguage))
+    ? preferredLanguage : 'en';
   try {
     const { rows } = await pool.query(
       `INSERT INTO users (name, phone_number, username, employee_code, birthday,
-                          role, hire_date, department_id, base_hourly_rate)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                          role, hire_date, department_id, base_hourly_rate,
+                          preferred_language)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode, v.normalized.birthday,
-       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null]
+       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, lang]
     );
     return res.json({ success: true, employee: rows[0] });
   } catch (err) {
@@ -1157,19 +1169,26 @@ app.patch('/api/admin/employees/:id/status', async (req, res) => {
 
 app.put('/api/admin/employees/:id', async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
-          phoneNumber, username, employeeCode, birthday } = req.body;
+          phoneNumber, username, employeeCode, birthday,
+          preferredLanguage } = req.body;
   if (!name || !hireDate) {
     return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
   const v = validateIdentifiers({ phoneNumber, username, employeeCode, birthday });
   if (!v.ok) return res.status(400).json({ success: false, message: v.message });
+  // Sprint 16.2: preferred_language gates the staff i18n layer.
+  // Default-preserve via COALESCE so a partial PUT from an older
+  // client doesn't wipe the admin's language choice.
+  const lang = (preferredLanguage && ['en', 'es', 'zh'].includes(preferredLanguage))
+    ? preferredLanguage : null;
   try {
     const { rows } = await pool.query(
       `UPDATE users SET name=$1, phone_number=$2, username=$3, employee_code=$4, birthday=$5,
-                        role=$6, hire_date=$7, department_id=$8, base_hourly_rate=$9
-       WHERE user_id=$10 RETURNING *`,
+                        role=$6, hire_date=$7, department_id=$8, base_hourly_rate=$9,
+                        preferred_language=COALESCE($10, preferred_language)
+       WHERE user_id=$11 RETURNING *`,
       [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode, v.normalized.birthday,
-       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, req.params.id]
+       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, lang, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     return res.json({ success: true, employee: rows[0] });
