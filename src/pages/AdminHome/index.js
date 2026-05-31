@@ -91,10 +91,23 @@ const AdminHome = () => {
     setRefreshing(false);
   }, []);
 
+  // Sprint 15.10: cost optimization. Was a hard 60s poll, forever,
+  // regardless of whether the tab was visible — kept Neon's compute
+  // warm the entire workday. Now: poll every 5 min AND only when
+  // the tab is foregrounded. Falls back to an on-focus refresh so
+  // the dashboard is fresh whenever the GM comes back to it.
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 60000);
-    return () => clearInterval(id);
+    const tick = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const id = setInterval(tick, 300_000);
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [refresh]);
 
   // Tick "X ago" label every 10s without re-fetching

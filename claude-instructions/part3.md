@@ -345,6 +345,106 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-30 — Sprint 15.10: Postgres compute-hour optimization
+
+Not a feature sprint — a cost-reduction pass before flipping the
+DB from a soon-to-expire free tier to a pay-per-compute-hour
+instance (Koyeb/Neon). 12.7 compute-hours into the trial period
+and the autosuspend was never triggering.
+
+**Background: how Neon bills.**
+
+Koyeb's Postgres is Neon underneath. Neon charges compute-seconds
+while the instance is *awake*, not per query. After ~5 minutes of
+zero activity the compute suspends and billing pauses; the next
+query incurs a ~100–500 ms cold-start to wake it back up. So a
+single recurring query (a heartbeat, a poll, an open idle
+connection) is enough to keep the instance awake 24/7 and bill
+for the entire calendar period.
+
+**Audit findings:**
+
+- `pg.Pool` defaults already release idle connections after 10 s
+  (the `idleTimeoutMillis` default), so the pool wasn't holding
+  the DB warm.
+- The real culprits were two client-side `setInterval` polls
+  that hit DB-touching endpoints every minute, forever, while
+  the page was open:
+    - `src/pages/AdminHome/index.js:96` — `setInterval(refresh, 60000)`
+      → `/admin/dashboard`
+    - `src/components/Layout/Sidebar.js:49` — `setInterval(tick, 60_000)`
+      → `/handoff-notes/unread-count`
+  Two queries/minute × 60 = 120/hour × 8h shift = ~960 queries
+  per day, all on what's essentially a notification badge + a
+  passive dashboard.
+- Every other `setInterval` in the codebase is a pure client-side
+  tick (wall clock, elapsed time, auto-signout countdown) — none
+  hit the DB. Verified across `TimeClock/`, `Home/`,
+  `AutoSignoutBanner.js`.
+
+**Fixes:**
+
+1. **`AdminHome` refresh effect** rewritten:
+    - Interval stretched from `60_000` → `300_000` (5 min). The
+      dashboard surfaces clock-in state + day counts; staff don't
+      clock in/out fast enough for 60 s precision to matter.
+    - **Visibility gating**: the interval callback now only fires
+      when `document.visibilityState === 'visible'`. Background
+      tabs no longer ping the DB.
+    - **Focus-driven refresh**: added a `window.focus` listener
+      so coming back to the tab does a fresh fetch regardless of
+      where in the interval cycle the GM returns. Maintains the
+      "always-fresh-when-looking-at-it" feel without the steady
+      timer cost.
+2. **`Sidebar` unread-count effect** rewritten:
+    - Dropped the `setInterval` entirely. The unread count is a
+      badge — fast updates only matter when the GM is looking at
+      the sidebar.
+    - Replaced with mount + `window.focus` listener. Comes back
+      to the tab → counter refreshes once. Idle tab → zero DB
+      load.
+3. **`pg.Pool` config** made explicit in `server.js`:
+    - `max: 5` (was the pg default `10`). One-property load
+      profile easily fits in 5 concurrent connections; cap means
+      fewer potential hangers-on.
+    - `idleTimeoutMillis: 10_000` (already the pg default but
+      explicit so the intent is documented inline alongside the
+      Neon billing context).
+
+**Expected impact.**
+
+Before: GM opens admin → continuous 1 query/min from each of the
+two intervals → Neon stays awake the entire session. 8h day =
+8h billed compute.
+
+After: GM opens admin → 2 queries on mount → 5-min idle timer
+fires → autosuspend. Activity wakes it briefly (~100ms cold
+start). With a typical GM workflow (load a view, glance, walk
+away, come back 10 min later), compute should be billing maybe
+10–20 min per active hour rather than the full 60.
+
+Rough estimate: **~70-80% reduction in compute-hours** under
+typical use. Real numbers depend on how often the GM actually
+interacts; verifiable from the Koyeb usage dashboard after a few
+days.
+
+**Notes:**
+
+- No new endpoints, no schema changes, no client-visible
+  behavior changes (except: dashboard auto-refreshes a bit less
+  aggressively, but the focus listener covers the "I just came
+  back" case).
+- The optimization is *additive* — if the GM does want stricter
+  freshness, they can manually refresh the page or click a
+  "Refresh" affordance (which we could add later as a one-shot
+  button, but it's not necessary right now).
+- The 12.7-hour figure that prompted this sprint should plateau
+  significantly. If it doesn't, the next thing to check is
+  whether anything else (a Koyeb health probe, an external
+  uptime monitor) is hitting a route that touches the DB.
+
+---
+
 ### 2026-05-28 — Sprint 15.9: second bug-fix pass — menu icons, Auto-Fill modal, week-nav reset, +N more expandable
 
 Four follow-ups to 15.8.

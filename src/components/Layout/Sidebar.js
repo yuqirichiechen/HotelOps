@@ -36,18 +36,27 @@ const Sidebar = ({
   const nav = useNavigate();
 
   const [unread, setUnread] = useState(0);
+  // Sprint 15.10: cost optimization. Was a hard 60s poll, which
+  // (combined with AdminHome's 60s refresh) kept the DB compute
+  // alive all day on what's essentially a notification badge.
+  // Refresh on mount + on window focus instead — the unread count
+  // doesn't need to update while the GM has the tab in the
+  // background or is on another device.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    const tick = () => {
+    const refetch = () => {
       apiFetch('/handoff-notes/unread-count').then(({ data }) => {
         if (cancelled) return;
         if (data?.success) setUnread(data.count || 0);
       }).catch(() => { /* ignore — keep last value */ });
     };
-    tick();
-    const id = setInterval(tick, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
+    refetch();
+    window.addEventListener('focus', refetch);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refetch);
+    };
   }, [user]);
 
   const handleSignOut = async () => {

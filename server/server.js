@@ -19,9 +19,22 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Sprint 15.10: explicit pool config for Koyeb/Neon Postgres cost
+// optimization. Neon bills compute-seconds while the instance is
+// awake, and resets a ~5 min idle timer on any query. A single
+// long-lived idle pg connection keeps the instance warm 24/7.
+//   - max: 5            — cap concurrent connections. The server's
+//                          load profile is light enough (one hotel,
+//                          a handful of admins) that 5 is plenty.
+//   - idleTimeoutMillis  — 10 s. Already the pg default, but
+//                          explicit so it's obvious why it's there.
+//                          Once a connection is idle 10 s, close it
+//                          → Neon's idle timer can start counting.
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  connectionString:   process.env.DATABASE_URL,
+  ssl:                { rejectUnauthorized: false },
+  max:                5,
+  idleTimeoutMillis:  10_000,
 });
 
 pool.query('SELECT NOW()').then(() => {
