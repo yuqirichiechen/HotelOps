@@ -224,11 +224,15 @@ const Home = () => {
   const total     = data?.totalHours || 0;
   const recent    = (data?.recentShifts || []).slice(0, 3);
 
-  // Sprint 16.1: show the focused-action screen on the first
-  // landing after login (before any clock-event flow is active).
-  // Loading hides it so we don't flash an empty screen; clockEvent
-  // hides it because the existing flip-card flow takes over.
-  const showFocused = !loading && !!data && !focusedDismissed && !clockEvent;
+  // Sprint 16.1 / 16.6: focused-action screen is the landing
+  // experience post-login. 16.6 removed the `!loading && !!data`
+  // gate that used to wait for /me/hours before showing — staff
+  // would otherwise see a flash of Home before the focused screen
+  // mounted. Now it mounts immediately; the inner button is
+  // disabled (shows "…") until data resolves so the wrong mode
+  // never gets tapped. clockEvent still suppresses it so the
+  // existing flip-card flow takes over after a clock action.
+  const showFocused = !focusedDismissed && !clockEvent;
   const focusedMode = onClock ? 'out' : 'in';
 
   return (
@@ -239,7 +243,8 @@ const Home = () => {
           mode={focusedMode}
           staffName={user?.name}
           greetingKey={greeting}
-          busy={busy}
+          busy={busy || loading || !data}
+          loading={loading || !data}
           idleSeconds={data?.idleLogoutSeconds || 15}
           onAction={() => {
             // Don't dismiss yet — let the existing clock handler

@@ -54,6 +54,38 @@
   margin-top: -16px;
 }
 
+/* Sprint 16.6: digital wall clock that sits above the action
+   button. Blends with the screen via lighter weight + small
+   caption. Intentionally NOT highlighted — the giant button
+   stays the visual focal point. */
+.focused-action-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: -10px 0 -10px;
+  user-select: none;
+}
+.focused-action-clock-time {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 44px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.focused-action-clock-label {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+@media (max-width: 520px) {
+  .focused-action-clock-time { font-size: 38px; }
+}
+
 /* The giant button. Subtle breathing animation so it's obviously
    the call-to-action without being annoying. Tap stops the
    breathing and plays a confirm pulse. */
@@ -91,7 +123,18 @@
   transform: scale(0.97);
 }
 .focused-action-btn.is-tapped {
-  animation: focused-confirm 0.32s ease forwards;
+  /* Sprint 16.6: longer confirm-hold so the ✓ reads. Pulse +
+     settle in the first ~400 ms; then sit still for the rest of
+     the 1200 ms TAP_CONFIRM_DELAY_MS so the staff sees the
+     completed state before the next screen takes over. */
+  animation: focused-confirm 0.42s ease forwards;
+}
+.focused-action-btn.is-loading {
+  /* Slightly slower breathing while the parent fetches /me/hours
+     so the disabled state still feels alive. */
+  animation: focused-breathe 3.2s ease-in-out infinite;
+  cursor: progress;
+  opacity: 0.85;
 }
 @keyframes focused-breathe {
   0%, 100% { transform: scale(1);    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24); }
@@ -99,8 +142,9 @@
 }
 @keyframes focused-confirm {
   0%   { transform: scale(0.97); }
-  60%  { transform: scale(1.08); }
-  100% { transform: scale(1.0);  }
+  40%  { transform: scale(1.10); }
+  70%  { transform: scale(1.04); }
+  100% { transform: scale(1.06); }
 }
 
 .focused-action-btn-label {
@@ -108,10 +152,14 @@
   z-index: 1;
 }
 .focused-action-btn-check {
-  font-size: 96px;
+  font-size: 110px;
   font-weight: 900;
   line-height: 1;
-  animation: focused-check 0.32s ease;
+  /* Sprint 16.6: confirmation ✓ animates in over ~420ms then
+     sits at full size for the remainder of the 1200 ms
+     TAP_CONFIRM_DELAY_MS. Longer than the prior 320 ms so the
+     staff registers that the tap succeeded. */
+  animation: focused-check 0.42s cubic-bezier(0.18, 0.85, 0.32, 1.18) forwards;
 }
 @keyframes focused-check {
   from { opacity: 0; transform: scale(0.7); }

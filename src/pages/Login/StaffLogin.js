@@ -6,7 +6,7 @@ import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import RoleIcon from '../../components/shared/RoleIcon';
 import { TransitionLink } from './TransitionLink';
 import { useT } from '../../i18n';
-import LanguageSwap from '../../components/shared/LanguageSwap';
+import LangCycleHeadline from '../../components/shared/LangCycleHeadline';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 import '../../components/shared/RoleIcon.css';
@@ -370,25 +370,22 @@ const StaffLogin = ({ onRoleSwitch }) => {
             )}
           </div>
 
-          {/* Sprint 16.5: iPhone-setup-style language cycler.
-              Replaces the 3-button picker — fades through EN /
-              ES / 中文 every ~2.4 s; tap locks the displayed
-              language. Same persistence (writes to localStorage
-              so the choice survives across kiosk sessions). */}
-          <LanguageSwap />
-
+          {/* Sprint 16.6: the headline itself fade-cycles
+              through the three supported languages. Replaces
+              the Sprint-16.5 LanguageSwap pill — no separate
+              widget, no "Tap your language" hint. Tap the
+              headline to lock. */}
           <div className="login-headline-row">
             <div className="login-headline-text">
-              <h1 className="login-title">{t('login.title')}</h1>
-              {/* Sprint 16.5: subtitle is now a single i18n key,
-                  not the dynamic "Sign in with your <methods>"
-                  sentence. The dynamic sentence varies per login
-                  config and translating its method-list slot
-                  would 3x the dict for a marginal benefit; one
-                  general subtitle covers every config. The
-                  literal `subSentence` value is preserved as the
-                  English fallback should the key go missing. */}
-              <p className="login-sub">{t('login.subtitle') || subSentence}</p>
+              <LangCycleHeadline
+                titleKey="login.title"
+                subtitleKey="login.subtitle"
+              />
+              {/* Fallback: the dynamic English subSentence is
+                  preserved as a small caption below in case the
+                  i18n keys ever resolve to empty. Hidden by
+                  default to keep the focal headline clean. */}
+              {!t('login.subtitle') && <p className="login-sub">{subSentence}</p>}
             </div>
             <div className="login-headline-actions">
               <TransitionLink

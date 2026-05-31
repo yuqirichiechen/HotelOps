@@ -345,6 +345,93 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-31 — Sprint 16.6: cycling-headline login + landing focus + digital clock + slower confirm
+
+Four UX fixes after the GM reviewed 16.5.
+
+**1. LangCycleHeadline replaces the separate language pill.**
+
+16.5 added a LanguageSwap pill above the login title. The GM
+pointed out the pill was a *second* widget to interpret —
+better to put the cycle directly on the headline itself. Done:
+
+- New `src/components/shared/LangCycleHeadline.js` (+ .css).
+- The login title + subtitle now fade-cycle through
+  `SUPPORTED_LANGS` every ~2.6 s using the i18n `translate(key,
+  lang)` lookup directly (no provider re-render needed — it's a
+  pure function).
+- Tap the whole headline to lock the displayed language. Locks
+  show a tiny green ✓ in the corner so the choice is
+  confirmed. Tap again to resume cycling.
+- The previous `LanguageSwap` pill + `login.language` /
+  "Tap your language" hint are removed from `StaffLogin`.
+  `LanguageSwap` itself is left in the shared folder for now —
+  no other surface uses it but the file's harmless to keep.
+- `prefers-reduced-motion` skips the crossfade.
+
+**2. FocusedAction is the landing screen — no Home flash.**
+
+16.5 still had the focused-action overlay gated behind
+`!loading && !!data` so it didn't render until `/me/hours`
+resolved. Staff saw the Home page flash for ~200–500 ms before
+the focused screen mounted. Fix:
+
+- Drop the `loading` + `data` gate. `showFocused` is now
+  `!focusedDismissed && !clockEvent` — true from the instant
+  Home mounts.
+- Pass a new `loading` prop into FocusedAction. While the
+  parent is still fetching, the button shows "…" and is
+  disabled so the wrong mode (in vs out) can't be tapped
+  before the correct one is known.
+- The button also slows its breathing to 3.2 s during loading
+  (subtle "we're working on it" signal without spinning).
+
+**3. Digital wall clock above the action button.**
+
+Per GM. Big serif time + small weekday/date caption sit between
+the subline and the giant button. Uses a 1 s `setInterval` —
+separate from the idle-logout interval so they don't fight.
+Intentionally rendered in `var(--text-secondary)` (lighter
+than the headline) so the giant button stays the visual focal
+point — the clock is contextual, not the draw.
+
+**4. Longer ✓ hold after tap.**
+
+The previous 280 ms `setTimeout` between tap and `onAction`
+fired the parent's clock-in/out + screen-dismiss before the ✓
+visually registered — felt like nothing happened. Fix:
+
+- `TAP_CONFIRM_DELAY_MS = 1200` (~4.3× longer).
+- `.focused-action-btn-check` font-size bumped 96 → 110 px.
+- Animation curve switched to a bouncy
+  `cubic-bezier(0.18, 0.85, 0.32, 1.18)` so the ✓ pops in
+  with a small overshoot rather than easing flatly.
+- `.is-tapped` confirm pulse extended 320 → 420 ms with a
+  multi-stop scale so the button "lands" at a slight
+  scale(1.06) and holds.
+
+**Verified.** Six touched files balance.
+
+**Notes:**
+
+- No new endpoints, no migrations.
+- The Sprint-16.5 `LanguageSwap` file is unused now but left in
+  place — removing it would break the .css import side-effect.
+  A later cleanup sprint can delete both.
+- The clockEvent flow (the post-clock flip-card flow on Home)
+  still takes over after the focused screen dismisses; the
+  longer ✓ hold just delays that transition by ~900 ms.
+
+**Up next:**
+
+- Sprint 16 arc still considered done for the workflow
+  problem. Future work would target the deeper i18n gaps
+  (admin pages still English) and the polling cadence
+  (currently 5 min visibility-gated — could tighten when
+  active).
+
+---
+
 ### 2026-05-31 — Sprint 16.5: HCI polish + simpler past-shift logic
 
 Bundle of five revisions across the Sprint-16 surfaces. Two

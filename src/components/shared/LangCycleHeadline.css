@@ -1,0 +1,67 @@
+/* Sprint 16.6: cycling-language headline. The title + subtitle
+   themselves fade through the supported languages; tap to lock.
+   Replaces the Sprint-16.5 LanguageSwap pill — the headline is
+   now the affordance instead of a separate widget. */
+
+.lang-cycle-headline {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  /* Larger tap target than the visible text — staff don't always
+     hit the exact glyph on touch. */
+  padding: 8px 12px;
+  margin: 0 -12px;
+  border-radius: 12px;
+  transition: background 0.15s ease, opacity 0.36s ease;
+}
+.lang-cycle-headline:hover { background: rgba(0, 0, 0, 0.03); }
+.lang-cycle-headline:active { background: rgba(0, 0, 0, 0.06); }
+.lang-cycle-headline:focus-visible {
+  outline: 2px solid var(--accent, var(--brand-text));
+  outline-offset: 2px;
+}
+.lang-cycle-headline.is-fading {
+  opacity: 0;
+}
+.lang-cycle-headline.is-locked {
+  /* Subtle accent border + check icon to confirm the choice
+     stuck. Stays tappable so re-cycling is possible. */
+}
+
+.lang-cycle-title {
+  margin: 0;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  color: var(--brand-text);
+}
+.lang-cycle-sub {
+  margin: 6px 0 0 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.lang-cycle-check {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 14px;
+  font-weight: 900;
+  color: #38a169;
+  background: rgba(56, 161, 105, 0.12);
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lang-cycle-headline { transition: background 0.15s ease; }
+  .lang-cycle-headline.is-fading { opacity: 1; }
+}

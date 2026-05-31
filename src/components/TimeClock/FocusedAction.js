@@ -22,12 +22,21 @@ import './FocusedAction.css';
 //     so the staff has a chance to keep their session.
 //   - tap animation: very short, just to acknowledge the tap
 //     before the parent handler runs.
+// Sprint 16.6: bump from 280 → 1200 ms so the ✓ confirmation
+// hangs long enough for the staff to register what happened
+// before the screen transitions away. The earlier 280 ms looked
+// too instant — staff weren't sure if their tap registered.
+const TAP_CONFIRM_DELAY_MS = 1200;
+
 const FocusedAction = ({
   mode,                  // 'in' | 'out'
   staffName,
   greetingKey,           // 'greeting.morning' | '.afternoon' | '.evening'
   idleSeconds = 15,
   busy = false,
+  loading = false,       // Sprint 16.6: true while parent is still
+                         // fetching /me/hours — button disabled
+                         // until the correct mode is known.
   onAction,
   onSkip,
   onIdleLogout,
@@ -39,6 +48,14 @@ const FocusedAction = ({
   const [remaining, setRemaining] = useState(idleSeconds);
   const [tapped, setTapped] = useState(false);
   const [exiting, setExiting] = useState(false);
+  // Sprint 16.6: live wall clock for the digital readout above
+  // the button. 1 s tick — separate from the idle countdown so
+  // the two effects don't fight over the same interval.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const startedAtRef = useRef(Date.now());
   const idleSecondsRef = useRef(idleSeconds);
   idleSecondsRef.current = idleSeconds;
@@ -73,12 +90,13 @@ const FocusedAction = ({
   const handleTap = () => {
     if (busy || tapped) return;
     setTapped(true);
-    // Short delay so the tap animation reads, then run the parent
-    // handler. The parent owns the actual API call + post-action
+    // Sprint 16.6: longer hold so the ✓ confirmation reads
+    // before the parent dismisses + the next screen takes over.
+    // The parent owns the actual API call + post-action
     // navigation; we just play the visual.
     setTimeout(() => {
       if (onAction) onAction();
-    }, 280);
+    }, TAP_CONFIRM_DELAY_MS);
   };
 
   const handleSkip = () => {
@@ -107,16 +125,31 @@ const FocusedAction = ({
         </div>
         <div className="focused-action-subline">{subline}</div>
 
+        {/* Sprint 16.6: digital wall clock above the button so
+            staff confirms the time the system has before they
+            tap. Visual blends into the screen via lighter weight
+            + spacing — it's contextual, not the primary draw. */}
+        <div className="focused-action-clock" aria-hidden>
+          <div className="focused-action-clock-time">
+            {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </div>
+          <div className="focused-action-clock-label">
+            {now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
+          </div>
+        </div>
+
         <button
           type="button"
-          className={`focused-action-btn ${isIn ? 'is-in' : 'is-out'}${tapped ? ' is-tapped' : ''}`}
+          className={`focused-action-btn ${isIn ? 'is-in' : 'is-out'}${tapped ? ' is-tapped' : ''}${loading ? ' is-loading' : ''}`}
           onClick={handleTap}
-          disabled={busy || tapped}
-          aria-label={label}
+          disabled={busy || tapped || loading}
+          aria-label={loading ? 'Loading' : label}
         >
           {tapped
             ? <span className="focused-action-btn-check" aria-hidden>✓</span>
-            : <span className="focused-action-btn-label">{label}</span>}
+            : loading
+              ? <span className="focused-action-btn-label">…</span>
+              : <span className="focused-action-btn-label">{label}</span>}
         </button>
 
         <button
