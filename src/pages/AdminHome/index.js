@@ -24,14 +24,6 @@ const fmtSince = (iso) => {
   return rm ? `${h}h ${rm}m` : `${h}h`;
 };
 
-const fmtScheduleTime = (s) => {
-  if (!s) return '';
-  const [h, m] = s.split(':').map(Number);
-  const date = new Date();
-  date.setHours(h, m, 0, 0);
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-};
-
 const fmtUpdated = (date) => {
   if (!date) return '';
   const sec = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -41,12 +33,10 @@ const fmtUpdated = (date) => {
   return m === 1 ? '1m ago' : `${m}m ago`;
 };
 
-const STATUS_LABEL = {
-  'late':         'Late',
-  'yet-to-start': 'Yet to start',
-};
-
-const VIEWS = ['on-clock', 'coming-up', 'hours', 'pending-ot', 'overdue'];
+// Sprint 16.5: 'coming-up' removed per GM — the "Past scheduled
+// end" alert is the more actionable signal (and is harder to
+// notice when buried under the still-coming-up list).
+const VIEWS = ['on-clock', 'overdue', 'hours', 'pending-ot'];
 
 // Sprint 16.3: pretty "Xh Ym past" format for the overdue list.
 const fmtOver = (mins) => {
@@ -185,13 +175,10 @@ const AdminHome = () => {
   const now       = new Date();
   const adminName = user?.name || user?.username || 'admin';
 
-  // Coming up today = scheduled today, not currently working, not yet
-  // finished. Status came from the dashboard endpoint already.
-  const comingUp = useMemo(
-    () => (data?.todaySchedule || [])
-      .filter(s => s.status === 'late' || s.status === 'yet-to-start'),
-    [data]
-  );
+  // Sprint 16.5: Coming-up-today memo + stat card + view branch
+  // removed. The "Past scheduled end" alert covers the more
+  // urgent failure mode (staff who forgot to clock out), and
+  // "Coming up" was rarely used per GM feedback.
 
   // Group currently working by department
   const workingByDept = useMemo(() => {
@@ -211,16 +198,6 @@ const AdminHome = () => {
       value:     loading ? '—' : (data?.onTheClockCount ?? 0),
       meta:      data?.onTheClockCount ? 'right now' : 'no one currently',
       tone:      data?.onTheClockCount ? 'live' : null,
-      clickable: true,
-    },
-    {
-      key:       'coming-up',
-      eyebrow:   'Coming up today',
-      value:     loading ? '—' : comingUp.length,
-      meta:      comingUp.length
-        ? `${comingUp.filter(s => s.status === 'late').length} late`
-        : 'all clocked in',
-      tone:      comingUp.some(s => s.status === 'late') ? 'warn' : null,
       clickable: true,
     },
     {
@@ -317,50 +294,7 @@ const AdminHome = () => {
       );
     }
 
-    if (view === 'coming-up') {
-      return (
-        <>
-          <div className="adm-card-head">
-            <h2 className="adm-card-title">Coming up today</h2>
-            {comingUp.length > 0 && (
-              <span className="adm-card-count">
-                {comingUp.length}
-              </span>
-            )}
-          </div>
-          {comingUp.length === 0 ? (
-            <div className="adm-empty">
-              Everyone scheduled today has either started or finished.
-              <div className="adm-empty-sub">
-                People still expected to clock in show up here.
-              </div>
-            </div>
-          ) : (
-            <ul className="adm-sched-list">
-              {comingUp.map(s => (
-                <li
-                  key={s.schedule_id}
-                  className="adm-sched-row"
-                  onClick={() => goTo('staffDetail', { userId: s.user_id })}
-                >
-                  <span className={`adm-sched-status status-${s.status}`} title={STATUS_LABEL[s.status]} />
-                  <div className="adm-sched-info">
-                    <div className="adm-sched-name">{s.name}</div>
-                    <div className="adm-sched-meta">
-                      {fmtScheduleTime(s.start_time)} – {fmtScheduleTime(s.end_time)}
-                      {s.department ? ` · ${s.department}` : ''}
-                    </div>
-                  </div>
-                  <span className={`adm-sched-pill pill-${s.status}`}>
-                    {STATUS_LABEL[s.status]}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      );
-    }
+
 
     if (view === 'hours') {
       const list   = data?.staffHoursThisWeek || [];

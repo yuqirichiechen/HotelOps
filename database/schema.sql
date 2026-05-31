@@ -125,6 +125,11 @@ CREATE TABLE time_entries (
   overtime_hours NUMERIC(5,2) DEFAULT 0,
   manual_entry   BOOLEAN     NOT NULL DEFAULT FALSE,
   ot_approved    BOOLEAN     NOT NULL DEFAULT FALSE,   -- migration 007 — admin sign-off on this entry's OT bucket
+  -- Sprint 16.4: TRUE when the auto-clock-out job closed this
+  -- entry (staff forgot to clock out + grace period elapsed).
+  -- clock_out_time on these rows = the scheduled end, not NOW.
+  -- Migration: database/migrations/023_time_entries_system_generated.sql
+  system_generated BOOLEAN   NOT NULL DEFAULT FALSE,
   notes          TEXT,
   created_by     UUID        REFERENCES users(user_id),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -995,7 +995,7 @@ app.get('/api/me/history', requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT entry_id, clock_in_time, clock_out_time,
+      `SELECT entry_id, clock_in_time, clock_out_time, system_generated,
          CASE WHEN clock_out_time IS NOT NULL
            THEN ROUND(EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 60)
            ELSE NULL
@@ -1023,7 +1023,7 @@ app.get('/api/user/:phone/history', async (req, res) => {
     if (!users.length) return res.status(404).json({ success: false, message: 'Not found' });
 
     const { rows } = await pool.query(
-      `SELECT entry_id, clock_in_time, clock_out_time,
+      `SELECT entry_id, clock_in_time, clock_out_time, system_generated,
          CASE WHEN clock_out_time IS NOT NULL
            THEN ROUND(EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 60)
            ELSE NULL
@@ -1407,111 +1407,154 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   });
 });
 
-// ── Sprint 16.3: "still clocked in past scheduled end" alert ─────────────────
+// ── Sprint 16.5: scheduled-end baseline helper ───────────────────────────────
 //
-// Surfaces staff who are currently on the clock past their scheduled
-// end time. Two sources for the scheduled end, in order of priority:
-//   1. Published `schedule_sheet_cells` matching the user's
-//      week_start (Monday of the local current week) + day_of_week
-//      (Mon=0..Sun=6, matching the sheet column layout). Uses
-//      parsed_end when present.
-//   2. Fallback: today's row in the legacy `schedules` table.
-//      Pulls COALESCE(custom_end_time, shifts.end_time).
+// Replaces the Sprint-16.3/16.4 sheet/schedules lookup with a
+// flat `clock_in + regular_shift_hours` baseline. Simpler model
+// the GM can reason about ("9-to-5 shift, alert at 9+10=7pm")
+// and decoupled from whether the sheet is populated or which
+// table holds the schedule. The cost: a staff doing a planned
+// 12-hour shift will get flagged at hour 10 instead of hour 14.
+// Acceptable trade-off because (a) most shifts here are 8h and
+// (b) the alert is a passive surface — admin can ignore it.
+const getRegularShiftHours = async () => {
+  const { rows } = await pool.query(
+    `SELECT value FROM app_settings WHERE key = 'regular_shift_hours'`
+  );
+  const n = parseInt(rows[0]?.value, 10);
+  return Number.isInteger(n) && n >= 1 && n <= 24 ? n : 8;
+};
+
+// ── Sprint 16.4 / 16.5: auto clock-out helper ────────────────────────────────
 //
-// Threshold: `still_clocked_in_threshold_minutes` app setting
-// (default 30). A staff member only appears on the list once
-// `NOW - scheduled_end >= threshold`. tz_offset_minutes is the
-// caller's signed offset (`new Date().getTimezoneOffset()`) so the
-// "current local Monday" + "scheduled_end on local clock" both
-// respect the GM's actual workday boundaries.
+// Closes any open `time_entries` where (NOW - clock_in) >
+// (regular_shift_hours + grace_hours). Clock-out time is set to
+// clock_in + regular_shift_hours so payroll hours equal the
+// planned shift. system_generated flag surfaces the row in the
+// UI so the admin can adjust upward if the staff actually worked
+// past their scheduled end.
+//
+// No-op when `auto_clock_out_enabled` is false. Pure read
+// otherwise (one SELECT, one UPDATE per closure).
+//
+// Called lazily from /admin/still-clocked-in (no background
+// cron — preserves the Sprint-15.10 compute-hour optimization).
+// If an admin doesn't check the dashboard for >24h, auto-close
+// fires late but still backdates correctly to clock_in + regular
+// shift.
+const runAutoClockOut = async () => {
+  const cfg = await pool.query(
+    `SELECT key, value FROM app_settings
+      WHERE key IN ('auto_clock_out_enabled', 'auto_clock_out_grace_hours',
+                    'regular_shift_hours')`
+  );
+  const cfgMap = Object.fromEntries(cfg.rows.map(r => [r.key, r.value]));
+  if (cfgMap.auto_clock_out_enabled !== 'true') return { closed: 0, enabled: false };
+  const graceHours = (() => {
+    const n = parseInt(cfgMap.auto_clock_out_grace_hours, 10);
+    return Number.isInteger(n) && n >= 1 && n <= 24 ? n : 4;
+  })();
+  const shiftHours = (() => {
+    const n = parseInt(cfgMap.regular_shift_hours, 10);
+    return Number.isInteger(n) && n >= 1 && n <= 24 ? n : 8;
+  })();
+  // Find every open entry where now - clock_in > shift + grace.
+  // The threshold is identical for everyone — no per-user
+  // schedule lookup. Single SQL trip.
+  const { rows } = await pool.query(
+    `SELECT te.entry_id, te.user_id, te.clock_in_time
+       FROM time_entries te
+       JOIN users u ON te.user_id = u.user_id
+      WHERE te.clock_out_time IS NULL
+        AND u.active = true
+        AND u.deleted_at IS NULL
+        AND te.clock_in_time + ($1 * INTERVAL '1 hour') < NOW()`,
+    [shiftHours + graceHours]
+  );
+  let closed = 0;
+  for (const r of rows) {
+    // Backdate clock_out to clock_in + shift (NOT + shift + grace)
+    // so payroll reflects the planned shift, not however long it
+    // took the system to fire.
+    const upd = await pool.query(
+      `UPDATE time_entries
+          SET clock_out_time   = clock_in_time + ($1 * INTERVAL '1 hour'),
+              system_generated = TRUE
+        WHERE entry_id = $2::uuid
+          AND clock_out_time IS NULL
+        RETURNING entry_id`,
+      [shiftHours, r.entry_id]
+    );
+    if (upd.rowCount > 0) closed += 1;
+  }
+  return { closed, enabled: true, grace_hours: graceHours, regular_shift_hours: shiftHours };
+};
+
+// ── Sprint 16.3 / 16.5: "still clocked in past scheduled end" alert ──────────
+//
+// Surfaces staff who are currently on the clock past
+// `clock_in + regular_shift_hours + still_clocked_in_threshold_minutes`.
+// 16.5 simplified the scheduled-end source from sheet/schedules
+// lookup to this flat baseline — easier mental model + decoupled
+// from whether the sheet is populated.
+//
+// Threshold defaults: regular_shift_hours = 8, threshold_minutes
+// = 120, so a staff who clocked in at 9 AM flags at 7 PM
+// (9 + 8 + 2). Both tunable in AdminSettings.
+//
+// tz_offset_minutes query param is still accepted for symmetry
+// with other endpoints, but isn't needed under the new logic —
+// timestamps are pure intervals from the entry's clock_in, no
+// wall-clock buckets involved.
 app.get('/api/admin/still-clocked-in', requireAuth, requireRole('admin'), async (req, res) => {
-  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
-  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
   try {
+    // Sprint 16.4: lazy auto-close pass before computing the
+    // alert list. Any entries whose user's scheduled end was >
+    // grace_hours ago get closed at the scheduled end + flagged
+    // system_generated. Then the still-clocked-in list below
+    // naturally excludes them (they no longer have clock_out_time
+    // NULL). The `auto_closed` count goes back to the client so
+    // the admin sees "5 just auto-closed" feedback.
+    const autoCloseResult = await runAutoClockOut().catch(err => {
+      console.error('[auto-clock-out]', err);
+      return { closed: 0, enabled: false };
+    });
+
     const { rows: cfg } = await pool.query(
-      `SELECT value FROM app_settings WHERE key = 'still_clocked_in_threshold_minutes'`
+      `SELECT key, value FROM app_settings
+        WHERE key IN ('still_clocked_in_threshold_minutes', 'regular_shift_hours')`
     );
-    const setN = cfg[0]?.value !== undefined ? parseInt(cfg[0].value, 10) : NaN;
-    const thresholdMin = Number.isInteger(setN) && setN >= 0 && setN <= 360 ? setN : 30;
+    const cfgMap = Object.fromEntries(cfg.map(r => [r.key, r.value]));
+    const setN = parseInt(cfgMap.still_clocked_in_threshold_minutes, 10);
+    const thresholdMin = Number.isInteger(setN) && setN >= 0 && setN <= 360 ? setN : 120;
+    const setH = parseInt(cfgMap.regular_shift_hours, 10);
+    const shiftHours = Number.isInteger(setH) && setH >= 1 && setH <= 24 ? setH : 8;
 
-    // Single query: pull every open entry + LATERAL-join the
-    // scheduled_end from sheet first, schedules fallback. The
-    // `WITH local_now` CTE computes the caller-local "now" so the
-    // (week_start, day_of_week) lookup uses the right day even
-    // when server TZ differs.
+    // Sprint 16.5: simplified. "Past scheduled end" now means the
+    // staff is past clock_in + regular_shift_hours + threshold.
+    // No per-user schedule lookup — flat baseline for everyone.
+    // Trade-off + rationale in the helper comment above.
     const { rows } = await pool.query(
-      `WITH local_now AS (
-         SELECT (NOW() - INTERVAL '1 minute' * $1::int) AS local_ts
-       ),
-       open_entries AS (
-         SELECT te.entry_id, te.user_id, te.clock_in_time
-           FROM time_entries te
-           JOIN users u ON te.user_id = u.user_id
-          WHERE te.clock_out_time IS NULL
-            AND u.active = true
-            AND u.deleted_at IS NULL
-       )
-       SELECT
-         oe.entry_id,
-         oe.user_id,
-         oe.clock_in_time,
-         u.name,
-         u.phone_number,
-         u.preferred_language,
-         d.name AS department,
-         d.department_id,
-         -- Sheet end (Mon=0..Sun=6, week_start = Monday of caller-local current week)
-         (SELECT (
-            (ln.local_ts::date - ((EXTRACT(ISODOW FROM ln.local_ts)::int - 1) * INTERVAL '1 day')::interval)::date
-            + (c.day_of_week || ' days')::interval
-            + c.parsed_end
-          )
-            FROM schedule_sheet_cells c, local_now ln
-           WHERE c.user_id = oe.user_id
-             AND c.is_published = TRUE
-             AND c.parsed_end IS NOT NULL
-             AND c.week_start = (ln.local_ts::date - ((EXTRACT(ISODOW FROM ln.local_ts)::int - 1) * INTERVAL '1 day'))::date
-             AND c.day_of_week = EXTRACT(ISODOW FROM ln.local_ts)::int - 1
-           LIMIT 1
-         ) AS sheet_end,
-         -- Legacy schedules table fallback (today only)
-         (SELECT (
-            ln.local_ts::date + COALESCE(sc.custom_end_time, sh.end_time)
-          )
-            FROM schedules sc
-            LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id, local_now ln
-           WHERE sc.user_id = oe.user_id
-             AND sc.scheduled_date = ln.local_ts::date
-           ORDER BY COALESCE(sc.custom_end_time, sh.end_time) DESC
-           LIMIT 1
-         ) AS schedule_end
-       FROM open_entries oe
-       JOIN users u ON oe.user_id = u.user_id
-       LEFT JOIN departments d ON u.department_id = d.department_id`,
-      [tzOffset]
+      `SELECT te.entry_id, te.user_id, te.clock_in_time,
+              u.name, u.phone_number, u.preferred_language,
+              d.name AS department, d.department_id
+         FROM time_entries te
+         JOIN users u ON te.user_id = u.user_id
+         LEFT JOIN departments d ON u.department_id = d.department_id
+        WHERE te.clock_out_time IS NULL
+          AND u.active = true
+          AND u.deleted_at IS NULL`
     );
 
-    // Pick the best scheduled_end per row, compute minutes_over,
-    // filter by threshold. JS-side because the SELECTs above are
-    // already nested + threshold logic is clearer here.
-    const nowLocalMs = Date.now() - tzOffset * 60_000;
+    const nowMs = Date.now();
+    const shiftMs    = shiftHours * 60 * 60 * 1000;
+    const thresholdMs = thresholdMin * 60 * 1000;
     const overdue = [];
     for (const r of rows) {
-      const sheetEnd    = r.sheet_end    ? new Date(r.sheet_end).getTime()    : null;
-      const scheduleEnd = r.schedule_end ? new Date(r.schedule_end).getTime() : null;
-      let source = null;
-      let endMs  = null;
-      if (sheetEnd) {
-        source = 'sheet';
-        endMs  = sheetEnd;
-      } else if (scheduleEnd) {
-        source = 'schedule';
-        endMs  = scheduleEnd;
-      }
-      // No scheduled end → can't flag as overdue. Skip.
-      if (endMs == null) continue;
-      const minutesOver = Math.floor((nowLocalMs - endMs) / 60_000);
-      if (minutesOver < thresholdMin) continue;
+      const clockInMs = new Date(r.clock_in_time).getTime();
+      const scheduledEndMs = clockInMs + shiftMs;
+      const minutesOver = Math.floor((nowMs - scheduledEndMs) / 60_000);
+      if (nowMs - scheduledEndMs < thresholdMs) continue;
       overdue.push({
         entry_id:        r.entry_id,
         user_id:         r.user_id,
@@ -1520,16 +1563,21 @@ app.get('/api/admin/still-clocked-in', requireAuth, requireRole('admin'), async 
         department:      r.department,
         department_id:   r.department_id,
         clock_in_time:   r.clock_in_time,
-        scheduled_end:   new Date(endMs).toISOString(),
-        scheduled_source: source,
+        scheduled_end:   new Date(scheduledEndMs).toISOString(),
+        scheduled_source: 'regular_shift',
         minutes_over:    minutesOver,
       });
     }
     overdue.sort((a, b) => b.minutes_over - a.minutes_over);
     return res.json({
       success: true,
-      threshold_minutes: thresholdMin,
+      threshold_minutes:    thresholdMin,
+      regular_shift_hours:  shiftHours,
       overdue,
+      // Sprint 16.4: feedback when the lazy auto-close pass
+      // closed any rows on this call. UI flashes a toast so the
+      // admin sees the system handled them.
+      auto_close: autoCloseResult,
     });
   } catch (err) {
     console.error('[still-clocked-in]', err);
@@ -1643,6 +1691,7 @@ app.get('/api/admin/staff/:userId/performance', requireAuth, requireRole('admin'
       ),
       pool.query(
         `SELECT entry_id, clock_in_time, clock_out_time, manual_entry, ot_approved,
+                system_generated,
                 EXTRACT(EPOCH FROM (COALESCE(clock_out_time, NOW()) - clock_in_time)) / 3600.0 AS hours
          FROM time_entries
          WHERE user_id = $1 AND clock_in_time >= $2
@@ -1873,6 +1922,7 @@ app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res
   try {
     const { rows } = await pool.query(
       `SELECT te.entry_id, te.clock_in_time, te.clock_out_time, te.manual_entry, te.ot_approved,
+              te.system_generated,
               EXTRACT(EPOCH FROM (COALESCE(te.clock_out_time, NOW()) - te.clock_in_time)) / 3600.0 AS hours,
               u.user_id, u.name, u.phone_number, u.role, u.base_hourly_rate,
               u.department_id, d.name AS department
@@ -1902,6 +1952,10 @@ app.get('/api/admin/entries', requireAuth, requireRole('admin'), async (req, res
         clock_out_time: e.clock_out_time,
         manual_entry:   e.manual_entry,
         ot_approved:    e.ot_approved,
+        // Sprint 16.4: surface auto-closed entries so the admin
+        // can spot them in StaffDetail and adjust if the staff
+        // actually worked past their scheduled end.
+        system_generated: !!e.system_generated,
         hours:          Math.round(parseFloat(e.hours) * 10) / 10,
       })),
     });
@@ -3363,15 +3417,37 @@ app.put('/api/admin/settings', async (req, res) => {
       const n = parseInt(v, 10);
       return Number.isInteger(n) && n >= 5 && n <= 120 && String(n) === v.trim();
     },
-    // Sprint 16.3: how many minutes past a staff member's
-    // scheduled end before they appear on the AdminHome
-    // "Past scheduled end" alert list. Range 0–360 (0 fires
-    // the instant they're past end; 360 = 6h grace).
-    // Default 30.
+    // Sprint 16.3 / 16.5: minutes past a "regular shift end"
+    // before flagging on the AdminHome alert list. 16.5 simplified
+    // the scheduled-end source from sheet/schedules lookup to a
+    // flat `clock_in + regular_shift_hours` baseline, so this
+    // threshold now means "minutes past clock_in + regular shift".
+    // Default 120 (so a staff who clocked in at 9am on an 8h
+    // shift flags at 7pm: 9 + 8 + 2 = 19:00).
     still_clocked_in_threshold_minutes: v => {
       if (typeof v !== 'string') return false;
       const n = parseInt(v, 10);
       return Number.isInteger(n) && n >= 0 && n <= 360 && String(n) === v.trim();
+    },
+    // Sprint 16.4: opt-in auto clock-out. When enabled, any open
+    // entry whose user's scheduled_end was > grace_hours ago gets
+    // auto-closed at the scheduled end time (not NOW — payroll
+    // hours reflect the planned shift) with
+    // system_generated = TRUE so the admin can spot + adjust.
+    // Sprint 16.5: what a "regular shift" looks like in hours.
+    // Drives both the still-clocked-in alert (clock_in + N hours
+    // + threshold) and the auto-clock-out helper (clock_in + N +
+    // grace). 8 by default matches the GM's typical shift.
+    regular_shift_hours: v => {
+      if (typeof v !== 'string') return false;
+      const n = parseInt(v, 10);
+      return Number.isInteger(n) && n >= 1 && n <= 24 && String(n) === v.trim();
+    },
+    auto_clock_out_enabled:    v => v === 'true' || v === 'false',
+    auto_clock_out_grace_hours: v => {
+      if (typeof v !== 'string') return false;
+      const n = parseInt(v, 10);
+      return Number.isInteger(n) && n >= 1 && n <= 24 && String(n) === v.trim();
     },
   };
   const updates = req.body || {};

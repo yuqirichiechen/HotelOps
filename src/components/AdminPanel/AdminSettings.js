@@ -296,7 +296,20 @@ const AdminSettings = () => {
   // shows up on the AdminHome "Past scheduled end" alert list.
   // Lower = noisier alerts but earlier intervention; higher =
   // quieter but staff drift longer into unplanned OT.
-  const [stillThresh, setStillThresh] = useState('30');
+  const [stillThresh, setStillThresh] = useState('120');
+  // Sprint 16.4: auto clock-out of staff who forget to punch out.
+  // Lazy-evaluated by the still-clocked-in endpoint (no background
+  // cron). When enabled, any open entry whose user's scheduled
+  // end was > graceHours ago gets closed at the scheduled end
+  // (not NOW — payroll hours reflect the planned shift) with
+  // system_generated = true so the admin can spot + adjust.
+  const [autoOutEnabled, setAutoOutEnabled] = useState(false);
+  const [autoOutGrace,   setAutoOutGrace]   = useState('4');
+  // Sprint 16.5: "regular shift" baseline used by both the
+  // still-clocked-in alert (clock_in + N + threshold) and the
+  // auto-clock-out helper (clock_in + N + grace). 8h matches a
+  // standard hotel shift.
+  const [shiftHours, setShiftHours] = useState('8');
   const [payStartDay, setPayStartDay] = useState('0'); // Sprint 9.4: 0=Sun .. 6=Sat
   const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
   const [loginLayout, setLoginLayout] = useState('hardcode'); // Sprint 9.1.3
@@ -408,7 +421,10 @@ const AdminSettings = () => {
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
           setIdleSign  (data.settings.staff_idle_logout_seconds || '15');
-          setStillThresh(data.settings.still_clocked_in_threshold_minutes || '30');
+          setStillThresh(data.settings.still_clocked_in_threshold_minutes || '120');
+          setAutoOutEnabled(data.settings.auto_clock_out_enabled === 'true');
+          setAutoOutGrace(data.settings.auto_clock_out_grace_hours || '4');
+          setShiftHours(data.settings.regular_shift_hours || '8');
           if (/^[0-6]$/.test(String(data.settings.pay_period_start_day))) {
             setPayStartDay(String(data.settings.pay_period_start_day));
           }
@@ -458,6 +474,9 @@ const AdminSettings = () => {
         auto_signout_seconds:      autoSign,
         staff_idle_logout_seconds: String(parseInt(idleSign, 10) || 15),
         still_clocked_in_threshold_minutes: String(Math.max(0, Math.min(360, parseInt(stillThresh, 10) || 30))),
+        auto_clock_out_enabled:      autoOutEnabled ? 'true' : 'false',
+        auto_clock_out_grace_hours:  String(Math.max(1, Math.min(24, parseInt(autoOutGrace, 10) || 4))),
+        regular_shift_hours:         String(Math.max(1, Math.min(24, parseInt(shiftHours, 10) || 8))),
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
         enable_legacy_assign_panel: legacyAssign ? 'true' : 'false',
         coverage_history_weeks:     String(parseInt(coverageWeeks, 10) || 8),
@@ -680,24 +699,45 @@ const AdminSettings = () => {
             </div>
           </div>
 
-          {/* Sprint 16.3: "Past scheduled end" alert threshold.
-              Drives the AdminHome alert list — staff who are
-              clocked in past their scheduled end by ≥N minutes
-              show up so the GM can intervene (call/text/clock out
-              for them). */}
+          {/* Sprint 16.3 / 16.5: "Past scheduled end" alert.
+              16.5 simplified the rule from sheet/schedules
+              lookup → flat "clock_in + regular_shift_hours +
+              threshold" baseline. Two inputs in this section now:
+                - Regular shift (hours): what counts as a normal
+                  shift. Default 8.
+                - Threshold (minutes): how far past the regular
+                  shift before the staff hits the alert list.
+                  Default 120 (2h). */}
           <div className="settings-section">
             <div className="settings-section-header">
               <div className="settings-section-icon">⏰</div>
               <div>
                 <div className="settings-section-title">"Past scheduled end" alert</div>
                 <div className="settings-section-desc">
-                  How many minutes past a staff member's scheduled end before they appear on the dashboard's "Past scheduled end" alert list.
-                  Range 0–360. Lower = noisier but earlier intervention; higher = quieter but staff drift longer into unplanned OT.
+                  Flags staff still clocked in past <strong>clock-in time + regular shift + threshold</strong>. Example: shift = 8h, threshold = 2h, clock-in = 9 AM → alert fires at 7 PM. Same baseline drives the optional auto clock-out below.
                 </div>
               </div>
             </div>
 
             <div className="settings-perf-grid">
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Regular shift</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    step="1"
+                    value={shiftHours}
+                    onChange={e => { setShiftHours(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">hours</span>
+                </span>
+                <span className="settings-perf-help">
+                  Default 8. What a typical shift looks like at this property.
+                </span>
+              </label>
+
               <label className="settings-perf-field">
                 <span className="settings-perf-label">Threshold</span>
                 <span className="settings-perf-input-wrap">
@@ -712,7 +752,62 @@ const AdminSettings = () => {
                   <span className="settings-perf-unit">minutes</span>
                 </span>
                 <span className="settings-perf-help">
-                  Default 30. Scheduled end comes from the published Shift Sheet first, then the legacy schedules table; staff with no scheduled end never appear on the list.
+                  Default 120 (2h). Lower = noisier alerts + earlier intervention; higher = quieter but staff drift longer into unplanned OT.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Sprint 16.4: opt-in auto clock-out. Sits next to the
+              "Past scheduled end" alert because they share the
+              same scheduled-end source. */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">🔚</div>
+              <div>
+                <div className="settings-section-title">Auto clock-out (forgot-to-punch fallback)</div>
+                <div className="settings-section-desc">
+                  When enabled, staff still on the clock more than <strong>N hours</strong> past their scheduled end are auto-closed at the scheduled end time (not now — hours reflect the planned shift). Auto-closed entries are flagged in StaffDetail so you can adjust upward if they actually worked late.
+                </div>
+              </div>
+            </div>
+
+            <label className="settings-toggle-row">
+              <input
+                type="checkbox"
+                className="hop-check"
+                checked={autoOutEnabled}
+                onChange={e => { setAutoOutEnabled(e.target.checked); setSaved(false); }}
+              />
+              <div className="settings-toggle-text">
+                <div className="settings-toggle-label">
+                  {autoOutEnabled
+                    ? 'On — overdue entries auto-close at the scheduled end after the grace window'
+                    : 'Off — forgotten clock-outs stay open until you handle them manually'}
+                </div>
+                <div className="settings-toggle-help">
+                  Runs whenever the dashboard or alert list refreshes (no background timer). If no admin checks for &gt;24h, auto-close fires late but still backdates the clock-out correctly.
+                </div>
+              </div>
+            </label>
+
+            <div className="settings-perf-grid" style={{ marginTop: 16 }}>
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Grace</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    step="1"
+                    value={autoOutGrace}
+                    onChange={e => { setAutoOutGrace(e.target.value); setSaved(false); }}
+                    disabled={!autoOutEnabled}
+                  />
+                  <span className="settings-perf-unit">hours past scheduled end</span>
+                </span>
+                <span className="settings-perf-help">
+                  Default 4h. Lower = aggressive (entries close near shift end); higher = lenient (gives long shifts room to breathe).
                 </span>
               </label>
             </div>

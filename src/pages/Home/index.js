@@ -278,7 +278,7 @@ const Home = () => {
           so the action buttons always live here (clearer affordance
           for "I want to clock the other way RIGHT NOW"). */}
       <section className="home-clock-section">
-        <h2 className="home-section-title">Clock</h2>
+        <h2 className="home-section-title">{t('home.clock')}</h2>
         <div className="home-clock-flip-container">
           <div className={`home-clock-flip-card ${onClock ? 'flipped' : ''}`}>
 
@@ -337,12 +337,12 @@ const Home = () => {
       <section className="home-flip-container">
         <div className={`home-flip-card ${clockEvent ? 'flipped' : ''}`}>
           <div className="home-flip-face home-hero">
-            <div className="home-hero-eyebrow">This week</div>
+            <div className="home-hero-eyebrow">{t('home.this_week')}</div>
             <div className="home-hero-num">{formatHours(total)}</div>
             <div className="home-hero-meta">
               {recent.length > 0
-                ? `${recent.length} recent shift${recent.length === 1 ? '' : 's'} below.`
-                : 'No shifts logged yet.'}
+                ? t(recent.length === 1 ? 'home.recent_below_one' : 'home.recent_below_many', { n: recent.length })
+                : t('home.no_shifts')}
             </div>
           </div>
           <div className="home-flip-face home-flip-face-back home-hero-event">
@@ -364,10 +364,10 @@ const Home = () => {
       <section className="home-flip-container">
         <div className={`home-flip-card ${clockEvent && clockEvent.seconds > 0 ? 'flipped' : ''}`}>
           <div className="home-flip-face home-recent">
-            <h2 className="home-recent-title">Recent</h2>
-            {loading && <div className="home-empty">Loading…</div>}
+            <h2 className="home-recent-title">{t('home.recent')}</h2>
+            {loading && <div className="home-empty">{t('home.loading')}</div>}
             {!loading && recent.length === 0 && (
-              <div className="home-empty">No shifts yet.</div>
+              <div className="home-empty">{t('home.no_shifts_short')}</div>
             )}
             {!loading && recent.length > 0 && (
               <ul className="home-recent-list">

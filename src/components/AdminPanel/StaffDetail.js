@@ -649,10 +649,20 @@ const StaffDetail = ({ userId }) => {
               {recentEntries.map(e => {
                 const hrs = e.clock_out_time ? hoursOf(e.clock_in_time, e.clock_out_time) : null;
                 return (
-                  <li key={e.entry_id} className="emp-entry-row">
+                  <li key={e.entry_id} className={`emp-entry-row${e.system_generated ? ' is-system' : ''}`}>
                     <div className="emp-entry-main">
                       <div className="emp-entry-date">
                         {fmtEntryDateRange(e.clock_in_time, e.clock_out_time)}
+                        {/* Sprint 16.4: badge on auto-closed entries
+                            so the admin can spot them at a glance
+                            and adjust upward if the staff actually
+                            worked past their scheduled end. */}
+                        {e.system_generated && (
+                          <span
+                            className="emp-entry-system-badge"
+                            title="Auto-closed by the system because the staff didn't clock out before the grace window expired. Hours reflect the scheduled end. Edit if they worked later."
+                          >AUTO</span>
+                        )}
                       </div>
                       <div className="emp-entry-times">
                         {fmtTime(e.clock_in_time)} → {e.clock_out_time

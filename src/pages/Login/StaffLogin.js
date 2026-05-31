@@ -5,7 +5,8 @@ import { resolveTenant, TENANT } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import RoleIcon from '../../components/shared/RoleIcon';
 import { TransitionLink } from './TransitionLink';
-import { useT, useLang, SUPPORTED_LANGS, LANG_LABELS } from '../../i18n';
+import { useT } from '../../i18n';
+import LanguageSwap from '../../components/shared/LanguageSwap';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 import '../../components/shared/RoleIcon.css';
@@ -137,12 +138,11 @@ const StaffLogin = ({ onRoleSwitch }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
-  // Sprint 16.2: i18n. Pre-login the language comes from
-  // localStorage (set by the picker rendered below) or the
-  // browser default; post-login the bridge in App.js will swap
-  // to the user's preferred_language.
+  // Sprint 16.2 / 16.5: i18n. Pre-login the language comes from
+  // localStorage (set by LanguageSwap) or the browser default;
+  // post-login the bridge in App.js swaps to the user's
+  // preferred_language.
   const t = useT();
-  const { lang, setLang } = useLang();
   // Sprint 9: optional /:tenant prefix on the URL. Look up the slug in the
   // tenant registry — unknown slugs fall through to the default tenant
   // rather than 404'ing, so a typo in the URL still gives the user a way
@@ -370,28 +370,25 @@ const StaffLogin = ({ onRoleSwitch }) => {
             )}
           </div>
 
-          {/* Sprint 16.2: language picker. Lets the staff member
-              flip the UI language *before* identifying, since the
-              auth-stored preferred_language only kicks in after
-              login. Compact 3-button row; selected lang gets the
-              accent. Choice persists in localStorage. */}
-          <div className="login-lang-picker" role="radiogroup" aria-label={t('login.language')}>
-            {SUPPORTED_LANGS.map(code => (
-              <button
-                key={code}
-                type="button"
-                className={`login-lang-btn${lang === code ? ' is-active' : ''}`}
-                onClick={() => setLang(code)}
-                aria-pressed={lang === code}
-                aria-label={LANG_LABELS[code].native}
-              >{LANG_LABELS[code].native}</button>
-            ))}
-          </div>
+          {/* Sprint 16.5: iPhone-setup-style language cycler.
+              Replaces the 3-button picker — fades through EN /
+              ES / 中文 every ~2.4 s; tap locks the displayed
+              language. Same persistence (writes to localStorage
+              so the choice survives across kiosk sessions). */}
+          <LanguageSwap />
 
           <div className="login-headline-row">
             <div className="login-headline-text">
               <h1 className="login-title">{t('login.title')}</h1>
-              <p className="login-sub">{subSentence}</p>
+              {/* Sprint 16.5: subtitle is now a single i18n key,
+                  not the dynamic "Sign in with your <methods>"
+                  sentence. The dynamic sentence varies per login
+                  config and translating its method-list slot
+                  would 3x the dict for a marginal benefit; one
+                  general subtitle covers every config. The
+                  literal `subSentence` value is preserved as the
+                  English fallback should the key go missing. */}
+              <p className="login-sub">{t('login.subtitle') || subSentence}</p>
             </div>
             <div className="login-headline-actions">
               <TransitionLink

@@ -345,6 +345,268 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-31 — Sprint 16.5: HCI polish + simpler past-shift logic
+
+Bundle of five revisions across the Sprint-16 surfaces. Two
+visual / UX upgrades (LanguageSwap + subtitle), one functional
+simplification (the "past scheduled end" algorithm), and two
+small admin-page tweaks.
+
+**1. LanguageSwap — iPhone-setup-style cycler.**
+
+New `src/components/shared/LanguageSwap.js` + .css. Replaces the
+Sprint-16.2 three-button picker on `StaffLogin` with a single
+pill that fades through `SUPPORTED_LANGS` every ~2.4s. Tap to
+lock the displayed language; tap again to resume cycling.
+
+- Why: pre-literacy non-English readers spot their own script
+  faster when *every* language gets a turn on the focal pill —
+  the side-by-side 3-button row hides the inactive labels in a
+  pile they have to read past their own.
+- The animation IS the affordance — motion signals "you can
+  change this" without needing a separate hint.
+- One pure interval drives the rotation; tap stops the
+  interval + persists the choice via the existing `setLang`
+  (writes to localStorage so the next visitor at the same
+  kiosk inherits it).
+- Respects `prefers-reduced-motion`: skips the crossfade
+  entirely (pill jumps between languages without the opacity
+  transition).
+- The dropped `.login-lang-picker` CSS from 16.2 is still in
+  Login.css as dead code for one sprint; can be removed in a
+  later cleanup pass if no other surface picks it up.
+
+**2. Login subtitle translated.**
+
+`StaffLogin`'s `subSentence` (the dynamic
+"Sign in with your phone number, or employee ID." string built
+from enabled login methods) is now replaced by the existing
+i18n `login.subtitle` key ("Enter your number or PIN" /
+"Ingresa tu número o PIN" / "请输入您的号码或密码"). The
+dynamic English sentence is kept as the fallback if the i18n
+key resolves to empty. Translating the dynamic method-list
+slot would have tripled the dict for marginal value — one
+general subtitle covers every login config.
+
+**3. Home page — remaining strings translated.**
+
+Filled in the gaps from Sprint 16.2:
+
+- New dict keys: `home.clock`, `home.recent_below_one/many`,
+  `home.no_shifts`, `home.no_shifts_short`, `home.loading`,
+  `home.recent_shifts` plus the existing `home.recent` /
+  `home.this_week`.
+- Applied across the Home page's Clock section title, the
+  This-Week hero eyebrow + meta line, the Recent shifts
+  heading, and the Loading / empty-state strings.
+- Pluralization handled by picking one of two keys
+  (`recent_below_one` vs `_many`) — no formal plural rules
+  needed for the scope.
+
+**4. Server: scheduled-end logic simplified.**
+
+Sprint 16.3 / 16.4 looked up scheduled_end via a per-user
+sheet-first / schedules-fallback query. 16.5 collapses both
+the alert and auto-close to a flat
+`clock_in + regular_shift_hours` baseline.
+
+- New setting `regular_shift_hours` (int 1–24, default 8).
+- The still-clocked-in alert fires when
+  `NOW - (clock_in + regular_shift_hours) >= threshold_minutes`.
+  Threshold default bumped to 120 (2h) so the alert fires at
+  `clock_in + 10h` for an 8h shift.
+- The auto-close (when enabled) fires when
+  `NOW - (clock_in + regular_shift_hours + grace_hours) >= 0`,
+  and backdates the clock-out to `clock_in + regular_shift_hours`
+  (NOT NOW) so payroll hours equal the planned shift.
+- Trade-off (captured in the helper's docstring): staff doing
+  a planned 12h shift will get flagged at hour 10 rather than
+  hour 14. Acceptable because (a) most shifts at this property
+  are 8h and (b) the alert is passive — admin can ignore it.
+- `runAutoClockOut` no longer takes `tzOffsetMinutes` (the
+  flat-baseline math doesn't need wall-clock buckets).
+- `tz_offset_minutes` query param on still-clocked-in is still
+  accepted for symmetry but ignored.
+- The `WITH local_now / LATERAL`-style query from 16.3 is
+  replaced by a single 8-column SELECT. Per-row JS computes
+  `minutes_over`.
+
+**5. AdminHome — remove "Coming up today" card + view.**
+
+Per GM. The card sat next to "On the clock" but rarely got
+clicked — "Past scheduled end" covers the more urgent
+failure mode (staff who forgot to clock out), and "Coming up"
+was passive scenery.
+
+- Removed: `VIEWS.includes('coming-up')`, the `comingUp`
+  memo, the stat card entry, the view branch render, plus
+  the now-dead `fmtScheduleTime` and `STATUS_LABEL`
+  helpers.
+- `VIEWS` reordered to `['on-clock', 'overdue', 'hours',
+  'pending-ot']` — overdue moved up next to on-clock since
+  they're the related "right now" cluster.
+
+**AdminSettings UI:**
+
+- The Sprint-16.3 "Past scheduled end alert" section grew a
+  second input: **Regular shift (hours)** alongside the
+  existing **Threshold (minutes)**. Help text reframes the
+  rule as "clock-in time + regular shift + threshold" with a
+  worked example (9am + 8h + 2h = 7pm).
+- Defaults bumped (threshold 30 → 120) to match the GM's
+  "over 2 hours from an 8-hour shift" framing.
+
+**Verified.** Eight touched files balance. server.js retains
+the same -5/+5 paren noise from prior literals.
+
+**Notes:**
+
+- No new migrations.
+- No new endpoints.
+- The Sprint-16.3/16.4 sheet/schedules lookup logic is
+  *gone* — if a future sprint wants per-staff scheduled-end
+  precision back, the old query shape lives in git history
+  + part3.md.
+- The dropped `STATUS_LABEL` + `fmtScheduleTime` were only
+  used by the coming-up render; no other dashboard surface
+  depended on them.
+
+---
+
+### 2026-05-31 — Sprint 16.4: opt-in auto clock-out at scheduled end + grace
+
+Closes the Sprint-16 clock-workflow arc. 16.3 gave the admin a
+*manual* recovery surface ("here's who's still on the clock,
+click to close"); 16.4 ships an *opt-in automatic* fallback for
+the case where the admin isn't watching (overnight, weekends).
+
+**Schema (migration 023):**
+
+- `time_entries.system_generated BOOLEAN NOT NULL DEFAULT FALSE`.
+  Flagged TRUE on rows the auto-close job closes; lets the UI
+  badge them so the admin can adjust upward if the staff
+  actually worked past their scheduled end.
+
+**Server: two new settings:**
+
+- `auto_clock_out_enabled` ('true' | 'false', default off in
+  practice — feature is opt-in)
+- `auto_clock_out_grace_hours` (int 1–24, default 4)
+
+Both threaded through the existing ALLOWED settings validator
+in PUT `/admin/settings`.
+
+**Server: `runAutoClockOut(tzOffsetMinutes)` helper:**
+
+No-op when `auto_clock_out_enabled !== 'true'`. Otherwise:
+
+1. Same `WITH local_now / open_entries / LATERAL`-style query
+   the still-clocked-in endpoint uses to compute each open
+   entry's scheduled_end (sheet first, schedules fallback).
+2. JS-side iteration picks the best scheduled_end, computes
+   `(now - end) >= grace_hours * 60 min`.
+3. For each match: `UPDATE time_entries SET clock_out_time =
+   scheduled_end, system_generated = TRUE WHERE entry_id = ?
+   AND clock_out_time IS NULL` (the `AND clock_out_time IS NULL`
+   is a race guard for the unlikely case the staff clocked
+   themselves out between our SELECT and UPDATE).
+
+**The scheduled-end-not-NOW design choice.**
+
+Payroll hours need to reflect the *planned* shift, not however
+long it took the system to fire. Two reasons:
+
+1. If GM doesn't check the dashboard for 18 hours, NOW would
+   inflate the staff's hours by 18 hours of unpaid lunch
+   breaks / sleep / off-duty time. Backdating to the scheduled
+   end keeps hours sane.
+2. If the staff actually worked past their scheduled end, the
+   `system_generated` badge in the UI tells the admin to ask
+   ("did you work past 5pm? I'll bump the clock-out time").
+   Under-reporting is recoverable; over-reporting (NOW) creates
+   payroll arguments.
+
+**Server: lazy trigger, not background cron.**
+
+`runAutoClockOut` is called at the start of
+`/api/admin/still-clocked-in` (the alert list from 16.3). When
+the admin checks the alert, the system also auto-closes anything
+past grace. The endpoint response includes
+`auto_close: { closed, enabled, grace_hours }` so future UI can
+flash a toast.
+
+Why lazy and not a `setInterval` cron:
+
+- Adding a server-side timer would re-warm the Postgres compute
+  every N minutes and undo the Sprint-15.10 cost optimization.
+- The admin checks the dashboard frequently enough that auto-
+  close fires multiple times per day in normal use.
+- The backdating semantics mean it doesn't matter *when* the job
+  fires — the clock-out timestamp is always the scheduled end.
+  So a 24-hour delay between when the grace expires and when
+  the admin opens the dashboard just means the row sits in the
+  DB with `clock_out_time IS NULL` for a bit longer; the
+  eventual close still gets the right times.
+
+Documented trade-off: if no admin checks for >24h, auto-close
+fires late but still backdates correctly.
+
+**Server: thread `system_generated` through entry SELECTs:**
+
+- `/admin/entries` — included on each returned row + mapped
+  to `system_generated: !!e.system_generated` in the response.
+- `/admin/employees/:id/time-entries` — uses `SELECT *`, picks
+  up the new column automatically.
+- `/me/history` — SELECT'd so staff can also see their own
+  auto-closed entries on their timesheet (transparency).
+- StaffDetail's entries fetch — SELECT'd.
+
+**Admin Settings UI:**
+
+- New section in Operations: "Auto clock-out (forgot-to-punch
+  fallback)". Toggle + grace-hours number input.
+- Toggle label tells the admin what's on vs off plainly.
+- Help text under the toggle explains the lazy-trigger behavior
+  so future-them isn't confused why entries don't close exactly
+  at the grace expiry.
+- Grace input disabled when the toggle is off.
+
+**Client: system-generated badge in StaffDetail entries:**
+
+- Small amber "AUTO" pill next to each affected entry's date.
+- Pill has a `cursor: help` tooltip explaining the row
+  ("Auto-closed by the system because the staff didn't clock
+  out before the grace window expired. Hours reflect the
+  scheduled end. Edit if they worked later.")
+- Row gets a subtle amber background tint (`is-system` class)
+  so a scrolling admin spots them at a glance.
+
+**Verified.** Six touched files balance.
+
+**Migration deploy.** `023_time_entries_system_generated.sql`
+must run before code rollout — the server SELECTs the column
+on multiple endpoints.
+
+**Sprint 16 arc — done.**
+
+- 16.1 ✓ Focused clock-in/out screen + idle-logout
+- 16.2 ✓ i18n + Spanish + Chinese
+- 16.3 ✓ Admin "Past scheduled end" alert + manual clock-out
+- 16.4 ✓ Opt-in auto clock-out at scheduled end + grace
+
+The clock-workflow problem the GM flagged has three layers of
+defense now:
+1. **Prevention** (16.1) — staff land on a screen designed so
+   they can't miss the clock-in/out action.
+2. **Cross-language clarity** (16.2) — Spanish + Chinese
+   versions remove the literacy barrier that compounded the
+   missed-tap problem.
+3. **Recovery** (16.3 + 16.4) — admin sees who's stuck, can
+   manually close them, and (when 16.4 is on) the system
+   eventually closes them automatically at the right time.
+
+---
+
 ### 2026-05-31 — Sprint 16.3: admin "Past scheduled end" alert + manual clock-out
 
 Third in the Sprint-16 clock-workflow arc. The GM reported staff

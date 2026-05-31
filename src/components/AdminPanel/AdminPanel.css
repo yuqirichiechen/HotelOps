@@ -1470,6 +1470,29 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sprint 16.4: system-generated (auto-closed) entry. Small amber
+   pill next to the date so the admin can scan for them without
+   opening each one. Hover the badge for the explanatory tooltip. */
+.emp-entry-system-badge {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #7b341e;
+  background: rgba(221, 107, 32, 0.14);
+  border: 1px solid rgba(221, 107, 32, 0.4);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: help;
+  user-select: none;
+}
+.emp-entry-row.is-system {
+  background: rgba(221, 107, 32, 0.03);
 }
 
 .emp-entry-times {
