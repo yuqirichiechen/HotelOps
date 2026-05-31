@@ -286,6 +286,12 @@ const AdminSettings = () => {
   const [otMins,     setOtMins]     = useState('10');
   const [baseline,   setBaseline]   = useState('self');
   const [autoSign,   setAutoSign]   = useState('3'); // Sprint 8.6: auto sign-out seconds
+  // Sprint 16.1: separate from autoSign. autoSign fires *after* a
+  // clock-in/out succeeds (to free the kiosk for the next staff).
+  // idleSign fires after login if the staff member sits on the
+  // focused-action screen without tapping anything — they probably
+  // walked away or got distracted; cycle the session.
+  const [idleSign,   setIdleSign]   = useState('15');
   const [payStartDay, setPayStartDay] = useState('0'); // Sprint 9.4: 0=Sun .. 6=Sat
   const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
   const [loginLayout, setLoginLayout] = useState('hardcode'); // Sprint 9.1.3
@@ -396,6 +402,7 @@ const AdminSettings = () => {
           setOtMins    (data.settings.on_time_tolerance_minutes || '10');
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
+          setIdleSign  (data.settings.staff_idle_logout_seconds || '15');
           if (/^[0-6]$/.test(String(data.settings.pay_period_start_day))) {
             setPayStartDay(String(data.settings.pay_period_start_day));
           }
@@ -443,6 +450,7 @@ const AdminSettings = () => {
         on_time_tolerance_minutes: otMins,
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
+        staff_idle_logout_seconds: String(parseInt(idleSign, 10) || 15),
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
         enable_legacy_assign_panel: legacyAssign ? 'true' : 'false',
         coverage_history_weeks:     String(parseInt(coverageWeeks, 10) || 8),
@@ -804,6 +812,47 @@ const AdminSettings = () => {
                 </span>
                 <span className="settings-perf-help">
                   Default 3s. Useful on shared kiosk/tablet setups so the next staff member doesn't inherit the previous session.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Sprint 16.1: idle-logout for the staff focused-action
+              screen. Separate from the auto sign-out above — that
+              one fires *after* a clock action; this one fires if
+              the staff logs in but doesn't take any action. The GM
+              reported staff sometimes log in, get distracted, and
+              walk away; the session would otherwise sit open for
+              the next person to (accidentally) clock in/out as
+              them. */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">⏳</div>
+              <div>
+                <div className="settings-section-title">Idle sign-out (focused action screen)</div>
+                <div className="settings-section-desc">
+                  After a staff member logs in, how many seconds the big "Clock In" / "Clock Out" screen waits for a tap before auto-signing them out.
+                  Range 5–120 seconds. Lower values close kiosk sessions faster; higher values give slower readers time to act.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-perf-grid">
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Idle timer</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="5"
+                    max="120"
+                    step="1"
+                    value={idleSign}
+                    onChange={e => { setIdleSign(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">seconds</span>
+                </span>
+                <span className="settings-perf-help">
+                  Default 15s. Any tap on the focused screen resets the timer; the last few seconds show a visible countdown so staff have a chance to keep their session.
                 </span>
               </label>
             </div>

@@ -4,8 +4,15 @@ import { flushSync } from 'react-dom';
 import { useAuth, apiFetch } from '../../auth';
 import ClockWidget from '../../components/TimeClock/ClockWidget';
 import AutoSignoutBanner from '../../components/shared/AutoSignoutBanner';
+import FocusedAction from '../../components/TimeClock/FocusedAction';
 import '../../components/TimeClock/TimeClock.css'; // for .clock-widget styles
 import './Home.css';
+
+// Sprint 16.1: a single sessionStorage key remembers that the
+// staff member has already engaged with the focused-action screen
+// this login session. Keyed by user_id so a fresh login (different
+// staff at the same kiosk) re-shows the focused screen.
+const FOCUSED_DISMISS_KEY = 'hotelops-staff-focused-dismissed';
 
 // Home is the staff dashboard. Top section is a flip card that handles the
 // entire clock-in/out flow — front = analog clock + Clock In; back = active
@@ -63,6 +70,27 @@ const Home = () => {
   // `seconds` is the auto-signout countdown if enabled; if 0/disabled,
   // we keep the cards flipped for a short ack window then clear.
   const [clockEvent, setClockEvent] = useState(null);
+
+  // Sprint 16.1: focused-action overlay state. Mounts on first
+  // landing post-login; tapping the big button OR "Just checking,
+  // skip" dismisses it; tapping nothing for `idleLogoutSeconds`
+  // signs the staff out.
+  const [focusedDismissed, setFocusedDismissed] = useState(() => {
+    try { return sessionStorage.getItem(FOCUSED_DISMISS_KEY) === (user?.user_id || ''); }
+    catch { return false; }
+  });
+  // If the active user changes (logout → relogin same tab), re-show
+  // the focused screen.
+  useEffect(() => {
+    try {
+      setFocusedDismissed(sessionStorage.getItem(FOCUSED_DISMISS_KEY) === (user?.user_id || ''));
+    } catch { /* sessionStorage unavailable — fail open */ }
+  }, [user?.user_id]);
+  const dismissFocused = () => {
+    try { sessionStorage.setItem(FOCUSED_DISMISS_KEY, user?.user_id || ''); }
+    catch { /* ignore */ }
+    setFocusedDismissed(true);
+  };
 
   const refresh = useCallback(async () => {
     // Sprint 13.6: pass the local TZ offset (signed minutes, matching
@@ -127,6 +155,10 @@ const Home = () => {
     // covers them both) and leave clockEvent set; the page unmounts
     // a moment later so its visual state doesn't matter.
     setBusy(true);
+    // Sprint 16.1: drop the focused-dismiss marker so the next
+    // login (this user or any other on the same kiosk) gets a
+    // fresh focused-action screen.
+    try { sessionStorage.removeItem(FOCUSED_DISMISS_KEY); } catch { /* ignore */ }
     // Sprint 9.3.2: read the persisted tenant slug *before* logout
     // (logout shouldn't touch this key today, but reading early is
     // robust to future logout flows that clear more state). If the
@@ -186,8 +218,37 @@ const Home = () => {
   const total     = data?.totalHours || 0;
   const recent    = (data?.recentShifts || []).slice(0, 3);
 
+  // Sprint 16.1: show the focused-action screen on the first
+  // landing after login (before any clock-event flow is active).
+  // Loading hides it so we don't flash an empty screen; clockEvent
+  // hides it because the existing flip-card flow takes over.
+  const showFocused = !loading && !!data && !focusedDismissed && !clockEvent;
+  const focusedMode = onClock ? 'out' : 'in';
+
   return (
     <div className="home-page">
+
+      {showFocused && (
+        <FocusedAction
+          mode={focusedMode}
+          staffName={user?.name}
+          greeting={greeting}
+          busy={busy}
+          idleSeconds={data?.idleLogoutSeconds || 15}
+          onAction={() => {
+            // Don't dismiss yet — let the existing clock handler
+            // run the clock-in/out + flip the bottom cards. The
+            // focused overlay will hide once `clockEvent` is set
+            // (showFocused becomes false), and then the post-
+            // signout flow takes over from there.
+            dismissFocused();
+            if (focusedMode === 'in') handleClockIn();
+            else                      handleClockOut();
+          }}
+          onSkip={dismissFocused}
+          onIdleLogout={handleAutoSignout}
+        />
+      )}
 
       {notif && (
         <div className={`home-notif ${notif.type}`}>

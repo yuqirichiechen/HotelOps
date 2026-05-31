@@ -1,0 +1,168 @@
+/* Sprint 16.1: focused-action screen. Full-screen single-button
+   surface that staff see immediately after login. Designed to be
+   unmissable on a shared kiosk — no other UI competing for the
+   tap. The Home dashboard sits underneath; this overlay slides
+   away when staff taps the button or chooses "skip". */
+
+.focused-action {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  animation: focused-fade-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+  padding: 24px;
+}
+.focused-action.is-exiting {
+  animation: focused-fade-out 0.22s ease forwards;
+  pointer-events: none;
+}
+@keyframes focused-fade-in {
+  from { opacity: 0; transform: scale(0.985); }
+  to   { opacity: 1; transform: scale(1);     }
+}
+@keyframes focused-fade-out {
+  from { opacity: 1; transform: scale(1);     }
+  to   { opacity: 0; transform: scale(0.985); }
+}
+
+.focused-action-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  max-width: 420px;
+  width: 100%;
+}
+
+.focused-action-greeting {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--brand-text);
+  text-align: center;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.focused-action-subline {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 15px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: -16px;
+}
+
+/* The giant button. Subtle breathing animation so it's obviously
+   the call-to-action without being annoying. Tap stops the
+   breathing and plays a confirm pulse. */
+.focused-action-btn {
+  width: 240px;
+  height: 240px;
+  border-radius: 999px;
+  border: 0;
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  animation: focused-breathe 2.4s ease-in-out infinite;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.focused-action-btn:disabled { cursor: default; }
+.focused-action-btn.is-in {
+  background: linear-gradient(140deg, #48bb78, #2f855a);
+}
+.focused-action-btn.is-out {
+  background: linear-gradient(140deg, #f56565, #c53030);
+}
+.focused-action-btn:hover:not(:disabled) {
+  transform: scale(1.02);
+}
+.focused-action-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.focused-action-btn.is-tapped {
+  animation: focused-confirm 0.32s ease forwards;
+}
+@keyframes focused-breathe {
+  0%, 100% { transform: scale(1);    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24); }
+  50%      { transform: scale(1.03); box-shadow: 0 22px 56px rgba(0, 0, 0, 0.28); }
+}
+@keyframes focused-confirm {
+  0%   { transform: scale(0.97); }
+  60%  { transform: scale(1.08); }
+  100% { transform: scale(1.0);  }
+}
+
+.focused-action-btn-label {
+  position: relative;
+  z-index: 1;
+}
+.focused-action-btn-check {
+  font-size: 96px;
+  font-weight: 900;
+  line-height: 1;
+  animation: focused-check 0.32s ease;
+}
+@keyframes focused-check {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1);   }
+}
+
+.focused-action-skip {
+  background: transparent;
+  border: 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.focused-action-skip:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+/* Countdown badge — appears only in the last 5 seconds so the
+   staff has a clear "act now or lose the session" signal without
+   the whole screen feeling like a timer. */
+.focused-action-countdown {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c53030;
+  background: rgba(197, 48, 48, 0.1);
+  border: 1px solid rgba(197, 48, 48, 0.3);
+  padding: 6px 12px;
+  border-radius: 999px;
+  animation: focused-countdown-pulse 1s ease-in-out infinite;
+}
+@keyframes focused-countdown-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.7; transform: scale(0.96); }
+}
+
+@media (max-width: 520px) {
+  .focused-action-btn { width: 200px; height: 200px; font-size: 24px; }
+  .focused-action-greeting { font-size: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focused-action-btn { animation: none; }
+  .focused-action-countdown { animation: none; }
+}

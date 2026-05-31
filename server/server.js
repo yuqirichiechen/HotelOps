@@ -914,12 +914,19 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
     // Sprint 8.6: auto-signout timer (seconds) — staff Home reads this from
     // every /me/hours response so the banner timeout reflects the latest
     // admin setting without an extra fetch. 0 means the feature is off.
+    // Sprint 16.1: also surface the idle-logout setting alongside
+    // auto_signout_seconds. Single SQL trip pulls both. Default 15.
     const cfgRow = await pool.query(
-      `SELECT value FROM app_settings WHERE key = 'auto_signout_seconds'`
+      `SELECT key, value FROM app_settings
+        WHERE key IN ('auto_signout_seconds', 'staff_idle_logout_seconds')`
     );
-    const autoSignoutSeconds = cfgRow.rows[0]?.value !== undefined
-      ? parseInt(cfgRow.rows[0].value, 10)
+    const cfgMap = Object.fromEntries(cfgRow.rows.map(r => [r.key, r.value]));
+    const autoSignoutSeconds = cfgMap.auto_signout_seconds !== undefined
+      ? parseInt(cfgMap.auto_signout_seconds, 10)
       : 3;
+    const idleLogoutSeconds = cfgMap.staff_idle_logout_seconds !== undefined
+      ? parseInt(cfgMap.staff_idle_logout_seconds, 10)
+      : 15;
 
     return res.json({
       success:             true,
@@ -932,6 +939,7 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       currentlyClockedIn:  !!open,
       openClockInTime:     open ? open.clock_in_time : null,
       autoSignoutSeconds,
+      idleLogoutSeconds,
     });
   } catch (err) {
     console.error(err);
@@ -3164,6 +3172,17 @@ app.put('/api/admin/settings', async (req, res) => {
       if (typeof v !== 'string') return false;
       const n = parseInt(v, 10);
       return Number.isInteger(n) && n >= 2 && n <= 52 && String(n) === v.trim();
+    },
+    // Sprint 16.1: idle-logout timer for the staff focused-action
+    // screen. After login, if the staff member doesn't tap a clock
+    // action within N seconds, they're auto-logged-out so the next
+    // staff at a shared kiosk doesn't inherit their session.
+    // Stored as a string per app_settings convention; validated as
+    // an integer in [5, 120]. Default 15.
+    staff_idle_logout_seconds: v => {
+      if (typeof v !== 'string') return false;
+      const n = parseInt(v, 10);
+      return Number.isInteger(n) && n >= 5 && n <= 120 && String(n) === v.trim();
     },
   };
   const updates = req.body || {};

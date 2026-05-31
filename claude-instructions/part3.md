@@ -345,6 +345,135 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-31 — Sprint 16.1: focused clock-in/out screen + idle-logout setting
+
+Sprint 16 opens a new arc focused on the staff clock-in/out
+workflow. GM ran the app in production and reported staff
+were entering their PIN and walking away thinking they had
+clocked in. Sprint 16.1 is the first of four planned sub-sprints
+(16.2 = i18n for Spanish/Chinese, 16.3 = admin "still clocked
+in" alerts, 16.4 = optional auto clock-out at scheduled end).
+
+**The problem we're solving.**
+
+The pre-16 Home page surfaces clock-in/out as one of three
+parallel sections — alongside this-week hours and recent shifts.
+Staff who only know the app loosely interpret "logged in" as
+"clocked in" and miss the clock card entirely. The fix is a
+post-login full-screen overlay with exactly one action —
+designed so there's nothing else to misread.
+
+**Server:**
+
+- New `staff_idle_logout_seconds` key in the ALLOWED settings
+  validator (integer 5–120, default 15). Independent from the
+  Sprint-8.6 `auto_signout_seconds` — that one fires *after*
+  a clock action; this one fires *before*, if the staff stays
+  idle on the focused screen.
+- `/me/hours` response gains `idleLogoutSeconds` alongside the
+  existing `autoSignoutSeconds`. Single SQL trip — combined the
+  two SELECTs into one `WHERE key IN (...)` query so we don't
+  add a round-trip.
+
+**Admin Settings:**
+
+- New section in the **Staff Login** category: "Idle sign-out
+  (focused action screen)" with a 5–120 number input. Help
+  text explicitly distinguishes it from auto sign-out so the
+  GM doesn't confuse the two.
+
+**Client — `FocusedAction` component
+(`src/components/TimeClock/FocusedAction.js` + .css):**
+
+Full-screen overlay with five visual elements:
+
+1. **Greeting** — "Good morning, Maria." Big serif headline.
+2. **Subline** — "Tap once when you start your shift." Single
+   sentence so the intent is unmistakable across literacy
+   levels.
+3. **Giant 240px circular button** — green gradient + "Clock In"
+   or red gradient + "Clock Out". Subtle 2.4s breathing
+   animation (`scale 1 → 1.03 → 1`) so it draws the eye
+   without nagging.
+4. **"Just checking, skip"** — tiny ghost button below for the
+   rare case the staff member actually wants to look at their
+   hours instead of clocking.
+5. **Countdown badge** — top-right, only appears in the last
+   5 seconds of the idle timer ("Signing out in 4s") with a
+   pulse animation. Hidden the rest of the time so the screen
+   doesn't feel like a stopwatch.
+
+**Interaction model:**
+
+- **Mount** → fade-in + scale-up from 0.985 → 1.0 over 320 ms.
+- **Tap big button** → `is-tapped` class freezes the breathing,
+  swaps the label for a giant ✓, plays a 320ms confirm pulse;
+  parent's clock handler runs after a 280ms delay so the visual
+  reads before any state change.
+- **Tap skip** → `is-exiting` class fades + scales out over
+  220 ms; parent dismisses focused state.
+- **Idle ≥ N seconds** → parent's `handleAutoSignout` runs
+  (existing logout + redirect flow). Any pointer / touch / key
+  / mousemove event resets the countdown by bumping the
+  baseline timestamp (no interval recreate — one pure interval
+  reads from a ref every 250 ms).
+- **`prefers-reduced-motion`** → strips both the breathing and
+  countdown pulse animations.
+
+**Integration in `pages/Home/index.js`:**
+
+- New `focusedDismissed` state, hydrated from a sessionStorage
+  key `hotelops-staff-focused-dismissed` keyed by `user.user_id`.
+  Effect re-reads on `user.user_id` change so re-login (same
+  tab, different staff) shows the focused screen fresh.
+- `handleAutoSignout` clears the key before navigating to login
+  so the next staff at the same kiosk gets a fresh focused
+  screen.
+- Render gate: `!loading && !!data && !focusedDismissed
+  && !clockEvent`. The `!clockEvent` term hands off to the
+  existing flip-card / auto-signout-banner flow once a clock
+  action is in flight (no UI competition between two overlays).
+- Mode is derived from `onClock` — clocked in → 'out', else
+  'in'. So mid-shift logins land on a "Clock Out" focused
+  screen, which incidentally also helps with the
+  forgetting-to-clock-out problem (Sprint 16.3) for staff who
+  remember to log in but not specifically to clock out.
+
+**Why this design vs alternatives we considered:**
+
+- **Auto-clock-in on login**: rejected — too aggressive, breaks
+  the "I just want to check my schedule" workflow.
+- **Big banner on Home**: rejected — banners get ignored on
+  third encounter. A full-screen modal forces a decision once
+  and then gets out of the way for the rest of the session.
+- **Per-route gating**: rejected — adding the overlay to every
+  route is overkill. Home is where they land post-login; that's
+  the only critical surface.
+
+**Verified.** Five touched files balance. server.js retains
+the existing -5/+5 paren noise from prior regex/SQL literals.
+
+**Notes:**
+
+- No migrations. Settings table already exists.
+- No new endpoints (extended `/me/hours` only).
+- The dismiss flag is per-user-id, not per-session, so an
+  admin who switches users mid-session (StaffShell only has
+  one user but defensive design) gets a fresh focused screen.
+
+**Up next:**
+
+- **16.2** — i18n strings + `preferred_language` column on
+  users + Spanish + Chinese translations of staff-facing
+  strings (login screen, focused action screen, auto-signout
+  banner, confirmation messages).
+- **16.3** — admin dashboard "Still clocked in past scheduled
+  end" alert list.
+- **16.4 (optional)** — auto clock-out at scheduled end + N
+  hours, with a `system_generated` flag on `time_entries`.
+
+---
+
 ### 2026-05-30 — Sprint 15.10: Postgres compute-hour optimization
 
 Not a feature sprint — a cost-reduction pass before flipping the
