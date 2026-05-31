@@ -292,6 +292,11 @@ const AdminSettings = () => {
   // focused-action screen without tapping anything — they probably
   // walked away or got distracted; cycle the session.
   const [idleSign,   setIdleSign]   = useState('15');
+  // Sprint 16.3: minutes past scheduled end before a staff member
+  // shows up on the AdminHome "Past scheduled end" alert list.
+  // Lower = noisier alerts but earlier intervention; higher =
+  // quieter but staff drift longer into unplanned OT.
+  const [stillThresh, setStillThresh] = useState('30');
   const [payStartDay, setPayStartDay] = useState('0'); // Sprint 9.4: 0=Sun .. 6=Sat
   const [hideAbc,    setHideAbc]    = useState(false); // Sprint 9.1: numbers-only keypad on staff login
   const [loginLayout, setLoginLayout] = useState('hardcode'); // Sprint 9.1.3
@@ -403,6 +408,7 @@ const AdminSettings = () => {
           setBaseline  (data.settings.compare_baseline          || 'self');
           setAutoSign  (data.settings.auto_signout_seconds      || '3');
           setIdleSign  (data.settings.staff_idle_logout_seconds || '15');
+          setStillThresh(data.settings.still_clocked_in_threshold_minutes || '30');
           if (/^[0-6]$/.test(String(data.settings.pay_period_start_day))) {
             setPayStartDay(String(data.settings.pay_period_start_day));
           }
@@ -451,6 +457,7 @@ const AdminSettings = () => {
         compare_baseline:          baseline,
         auto_signout_seconds:      autoSign,
         staff_idle_logout_seconds: String(parseInt(idleSign, 10) || 15),
+        still_clocked_in_threshold_minutes: String(Math.max(0, Math.min(360, parseInt(stillThresh, 10) || 30))),
         hide_abc_keyboard:         hideAbc  ? 'true' : 'false',
         enable_legacy_assign_panel: legacyAssign ? 'true' : 'false',
         coverage_history_weeks:     String(parseInt(coverageWeeks, 10) || 8),
@@ -670,6 +677,44 @@ const AdminSettings = () => {
                   Each biweekly cycle is 14 days starting on this weekday. "Biweekly" exports return the most recently completed cycle.
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Sprint 16.3: "Past scheduled end" alert threshold.
+              Drives the AdminHome alert list — staff who are
+              clocked in past their scheduled end by ≥N minutes
+              show up so the GM can intervene (call/text/clock out
+              for them). */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon">⏰</div>
+              <div>
+                <div className="settings-section-title">"Past scheduled end" alert</div>
+                <div className="settings-section-desc">
+                  How many minutes past a staff member's scheduled end before they appear on the dashboard's "Past scheduled end" alert list.
+                  Range 0–360. Lower = noisier but earlier intervention; higher = quieter but staff drift longer into unplanned OT.
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-perf-grid">
+              <label className="settings-perf-field">
+                <span className="settings-perf-label">Threshold</span>
+                <span className="settings-perf-input-wrap">
+                  <input
+                    type="number"
+                    min="0"
+                    max="360"
+                    step="1"
+                    value={stillThresh}
+                    onChange={e => { setStillThresh(e.target.value); setSaved(false); }}
+                  />
+                  <span className="settings-perf-unit">minutes</span>
+                </span>
+                <span className="settings-perf-help">
+                  Default 30. Scheduled end comes from the published Shift Sheet first, then the legacy schedules table; staff with no scheduled end never appear on the list.
+                </span>
+              </label>
             </div>
           </div>
 

@@ -46,7 +46,21 @@ const STATUS_LABEL = {
   'yet-to-start': 'Yet to start',
 };
 
-const VIEWS = ['on-clock', 'coming-up', 'hours', 'pending-ot'];
+const VIEWS = ['on-clock', 'coming-up', 'hours', 'pending-ot', 'overdue'];
+
+// Sprint 16.3: pretty "Xh Ym past" format for the overdue list.
+const fmtOver = (mins) => {
+  if (mins < 60) return `${mins}m past`;
+  const h = Math.floor(mins / 60);
+  const rm = mins % 60;
+  return rm ? `${h}h ${rm}m past` : `${h}h past`;
+};
+
+// Sprint 16.3: format a HH:MM:SS-or-ISO timestamp as "5:00 PM".
+const fmtClock = (iso) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
 
 const AdminHome = () => {
   const { user, logout } = useAuth();
@@ -62,6 +76,12 @@ const AdminHome = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing,  setRefreshing]  = useState(false);
   const [view,        setView]        = useState('on-clock');
+  // Sprint 16.3: separate fetch for the "Past scheduled end" list.
+  // Kept out of /admin/dashboard so it can refresh on a different
+  // cadence and the dashboard query doesn't grow further.
+  const [overdue,        setOverdue]        = useState([]);
+  const [overdueLoading, setOverdueLoading] = useState(true);
+  const [overdueBusy,    setOverdueBusy]    = useState(null); // user_id being clocked out
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -109,6 +129,51 @@ const AdminHome = () => {
       window.removeEventListener('focus', onFocus);
     };
   }, [refresh]);
+
+  // Sprint 16.3: fetch the overdue list on the same triggers as
+  // the dashboard refresh. Tz-aware so "scheduled end" lines up
+  // with the admin's local clock.
+  const refreshOverdue = useCallback(async () => {
+    setOverdueLoading(true);
+    const tz = new Date().getTimezoneOffset();
+    const { ok, data } = await apiFetch(`/admin/still-clocked-in?tz_offset_minutes=${tz}`);
+    if (ok && data?.success) setOverdue(data.overdue || []);
+    else                     setOverdue([]);
+    setOverdueLoading(false);
+  }, []);
+  useEffect(() => {
+    refreshOverdue();
+    const tick = () => {
+      if (document.visibilityState === 'visible') refreshOverdue();
+    };
+    const id = setInterval(tick, 300_000);
+    const onFocus = () => refreshOverdue();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshOverdue]);
+
+  // Sprint 16.3: admin-initiated clock-out from the alert list.
+  const clockOutStaff = useCallback(async (row) => {
+    if (!window.confirm(
+      `Clock out ${row.name}? Their shift will close at the current time.`
+    )) return;
+    setOverdueBusy(row.user_id);
+    const { ok, data } = await apiFetch(`/admin/staff/${row.user_id}/clock-out`, {
+      method: 'POST',
+    });
+    setOverdueBusy(null);
+    if (!ok || !data?.success) {
+      window.alert(data?.message || 'Could not clock out.');
+      return;
+    }
+    // Refresh both lists so the row falls off + on-clock count
+    // drops by one.
+    refreshOverdue();
+    refresh();
+  }, [refresh, refreshOverdue]);
 
   // Tick "X ago" label every 10s without re-fetching
   const [, setTick] = useState(0);
@@ -174,6 +239,17 @@ const AdminHome = () => {
         ? `${(data?.staffWithPendingOT || []).length} ${(data?.staffWithPendingOT || []).length === 1 ? 'person' : 'people'} over threshold`
         : 'no one over threshold',
       tone:      data?.weekOTTotal ? 'action' : null,
+      clickable: true,
+    },
+    {
+      // Sprint 16.3: Past-scheduled-end alert.
+      key:       'overdue',
+      eyebrow:   'Past scheduled end',
+      value:     overdueLoading ? '—' : overdue.length,
+      meta:      overdue.length
+        ? 'still on the clock'
+        : 'everyone is on schedule',
+      tone:      overdue.length > 0 ? 'warn' : null,
       clickable: true,
     },
   ];
@@ -327,6 +403,63 @@ const AdminHome = () => {
                   </li>
                 );
               })}
+            </ul>
+          )}
+        </>
+      );
+    }
+
+    if (view === 'overdue') {
+      // Sprint 16.3: list staff currently clocked in past their
+      // scheduled end (by ≥ admin-set threshold minutes).
+      return (
+        <>
+          <div className="adm-card-head">
+            <h2 className="adm-card-title">Past scheduled end</h2>
+            {overdue.length > 0 && (
+              <span className="adm-card-count adm-card-count-warn">
+                {overdue.length} {overdue.length === 1 ? 'person' : 'people'}
+              </span>
+            )}
+          </div>
+          {overdueLoading ? (
+            <div className="adm-empty">Checking…</div>
+          ) : overdue.length === 0 ? (
+            <div className="adm-empty">
+              Everyone is on schedule.
+              <div className="adm-empty-sub">
+                Staff currently clocked in past their scheduled end appear here so you can call them or clock them out manually.
+              </div>
+            </div>
+          ) : (
+            <ul className="adm-overdue-list">
+              {overdue.map(row => (
+                <li key={row.entry_id} className="adm-overdue-row">
+                  <div
+                    className="adm-overdue-info"
+                    onClick={() => goTo('staffDetail', { userId: row.user_id })}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="adm-overdue-name">{row.name}</div>
+                    <div className="adm-overdue-meta">
+                      {row.department || 'Unassigned'}
+                      {' · '}
+                      Scheduled to end {fmtClock(row.scheduled_end)}
+                      {' · '}
+                      <span className="adm-overdue-over">{fmtOver(row.minutes_over)}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="adm-overdue-btn"
+                    onClick={(e) => { e.stopPropagation(); clockOutStaff(row); }}
+                    disabled={overdueBusy === row.user_id}
+                  >
+                    {overdueBusy === row.user_id ? '…' : 'Clock out'}
+                  </button>
+                </li>
+              ))}
             </ul>
           )}
         </>

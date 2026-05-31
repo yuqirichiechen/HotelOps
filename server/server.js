@@ -1407,6 +1407,166 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), async (req, r
   });
 });
 
+// ── Sprint 16.3: "still clocked in past scheduled end" alert ─────────────────
+//
+// Surfaces staff who are currently on the clock past their scheduled
+// end time. Two sources for the scheduled end, in order of priority:
+//   1. Published `schedule_sheet_cells` matching the user's
+//      week_start (Monday of the local current week) + day_of_week
+//      (Mon=0..Sun=6, matching the sheet column layout). Uses
+//      parsed_end when present.
+//   2. Fallback: today's row in the legacy `schedules` table.
+//      Pulls COALESCE(custom_end_time, shifts.end_time).
+//
+// Threshold: `still_clocked_in_threshold_minutes` app setting
+// (default 30). A staff member only appears on the list once
+// `NOW - scheduled_end >= threshold`. tz_offset_minutes is the
+// caller's signed offset (`new Date().getTimezoneOffset()`) so the
+// "current local Monday" + "scheduled_end on local clock" both
+// respect the GM's actual workday boundaries.
+app.get('/api/admin/still-clocked-in', requireAuth, requireRole('admin'), async (req, res) => {
+  const tzOffsetMinutes = parseInt(req.query.tz_offset_minutes, 10);
+  const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
+  try {
+    const { rows: cfg } = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'still_clocked_in_threshold_minutes'`
+    );
+    const setN = cfg[0]?.value !== undefined ? parseInt(cfg[0].value, 10) : NaN;
+    const thresholdMin = Number.isInteger(setN) && setN >= 0 && setN <= 360 ? setN : 30;
+
+    // Single query: pull every open entry + LATERAL-join the
+    // scheduled_end from sheet first, schedules fallback. The
+    // `WITH local_now` CTE computes the caller-local "now" so the
+    // (week_start, day_of_week) lookup uses the right day even
+    // when server TZ differs.
+    const { rows } = await pool.query(
+      `WITH local_now AS (
+         SELECT (NOW() - INTERVAL '1 minute' * $1::int) AS local_ts
+       ),
+       open_entries AS (
+         SELECT te.entry_id, te.user_id, te.clock_in_time
+           FROM time_entries te
+           JOIN users u ON te.user_id = u.user_id
+          WHERE te.clock_out_time IS NULL
+            AND u.active = true
+            AND u.deleted_at IS NULL
+       )
+       SELECT
+         oe.entry_id,
+         oe.user_id,
+         oe.clock_in_time,
+         u.name,
+         u.phone_number,
+         u.preferred_language,
+         d.name AS department,
+         d.department_id,
+         -- Sheet end (Mon=0..Sun=6, week_start = Monday of caller-local current week)
+         (SELECT (
+            (ln.local_ts::date - ((EXTRACT(ISODOW FROM ln.local_ts)::int - 1) * INTERVAL '1 day')::interval)::date
+            + (c.day_of_week || ' days')::interval
+            + c.parsed_end
+          )
+            FROM schedule_sheet_cells c, local_now ln
+           WHERE c.user_id = oe.user_id
+             AND c.is_published = TRUE
+             AND c.parsed_end IS NOT NULL
+             AND c.week_start = (ln.local_ts::date - ((EXTRACT(ISODOW FROM ln.local_ts)::int - 1) * INTERVAL '1 day'))::date
+             AND c.day_of_week = EXTRACT(ISODOW FROM ln.local_ts)::int - 1
+           LIMIT 1
+         ) AS sheet_end,
+         -- Legacy schedules table fallback (today only)
+         (SELECT (
+            ln.local_ts::date + COALESCE(sc.custom_end_time, sh.end_time)
+          )
+            FROM schedules sc
+            LEFT JOIN shifts sh ON sc.shift_id = sh.shift_id, local_now ln
+           WHERE sc.user_id = oe.user_id
+             AND sc.scheduled_date = ln.local_ts::date
+           ORDER BY COALESCE(sc.custom_end_time, sh.end_time) DESC
+           LIMIT 1
+         ) AS schedule_end
+       FROM open_entries oe
+       JOIN users u ON oe.user_id = u.user_id
+       LEFT JOIN departments d ON u.department_id = d.department_id`,
+      [tzOffset]
+    );
+
+    // Pick the best scheduled_end per row, compute minutes_over,
+    // filter by threshold. JS-side because the SELECTs above are
+    // already nested + threshold logic is clearer here.
+    const nowLocalMs = Date.now() - tzOffset * 60_000;
+    const overdue = [];
+    for (const r of rows) {
+      const sheetEnd    = r.sheet_end    ? new Date(r.sheet_end).getTime()    : null;
+      const scheduleEnd = r.schedule_end ? new Date(r.schedule_end).getTime() : null;
+      let source = null;
+      let endMs  = null;
+      if (sheetEnd) {
+        source = 'sheet';
+        endMs  = sheetEnd;
+      } else if (scheduleEnd) {
+        source = 'schedule';
+        endMs  = scheduleEnd;
+      }
+      // No scheduled end → can't flag as overdue. Skip.
+      if (endMs == null) continue;
+      const minutesOver = Math.floor((nowLocalMs - endMs) / 60_000);
+      if (minutesOver < thresholdMin) continue;
+      overdue.push({
+        entry_id:        r.entry_id,
+        user_id:         r.user_id,
+        name:            r.name,
+        phone_number:    r.phone_number,
+        department:      r.department,
+        department_id:   r.department_id,
+        clock_in_time:   r.clock_in_time,
+        scheduled_end:   new Date(endMs).toISOString(),
+        scheduled_source: source,
+        minutes_over:    minutesOver,
+      });
+    }
+    overdue.sort((a, b) => b.minutes_over - a.minutes_over);
+    return res.json({
+      success: true,
+      threshold_minutes: thresholdMin,
+      overdue,
+    });
+  } catch (err) {
+    console.error('[still-clocked-in]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
+// Sprint 16.3: admin-initiated clock-out. Closes the most recent
+// open entry for the given staff user_id. Distinct from the
+// pre-existing /api/clock-out which takes a phone number for the
+// shared-kiosk legacy flow and lives outside the admin auth chain.
+app.post('/api/admin/staff/:id/clock-out', requireAuth, requireRole('admin'), async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const { rows: open } = await pool.query(
+      `SELECT entry_id FROM time_entries
+        WHERE user_id = $1::uuid AND clock_out_time IS NULL
+        ORDER BY clock_in_time DESC LIMIT 1`,
+      [userId]
+    );
+    if (open.length === 0) {
+      return res.status(400).json({ success: false, message: 'Staff is not currently clocked in.' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE time_entries
+          SET clock_out_time = NOW()
+        WHERE entry_id = $1
+        RETURNING entry_id, user_id, clock_in_time, clock_out_time`,
+      [open[0].entry_id]
+    );
+    return res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    console.error('[admin clock-out]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // Period range helper used by both the performance endpoint and the bulk-OT
 // approval endpoint so they always agree on what "this week / month / year"
 // means.
@@ -3202,6 +3362,16 @@ app.put('/api/admin/settings', async (req, res) => {
       if (typeof v !== 'string') return false;
       const n = parseInt(v, 10);
       return Number.isInteger(n) && n >= 5 && n <= 120 && String(n) === v.trim();
+    },
+    // Sprint 16.3: how many minutes past a staff member's
+    // scheduled end before they appear on the AdminHome
+    // "Past scheduled end" alert list. Range 0–360 (0 fires
+    // the instant they're past end; 360 = 6h grace).
+    // Default 30.
+    still_clocked_in_threshold_minutes: v => {
+      if (typeof v !== 'string') return false;
+      const n = parseInt(v, 10);
+      return Number.isInteger(n) && n >= 0 && n <= 360 && String(n) === v.trim();
     },
   };
   const updates = req.body || {};

@@ -345,6 +345,114 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-05-31 — Sprint 16.3: admin "Past scheduled end" alert + manual clock-out
+
+Third in the Sprint-16 clock-workflow arc. The GM reported staff
+forget to clock out at the end of their shift. Sprint 16.3 ships
+the admin-side *recovery* surface — a dashboard alert list that
+shows anyone currently clocked in past their scheduled end, with
+a one-tap "Clock out" button. Doesn't require staff behavior
+change; gives the GM a way to fix the problem after it happens.
+
+**Server: `GET /api/admin/still-clocked-in?tz_offset_minutes=`**
+
+Single query with `LATERAL`-style subqueries: pulls every open
+`time_entries` row + computes the user's scheduled end from
+two priority-ordered sources, all in one DB round-trip:
+
+1. **Sheet first** — match the user's published `schedule_sheet_cells`
+   row for the current local week's `week_start` (Monday) and
+   today's `day_of_week` (Mon=0..Sun=6). Use `parsed_end`.
+2. **Schedules fallback** — today's row in the legacy `schedules`
+   table, using `COALESCE(custom_end_time, shifts.end_time)`.
+
+Tz-aware via `tz_offset_minutes` so "current local Monday" + the
+"end time on the local clock" both respect the admin's wall
+clock, not server UTC. JS-side post-filter picks the best
+scheduled_end per row, computes `minutes_over = now_local - end_local`,
+and drops anyone under the threshold.
+
+Returns a sorted (by most overdue first) array of
+`{ entry_id, user_id, name, department, clock_in_time,
+   scheduled_end, scheduled_source, minutes_over }` plus the
+active `threshold_minutes`. Empty if no one's overdue.
+
+**Server: new setting `still_clocked_in_threshold_minutes`**
+
+ALLOWED settings validator gains an int [0, 360] entry. Default
+30. Tunable per-property in AdminSettings.
+
+**Server: `POST /api/admin/staff/:id/clock-out`**
+
+Admin-authed bulk clock-out. Distinct from the pre-existing
+`/api/clock-out` (phone-based, no auth, shared-kiosk legacy
+flow). Closes the most-recent open `time_entries` row for the
+given user_id; returns the updated entry. 400s if the staff
+isn't currently clocked in (race-condition guard: by the time
+the admin clicks the row, the staff might have clocked
+themselves out).
+
+**Admin Settings UI:**
+
+- New section in the Operations category (sits next to Payroll):
+  "Past scheduled end" alert. Number input, 0–360 minutes.
+  Help text mentions that the alert uses sheet-first / schedules-
+  fallback so the admin knows which scheduled-end source drives
+  it.
+
+**Admin Home UI:**
+
+- New stat card: "Past scheduled end" with the count. `warn`
+  tone (amber/red treatment in CSS) when > 0; neutral when 0.
+- New view branch (`view === 'overdue'`) renders the detail
+  list under the stat row.
+- Each row: avatar-free dense layout — name + "dept · scheduled
+  to end <time> · <N>m past" + a red "Clock out" button on the
+  right. Body click opens the staff profile (drills into
+  StaffDetail); the Clock out button stops propagation so it
+  doesn't double-fire.
+- Confirm dialog before the API call:
+  `"Clock out <name>? Their shift will close at the current time."`
+- Busy state on the button (`overdueBusy === user_id` →
+  disabled + "…" label) so spam-taps can't trigger duplicate
+  POSTs.
+- After a successful clock-out, both the overdue list and the
+  main dashboard data refetch so the row falls off + the
+  "On the clock" count drops by one.
+- Separate fetcher + interval (5 min visibility-gated, same
+  pattern as the Sprint 15.10 dashboard polling fix) so the
+  alert refreshes independently of the dashboard data.
+
+**Why not auto-clock-out staff who are way overdue:**
+
+Two reasons. (1) Auto clock-out is irreversible for payroll —
+the admin should be the one to decide that 6:23 PM is the real
+end time vs the scheduled 5:00 PM, since the staff might
+genuinely be working late. (2) The recovery surface is
+*generic* — even when 16.4 ships auto-clock-out at scheduled-
+end+N as an opt-in, this list still serves the
+"I want to know who's still here right now" use case.
+
+**Verified.** Four touched files balance. server.js retains
+the existing -5/+5 paren noise from prior literals.
+
+**Notes:**
+
+- No migrations. New setting lives in `app_settings`.
+- No new endpoints on top of what's documented above.
+- The polling pattern matches Sprint 15.10 (visibility-gated,
+  5 min interval, focus-driven refresh) so the alert card
+  doesn't undo the cost optimization.
+
+**Up next:**
+
+- **16.4 (optional)** — auto clock-out at scheduled end + N
+  hours with a `system_generated` flag on `time_entries`. Now
+  unblocked since the recovery surface above already handles
+  the "do something about it" half of the workflow.
+
+---
+
 ### 2026-05-31 — Sprint 16.2: i18n + Spanish + Chinese for staff-facing screens
 
 Second of the Sprint-16 clock-workflow arc. The GM's working

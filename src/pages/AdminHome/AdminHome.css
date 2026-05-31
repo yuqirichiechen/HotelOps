@@ -667,3 +667,86 @@
   .adm-hours-meta   { display: none; }
   .adm-hours-num    { font-size: 13px; min-width: 44px; }
 }
+
+/* ── Sprint 16.3: Past-scheduled-end alert list ───────────────────── */
+
+.adm-card-count.adm-card-count-warn {
+  background: rgba(197, 48, 48, 0.12);
+  color: #c53030;
+}
+
+.adm-overdue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adm-overdue-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.adm-overdue-row:hover {
+  background: var(--bg-raised);
+  border-color: rgba(197, 48, 48, 0.25);
+}
+
+.adm-overdue-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  cursor: pointer;
+}
+.adm-overdue-name {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+.adm-overdue-meta {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.adm-overdue-over {
+  color: #c53030;
+  font-weight: 700;
+}
+
+.adm-overdue-btn {
+  flex: 0 0 auto;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid #c53030;
+  background: #c53030;
+  color: white;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.adm-overdue-btn:hover:not(:disabled) {
+  background: #9b2c2c;
+  border-color: #9b2c2c;
+}
+.adm-overdue-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .adm-overdue-row { flex-wrap: wrap; }
+  .adm-overdue-btn { width: 100%; }
+}
