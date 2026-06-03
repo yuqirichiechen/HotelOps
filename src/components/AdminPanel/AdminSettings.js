@@ -3,6 +3,41 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 
+// Sprint 16.7: collapsible main-category wrapper. The h3 header
+// is a button — tap to collapse / expand the sections beneath.
+// Open state persists in localStorage so the GM's preferred
+// shape sticks across sessions. Default: open on first visit.
+const SETTINGS_OPEN_KEY = 'hotelops-admin-settings-open';
+const readOpen = () => {
+  if (typeof window === 'undefined') return {};
+  try { return JSON.parse(localStorage.getItem(SETTINGS_OPEN_KEY) || '{}'); }
+  catch { return {}; }
+};
+const writeOpen = (state) => {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(SETTINGS_OPEN_KEY, JSON.stringify(state)); }
+  catch { /* storage full — ignore */ }
+};
+
+const SettingsCategory = ({ id, title, children, openState, onToggle }) => {
+  // Treat missing key as open (default for first-time visitors).
+  const isClosed = openState[id] === false;
+  return (
+    <section className={`settings-category${isClosed ? ' is-closed' : ''}`}>
+      <button
+        type="button"
+        className="settings-category-head"
+        onClick={() => onToggle(id)}
+        aria-expanded={!isClosed}
+      >
+        <h3 className="settings-category-title">{title}</h3>
+        <span className="settings-category-chev" aria-hidden>{isClosed ? '▾' : '▴'}</span>
+      </button>
+      {!isClosed && <div className="settings-category-body">{children}</div>}
+    </section>
+  );
+};
+
 const VISIBILITY_OPTIONS = [
   {
     value: 'all',
@@ -281,6 +316,16 @@ const AdminSettings = () => {
   // Sprint 11.2.1: back-to-Home is a view flip, not a URL change.
   const { goTo } = useView();
 
+  // Sprint 16.7: per-category open state for the collapsible
+  // accordion. Toggling persists immediately so reloading the
+  // page picks up the same shape.
+  const [categoryOpen, setCategoryOpen] = useState(readOpen);
+  const toggleCategory = (id) => setCategoryOpen(prev => {
+    const next = { ...prev, [id]: prev[id] === false ? true : false };
+    writeOpen(next);
+    return next;
+  });
+
   const [visibility, setVisibility] = useState('all');
   const [otHours,    setOtHours]    = useState('40');
   const [otMins,     setOtMins]     = useState('10');
@@ -531,6 +576,16 @@ const AdminSettings = () => {
           >
             {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save settings'}
           </button>
+          {/* Sprint 16.7: sign out moved to the top so the GM doesn't
+              have to scroll past every category to log out. The
+              Sprint-15.0 Account section below stays as a redundancy
+              + a place to surface the signed-in identity. */}
+          <button
+            className="settings-signout-top"
+            onClick={handleSignOut}
+            aria-label="Sign out"
+            title="Sign out"
+          >Sign out</button>
         </div>
       </div>
 
@@ -539,11 +594,13 @@ const AdminSettings = () => {
       ) : (
         <div className="settings-body">
 
-          {/* Sprint 15.0: Settings are grouped into named categories so
-              related toggles cluster visually. Order:
+          {/* Sprint 15.0 / 16.7: Settings are grouped into named
+              categories so related toggles cluster visually. 16.7
+              made each category collapsible (state persisted in
+              localStorage). Order:
                 Display → Operations → Departments → Staff Login →
                 Shift Sheet → Account. */}
-          <h3 className="settings-category-title">Display & Visibility</h3>
+          <SettingsCategory id="display" title="Display & Visibility" openState={categoryOpen} onToggle={toggleCategory}>
 
           {/* Shifts board section */}
           <div className="settings-section">
@@ -583,7 +640,8 @@ const AdminSettings = () => {
 
           </div>
 
-          <h3 className="settings-category-title">Operations</h3>
+          </SettingsCategory>
+          <SettingsCategory id="ops" title="Operations" openState={categoryOpen} onToggle={toggleCategory}>
 
           {/* Performance section (Sprint 6B) */}
           <div className="settings-section">
@@ -813,7 +871,8 @@ const AdminSettings = () => {
             </div>
           </div>
 
-          <h3 className="settings-category-title">Departments</h3>
+          </SettingsCategory>
+          <SettingsCategory id="depts" title="Departments" openState={categoryOpen} onToggle={toggleCategory}>
 
           {/* Sprint 11: Departments — name + color management. Each
               dept's color shows up on Calendar chips and shift band
@@ -921,7 +980,8 @@ const AdminSettings = () => {
             )}
           </div>
 
-          <h3 className="settings-category-title">Staff Login</h3>
+          </SettingsCategory>
+          <SettingsCategory id="staffLogin" title="Staff Login" openState={categoryOpen} onToggle={toggleCategory}>
 
           {/* Sprint 8.6: Staff auto sign-out section */}
           <div className="settings-section">
@@ -1100,7 +1160,8 @@ const AdminSettings = () => {
             </div>
           </div>
 
-          <h3 className="settings-category-title">Shift Sheet</h3>
+          </SettingsCategory>
+          <SettingsCategory id="sheet" title="Shift Sheet" openState={categoryOpen} onToggle={toggleCategory}>
 
           {/* Sprint 14.1 / 15.0: re-expose the legacy AssignPanel side panel.
               Default off — the Shift Sheet (Sprint 14) is the primary
@@ -1176,7 +1237,8 @@ const AdminSettings = () => {
           <StatusCodesSection />
 
           {/* Account / Sign out section */}
-          <h3 className="settings-category-title">Account</h3>
+          </SettingsCategory>
+          <SettingsCategory id="account" title="Account" openState={categoryOpen} onToggle={toggleCategory}>
 
           <div className="settings-section">
             <div className="settings-section-header">
@@ -1192,6 +1254,7 @@ const AdminSettings = () => {
               Sign Out
             </button>
           </div>
+          </SettingsCategory>
 
         </div>
       )}

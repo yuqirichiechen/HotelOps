@@ -345,6 +345,127 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-06-02 — Sprint 16.7: top-of-page sign-out + collapsible settings + shell-level idle logout + custom confirm modal
+
+Four polish/fix items the GM flagged after the 16.6 review.
+
+**1. Sign-out moved to the top of Settings (admin + staff).**
+
+The GM complained that signing out required scrolling past
+every category to reach the Account section. Fixes:
+
+- `AdminSettings`: new `settings-signout-top` button next to the
+  existing Save button in the topbar. Outlined danger-tinted so
+  it reads as terminal without screaming. The Sprint-15.0
+  Account section at the bottom stays — it's still the source
+  of truth for the signed-in identity + redundant sign-out
+  affordance.
+- Staff `Settings`: header is now a flex row (`.settings-header`)
+  with the title block on the left and a danger sign-out button
+  on the right.
+
+**2. Collapsible main categories in AdminSettings.**
+
+The settings page kept growing. Made each Sprint-15.0 category
+a real accordion:
+
+- New `SettingsCategory` component inside AdminSettings.js.
+  Each takes `id`, `title`, `openState`, `onToggle`. Renders a
+  `<section>` with a `<button>` header (chevron + uppercase
+  title) and a body containing the section cards.
+- Open state persisted in localStorage under
+  `hotelops-admin-settings-open` keyed by category id (display
+  / ops / depts / staffLogin / sheet / account). Missing key
+  = open by default for first-time visitors.
+- Toggling persists immediately on change.
+- Visual: category header is bolder than the previous inline
+  h3 (color: brand-text instead of text-secondary), with a
+  hover background tint and a faint border-bottom that hides
+  when the category is collapsed (cleaner closed-state line).
+- The six existing `<h3 className="settings-category-title">`
+  + sibling sections were wrapped in
+  `<SettingsCategory>…</SettingsCategory>` pairs. The h3 still
+  exists inside the new header button, so existing CSS hooks
+  keep working.
+
+**3. Shell-level idle auto-logout for staff.**
+
+Sprint 16.1's `staff_idle_logout_seconds` only fired on
+FocusedAction. The GM tested it — staff who navigated to
+Timesheet / Calendar / Settings could leave their session
+open indefinitely. Fix:
+
+- New `useShellIdleLogout` hook inside `StaffShell.js`. Wired
+  into the `Body` component so it runs across every staff
+  view.
+- Pulls `idleLogoutSeconds` from a new field on `/api/me`
+  (server now returns the setting alongside the user payload —
+  one round-trip on shell mount, no /me/hours dependency).
+- Activity listeners on `window` for `pointerdown`, `keydown`,
+  `touchstart`, `mousemove`, `scroll` — all passive, all
+  capture-phase so they catch events even when child surfaces
+  call stopPropagation. Each reset bumps a `baselineRef`
+  timestamp.
+- 500ms tick reads `(now - baseline)` and fires the same
+  View-Transitions-aware logout flow Home uses
+  (tenant-slug-aware login redirect + `data-signing-out`
+  attribute for the CSS fade).
+- `firedRef` guards against double-fire if both the shell
+  timer and FocusedAction's own countdown expire on the same
+  tick.
+- The FocusedAction countdown stays — it's still the visible
+  "Signing out in 4s" badge on the focused screen, and it
+  fires Home's same logout flow. The shell-level timer is a
+  backstop for the other views that don't render their own
+  countdown.
+
+**4. Custom `ConfirmModal` replaces `window.confirm`.**
+
+`window.confirm` + `window.alert` look out of place in a
+themed app. New shared component:
+
+- `src/components/shared/ConfirmModal.js` + .css. Centered
+  card matching the Sprint-15.5 sheet-modal visual language
+  (backdrop tint, slide-up animation, two-button footer).
+- Two tones: `'default'` (brand-text confirm) and `'danger'`
+  (red confirm). Picks up via the `tone` prop.
+- Async-aware `onConfirm`: if the callback returns a promise,
+  the confirm button shows a busy `…` until it resolves.
+- Escape + backdrop click close (disabled while busy).
+- `cancelLabel={null}` hides the cancel slot, turning the
+  modal into an alert-shaped single-button affordance.
+- Wired into `AdminHome.clockOutStaff` first — replaces both
+  the confirm dialog ("Clock out X?") and the alert
+  ("Could not clock out") with themed flows. Future surfaces
+  can adopt the same pattern.
+
+**Server:**
+
+- `GET /api/me` returns `idleLogoutSeconds` alongside the user.
+  Tiny additional SQL trip (one row from `app_settings`); no
+  new endpoints.
+
+**Verified.** Nine touched files balance. server.js retains
+the same -5/+5 paren noise from prior literals.
+
+**Notes:**
+
+- The window.confirm/window.alert in other surfaces
+  (ShiftSheet copy-row, StaffManager delete, etc.) are still
+  there — only AdminHome's clock-out flow was migrated this
+  sprint. A future cleanup can adopt ConfirmModal everywhere.
+- The shell-level idle is intentionally aggressive (15 s
+  default). If the GM tells us reading-a-long-page on Timesheet
+  feels too short, we'll either bump the default or split into
+  two settings (idle on FocusedAction vs idle in the wider
+  shell).
+- The category-open localStorage state is per-browser, not
+  per-user. If the GM uses multiple devices, the collapsed
+  shape will diverge across them. Acceptable for the small
+  multi-device population here.
+
+---
+
 ### 2026-05-31 — Sprint 16.6: cycling-headline login + landing focus + digital clock + slower confirm
 
 Four UX fixes after the GM reviewed 16.5.

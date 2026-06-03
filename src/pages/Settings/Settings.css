@@ -9,6 +9,15 @@
 
 .settings-header {
   margin-bottom: 28px;
+  /* Sprint 16.7: header flexes title + sign-out side by side. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settings-header-text { flex: 1; min-width: 0; }
+.settings-header-signout {
+  flex: 0 0 auto;
 }
 
 .settings-title {

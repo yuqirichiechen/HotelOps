@@ -985,6 +985,26 @@
   border-color: var(--success-hover);
 }
 
+/* Sprint 16.7: top-bar sign-out. Outlined danger-tinted button
+   so it reads as terminal without screaming for attention next
+   to the save action. */
+.settings-signout-top {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(197, 48, 48, 0.4);
+  background: transparent;
+  color: #c53030;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.settings-signout-top:hover {
+  background: rgba(197, 48, 48, 0.08);
+}
+
 .settings-topbar-left h2 {
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 24px;
@@ -1050,23 +1070,64 @@
   line-height: 1.4;
 }
 
-/* ── Sprint 15.0: settings categories ─────────────────────────────────
-   Quiet horizontal header that announces a group of related sections.
-   No card background of its own — it just adds vertical rhythm and a
-   label between section cards. */
+/* ── Sprint 15.0 / 16.7: collapsible settings categories ──────────────
+   16.7 elevated the category from a quiet horizontal header into a
+   collapsible accordion. Each category is now a <section> with a
+   clickable header + body; state persists in localStorage. The
+   header is intentionally larger + more clickable than the prior
+   inline h3 — the GM said the page felt undifferentiated when
+   every setting was always on screen. */
+.settings-category {
+  margin-top: 18px;
+}
+.settings-category:first-of-type { margin-top: 0; }
+
+.settings-category-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 8px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.settings-category-head:hover { background: rgba(0, 0, 0, 0.02); }
+
 .settings-category-title {
+  margin: 0;
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  margin: 18px 4px 4px 4px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border-light);
+  color: var(--brand-text);
+  flex: 1;
 }
-.settings-category-title:first-of-type {
-  margin-top: 0;
+.settings-category-chev {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.settings-category-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 0 0 0;
+  animation: settings-cat-in 0.16s ease;
+}
+@keyframes settings-cat-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.settings-category.is-closed .settings-category-head {
+  border-bottom-color: transparent;
 }
 
 /* ── Sprint 15.0: status codes list ─────────────────────────────────── */

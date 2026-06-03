@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useView } from '../../shells/ViewContext';
 import { apiFetch, useAuth } from '../../auth';
+import ConfirmModal from '../../components/shared/ConfirmModal';
 import './AdminHome.css';
 
 // Manager dashboard. Stats banner cards are clickable and drive a single
@@ -72,6 +73,10 @@ const AdminHome = () => {
   const [overdue,        setOverdue]        = useState([]);
   const [overdueLoading, setOverdueLoading] = useState(true);
   const [overdueBusy,    setOverdueBusy]    = useState(null); // user_id being clocked out
+  // Sprint 16.7: replaces window.confirm + window.alert for the
+  // clock-out flow. Shape:
+  //   null | { kind: 'confirm', row, ... } | { kind: 'alert', message }
+  const [actionPrompt, setActionPrompt] = useState(null);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -145,24 +150,42 @@ const AdminHome = () => {
     };
   }, [refreshOverdue]);
 
-  // Sprint 16.3: admin-initiated clock-out from the alert list.
-  const clockOutStaff = useCallback(async (row) => {
-    if (!window.confirm(
-      `Clock out ${row.name}? Their shift will close at the current time.`
-    )) return;
-    setOverdueBusy(row.user_id);
-    const { ok, data } = await apiFetch(`/admin/staff/${row.user_id}/clock-out`, {
-      method: 'POST',
+  // Sprint 16.3 / 16.7: admin-initiated clock-out from the alert
+  // list. 16.7 swapped the window.confirm/alert pair for the
+  // custom ConfirmModal so it matches the app's visual language.
+  // Tapping "Clock out" on a row queues a confirm prompt; the
+  // modal's onConfirm runs the actual POST + refreshes both lists.
+  const clockOutStaff = useCallback((row) => {
+    setActionPrompt({
+      kind:         'confirm',
+      title:        `Clock out ${row.name}?`,
+      message:      'Their shift will close at the current time.',
+      confirmLabel: 'Clock out',
+      tone:         'danger',
+      onConfirm:    async () => {
+        setOverdueBusy(row.user_id);
+        const { ok, data } = await apiFetch(`/admin/staff/${row.user_id}/clock-out`, {
+          method: 'POST',
+        });
+        setOverdueBusy(null);
+        if (!ok || !data?.success) {
+          // Surface failure as an alert-shaped ConfirmModal (no
+          // cancel button needed; rename "Cancel" → "Close" via
+          // the cancelLabel field).
+          setActionPrompt({
+            kind:         'alert',
+            title:        'Could not clock out',
+            message:      data?.message || 'Try again in a moment.',
+            confirmLabel: 'OK',
+            cancelLabel:  null,
+            onConfirm:    () => {},
+          });
+          return;
+        }
+        refreshOverdue();
+        refresh();
+      },
     });
-    setOverdueBusy(null);
-    if (!ok || !data?.success) {
-      window.alert(data?.message || 'Could not clock out.');
-      return;
-    }
-    // Refresh both lists so the row falls off + on-clock count
-    // drops by one.
-    refreshOverdue();
-    refresh();
   }, [refresh, refreshOverdue]);
 
   // Tick "X ago" label every 10s without re-fetching
@@ -547,6 +570,24 @@ const AdminHome = () => {
         {renderDetail()}
       </div>
 
+      {/* Sprint 16.7: custom confirm modal (no window.confirm).
+          actionPrompt.cancelLabel === null → alert-shape (single
+          button); otherwise full confirm + cancel. */}
+      {actionPrompt && (
+        <ConfirmModal
+          title={actionPrompt.title}
+          message={actionPrompt.message}
+          confirmLabel={actionPrompt.confirmLabel || 'OK'}
+          cancelLabel={
+            'cancelLabel' in actionPrompt
+              ? actionPrompt.cancelLabel
+              : 'Cancel'
+          }
+          tone={actionPrompt.tone}
+          onConfirm={actionPrompt.onConfirm}
+          onClose={() => setActionPrompt(null)}
+        />
+      )}
     </div>
   );
 };

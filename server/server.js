@@ -324,7 +324,19 @@ app.get('/api/me', requireAuth, async (req, res) => {
       [req.auth.sub]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'User not found' });
-    return res.json({ success: true, user: { ...rows[0], type: 'staff' } });
+    // Sprint 16.7: include the staff-idle-logout setting on /me so
+    // the StaffShell can wire a shell-level idle timer without
+    // calling /me/hours (which is heavy). Default 15 s when unset.
+    const cfg = await pool.query(
+      `SELECT value FROM app_settings WHERE key = 'staff_idle_logout_seconds'`
+    );
+    const n = parseInt(cfg.rows[0]?.value, 10);
+    const idleLogoutSeconds = Number.isInteger(n) && n >= 5 && n <= 120 ? n : 15;
+    return res.json({
+      success: true,
+      user: { ...rows[0], type: 'staff' },
+      idleLogoutSeconds,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });

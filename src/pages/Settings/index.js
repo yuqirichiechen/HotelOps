@@ -71,8 +71,17 @@ const Settings = ({ theme, onToggleTheme }) => {
   return (
     <div className="settings-page">
       <div className="settings-header">
-        <h1 className="settings-title">Settings</h1>
-        <p className="settings-subtitle">Manage your appearance, profile, and security.</p>
+        <div className="settings-header-text">
+          <h1 className="settings-title">Settings</h1>
+          <p className="settings-subtitle">Manage your appearance, profile, and security.</p>
+        </div>
+        {/* Sprint 16.7: sign out moved to the top of the page so
+            it's the first affordance the staff sees instead of
+            being buried at the bottom. The Account section below
+            still exposes who's signed in for context. */}
+        <button className="settings-btn settings-btn-danger settings-header-signout" onClick={handleSignOut}>
+          Sign out
+        </button>
       </div>
 
       <div className="settings-grid">
