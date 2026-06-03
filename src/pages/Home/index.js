@@ -93,7 +93,19 @@ const Home = () => {
     } catch { /* sessionStorage unavailable — fail open */ }
   }, [user?.user_id]);
   const dismissFocused = () => {
-    try { sessionStorage.setItem(FOCUSED_DISMISS_KEY, user?.user_id || ''); }
+    // Sprint 16.8: defensive guard. If the user object is still
+    // loading (auth context fetch in flight) when the staff taps,
+    // writing `''` to sessionStorage would later mismatch against
+    // the loaded user_id and the focused screen would re-render
+    // — the "appears, taps, reappears" stutter the GM reported
+    // alongside the disappearing bug. Skipping the write entirely
+    // here means the next render compares against `null` (no key),
+    // which behaves correctly.
+    if (!user?.user_id) {
+      setFocusedDismissed(true);
+      return;
+    }
+    try { sessionStorage.setItem(FOCUSED_DISMISS_KEY, user.user_id); }
     catch { /* ignore */ }
     setFocusedDismissed(true);
   };

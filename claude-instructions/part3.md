@@ -345,6 +345,114 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-06-02 — Sprint 16.8: bug fixes — FocusedAction disappearing, confirm/alert race, defensive guards
+
+Closing the Sprint 16 arc with three real bugs the GM caught in
+testing, plus an audit pass for anything else that could
+regress before Sprint 17 starts.
+
+**Bug 1 — FocusedAction disappears, reverts to Home dashboard.**
+
+Reproduction: log in → giant CLOCK IN screen shows → ~half-second
+later it vanishes and the regular Home dashboard appears
+underneath. No tap.
+
+Root cause: the focused-dismiss flag in sessionStorage
+(`hotelops-staff-focused-dismissed`) wasn't cleared on every
+logout path. Sprint 16.1's Home `handleAutoSignout` cleared it,
+but Sprint 16.7's shell-level `useShellIdleLogout` didn't. After
+a shell-idle logout + re-login as the same user, the stale
+sessionStorage key still matched `user.user_id`, so:
+
+1. Initial useState evaluates with `user` undefined briefly →
+   `'' === sessionStorage_value` → no match → focusedDismissed
+   = false → focused screen renders.
+2. Auth loads → `user.user_id` populates → the useEffect on
+   `user?.user_id` re-evaluates → `actual_id ===
+   stale_sessionStorage_value` → match → focusedDismissed flips
+   to true → focused screen unmounts.
+
+The "appears then disappears" pattern matches exactly.
+
+Fix at the root: `auth.logout()` now removes the
+sessionStorage key on every logout regardless of which surface
+triggered it. One place, every path covered. The cleanup list
+can grow as more "first landing post-login" flags ship.
+
+**Bug 2 — `dismissFocused` stutter when user object still loading.**
+
+Adjacent to Bug 1. If the staff taps the focused button during
+the brief window where `data` (from /me/hours) has loaded but
+`user` (from auth context's /api/me) hasn't, `dismissFocused`
+wrote `''` to sessionStorage. After `user` finally loaded the
+useEffect compared `actual_id === ''` → false → focusedDismissed
+flipped back to false → focused re-rendered. The staff would
+see their tap "register" then the screen come back.
+
+Fix: defensive guard in `dismissFocused` — if `user?.user_id`
+is missing, skip the sessionStorage write entirely and just
+flip the local state. Next render compares against `null` (no
+key), behaves correctly. The guard is cheap and the failure
+window is small but documented.
+
+**Bug 3 — ConfirmModal alert flashes then disappears on
+clock-out failure.**
+
+In Sprint 16.7's `clockOutStaff` flow, when the admin's POST
+fails the handler sets `actionPrompt` to an alert-shape modal.
+But the ConfirmModal's own `onClose` runs after the promise
+resolves and wipes `actionPrompt` to null in the same render
+cycle. The alert appeared and disappeared on adjacent renders —
+visible only as a flash.
+
+Fix: queue the failure alert via `setTimeout(..., 60)` so the
+new prompt lands as a macrotask, after the confirm modal's
+synchronous onClose has finished. Tiny delay, fully unnoticeable
+in practice; flash gone.
+
+**Bug sweep — other findings:**
+
+- **Four remaining `window.confirm` calls** still in
+  `StaffDetail` (PIN reset), `AdminSettings` (delete status
+  code), `ShiftSheet` (remove row, delete template). These are
+  inconsistencies with Sprint 16.7's themed ConfirmModal but
+  not bugs — functional. Migration deferred to a future
+  cleanup sprint.
+- **`handleAutoSignout` not wrapped in useCallback** in Home —
+  re-renders create a new function ref, which forces
+  FocusedAction's idle-countdown effect to re-create the
+  interval on every Home render. The countdown still fires
+  correctly because the elapsed-time calculation reads from
+  `startedAtRef` (a stable ref), not from the interval start.
+  Wasteful, not buggy.
+- **Client still passes `tz_offset_minutes`** to
+  `/admin/still-clocked-in` after Sprint 16.5 stopped using
+  it. Dead query param, server ignores it cleanly.
+- **All other `setInterval`s** (16 of them across the codebase)
+  return cleanup functions and unmount cleanly. No leaks.
+- **`sessionStorage` audit** — only the one key used. Fix in
+  auth.logout covers it completely.
+- **Shell idle vs FocusedAction idle race** — both timers fire
+  at the same threshold (`staff_idle_logout_seconds` default
+  15s). Both trigger auth.logout, which is idempotent
+  (sessionStorage clear, localStorage clear, setUser(null)).
+  Shell guards against double-fire via `firedRef`. Safe.
+
+**Verified.** Three touched files balance.
+
+**Sprint 16 arc — done for real this time.**
+
+Across 16.1–16.8 we shipped the full clock-workflow story the
+GM kicked off: prevention (focused screen) → cross-language
+clarity (i18n) → recovery (manual + auto clock-out) → polish
+(landing focus, digital clock, idle protection app-wide) →
+cleanup (this sprint).
+
+**Heading into Sprint 17.** GM has new features queued —
+ready to switch arcs.
+
+---
+
 ### 2026-06-02 — Sprint 16.7: top-of-page sign-out + collapsible settings + shell-level idle logout + custom confirm modal
 
 Four polish/fix items the GM flagged after the 16.6 review.

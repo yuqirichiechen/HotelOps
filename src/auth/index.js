@@ -124,6 +124,16 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try { await apiFetch('/auth/logout', { method: 'POST' }); } catch {}
     localStorage.removeItem(TOKEN_KEY);
+    // Sprint 16.8: drop every session-scoped key that's keyed by
+    // the current user. Without this, surfaces that gate on
+    // "first landing post-login" (notably the Sprint-16.1
+    // FocusedAction "dismissed" flag) inherit the previous
+    // session's state and either flash + disappear (focused
+    // bug the GM reported) or never re-appear. List is short;
+    // we'll add to it as more first-landing flows ship.
+    try {
+      sessionStorage.removeItem('hotelops-staff-focused-dismissed');
+    } catch { /* sessionStorage unavailable — ignore */ }
     setUser(null);
   };
 

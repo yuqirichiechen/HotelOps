@@ -169,17 +169,21 @@ const AdminHome = () => {
         });
         setOverdueBusy(null);
         if (!ok || !data?.success) {
-          // Surface failure as an alert-shaped ConfirmModal (no
-          // cancel button needed; rename "Cancel" → "Close" via
-          // the cancelLabel field).
-          setActionPrompt({
-            kind:         'alert',
-            title:        'Could not clock out',
-            message:      data?.message || 'Try again in a moment.',
-            confirmLabel: 'OK',
-            cancelLabel:  null,
-            onConfirm:    () => {},
-          });
+          // Sprint 16.8: queue the failure alert as a macrotask so
+          // it lands AFTER ConfirmModal's onClose wipes the current
+          // actionPrompt to null. Without the delay the alert flashes
+          // briefly then disappears in the same render cycle.
+          const message = data?.message || 'Try again in a moment.';
+          setTimeout(() => {
+            setActionPrompt({
+              kind:         'alert',
+              title:        'Could not clock out',
+              message,
+              confirmLabel: 'OK',
+              cancelLabel:  null,
+              onConfirm:    () => {},
+            });
+          }, 60);
           return;
         }
         refreshOverdue();
