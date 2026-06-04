@@ -16,23 +16,24 @@
 // forecast_snapshot.logs so the admin "view raw output" panel has
 // real per-step debug info.
 //
-// Env vars:
-//   AGILYSYS_USER          — rGuest username (e.g. "richie")
-//   AGILYSYS_PASS          — rGuest password
-//   AGILYSYS_TENANT_ID     — defaults to 1566 (Snoqualmie Inn)
-//   AGILYSYS_PROPERTY_ID   — defaults to 481  (Snoqualmie Inn)
-//   AGILYSYS_BASE_URL      — defaults to https://stay.rguest.com
+// Env vars (credentials only — set as Koyeb secrets):
+//   AGILYSYS_USER     — rGuest username
+//   AGILYSYS_PASS     — rGuest password
+//
+// Tenant + property are hardcoded for Snoqualmie. When we onboard a
+// second hotel, lift these into a per-property config table; the
+// `overrides` argument already supports per-call substitution.
 
 'use strict';
 
-const DEFAULT_BASE_URL    = 'https://stay.rguest.com';
-const DEFAULT_TENANT_ID   = '1566';
-const DEFAULT_PROPERTY_ID = '481';
+const BASE_URL    = 'https://stay.rguest.com';
+const TENANT_ID   = '1566'; // Snoqualmie Inn
+const PROPERTY_ID = '481';  // Snoqualmie Inn
 
 function createAgilysysClient(overrides = {}) {
-  const baseUrl    = overrides.baseUrl    || process.env.AGILYSYS_BASE_URL    || DEFAULT_BASE_URL;
-  const tenantId   = overrides.tenantId   || process.env.AGILYSYS_TENANT_ID   || DEFAULT_TENANT_ID;
-  const propertyId = overrides.propertyId || process.env.AGILYSYS_PROPERTY_ID || DEFAULT_PROPERTY_ID;
+  const baseUrl    = overrides.baseUrl    || BASE_URL;
+  const tenantId   = overrides.tenantId   || TENANT_ID;
+  const propertyId = overrides.propertyId || PROPERTY_ID;
   const username   = overrides.username   || process.env.AGILYSYS_USER;
   const password   = overrides.password   || process.env.AGILYSYS_PASS;
 
