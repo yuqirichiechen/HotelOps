@@ -25,12 +25,17 @@ const fmtTime = (iso) => {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 
-const fmtDate = (ymd) => {
-  if (!ymd) return '—';
-  // ymd is YYYY-MM-DD; build a Date with explicit local midnight so
-  // toLocaleDateString doesn't shift it by tz.
-  const [y, m, d] = ymd.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString([], {
+const fmtDate = (val) => {
+  if (!val) return '—';
+  // Accepts either 'YYYY-MM-DD' (e.g. payload.forecastDate) or an ISO
+  // timestamp (e.g. forecast_snapshot.forecast_date, which pg
+  // serialises as '2026-06-04T00:00:00.000Z'). Slice to the date
+  // portion first, then build a Date with explicit local midnight so
+  // toLocaleDateString doesn't shift it by timezone.
+  const s = String(val).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return s;
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString([], {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   });
 };

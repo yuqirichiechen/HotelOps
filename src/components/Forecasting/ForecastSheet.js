@@ -15,20 +15,27 @@ const ACTION_LABEL = {
   none:            '—',
 };
 
-const fmtDate = (ymd) => {
-  if (!ymd) return '—';
-  const [y, m, d] = ymd.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString([], {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
+// Sprint 17.6: tolerate both 'YYYY-MM-DD' and ISO timestamps (pg DATE
+// columns serialise as ISO over JSON).
+const _parseYmd = (val) => {
+  if (!val) return null;
+  const s = String(val).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
 };
 
-const fmtDateShort = (ymd) => {
-  if (!ymd) return '—';
-  const [y, m, d] = ymd.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString([], {
+const fmtDate = (val) => {
+  const d = _parseYmd(val);
+  return d ? d.toLocaleDateString([], {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  }) : '—';
+};
+
+const fmtDateShort = (val) => {
+  const d = _parseYmd(val);
+  return d ? d.toLocaleDateString([], {
     month: 'short', day: 'numeric',
-  });
+  }) : '—';
 };
 
 const ForecastSheet = ({ snapshot, propertyName = 'Snoqualmie Inn', onClose }) => {

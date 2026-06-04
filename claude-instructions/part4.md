@@ -179,6 +179,86 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.6: live-test bug-fix pass
+
+First live scrape against rGuest surfaced three real issues. All
+fixed.
+
+**1. `PAGE_SIZE_LIMIT_EXCEEDED` on `/reservations/search/date`.**
+
+The 17.1 default was `size: 200`. rGuest enforces `MAX=100` with the
+message "Page size must be less than 100" — strict `<`, so 100 also
+fails. Dropped the default to **99** in both
+`searchReservationsByDate` and `searchAllReservationsByDate`. The
+existing pagination walker handles any property with >99
+reservations on a single day.
+
+(Body shape `{date, page, size}` confirmed correct — rGuest parsed
+the body and only rejected the size value.)
+
+**2. Three duplicate logins per scrape.**
+
+`fetchForecastInputs` called `Promise.all([listRooms, listRoomTypes,
+searchAllReservationsByDate])` with no cached token. All three
+parallel calls hit `ensureToken()` at the same instant, all three
+saw `token === null`, and each kicked off its own `login()` — 3×
+the auth traffic per scrape. Fixed by pre-logging-in serially:
+
+```
+async function fetchForecastInputs(date) {
+  log('info', 'agilysys.scrape.start', { date });
+  if (!token) await login();          // ← single login
+  const [rooms, roomTypes, reservations] = await Promise.all([...]);
+  ...
+}
+```
+
+The token cache then makes the three parallel data calls cheap.
+
+**3. ISO-string dates rendered raw on the Forecast page + History modal.**
+
+Postgres `DATE` columns serialise as `'2026-06-04T00:00:00.000Z'`
+over JSON. Our `fmtDate` helpers in `Forecasting/index.js` and
+`ForecastSheet.js` were doing `ymd.split('-').map(Number)` — which
+on the ISO string parses the last segment as `'04T00:00:00.000Z'`
+→ `NaN` → `Invalid Date`. `ForecastHistory.js` rendered
+`{detail.forecast_date}` raw with no formatter.
+
+Fixed three places with the same slice-first pattern:
+
+```
+const s = String(val).slice(0, 10);
+const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+return m ? new Date(+m[1], +m[2]-1, +m[3]).toLocaleDateString(…) : '—';
+```
+
+The slice handles both raw `YYYY-MM-DD` (e.g. payload.forecastDate
+from compute.js) and ISO timestamps (DB columns).
+
+Added `fmtDateOnly` to `ForecastHistory.js` and applied to the
+"Forecast date" meta row.
+
+**Files touched:**
+- `server/agilysys/client.js` (size 200→99 in two methods,
+  pre-login in `fetchForecastInputs`, comment updates)
+- `src/components/Forecasting/index.js` (`fmtDate` slice-safe)
+- `src/components/Forecasting/ForecastSheet.js` (`fmtDate` +
+  `fmtDateShort` slice-safe via shared `_parseYmd` helper)
+- `src/components/Forecasting/ForecastHistory.js` (`fmtDateOnly`
+  added, applied to forecast_date meta cell)
+
+**Verified.** Brace + paren balance OK across all 4 files; client
+module loads + exposes the same 6 public methods after refactor.
+
+**Next live re-test:** Run scraper → expect a `success` snapshot
+this time. If the reservations endpoint takes a different filter
+key for the date (we passed `{date}`; rGuest might want
+`{startDate, endDate}` or `{businessDate}`), that's the next
+candidate. Check the logs view → Errors filter → look at the
+`body` field in the http_error context.
+
+---
+
 ### 2026-06-04 — Sprint 17.5: forecast settings UI + snapshot history with logs viewer
 
 Closes out the Sprint 17 build arc. Two modals, both reachable from

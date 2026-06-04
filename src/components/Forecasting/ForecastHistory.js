@@ -27,6 +27,19 @@ const fmtFullTime = (iso) => {
   });
 };
 
+// Sprint 17.6: pg DATE columns serialise to ISO over JSON
+// ('2026-06-04T00:00:00.000Z'). Slice to the date portion and
+// format from local-midnight to avoid timezone shift.
+const fmtDateOnly = (val) => {
+  if (!val) return '—';
+  const s = String(val).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return s;
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString([], {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  });
+};
+
 const LEVEL_RANK = { error: 4, warn: 3, info: 2, debug: 1 };
 
 const LogEntry = ({ entry }) => {
@@ -190,7 +203,7 @@ const ForecastHistory = ({ onClose }) => {
 
                 <dl className="fc-history-meta">
                   <div><dt>Scraped at</dt><dd>{fmtFullTime(detail.scraped_at)}</dd></div>
-                  <div><dt>Forecast date</dt><dd>{detail.forecast_date}</dd></div>
+                  <div><dt>Forecast date</dt><dd>{fmtDateOnly(detail.forecast_date)}</dd></div>
                   <div><dt>Source</dt><dd>{detail.source}</dd></div>
                   <div><dt>Status</dt>
                     <dd>

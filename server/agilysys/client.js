@@ -159,11 +159,15 @@ function createAgilysysClient(overrides = {}) {
   // a reservation with arrivalDate, departureDate, roomType,
   // roomNumber, primaryGuestInfo, status, etc.
   //
-  // We don't know the exact filter shape rGuest expects from the
-  // recon (we logged response bodies but not request bodies). The
-  // body shape below is the most common Spring search pattern;
-  // adjust if a first-run scrape comes back empty.
-  async function searchReservationsByDate(date, { page = 0, size = 200 } = {}) {
+  // Body shape `{date, page, size}` is the common Spring search
+  // pattern and was confirmed live in Sprint 17.6 (rGuest parsed
+  // the body and only rejected the size value).
+  //
+  // Sprint 17.6: rGuest enforces "page size must be less than 100"
+  // (`PAGE_SIZE_LIMIT_EXCEEDED`, MAX=100). Default is 99 → fits in
+  // one round-trip for Snoqualmie's <100 rooms; the
+  // `searchAllReservationsByDate` walker handles anything larger.
+  async function searchReservationsByDate(date, { page = 0, size = 99 } = {}) {
     const path = `/reservation-service/v2/tenants/${tenantId}/properties/${propertyId}/reservations/search/date`;
     const result = await call('POST', path, { date, page, size });
     const count = result && Array.isArray(result.content) ? result.content.length : 0;
@@ -179,9 +183,9 @@ function createAgilysysClient(overrides = {}) {
   }
 
   // Walks every page of /reservations/search/date and returns a flat
-  // array. For Snoqualmie's ~25-room load, a single page covers it
-  // — but be robust against larger properties / multi-day windows.
-  async function searchAllReservationsByDate(date, { size = 200 } = {}) {
+  // array. For Snoqualmie's load, a single page (99) covers it — but
+  // remain robust against larger properties / multi-day windows.
+  async function searchAllReservationsByDate(date, { size = 99 } = {}) {
     const all = [];
     let pageNum = 0;
     let totalPages = 1;
@@ -197,11 +201,15 @@ function createAgilysysClient(overrides = {}) {
   }
 
   // Convenience: fetch everything one forecast snapshot needs.
-  // Parallelised — rooms + roomTypes are independent; reservations
-  // also independent. Three round-trips total (or four if reservations
-  // pages).
+  //
+  // Sprint 17.6: pre-login serially before the parallel fetch. The
+  // previous version called Promise.all([rooms, roomTypes, reservations])
+  // first; with no cached token, all three independently raced into
+  // login() and we issued three logins per scrape. Now: one login,
+  // then the three data calls in parallel.
   async function fetchForecastInputs(date) {
     log('info', 'agilysys.scrape.start', { date });
+    if (!token) await login();
     const [rooms, roomTypes, reservations] = await Promise.all([
       listRooms(),
       listRoomTypes(),
