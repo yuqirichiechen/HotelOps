@@ -17,10 +17,14 @@ import Settings from '../pages/Settings';
 // Sprint 11.6: nav `icon` is now an icon *base name* — Sidebar
 // resolves it to `/logo/<base>_<dark|light>.png` based on the
 // active theme. PNGs live in /public/logo/.
+// Sprint 17.4: `mobilePrimary` marks items that show in the mobile
+// bottom tab bar. Items without the flag collapse into a "More"
+// sheet (slides up from the bottom nav). Desktop sidebar still
+// shows everything — the flag is mobile-only.
 const NAV = [
-  { view: 'home',      label: 'Home',      icon: 'home',      live: true },
-  { view: 'timesheet', label: 'Timesheet', icon: 'timesheet', live: true },
-  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',  live: true },
+  { view: 'home',      label: 'Home',      icon: 'home',      live: true, mobilePrimary: true },
+  { view: 'timesheet', label: 'Timesheet', icon: 'timesheet', live: true, mobilePrimary: true },
+  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',  live: true, mobilePrimary: true },
   { view: 'settings',  label: 'Settings',  icon: 'settings' },
 ];
 

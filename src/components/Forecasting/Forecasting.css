@@ -1,0 +1,466 @@
+/* Sprint 17.3 — Admin Forecast page styles.
+   Uses theme.css custom properties so it inherits dark-mode
+   automatically. `fc-` prefix keeps selectors out of global
+   collision range. */
+
+.fc-page {
+  padding: 24px 32px 80px;
+  background: var(--bg-base);
+  min-height: 100vh;
+  font-family: 'TiemposText', Georgia, serif;
+  color: var(--text-primary);
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.fc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.fc-header-text h1 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 32px;
+  margin: 0 0 6px;
+  color: var(--brand-text);
+}
+.fc-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  max-width: 520px;
+}
+/* Sprint 17.5: small text links below the subtitle for Settings +
+   History modals. Kept quiet so they don't compete with the primary
+   action buttons on the right. */
+.fc-header-meta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.fc-meta-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent-alt);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fc-meta-link:hover { color: var(--brand-hover); }
+.fc-meta-sep { color: var(--text-lightest); font-size: 12px; }
+.fc-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.fc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.05s;
+  border: 1px solid transparent;
+}
+.fc-btn:active { transform: scale(0.98); }
+.fc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.fc-btn-primary {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.fc-btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
+.fc-btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.fc-btn-secondary:hover:not(:disabled) { background: var(--bg-surface-alt); }
+
+/* ── Sync badge ──────────────────────────────────────────── */
+.fc-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.fc-sync-badge strong { color: var(--text-primary); }
+.fc-sync-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-muted);
+}
+.fc-sync-success .fc-sync-dot { background: var(--success); }
+.fc-sync-failed  .fc-sync-dot { background: var(--danger); }
+
+/* ── KPI cards ───────────────────────────────────────────── */
+.fc-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.fc-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.fc-kpi-icon {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  flex-shrink: 0;
+}
+.fc-kpi-arrivals   .fc-kpi-icon { background: #e9d8fd; }
+.fc-kpi-departures .fc-kpi-icon { background: #feebc8; }
+.fc-kpi-stayovers  .fc-kpi-icon { background: #c6f6d5; }
+.fc-kpi-clean      .fc-kpi-icon { background: #bee3f8; }
+.fc-kpi-staff      .fc-kpi-icon { background: #fefcbf; }
+.fc-kpi-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.fc-kpi-value {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+.fc-kpi-sublabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── Body grid (main + right rail) ───────────────────────── */
+.fc-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.fc-main {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.fc-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Table header + toggle ───────────────────────────────── */
+.fc-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.fc-table-header h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  margin: 0;
+  color: var(--brand-text);
+}
+.fc-toggle {
+  display: inline-flex;
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 3px;
+  border: 1px solid var(--border);
+}
+.fc-toggle button {
+  border: none;
+  background: transparent;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.fc-toggle button.active {
+  background: var(--brand-bg);
+  color: white;
+}
+
+/* ── Forecast table ──────────────────────────────────────── */
+.fc-table-wrap { overflow-x: auto; }
+.fc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.fc-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.fc-table th .fc-th-sub {
+  display: block;
+  font-size: 10px;
+  text-transform: none;
+  color: var(--text-lightest);
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-top: 2px;
+}
+.fc-table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+.fc-table tfoot td {
+  font-weight: 600;
+  border-bottom: none;
+  border-top: 2px solid var(--border);
+  padding-top: 14px;
+}
+.fc-table-emph {
+  font-weight: 600;
+  color: var(--brand-text);
+}
+.fc-table-footnote {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 14px 0 0;
+}
+
+/* ── By-floor expandable rows ────────────────────────────── */
+.fc-row-clickable { cursor: pointer; transition: background 0.1s; }
+.fc-row-clickable:hover { background: var(--bg-surface-alt); }
+.fc-row-clickable.open { background: var(--bg-surface-alt); }
+.fc-row-caret { text-align: right; color: var(--text-muted); }
+.fc-row-detail td { padding: 0; background: var(--bg-base); }
+.fc-floor-detail {
+  padding: 14px 20px 18px;
+  border-bottom: 2px solid var(--border);
+}
+.fc-floor-detail-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+.fc-room-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+}
+.fc-room-list li {
+  display: grid;
+  grid-template-columns: 56px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  padding: 6px 0;
+}
+.fc-room-num    { font-weight: 600; }
+.fc-room-type   { color: var(--text-secondary); }
+.fc-room-status { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+.fc-hk-D       { background: var(--danger-bg);  color: var(--danger-text); }
+.fc-hk-PU      { background: var(--warn-bg);    color: var(--warn-text); }
+.fc-hk-VI      { background: var(--success-bg); color: var(--success-text); }
+.fc-hk-IP      { background: var(--accent-bg);  color: var(--accent-alt); }
+.fc-hk-unknown { background: var(--bg-raised);  color: var(--text-muted); }
+.fc-room-action       { font-size: 11px; color: var(--text-muted); text-align: right; }
+.fc-action-checkoutClean   { color: var(--brand-text); font-weight: 500; }
+.fc-action-stayoverService { color: var(--accent-alt); font-weight: 500; }
+.fc-action-none            { color: var(--text-lightest); }
+
+/* ── Right rail cards ────────────────────────────────────── */
+.fc-rail-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.fc-rail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.fc-rail-card h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  margin: 0 0 12px;
+  color: var(--brand-text);
+}
+.fc-rail-head h3 { margin: 0; }
+.fc-pill {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.fc-pill-success { background: var(--success-bg); color: var(--success-text); }
+.fc-pill-failed  { background: var(--danger-bg);  color: var(--danger-text); }
+.fc-pill-ready   { background: var(--success-bg); color: var(--success-text); }
+
+.fc-rail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.fc-rail-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+.fc-rail-value {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.fc-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fc-rail-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 13px;
+}
+.fc-rail-list li:last-child { border-bottom: none; }
+.fc-rail-list strong { color: var(--text-primary); font-weight: 600; }
+.fc-rail-cta {
+  width: 100%;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* ── Donut card (legend-only for v1) ─────────────────────── */
+.fc-bottom { display: grid; gap: 20px; }
+.fc-donut-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.fc-donut-card h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  margin: 0 0 16px;
+  color: var(--brand-text);
+}
+.fc-donut-body {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.fc-donut-total {
+  width: 130px; height: 130px;
+  border-radius: 50%;
+  border: 14px solid var(--accent-bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.fc-donut-number {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 28px; line-height: 1;
+}
+.fc-donut-sublabel { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.fc-donut-legend { list-style: none; margin: 0; padding: 0; flex: 1; }
+.fc-donut-legend li {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+}
+.fc-donut-legend li:last-child { border-bottom: none; }
+.fc-donut-dot { width: 12px; height: 12px; border-radius: 50%; }
+.fc-donut-checkoutClean   { background: #805ad5; }
+.fc-donut-stayoverService { background: var(--success); }
+.fc-donut-count { color: var(--text-secondary); font-size: 13px; }
+
+/* ── States ──────────────────────────────────────────────── */
+.fc-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.fc-empty {
+  padding: 60px 40px;
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.fc-empty h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  margin: 0 0 10px;
+  color: var(--brand-text);
+}
+.fc-empty p { color: var(--text-secondary); margin: 0; }
+.fc-error {
+  padding: 14px 18px;
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+/* ── Mobile-ish (≤900px) ─────────────────────────────────── */
+@media (max-width: 900px) {
+  .fc-page { padding: 16px 16px 80px; }
+  .fc-header { flex-direction: column; align-items: stretch; }
+  .fc-header-actions { justify-content: flex-end; }
+  .fc-kpis { grid-template-columns: repeat(2, 1fr); }
+  .fc-body { grid-template-columns: 1fr; }
+  .fc-room-list { grid-template-columns: 1fr; }
+  .fc-donut-body { flex-direction: column; align-items: stretch; gap: 18px; }
+  .fc-donut-total { margin: 0 auto; }
+}

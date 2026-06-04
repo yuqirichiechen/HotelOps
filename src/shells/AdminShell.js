@@ -9,6 +9,7 @@ import AdminReports from '../pages/AdminReports';
 import Assistant from '../pages/Assistant';
 import AdminSettings from '../components/AdminPanel/AdminSettings';
 import ShiftSheet from '../pages/ShiftSheet';
+import Forecasting from '../components/Forecasting'; // Sprint 17.3 — replaces ComingSoon
 // Sprint 12.1: NotesPage no longer reachable from the admin shell —
 // handoff notes moved to the Logbook surface (AdminReports). Staff
 // shell still maps view='notes' to NotesPage for the staff calendar
@@ -23,10 +24,17 @@ import ShiftSheet from '../pages/ShiftSheet';
 // active theme. PNGs live in /public/logo/. "Reports" relabelled
 // to "Logbook" in step with the icon swap (a Sprint 12 surface
 // rebuild lands in the next iteration).
+// Sprint 17.4: `mobilePrimary` marks items that show in the mobile
+// bottom tab bar. Items without the flag collapse into a "More"
+// sheet (slides up from the bottom nav). Desktop sidebar still
+// shows everything — the flag is mobile-only.
 const NAV = [
-  { view: 'home',      label: 'Home',      icon: 'home',       live: true },
+  { view: 'home',      label: 'Home',      icon: 'home',       live: true, mobilePrimary: true },
   { view: 'staff',     label: 'Staff',     icon: 'stafficon',  live: true },
-  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',   live: true },
+  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',   live: true, mobilePrimary: true },
+  // Sprint 17.3: Forecast page wired in. Uses `calendar` icon as a
+  // temporary placeholder until /public/logo/forecast.png is added.
+  { view: 'forecast',  label: 'Forecast',  icon: 'calendar',   live: true, mobilePrimary: true },
   { view: 'reports',   label: 'Logbook',   icon: 'logbook' },
   { view: 'assistant', label: 'Assistant', icon: 'assistant' },
   { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
@@ -38,6 +46,7 @@ const VIEWS = {
   staffDetail: StaffDetail,
   calendar:    SchedulingManager,
   sheet:       ShiftSheet,
+  forecast:    Forecasting, // Sprint 17.3
   reports:     AdminReports,
   assistant:   Assistant,
   settings:    AdminSettings,

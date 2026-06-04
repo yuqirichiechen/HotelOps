@@ -318,37 +318,73 @@ CREATE TABLE handoff_note_reads (
 );
 
 
--- ── ROOM TYPES ────────────────────────────────────────────────────────────────
+-- ── ROOM TYPE MAPPING ─────────────────────────────────────────────────────────
+-- Migration: database/migrations/024_sprint17_forecast.sql
+-- Maps Agilysys typeCode (e.g. "NKRRA") to a display bucket. The
+-- 4-char prefix is the base bucket (NKRR / NKJZ / NQRR / NQJZ);
+-- trailing letters are sub-categories (A=Accessible, P=Pets, …).
 
-CREATE TABLE room_types (
-  room_type_id SERIAL       PRIMARY KEY,
-  name         VARCHAR(100) NOT NULL UNIQUE,
-  total_count  INT          NOT NULL DEFAULT 0
+CREATE TABLE room_type_mapping (
+  type_code       VARCHAR(20)  PRIMARY KEY,
+  type_name       VARCHAR(200) NOT NULL,
+  base_code       VARCHAR(10),
+  base_label      VARCHAR(100),
+  sub_suffix      VARCHAR(10)  NOT NULL DEFAULT '',
+  sub_label       VARCHAR(100) NOT NULL DEFAULT 'Standard',
+  admin_override  BOOLEAN      NOT NULL DEFAULT FALSE,
+  first_seen_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO room_types (name, total_count) VALUES
-  ('Standard', 0),
-  ('Deluxe',   0),
-  ('Suite',    0),
-  ('King',     0);
+INSERT INTO room_type_mapping (type_code, type_name, base_code, base_label, sub_suffix, sub_label) VALUES
+  ('NKRR', 'King Standard',           'NKRR', 'King Standard',         '', 'Standard'),
+  ('NKJZ', 'King Studio',             'NKJZ', 'King Studio',           '', 'Standard'),
+  ('NQRR', 'Double Queen Standard',   'NQRR', 'Double Queen Standard', '', 'Standard'),
+  ('NQJZ', 'Double Queen Studio',     'NQJZ', 'Double Queen Studio',   '', 'Standard');
 
 
--- ── FORECASTS ─────────────────────────────────────────────────────────────────
--- Daily room forecast per room type. surplus is auto-computed.
+-- ── FORECAST CONFIG ───────────────────────────────────────────────────────────
+-- Migration: database/migrations/024_sprint17_forecast.sql
+-- Singleton row of forecast settings (cron, labor constants, dedup window).
 
-CREATE TABLE forecasts (
-  forecast_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  room_type_id      INT  NOT NULL REFERENCES room_types(room_type_id),
-  forecast_date     DATE NOT NULL,
-  available_rooms   INT  NOT NULL DEFAULT 0,
-  expected_checkins INT  NOT NULL DEFAULT 0,
-  surplus           INT  GENERATED ALWAYS AS (available_rooms - expected_checkins) STORED,
-  source            VARCHAR(50) DEFAULT 'scraper',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE forecast_config (
+  config_id            INT          PRIMARY KEY DEFAULT 1 CHECK (config_id = 1),
+  cron_schedules       JSONB        NOT NULL DEFAULT '["30 5 * * *", "0 11 * * *"]'::jsonb,
+  cron_timezone        VARCHAR(64)  NOT NULL DEFAULT 'America/Los_Angeles',
+  productivity_target  NUMERIC(5,2) NOT NULL DEFAULT 6.00,
+  avg_min_per_clean    JSONB        NOT NULL DEFAULT
+                       '{"NKRR": 28, "NKJZ": 26, "NQRR": 28, "NQJZ": 26, "STAYOVER": 15, "DEFAULT": 25}'::jsonb,
+  dedup_window_minutes INT          NOT NULL DEFAULT 60,
+  updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_by           UUID         REFERENCES users(user_id)
 );
 
-CREATE INDEX idx_forecasts_date          ON forecasts(forecast_date DESC);
-CREATE UNIQUE INDEX idx_forecasts_type_date ON forecasts(room_type_id, forecast_date);
+INSERT INTO forecast_config (config_id) VALUES (1);
+
+
+-- ── FORECAST SNAPSHOT ─────────────────────────────────────────────────────────
+-- Migration: database/migrations/024_sprint17_forecast.sql
+-- One row per scrape run. Dedup by SHA256 of payload within
+-- forecast_config.dedup_window_minutes.
+
+CREATE TABLE forecast_snapshot (
+  snapshot_id        UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  scraped_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  forecast_date      DATE         NOT NULL,
+  source             VARCHAR(20)  NOT NULL DEFAULT 'manual',
+  triggered_by       UUID         REFERENCES users(user_id),
+  status             VARCHAR(20)  NOT NULL DEFAULT 'success',
+  records_processed  INT          NOT NULL DEFAULT 0,
+  payload            JSONB        NOT NULL,
+  payload_hash       CHAR(64)     NOT NULL,
+  logs               JSONB        NOT NULL DEFAULT '[]'::jsonb,
+  error_message      TEXT,
+  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_forecast_snapshot_date   ON forecast_snapshot(forecast_date DESC, scraped_at DESC);
+CREATE INDEX idx_forecast_snapshot_hash   ON forecast_snapshot(payload_hash, scraped_at DESC);
+CREATE INDEX idx_forecast_snapshot_status ON forecast_snapshot(status);
 
 
 -- ── AUDIT LOGS ────────────────────────────────────────────────────────────────

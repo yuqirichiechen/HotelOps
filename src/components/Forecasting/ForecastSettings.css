@@ -1,0 +1,339 @@
+/* Sprint 17.5 — Forecast Settings modal.
+   Shares the .fc-modal scaffold defined here (also reused by
+   ForecastHistory.css via an @import to keep both modals visually
+   consistent). */
+
+/* ── Shared modal scaffold ────────────────────────────────── */
+.fc-modal-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fc-modal-fade-in 0.15s ease-out;
+}
+
+.fc-modal {
+  background: var(--bg-surface);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 720px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.fc-modal-wide { max-width: 1080px; }
+
+.fc-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+.fc-modal-header h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  margin: 0;
+  color: var(--brand-text);
+}
+.fc-modal-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.fc-modal-close {
+  background: transparent;
+  border: 0;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0 6px;
+}
+.fc-modal-close:hover { color: var(--text-primary); }
+
+.fc-modal-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 22px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface-alt);
+}
+.fc-modal-tabs button {
+  background: transparent;
+  border: 0;
+  padding: 10px 14px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fc-modal-tabs button.active {
+  color: var(--brand-text);
+  border-bottom-color: var(--brand-bg);
+  font-weight: 600;
+}
+.fc-mapping-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.fc-modal-body {
+  padding: 20px 22px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.fc-modal-loading,
+.fc-modal-empty { color: var(--text-muted); text-align: center; padding: 24px; }
+.fc-modal-error {
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+.fc-modal-banner {
+  background: var(--success-subtle);
+  border: 1px solid var(--success-border);
+  color: var(--success-text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.fc-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 18px;
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+}
+.fc-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.fc-modal-btn-primary {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.fc-modal-btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
+.fc-modal-btn-danger {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+.fc-modal-btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+.fc-modal-btn-small { padding: 5px 10px; font-size: 12px; }
+.fc-modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@keyframes fc-modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Labor form ─────────────────────────────────────────── */
+.fc-labor-form section {
+  margin-bottom: 22px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border-light);
+}
+.fc-labor-form section:last-of-type { border-bottom: none; padding-bottom: 0; }
+.fc-labor-form h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  color: var(--brand-text);
+  margin: 0 0 10px;
+}
+.fc-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.fc-form-row input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  width: 80px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+.fc-form-help {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+.fc-form-help code {
+  background: var(--bg-raised);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.fc-avg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+.fc-avg-cell {
+  display: grid;
+  grid-template-columns: 60px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-base);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.fc-avg-cell span:first-child {
+  font-weight: 600;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+.fc-avg-cell input {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 100%;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.fc-avg-unit { color: var(--text-muted); font-size: 11px; }
+
+/* ── Mapping editor ─────────────────────────────────────── */
+.fc-mapping-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+.fc-mapping-intro code {
+  background: var(--bg-raised);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.fc-mapping-warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+.fc-mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fc-mapping-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.fc-mapping-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+}
+.fc-mapping-table code {
+  background: var(--bg-raised);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.fc-mapping-row-review td:first-child { position: relative; }
+.fc-mapping-row-review { background: rgba(254, 252, 191, 0.4); }
+.fc-mapping-reviewdot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  margin-left: 6px;
+}
+.fc-mapping-name { color: var(--text-secondary); font-size: 12px; max-width: 200px; }
+.fc-mapping-table select,
+.fc-mapping-table input[type="text"] {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12.5px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: 100%;
+}
+.fc-mapping-override label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* ── Pill (shared with sheet card) ───────────────────────── */
+.fc-pill {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+.fc-pill-success { background: var(--success-bg); color: var(--success-text); }
+.fc-pill-failed  { background: var(--danger-bg);  color: var(--danger-text); }
+
+/* ── Small screens ───────────────────────────────────────── */
+@media (max-width: 700px) {
+  .fc-modal-backdrop { padding: 0; }
+  .fc-modal { max-height: 100vh; height: 100vh; border-radius: 0; }
+  .fc-avg-grid { grid-template-columns: repeat(2, 1fr); }
+}

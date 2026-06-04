@@ -1,0 +1,249 @@
+/* Sprint 17.4 — Printable Housekeeping Forecast sheet.
+   Screen styles render the sheet as a centered modal over the
+   Forecast page. The @media print block at the bottom hides every
+   other element on the page so only the sheet content reaches paper. */
+
+/* ── Modal scaffold (screen only) ─────────────────────────── */
+.fc-sheet-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 20px;
+  animation: fc-sheet-fade-in 0.15s ease-out;
+}
+
+.fc-sheet-wrap {
+  background: white;
+  border-radius: 12px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 20px 0;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Controls bar — hidden in print */
+.fc-sheet-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 22px;
+  border-bottom: 1px solid #e2e8f0;
+  background: var(--bg-surface-alt);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+.fc-sheet-controls-left { display: flex; flex-direction: column; gap: 2px; }
+.fc-sheet-controls-title { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.fc-sheet-controls-hint  { font-size: 11px; color: var(--text-muted); }
+.fc-sheet-controls-right { display: flex; gap: 10px; }
+
+.fc-sheet-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.fc-sheet-btn-primary {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.fc-sheet-btn-primary:hover { background: var(--brand-hover); }
+.fc-sheet-btn-secondary {
+  background: white;
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.fc-sheet-btn-secondary:hover { background: var(--bg-surface-alt); }
+
+/* ── Sheet content (visible in both screen + print) ─────── */
+.fc-sheet {
+  padding: 32px 40px 28px;
+  font-family: 'TiemposText', Georgia, serif;
+  color: #1a1a1a;
+  background: white;
+}
+
+.fc-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding-bottom: 18px;
+  border-bottom: 2px solid #1a365d;
+  margin-bottom: 24px;
+}
+.fc-sheet-title-block h1 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 26px;
+  margin: 0 0 4px;
+  color: #1a365d;
+}
+.fc-sheet-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #4a5568;
+}
+.fc-sheet-summary {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 18px;
+}
+.fc-sheet-summary > div {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+}
+.fc-sheet-summary strong {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 22px;
+  line-height: 1;
+  color: #1a365d;
+}
+.fc-sheet-summary span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #718096;
+  margin-top: 4px;
+}
+
+.fc-sheet-floor {
+  margin-bottom: 22px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.fc-sheet-floor h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  color: #1a365d;
+  margin: 0 0 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.fc-sheet-floor-name { font-weight: 700; }
+.fc-sheet-floor-meta {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: #718096;
+}
+
+.fc-sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.fc-sheet-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4a5568;
+  padding: 6px 8px;
+  border-bottom: 1px solid #cbd5e0;
+}
+.fc-sheet-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: top;
+}
+.fc-sheet-room-num { font-weight: 600; font-feature-settings: 'tnum'; }
+.fc-sheet-sub { color: #718096; font-size: 11px; }
+
+.fc-sheet-occ {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  background: #edf2f7;
+  color: #2d3748;
+}
+.fc-sheet-occ-OCC { background: #fed7d7; color: #9b2c2c; }
+.fc-sheet-occ-VAC { background: #c6f6d5; color: #276749; }
+
+.fc-sheet-action { font-weight: 500; color: #1a365d; }
+
+/* Subtle row tint to make scannable. */
+.fc-sheet-row-checkoutClean   td { background: #fff8f0; }
+.fc-sheet-row-stayoverService td { background: #f0f9ff; }
+.fc-sheet-row-none td { color: #718096; }
+
+.fc-sheet-empty {
+  text-align: center;
+  color: #718096;
+  padding: 40px;
+}
+
+.fc-sheet-footer {
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid #cbd5e0;
+  font-size: 11px;
+  color: #718096;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+@keyframes fc-sheet-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Print styles ─────────────────────────────────────────── */
+/* The "visibility: hidden" + "visibility: visible" trick: hides
+   every element on the page, then re-enables only the sheet
+   content + its descendants. Position absolute strips the
+   sheet from the document flow so the surrounding page chrome
+   doesn't reserve space.
+
+   Tested approach in modern Chrome / Safari / Firefox. */
+@media print {
+  body * { visibility: hidden !important; }
+  .fc-sheet, .fc-sheet * { visibility: visible !important; }
+
+  .fc-sheet-backdrop {
+    position: static !important;
+    background: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    animation: none !important;
+  }
+  .fc-sheet-wrap {
+    box-shadow: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    max-width: none !important;
+  }
+  .fc-sheet-controls { display: none !important; }
+  .fc-sheet {
+    padding: 12px 16px !important;
+    color: black !important;
+    font-size: 11px !important;
+  }
+  .fc-sheet-table { font-size: 10.5px !important; }
+  .fc-sheet-table th, .fc-sheet-table td { padding: 4px 6px !important; }
+  .fc-sheet-floor { page-break-inside: avoid; margin-bottom: 14px !important; }
+  .fc-sheet-header { margin-bottom: 14px !important; padding-bottom: 10px !important; }
+  .fc-sheet-summary strong { font-size: 16px !important; }
+  .fc-sheet-summary span   { font-size: 8px !important; }
+  @page { size: letter; margin: 0.5in; }
+}

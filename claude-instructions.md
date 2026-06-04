@@ -1,6 +1,6 @@
 # Claude Instructions — HotelOps (index)
 
-> **Read both files below every iteration before doing any work.** The
+> **Read all files below every iteration before doing any work.** The
 > running log was split for size; nothing is duplicated — each part
 > hosts a different section of the project's history.
 
@@ -14,23 +14,33 @@
 
 2. **[claude-instructions/part2.md](./claude-instructions/part2.md)** — quick
    recap of Sprints 1–9 (so you don't have to re-read 5,000+ lines to
-   orient), followed by the iteration log starting at **Sprint 10**.
-   New sprint entries get appended here, not to part 1.
+   orient), followed by the iteration log for **Sprints 10–14.3**.
+
+3. **[claude-instructions/part3.md](./claude-instructions/part3.md)** —
+   iteration log for **Sprints 15.0–16.9**. Shift Sheet redesign arc
+   (15.x) plus the focused-clock + i18n + auto clock-out + admin clock
+   override arc (16.x).
+
+4. **[claude-instructions/part4.md](./claude-instructions/part4.md)** —
+   iteration log for **Sprint 17.0+**. Front Desk forecast feature
+   (Agilysys rGuest Stay integration) and onward.
 
 ## Why split
 
-Part 1 grew to ~5,700 lines / ~290KB across Sprints 1–9. Reading it
-end-to-end each iteration cost a lot of tokens. Part 2 starts fresh
-with a synthesis at the top, so future iterations can be productive
-with the recap as primary context and dip into part 1 when they need
-the deeper "*why* did we land here" detail.
+Each file caps around 2,000–3,000 lines before becoming unwieldy to
+load every iteration. When the active file gets long, we start a new
+part rather than retroactively restructuring — that way old entries
+keep their line numbers and historical sprint cross-references stay
+valid.
 
 ## When to write where
 
-- **New sprint entry**: append to `part2.md`. Never touch part 1.
-- **Updating an old entry / fixing a typo**: edit part 1 in place.
+- **New sprint entry**: append to the most recent part file (`part4.md`
+  as of Sprint 17). Never touch older parts.
+- **Updating an old entry / fixing a typo**: edit the original part in
+  place.
 - **Architectural decision that changes the project shape** (auth
-  model, routing scheme, etc.): update part 2's recap *and* add a new
-  sprint entry there.
-- **Don't move sprint entries between parts.** The split point
-  (Sprint 9.4.1 → Sprint 10) is fixed; respect it.
+  model, routing scheme, etc.): add a new sprint entry to the active
+  part with a "**Sprint-wide impact**" header.
+- **Don't move sprint entries between parts.** Split points are fixed
+  (9.4.1 → 10, 14.3 → 15, 16.9 → 17); respect them.

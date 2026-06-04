@@ -22,6 +22,20 @@ import './Sidebar.css';
 // Polled every 60s while the sidebar is mounted; light enough not
 // to need WebSocket plumbing for the capstone surface.
 
+// Sprint 17.4: 3-dots SVG for the mobile "More" tab. Inline so we
+// don't need a new PNG in /public/logo. Stroke uses currentColor so
+// the active/inactive color of the tab applies automatically.
+const MoreIcon = () => (
+  <svg
+    width="22" height="22" viewBox="0 0 24 24" fill="none"
+    aria-hidden="true" focusable="false"
+  >
+    <circle cx="5"  cy="12" r="1.6" fill="currentColor" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+    <circle cx="19" cy="12" r="1.6" fill="currentColor" />
+  </svg>
+);
+
 const Sidebar = ({
   navItems = [],
   currentView,
@@ -36,6 +50,8 @@ const Sidebar = ({
   const nav = useNavigate();
 
   const [unread, setUnread] = useState(0);
+  // Sprint 17.4: mobile "More" sheet open/closed state.
+  const [moreOpen, setMoreOpen] = useState(false);
   // Sprint 15.10: cost optimization. Was a hard 60s poll, which
   // (combined with AdminHome's 60s refresh) kept the DB compute
   // alive all day on what's essentially a notification badge.
@@ -155,31 +171,130 @@ const Sidebar = ({
         </div>
       </nav>
 
-      {/* Mobile bottom tab bar */}
-      <nav className="bottom-nav">
-        {navItems.map((item) => (
-          <button
-            key={item.view}
-            type="button"
-            onClick={handleClick(item.view)}
-            className={`bottom-nav-item${isActive(item) ? ' active' : ''}`}
-            aria-current={isActive(item) ? 'page' : undefined}
-          >
-            <span className="bottom-nav-icon">
-              <img
-                className="bottom-nav-icon-img"
-                src={iconSrc(item.icon)}
-                alt=""
-                aria-hidden="true"
-              />
-              {item.view === 'calendar' && unread > 0 && (
-                <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
+      {/* Mobile bottom tab bar.
+          Sprint 17.4: only items flagged `mobilePrimary` render
+          inline; everything else collapses into a "More" tab that
+          opens a bottom sheet. Avoids the 7-icon overflow that
+          happened after Sprint 17.3 added the Forecast nav item. */}
+      {(() => {
+        const primary    = navItems.filter(i => i.mobilePrimary);
+        const moreItems  = navItems.filter(i => !i.mobilePrimary);
+        const moreActive = moreItems.some(i => i.view === currentView);
+        const calendarInMore = moreItems.some(i => i.view === 'calendar');
+
+        const closeMoreThen = (fn) => (...args) => {
+          setMoreOpen(false);
+          if (typeof fn === 'function') fn(...args);
+        };
+
+        return (
+          <>
+            <nav className="bottom-nav">
+              {primary.map((item) => (
+                <button
+                  key={item.view}
+                  type="button"
+                  onClick={closeMoreThen(handleClick(item.view))}
+                  className={`bottom-nav-item${isActive(item) ? ' active' : ''}`}
+                  aria-current={isActive(item) ? 'page' : undefined}
+                >
+                  <span className="bottom-nav-icon">
+                    <img
+                      className="bottom-nav-icon-img"
+                      src={iconSrc(item.icon)}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    {item.view === 'calendar' && unread > 0 && (
+                      <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
+                    )}
+                  </span>
+                  <span className="bottom-nav-label">{item.label}</span>
+                </button>
+              ))}
+              {moreItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(prev => !prev)}
+                  className={`bottom-nav-item bottom-nav-more${(moreActive || moreOpen) ? ' active' : ''}`}
+                  aria-expanded={moreOpen}
+                  aria-haspopup="menu"
+                  aria-label="More navigation"
+                >
+                  <span className="bottom-nav-icon">
+                    <MoreIcon />
+                    {/* Surface the calendar unread badge on More
+                        when Calendar lives inside it — keeps the
+                        unread cue visible even when the tab is
+                        collapsed. */}
+                    {calendarInMore && unread > 0 && (
+                      <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
+                    )}
+                  </span>
+                  <span className="bottom-nav-label">More</span>
+                </button>
               )}
-            </span>
-            <span className="bottom-nav-label">{item.label}</span>
-          </button>
-        ))}
-      </nav>
+            </nav>
+
+            {moreOpen && (
+              <>
+                <div
+                  className="more-sheet-backdrop"
+                  onClick={() => setMoreOpen(false)}
+                  aria-hidden="true"
+                />
+                <div className="more-sheet" role="menu" aria-label="More navigation">
+                  <div className="more-sheet-handle" aria-hidden="true" />
+                  <ul className="more-sheet-list">
+                    {moreItems.map((item) => (
+                      <li key={item.view} role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={closeMoreThen(handleClick(item.view))}
+                          className={`more-sheet-item${isActive(item) ? ' active' : ''}`}
+                        >
+                          <span className="more-sheet-icon">
+                            <img
+                              src={iconSrc(item.icon)}
+                              alt=""
+                              aria-hidden="true"
+                            />
+                            {item.view === 'calendar' && unread > 0 && (
+                              <span className="more-sheet-unread-dot" aria-label={`${unread} unread`} />
+                            )}
+                          </span>
+                          <span className="more-sheet-label">{item.label}</span>
+                          {item.live && <span className="more-sheet-livedot" title="Live" />}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <hr className="more-sheet-divider" />
+                  <div className="more-sheet-actions">
+                    <button
+                      className="more-sheet-action"
+                      onClick={() => { setMoreOpen(false); onToggleTheme && onToggleTheme(); }}
+                      role="menuitem"
+                    >
+                      <span className="more-sheet-action-icon">{isDark ? '☀️' : '🌙'}</span>
+                      <span>{isDark ? 'Light mode' : 'Dark mode'}</span>
+                    </button>
+                    <button
+                      className="more-sheet-action more-sheet-signout"
+                      onClick={() => { setMoreOpen(false); handleSignOut(); }}
+                      role="menuitem"
+                    >
+                      <span className="more-sheet-action-icon" aria-hidden>↩</span>
+                      <span>Sign out</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        );
+      })()}
     </>
   );
 };

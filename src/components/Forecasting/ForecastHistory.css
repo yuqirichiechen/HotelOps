@@ -1,0 +1,227 @@
+/* Sprint 17.5 — Snapshot history modal.
+   Layered on top of ForecastSettings.css's shared modal scaffold;
+   only the master-detail body + log-list styles live here. */
+
+@import './ForecastSettings.css';
+
+.fc-history-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  flex: 1;
+  overflow: hidden;
+}
+
+.fc-history-list {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--bg-surface-alt);
+}
+.fc-history-list ul { list-style: none; margin: 0; padding: 6px; }
+.fc-history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-family: 'TiemposText', Georgia, serif;
+}
+.fc-history-row:hover { background: var(--bg-surface); }
+.fc-history-row.active {
+  background: var(--accent-bg);
+  color: var(--brand-text);
+}
+.fc-history-status {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.fc-history-status-success { background: var(--success-bg); color: var(--success-text); }
+.fc-history-status-failed  { background: var(--danger-bg);  color: var(--danger-text); }
+.fc-history-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fc-history-row-time { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+.fc-history-row-meta { font-size: 11px; color: var(--text-muted); }
+
+/* ── Detail pane ─────────────────────────────────────────── */
+.fc-history-detail {
+  overflow-y: auto;
+  padding: 18px 22px 24px;
+}
+.fc-history-detail-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px;
+  font-style: italic;
+}
+.fc-history-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.fc-history-detail-head h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  color: var(--brand-text);
+  margin: 0;
+}
+.fc-history-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.fc-history-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 24px;
+  margin: 0 0 18px;
+  font-size: 13px;
+}
+.fc-history-meta > div { display: flex; gap: 10px; }
+.fc-history-meta dt {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  min-width: 110px;
+}
+.fc-history-meta dd { margin: 0; color: var(--text-primary); }
+.fc-history-meta-error {
+  grid-column: 1 / -1;
+  flex-direction: column;
+  background: var(--danger-subtle);
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.fc-history-meta-error dd { color: var(--danger-text); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+.fc-history-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.fc-history-kpis > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-base);
+  border-radius: 6px;
+}
+.fc-history-kpis span {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+.fc-history-kpis strong {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  color: var(--brand-text);
+}
+
+/* ── Log viewer ──────────────────────────────────────────── */
+.fc-history-logs h4 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  color: var(--brand-text);
+  margin: 0;
+}
+.fc-history-logs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.fc-history-logs-filter {
+  display: inline-flex;
+  background: var(--bg-base);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid var(--border);
+}
+.fc-history-logs-filter button {
+  border: 0;
+  background: transparent;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.fc-history-logs-filter button.active {
+  background: var(--brand-bg);
+  color: white;
+}
+.fc-history-logs-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 14px;
+  font-size: 12px;
+}
+.fc-log-list { list-style: none; margin: 0; padding: 0; }
+.fc-log-entry {
+  border-bottom: 1px solid var(--border-light);
+  font-size: 12px;
+}
+.fc-log-entry:last-child { border-bottom: none; }
+.fc-log-head {
+  display: grid;
+  grid-template-columns: 80px 60px 1fr 16px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.fc-log-time { color: var(--text-muted); font-family: ui-monospace, Menlo, monospace; }
+.fc-log-level {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+}
+.fc-log-level-info  { background: #ebf8ff;          color: var(--accent-alt); }
+.fc-log-level-warn  { background: var(--warn-bg);   color: var(--warn-text); }
+.fc-log-level-error { background: var(--danger-bg); color: var(--danger-text); }
+.fc-log-level-debug { background: var(--bg-raised); color: var(--text-muted); }
+.fc-log-msg { color: var(--text-primary); word-break: break-word; }
+.fc-log-caret { text-align: right; color: var(--text-muted); }
+.fc-log-context {
+  margin: 0 0 8px 90px;
+  padding: 8px 12px;
+  background: var(--bg-base);
+  border-radius: 4px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow: auto;
+}
+
+/* ── Small screens ───────────────────────────────────────── */
+@media (max-width: 800px) {
+  .fc-history-body { grid-template-columns: 1fr; grid-template-rows: 200px 1fr; }
+  .fc-history-list { border-right: none; border-bottom: 1px solid var(--border); }
+  .fc-log-head { grid-template-columns: 70px 55px 1fr 16px; }
+}

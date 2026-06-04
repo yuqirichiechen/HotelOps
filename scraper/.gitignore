@@ -1,0 +1,10 @@
+# Outputs from agilysys_recon.py — contain reservation data.
+recon/
+
+# Persistent browser profile (cookies, login state) — do NOT commit.
+.browser_profile/
+
+# Python venv if created inline.
+.venv/
+__pycache__/
+*.pyc

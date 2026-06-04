@@ -9,6 +9,9 @@ const {
   requireAuth, requireRole,
 } = require('./auth');
 
+// Sprint 17 — Front Desk forecast (Agilysys rGuest Stay).
+const { runScrape: runForecastScrape } = require('./forecast/runScrape');
+
 const app = express();
 
 // CORS only needed for local dev (frontend and API are same-origin on Koyeb)
@@ -3983,6 +3986,219 @@ app.delete('/api/handoff-notes/:id', requireAuth, async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error('[handoff-notes:DELETE]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── Sprint 17: Front Desk forecast (Agilysys rGuest Stay) ─────────────────────
+// All routes admin-only. Orchestration in server/forecast/runScrape.js;
+// pure compute in server/forecast/compute.js; rGuest API client in
+// server/agilysys/client.js. Manual-run only for v1 — cron deferred.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// POST /api/admin/forecast/scrape — manual scrape trigger.
+// Body: { forecastDate?: 'YYYY-MM-DD' }. Defaults to today PT.
+// Returns the inserted (or dedup-reused) forecast_snapshot row.
+app.post('/api/admin/forecast/scrape', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { forecastDate } = req.body || {};
+    // Admin triggers have triggered_by=NULL (admins aren't in the
+    // users table). The 'manual' source distinguishes them from
+    // future cron runs.
+    const snapshot = await runForecastScrape({
+      pool,
+      source:      'manual',
+      triggeredBy: null,
+      forecastDate,
+    });
+    return res.json({ success: true, snapshot });
+  } catch (err) {
+    console.error('[forecast:scrape]', err);
+    return res.status(500).json({ success: false, message: err.message || 'Scrape failed' });
+  }
+});
+
+// GET /api/admin/forecast/snapshots?limit=20&offset=0&date=YYYY-MM-DD
+// Lean list (no full payload — just KPIs + meta).
+app.get('/api/admin/forecast/snapshots', requireAuth, requireRole('admin'), async (req, res) => {
+  const limit  = Math.min(Number(req.query.limit)  || 20, 200);
+  const offset = Math.max(Number(req.query.offset) || 0,  0);
+  const date   = req.query.date || null;
+  try {
+    const params = [limit, offset];
+    let where = '';
+    if (date) { where = `WHERE forecast_date = $3`; params.push(date); }
+    const { rows } = await pool.query(
+      `SELECT snapshot_id, scraped_at, forecast_date, source, triggered_by,
+              status, records_processed, error_message,
+              payload->'kpis'          AS kpis,
+              payload->'scraperOutput' AS scraper_output
+         FROM forecast_snapshot
+         ${where}
+         ORDER BY scraped_at DESC
+         LIMIT $1 OFFSET $2`,
+      params,
+    );
+    return res.json({ success: true, snapshots: rows });
+  } catch (err) {
+    console.error('[forecast:list]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/forecast/snapshots/latest?date=YYYY-MM-DD
+// Most recent successful snapshot (full payload + logs). Defaults
+// to "today PT".
+app.get('/api/admin/forecast/snapshots/latest', requireAuth, requireRole('admin'), async (req, res) => {
+  const date = req.query.date || null;
+  try {
+    const params = [];
+    let dateWhere = '';
+    if (date) { dateWhere = `AND forecast_date = $1`; params.push(date); }
+    const { rows } = await pool.query(
+      `SELECT * FROM forecast_snapshot
+        WHERE status = 'success' ${dateWhere}
+        ORDER BY scraped_at DESC LIMIT 1`,
+      params,
+    );
+    if (!rows.length) return res.json({ success: true, snapshot: null });
+    return res.json({ success: true, snapshot: rows[0] });
+  } catch (err) {
+    console.error('[forecast:latest]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/forecast/snapshots/:id — full snapshot + logs.
+app.get('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) return res.status(400).json({ success: false, message: 'bad snapshot id' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM forecast_snapshot WHERE snapshot_id = $1`, [id],
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'snapshot not found' });
+    return res.json({ success: true, snapshot: rows[0] });
+  } catch (err) {
+    console.error('[forecast:get]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/forecast/snapshots/:id — hard delete.
+// Backs the admin "free up space" affordance in the history view.
+app.delete('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) return res.status(400).json({ success: false, message: 'bad snapshot id' });
+  try {
+    const r = await pool.query(`DELETE FROM forecast_snapshot WHERE snapshot_id = $1`, [id]);
+    if (!r.rowCount) return res.status(404).json({ success: false, message: 'snapshot not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[forecast:delete]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/forecast/config — read singleton config.
+app.get('/api/admin/forecast/config', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM forecast_config WHERE config_id = 1`);
+    if (!rows.length) return res.status(500).json({ success: false, message: 'config missing — migration not run?' });
+    return res.json({ success: true, config: rows[0] });
+  } catch (err) {
+    console.error('[forecast:config:get]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// PUT /api/admin/forecast/config — update config knobs.
+// Only allow editing: productivity_target, avg_min_per_clean,
+// dedup_window_minutes. cron_schedules + cron_timezone are dormant
+// in v1 (cron deferred — decision §2.2.3 in part4.md).
+app.put('/api/admin/forecast/config', requireAuth, requireRole('admin'), async (req, res) => {
+  const body = req.body || {};
+  const fields = [];
+  const values = [];
+  if (body.productivity_target != null) {
+    const v = Number(body.productivity_target);
+    if (!Number.isFinite(v) || v <= 0) return res.status(400).json({ success: false, message: 'productivity_target must be > 0' });
+    fields.push(`productivity_target = $${values.push(v)}`);
+  }
+  if (body.avg_min_per_clean != null) {
+    if (typeof body.avg_min_per_clean !== 'object' || Array.isArray(body.avg_min_per_clean)) {
+      return res.status(400).json({ success: false, message: 'avg_min_per_clean must be an object' });
+    }
+    fields.push(`avg_min_per_clean = $${values.push(JSON.stringify(body.avg_min_per_clean))}::jsonb`);
+  }
+  if (body.dedup_window_minutes != null) {
+    const v = Number(body.dedup_window_minutes);
+    if (!Number.isInteger(v) || v < 0) return res.status(400).json({ success: false, message: 'dedup_window_minutes must be >= 0 integer' });
+    fields.push(`dedup_window_minutes = $${values.push(v)}`);
+  }
+  if (!fields.length) return res.status(400).json({ success: false, message: 'no editable fields supplied' });
+  fields.push(`updated_at = NOW()`);
+  // updated_by intentionally not set — admins aren't in users.
+  try {
+    const { rows } = await pool.query(
+      `UPDATE forecast_config SET ${fields.join(', ')} WHERE config_id = 1 RETURNING *`,
+      values,
+    );
+    return res.json({ success: true, config: rows[0] });
+  } catch (err) {
+    console.error('[forecast:config:put]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/forecast/mapping — full mapping list.
+// Sorted by base_code so admin can scan related codes together.
+// Includes a `needs_review` flag for rows where base_code IS NULL
+// (unknown prefix — admin should categorize).
+app.get('/api/admin/forecast/mapping', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT type_code, type_name, base_code, base_label,
+              sub_suffix, sub_label, admin_override,
+              (base_code IS NULL) AS needs_review,
+              first_seen_at, updated_at
+         FROM room_type_mapping
+         ORDER BY (base_code IS NULL) DESC, base_code NULLS LAST, sub_suffix, type_code`,
+    );
+    return res.json({ success: true, mapping: rows });
+  } catch (err) {
+    console.error('[forecast:mapping:list]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// PUT /api/admin/forecast/mapping/:code — override or unpin a mapping.
+// Body: { base_code?, base_label?, sub_suffix?, sub_label?, admin_override? }
+app.put('/api/admin/forecast/mapping/:code', requireAuth, requireRole('admin'), async (req, res) => {
+  const { code } = req.params;
+  if (!code || code.length > 20) return res.status(400).json({ success: false, message: 'bad code' });
+  const body = req.body || {};
+  const fields = [];
+  const values = [];
+  for (const col of ['base_code', 'base_label', 'sub_suffix', 'sub_label']) {
+    if (body[col] !== undefined) fields.push(`${col} = $${values.push(body[col])}`);
+  }
+  if (body.admin_override !== undefined) {
+    fields.push(`admin_override = $${values.push(!!body.admin_override)}`);
+  }
+  if (!fields.length) return res.status(400).json({ success: false, message: 'no fields supplied' });
+  fields.push(`updated_at = NOW()`);
+  values.push(code);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE room_type_mapping SET ${fields.join(', ')} WHERE type_code = $${values.length} RETURNING *`,
+      values,
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'mapping not found' });
+    return res.json({ success: true, mapping: rows[0] });
+  } catch (err) {
+    console.error('[forecast:mapping:put]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });

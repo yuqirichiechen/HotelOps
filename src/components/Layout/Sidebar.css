@@ -312,4 +312,141 @@
     font-size: 10px;
     white-space: nowrap;
   }
+
+  /* Sprint 17.4: More tab uses inline SVG instead of a PNG. Give
+     it the same icon footprint as the others (22px) so it
+     visually aligns with the rest of the bar. */
+  .bottom-nav-more svg { width: 22px; height: 22px; display: block; }
+}
+
+/* ── Sprint 17.4: "More" sheet for mobile bottom nav ───────────────────────── */
+/* The sheet sits *above* the bottom tab bar (bottom: 64px) so the
+   user can re-tap the More button to dismiss it. Backdrop covers
+   everything above the bar — tapping it also closes. Desktop never
+   shows the sheet (the desktop sidebar already lists every item). */
+.more-sheet-backdrop,
+.more-sheet { display: none; }
+
+@media (max-width: 768px) {
+  .more-sheet-backdrop {
+    display: block;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    bottom: 64px;  /* leave the bottom nav uncovered */
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 99;
+    animation: fc-more-fade-in 0.12s ease-out;
+  }
+
+  .more-sheet {
+    display: block;
+    position: fixed;
+    left: 0; right: 0;
+    bottom: 64px; /* sit on top of the bottom nav, not over it */
+    background: var(--bg-sidebar);
+    color: rgba(255, 255, 255, 0.92);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    z-index: 100;
+    padding: 8px 0 14px;
+    max-height: 60vh;
+    overflow-y: auto;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+    animation: fc-more-slide-up 0.18s ease-out;
+  }
+
+  .more-sheet-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    margin: 4px auto 12px;
+  }
+
+  .more-sheet-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .more-sheet-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 13px 20px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    color: inherit;
+    font-family: 'TiemposText', Georgia, serif;
+    font-size: 15px;
+    text-align: left;
+  }
+  .more-sheet-item:active   { background: rgba(255, 255, 255, 0.08); }
+  .more-sheet-item.active   { color: var(--accent); font-weight: 600; }
+  .more-sheet-item.active .more-sheet-icon img { filter: brightness(1.2); }
+
+  .more-sheet-icon {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .more-sheet-icon img { width: 24px; height: 24px; object-fit: contain; }
+  .more-sheet-unread-dot {
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 2px solid var(--bg-sidebar);
+  }
+
+  .more-sheet-label { flex: 1; }
+  .more-sheet-livedot {
+    width: 6px; height: 6px;
+    background: var(--live-dot);
+    border-radius: 50%;
+  }
+
+  .more-sheet-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    margin: 8px 16px;
+  }
+
+  .more-sheet-actions {
+    display: flex;
+    flex-direction: column;
+  }
+  .more-sheet-action {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 12px 20px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.85);
+    font-family: 'TiemposText', Georgia, serif;
+    font-size: 14px;
+    text-align: left;
+  }
+  .more-sheet-action:active { background: rgba(255, 255, 255, 0.08); }
+  .more-sheet-action-icon { width: 26px; text-align: center; }
+  .more-sheet-signout { color: rgba(255, 255, 255, 0.7); }
+
+  @keyframes fc-more-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes fc-more-slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
 }
