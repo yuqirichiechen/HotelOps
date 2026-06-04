@@ -38,16 +38,19 @@ const FocusedAction = ({
                          // fetching /me/hours — button disabled
                          // until the correct mode is known.
   onAction,
-  onSkip,
   onIdleLogout,
 }) => {
   // Sprint 16.2: every staff-facing string flows through the i18n
   // dict. Defaults to English when the user's preferred_language
   // is unset or unknown.
+  // Sprint 16.9: `onSkip` prop + "Just checking, skip" link removed.
+  // After a clock action, the extend-session card on Home covers
+  // the "I didn't mean to" case; the skip link was a dead end
+  // most of the time. Removing it makes the screen even more
+  // single-purpose, which is the whole point of FocusedAction.
   const t = useT();
   const [remaining, setRemaining] = useState(idleSeconds);
   const [tapped, setTapped] = useState(false);
-  const [exiting, setExiting] = useState(false);
   // Sprint 16.6: live wall clock for the digital readout above
   // the button. 1 s tick — separate from the idle countdown so
   // the two effects don't fight over the same interval.
@@ -99,11 +102,10 @@ const FocusedAction = ({
     }, TAP_CONFIRM_DELAY_MS);
   };
 
-  const handleSkip = () => {
-    if (exiting) return;
-    setExiting(true);
-    setTimeout(() => { if (onSkip) onSkip(); }, 200);
-  };
+  // Sprint 16.9: handleSkip + exiting state removed alongside
+  // the skip link below. The screen's only exits now are tapping
+  // the giant button (clock action) or letting the idle timer
+  // fire (logout).
 
   const showCountdown = remaining <= 5;
   const isIn = mode === 'in';
@@ -113,7 +115,7 @@ const FocusedAction = ({
   const firstName   = staffName ? staffName.split(' ')[0] : '';
 
   return (
-    <div className={`focused-action${exiting ? ' is-exiting' : ''}`}>
+    <div className="focused-action">
       {showCountdown && (
         <div className="focused-action-countdown" role="status" aria-live="polite">
           {t('focused.countdown', { n: Math.ceil(remaining) })}
@@ -151,13 +153,6 @@ const FocusedAction = ({
               ? <span className="focused-action-btn-label">…</span>
               : <span className="focused-action-btn-label">{label}</span>}
         </button>
-
-        <button
-          type="button"
-          className="focused-action-skip"
-          onClick={handleSkip}
-          disabled={busy || tapped}
-        >{t('focused.skip')}</button>
       </div>
     </div>
   );

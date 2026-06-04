@@ -264,11 +264,12 @@ const Home = () => {
             // focused overlay will hide once `clockEvent` is set
             // (showFocused becomes false), and then the post-
             // signout flow takes over from there.
+            // Sprint 16.9: `onSkip` prop removed alongside the
+            // skip link in FocusedAction.
             dismissFocused();
             if (focusedMode === 'in') handleClockIn();
             else                      handleClockOut();
           }}
-          onSkip={dismissFocused}
           onIdleLogout={handleAutoSignout}
         />
       )}

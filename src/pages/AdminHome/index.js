@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useView } from '../../shells/ViewContext';
 import { apiFetch, useAuth } from '../../auth';
 import ConfirmModal from '../../components/shared/ConfirmModal';
+import DropdownSelect from '../../components/shared/DropdownSelect';
 import './AdminHome.css';
 
 // Manager dashboard. Stats banner cards are clickable and drive a single
@@ -77,6 +78,13 @@ const AdminHome = () => {
   // clock-out flow. Shape:
   //   null | { kind: 'confirm', row, ... } | { kind: 'alert', message }
   const [actionPrompt, setActionPrompt] = useState(null);
+  // Sprint 16.9: admin clock-in/out controls on the on-clock panel.
+  // `allActiveStaff` powers the "Clock in someone" picker — fetched
+  // once on mount; refreshed after each clock action so the picker
+  // reflects who's eligible now. `clockInOpen` toggles the picker.
+  const [allActiveStaff, setAllActiveStaff] = useState([]);
+  const [clockInOpen,    setClockInOpen]    = useState(false);
+  const [clockBusy,      setClockBusy]      = useState(null); // user_id mid-action
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -150,11 +158,68 @@ const AdminHome = () => {
     };
   }, [refreshOverdue]);
 
-  // Sprint 16.3 / 16.7: admin-initiated clock-out from the alert
-  // list. 16.7 swapped the window.confirm/alert pair for the
-  // custom ConfirmModal so it matches the app's visual language.
-  // Tapping "Clock out" on a row queues a confirm prompt; the
-  // modal's onConfirm runs the actual POST + refreshes both lists.
+  // Sprint 16.9: load every active staff member once on mount so
+  // the on-clock panel's "Clock in someone" picker has its option
+  // list ready. Refreshed after each clock action so the picker
+  // reflects who's eligible now (people just clocked-in fall out
+  // of the eligible list; people just clocked-out re-appear).
+  const refreshAllStaff = useCallback(async () => {
+    const { ok, data } = await apiFetch('/admin/employees');
+    if (ok && data?.success) {
+      setAllActiveStaff((data.employees || []).filter(e => e.active));
+    }
+  }, []);
+  useEffect(() => { refreshAllStaff(); }, [refreshAllStaff]);
+
+  // Sprint 16.9: shared alert helper — pushes a failure message
+  // through the ConfirmModal alert-shape (single OK button). The
+  // 60 ms macrotask delay is the Sprint-16.8 race-guard so the
+  // current ConfirmModal's onClose finishes before the alert
+  // re-opens.
+  const showAlert = useCallback((title, message) => {
+    setTimeout(() => {
+      setActionPrompt({
+        kind:         'alert',
+        title,
+        message,
+        confirmLabel: 'OK',
+        cancelLabel:  null,
+        onConfirm:    () => {},
+      });
+    }, 60);
+  }, []);
+
+  // Sprint 16.9: admin-initiated CLOCK-IN. Mirrors clockOutStaff:
+  // confirm modal → POST → dashboard refresh. Used by the
+  // on-clock panel's "Clock in someone" picker.
+  const clockInStaff = useCallback((row) => {
+    setActionPrompt({
+      kind:         'confirm',
+      title:        `Clock in ${row.name}?`,
+      message:      'Their shift will start at the current time.',
+      confirmLabel: 'Clock in',
+      tone:         'default',
+      onConfirm:    async () => {
+        setClockBusy(row.user_id);
+        const { ok, data } = await apiFetch(`/admin/staff/${row.user_id}/clock-in`, {
+          method: 'POST',
+        });
+        setClockBusy(null);
+        if (!ok || !data?.success) {
+          showAlert('Could not clock in', data?.message || 'Try again in a moment.');
+          return;
+        }
+        setClockInOpen(false);
+        refreshAllStaff();
+        refresh();
+      },
+    });
+  }, [refresh, refreshAllStaff, showAlert]);
+
+  // Sprint 16.3 / 16.7 / 16.9: admin-initiated clock-out. 16.9
+  // refactored the failure-alert path into the shared `showAlert`
+  // helper + added the clock-in/out shared refresh to keep the
+  // picker's eligible list in sync.
   const clockOutStaff = useCallback((row) => {
     setActionPrompt({
       kind:         'confirm',
@@ -164,33 +229,22 @@ const AdminHome = () => {
       tone:         'danger',
       onConfirm:    async () => {
         setOverdueBusy(row.user_id);
+        setClockBusy(row.user_id);
         const { ok, data } = await apiFetch(`/admin/staff/${row.user_id}/clock-out`, {
           method: 'POST',
         });
         setOverdueBusy(null);
+        setClockBusy(null);
         if (!ok || !data?.success) {
-          // Sprint 16.8: queue the failure alert as a macrotask so
-          // it lands AFTER ConfirmModal's onClose wipes the current
-          // actionPrompt to null. Without the delay the alert flashes
-          // briefly then disappears in the same render cycle.
-          const message = data?.message || 'Try again in a moment.';
-          setTimeout(() => {
-            setActionPrompt({
-              kind:         'alert',
-              title:        'Could not clock out',
-              message,
-              confirmLabel: 'OK',
-              cancelLabel:  null,
-              onConfirm:    () => {},
-            });
-          }, 60);
+          showAlert('Could not clock out', data?.message || 'Try again in a moment.');
           return;
         }
         refreshOverdue();
+        refreshAllStaff();
         refresh();
       },
     });
-  }, [refresh, refreshOverdue]);
+  }, [refresh, refreshOverdue, refreshAllStaff, showAlert]);
 
   // Tick "X ago" label every 10s without re-fetching
   const [, setTick] = useState(0);
@@ -272,6 +326,10 @@ const AdminHome = () => {
 
     if (view === 'on-clock') {
       const total = data?.currentlyWorking?.length || 0;
+      // Sprint 16.9: staff eligible to clock-in via the picker —
+      // active staff not currently on the clock.
+      const workingIds = new Set((data?.currentlyWorking || []).map(w => w.user_id));
+      const eligible = allActiveStaff.filter(e => !workingIds.has(e.user_id));
       return (
         <>
           <div className="adm-card-head">
@@ -298,25 +356,87 @@ const AdminHome = () => {
                   <li
                     key={w.user_id}
                     className="adm-working-row"
-                    onClick={() => goTo('staffDetail', { userId: w.user_id })}
                   >
-                    <div className="adm-working-avatar">
-                      {(w.name || '?').charAt(0).toUpperCase()}
-                    </div>
-                    <div className="adm-working-info">
-                      <div className="adm-working-name">{w.name}</div>
-                      <div className="adm-working-meta">
-                        {(w.role || '').replace('_', ' ')}
+                    <div
+                      className="adm-working-main"
+                      onClick={() => goTo('staffDetail', { userId: w.user_id })}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="adm-working-avatar">
+                        {(w.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="adm-working-info">
+                        <div className="adm-working-name">{w.name}</div>
+                        <div className="adm-working-meta">
+                          {(w.role || '').replace('_', ' ')}
+                        </div>
+                      </div>
+                      <div className="adm-working-since">
+                        {fmtSince(w.clock_in_time)}
                       </div>
                     </div>
-                    <div className="adm-working-since">
-                      {fmtSince(w.clock_in_time)}
-                    </div>
+                    {/* Sprint 16.9: per-row admin clock-out. Same
+                        ConfirmModal flow as the Overdue panel; the
+                        button stops propagation so the row's
+                        drill-to-StaffDetail isn't triggered. */}
+                    <button
+                      type="button"
+                      className="adm-working-clockout"
+                      onClick={(e) => { e.stopPropagation(); clockOutStaff(w); }}
+                      disabled={clockBusy === w.user_id}
+                      title={`Clock out ${w.name}`}
+                    >
+                      {clockBusy === w.user_id ? '…' : 'Clock out'}
+                    </button>
                   </li>
                 ))}
               </ul>
             </div>
           ))}
+
+          {/* Sprint 16.9: clock-in someone affordance. Sits at the
+              bottom of the panel so it's a discoverable secondary
+              action without competing with the on-clock list above.
+              Opens a dept-grouped DropdownSelect of eligible staff. */}
+          <div className="adm-clockin-row">
+            {clockInOpen ? (
+              <div className="adm-clockin-inline">
+                <DropdownSelect
+                  value=""
+                  placeholder={
+                    eligible.length === 0
+                      ? 'Everyone is already on the clock'
+                      : 'Pick someone to clock in…'
+                  }
+                  options={eligible.map(e => ({
+                    value: e.user_id,
+                    label: `${e.name}${e.department ? ` · ${e.department}` : ''}`,
+                  }))}
+                  onChange={(uid) => {
+                    if (!uid) return;
+                    const row = eligible.find(e => e.user_id === uid);
+                    if (row) clockInStaff(row);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="adm-clockin-cancel"
+                  onClick={() => setClockInOpen(false)}
+                >Cancel</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="adm-clockin-trigger"
+                onClick={() => setClockInOpen(true)}
+                disabled={eligible.length === 0}
+                title={eligible.length === 0
+                  ? 'Everyone is already on the clock'
+                  : 'Manually clock in someone'}
+              >+ Clock in someone</button>
+            )}
+          </div>
         </>
       );
     }

@@ -345,6 +345,95 @@ All answered. Final answers below — use as the source of truth.
 
 ## 4. Sprint logs (15.0 → present)
 
+### 2026-06-04 — Sprint 16.9: drop the focused-skip + admin clock-in/out on the on-clock panel
+
+Two small bug fixes that close out the Sprint 16 arc.
+
+**1. "Just checking, skip" removed from FocusedAction.**
+
+The GM pointed out the skip link below the giant CLOCK IN
+button was redundant — after a clock action, the Home page
+shows the extend-session ("Keep signed in" / "Sign out now")
+card anyway, so the "I didn't mean to" case is covered. The
+skip was also visually pulling attention away from the single
+intended action.
+
+Changes:
+- Removed the `onSkip` prop, `handleSkip` handler, `exiting`
+  state, and the `<button className="focused-action-skip">`
+  render from `FocusedAction.js`.
+- Removed the `onSkip={dismissFocused}` wiring in
+  `Home/index.js`. `dismissFocused` is still called inside the
+  `onAction` handler so the focused state clears correctly on
+  tap.
+- The `focused.skip` i18n key + its translations + the
+  `.focused-action-skip` CSS rule are left in place as dead
+  code for one sprint in case a future surface needs them; can
+  be deleted in a later cleanup pass.
+
+**2. Admin clock-in/out from the AdminHome "On the floor" panel.**
+
+The GM asked for the ability to clock anyone in or out
+directly from the admin dashboard — useful when staff forgets
+the app, the kiosk is down, or they were too distracted to
+clock themselves in/out.
+
+- **Server: `POST /api/admin/staff/:id/clock-in`** — mirrors
+  the Sprint-16.3 `/clock-out` endpoint. Refuses with 400 if
+  staff is already on the clock; 404 if not found or soft-
+  deleted; inserts a new `time_entries` row with `NOW()` as
+  `clock_in_time` and returns the row.
+- **Per-row Clock Out button** on every "On the floor" entry.
+  Restructured the existing row from a single grid into a flex
+  layout: `.adm-working-main` (avatar / name / since cluster
+  + drill-to-StaffDetail click) on the left, `.adm-working-
+  clockout` button on the right. Click stops propagation so
+  the row-drill isn't triggered. Same `ConfirmModal` flow as
+  Sprint 16.3's overdue panel.
+- **"+ Clock in someone" picker** at the bottom of the panel.
+  Dashed quiet button by default; tap to expand into a
+  `DropdownSelect` showing every active staff member not
+  currently on the clock. Selecting one triggers a
+  `ConfirmModal` ("Clock in <name>?") → POST → dashboard
+  refresh. Cancel button retracts the inline picker.
+- **`allActiveStaff` state** powers the eligible list. Fetched
+  once on mount via `/api/admin/employees` and refreshed after
+  every clock action so the eligible list reflects who's
+  currently on/off the clock.
+- **`showAlert` helper** consolidates the Sprint-16.8
+  setTimeout race-guard pattern (60 ms macrotask before
+  raising a failure `actionPrompt`) into one place. Both
+  `clockInStaff` and `clockOutStaff` route their failure
+  messages through it.
+
+**Why the picker for clock-in vs another per-row pattern.**
+
+The "On the floor" panel by definition shows people who are
+already on the clock — they can't be clocked in twice. The
+picker at the bottom is the cleanest single-surface answer
+for "clock anyone in, regardless of where they are." Putting
+it on this panel keeps both directions of admin clock-state
+management in one place; no need to scatter "Clock In"
+affordances across StaffManager / StaffDetail / etc.
+
+**Verified.** Five touched files balance. server.js retains
+the same -5/+5 paren noise from prior literals.
+
+**Notes:**
+
+- No migrations.
+- The new endpoint shares the existing `clockBusy` state slot
+  with `overdueBusy` (both flag the same user_id during an
+  in-flight POST) so the per-row buttons stay disabled
+  correctly across both flows.
+- Per-row buttons stop event propagation so they don't drill
+  into StaffDetail accidentally. Verified with both the
+  on-clock panel and the overdue panel.
+
+**Sprint 16 arc — done. Sprint 17 wide open.**
+
+---
+
 ### 2026-06-02 — Sprint 16.8: bug fixes — FocusedAction disappearing, confirm/alert race, defensive guards
 
 Closing the Sprint 16 arc with three real bugs the GM caught in

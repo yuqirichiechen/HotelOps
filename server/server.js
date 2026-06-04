@@ -1597,6 +1597,46 @@ app.get('/api/admin/still-clocked-in', requireAuth, requireRole('admin'), async 
   }
 });
 
+// Sprint 16.9: admin-initiated clock-IN. Mirrors the /clock-out
+// endpoint below — used by the AdminHome "On the clock" panel
+// when the GM wants to clock someone in directly (e.g. staff
+// forgot the app or the kiosk is down). Refuses if the staff
+// is already on the clock; defensively re-checks `active` +
+// `deleted_at IS NULL` before inserting so soft-deleted users
+// can't be re-activated via this back door.
+app.post('/api/admin/staff/:id/clock-in', requireAuth, requireRole('admin'), async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const { rows: u } = await pool.query(
+      `SELECT user_id FROM users
+        WHERE user_id = $1::uuid AND active = true AND deleted_at IS NULL`,
+      [userId]
+    );
+    if (u.length === 0) {
+      return res.status(404).json({ success: false, message: 'Staff not found.' });
+    }
+    const { rows: open } = await pool.query(
+      `SELECT entry_id FROM time_entries
+        WHERE user_id = $1::uuid AND clock_out_time IS NULL
+        LIMIT 1`,
+      [userId]
+    );
+    if (open.length > 0) {
+      return res.status(400).json({ success: false, message: 'Staff is already on the clock.' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO time_entries (user_id, clock_in_time)
+       VALUES ($1::uuid, NOW())
+       RETURNING entry_id, user_id, clock_in_time, clock_out_time`,
+      [userId]
+    );
+    return res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    console.error('[admin clock-in]', err);
+    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+  }
+});
+
 // Sprint 16.3: admin-initiated clock-out. Closes the most recent
 // open entry for the given staff user_id. Distinct from the
 // pre-existing /api/clock-out which takes a phone number for the
