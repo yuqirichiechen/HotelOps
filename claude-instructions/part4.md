@@ -179,6 +179,137 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.7: data-correctness fixes (arrivals over-count + missing room types)
+
+Live-test surfaced the forecast over-counting arrivals: our scrape
+showed 42 vs rGuest's 37 (and rGuest's 20 *remaining*). Root cause
+was the classifier in `server/forecast/compute.js` ignoring the
+reservation `status` field entirely. Three bugs found and fixed,
+all in `compute.js`.
+
+**Bug 1: cancellations + no-shows counted as arrivals.**
+
+The recon shows rGuest's status enum is `RES` / `INH` / `DPT` /
+`CXL` (Reserved / In House / Departed / Cancelled), with `CXL`
+making up 15% of the date-filtered set. Our old classifier checked
+only date overlap — so cancelled rooms with today's original
+arrival date still landed in the arrivals bucket. Added
+`EXCLUDED_STATUSES = {CXL, NS, NSG, MOV}` at top of file; the
+classifier returns `null` immediately for any of these. Confirmed
+against recon: arrivals drop from 42 → 33 (= 42 − 9 cancelled
+rows whose arrival was today; the other 6 excluded rows had
+arrivals on different dates).
+
+**Bug 2: every reservation bucketed as `Other` in byRoomType.**
+
+The old code did:
+```js
+const rtCode = r.roomType && (r.roomType.typeCode || r.roomType.code);
+```
+
+But rGuest's reservation payload stores `roomType` as a **UUID
+string** pointing into the `/config/roomTypes` record, not an
+embedded object. The expression silently returned `undefined`, the
+mapping lookup missed, every reservation bucketed into the
+"unmapped" bucket. Added `resolveReservationTypeCode()` that
+looks the UUID up in the `roomTypeById` map (with a fallback for
+the embedded-object shape in case rGuest ever changes their
+mind). After fix: byRoomType correctly distributes across King
+Standard / King Studio / Double Queen Standard / Double Queen
+Studio with realistic per-bucket counts.
+
+**Bug 3: single-kind classifier under-counted day-uses + in-house.**
+
+`classifyForDate` used to return one of `'arrival'` / `'departure'`
+/ `'stayover'` / `null`. A reservation could only be in one
+bucket, so a day-use guest (arrival = departure = today) showed
+up only as arrival; an INH guest whose arrival was today never
+showed up in the in-house count.
+
+Replaced with a multi-flag classifier returning an object:
+
+```js
+{
+  arrivesToday, departsToday, isStayover, isInHouse, hasRoom
+}
+```
+
+All call sites updated (KPI counters, byRoomType, byFloor,
+perRoomSheet, actionForRoom). Day-uses now correctly bump both
+`arrivals` and `departures`; INH-with-today-arrival now correctly
+bumps both `arrivals` and `inHouse`. New KPI
+`kpis.inHouse` added for the 17.8 mockup's 6-card grid; also
+`kpis.remainingArrivals` (RES-with-today-arrival) which matches
+rGuest's headline "Remaining Arrivals" widget.
+
+**New payload field: `payload.reservations[]`.**
+
+The 17.8 UI revision needs a per-guest list (mockup images 9 +
+10 — "Today's Arrivals" sidebar, "Reservation Details" table).
+Built it once during compute and stuck it on the snapshot
+payload. Per-row shape:
+
+```js
+{
+  id, confirmationId, guestName,
+  arrivalDate, departureDate, nights,
+  roomNumber, roomId, isPreAssigned,
+  typeCode, baseLabel, subLabel,
+  source,           // ratePlanCode — 'BAR', 'LOCAL', 'WACHA', etc.
+  status,           // raw — 'RES' | 'INH' | 'DPT'
+  statusLabel,      // pretty — 'Confirmed' | 'Pending' | 'In house' | 'Departed'
+  kind,             // 'arrival' | 'departure' | 'stayover' | 'inhouse'
+  isDayUse, isEarlyArrival, isRedEye, scheduledForRoomMove,
+}
+```
+
+`statusLabel` distinguishes `Confirmed` (RES + has roomId, i.e.
+pre-assigned by FD) from `Pending` (RES, no roomId yet) — matches
+the mockup's two badge variants.
+
+**Diagnostic block added.**
+
+`payload.meta.excludedCount` + `payload.meta.excludedByStatus`
+({CXL: 15}) so the admin Settings/History view can show what got
+filtered. Helps confirm at a glance whether a number mismatch is
+"we excluded the right things" vs "we're missing data."
+
+**Verified against the live recon.** Loaded
+`scraper/recon/20260604-141754/requests.jsonl` (100 reservations,
+100 rooms, 15 room types) through the new compute fn:
+- arrivals 33, departures 31, stayovers 21, inHouse 29
+- 15 excluded (all CXL)
+- byRoomType: King Standard 16/15/4, Double Queen Studio 3/7/7, etc.
+- First 6 reservations match rGuest's UI row-by-row (Nancy
+  Aguilar / 322 / WACHA / King Standard / Confirmed, Evan
+  Allshouse / 412 / BAR / King Standard / In house, etc.).
+
+**Not touched in this sprint:** UI revision is 17.8 per the
+user's "fix data first" call. The existing Forecast page renders
+correctly because `kpis.arrivals` etc. still exist; the new
+fields are purely additive.
+
+**Files touched:**
+- `server/forecast/compute.js` (multi-flag classifier,
+  EXCLUDED_STATUSES, statusLabel, fullGuestName, nightsBetween,
+  resolveReservationTypeCode helpers, new reservations array on
+  payload, new excludedCount/excludedByStatus diagnostics)
+
+**Follow-ups for 17.8:**
+
+- Revise the cards UI per mockup images 9 + 10 — 6 KPI cards,
+  per-reservation list with status badges (Confirmed / Pending /
+  In house / Departed), filter chips (All / Arrivals /
+  Departures / Stayovers / In-house / Checked-out today),
+  pre-assignment indicator per row, "Selected Segment"
+  drill-down card, "Housekeeping Message Preview" composer.
+- Source detection is `ratePlanCode` only right now. The mockup
+  shows `Booking.com` / `Expedia` / `Direct` channel labels —
+  those probably live in another field (`guestDetails.bookingSource`
+  or similar). If a re-recon reveals one, swap in for `source`.
+
+---
+
 ### 2026-06-04 — Sprint 17.6: live-test bug-fix pass
 
 First live scrape against rGuest surfaced three real issues. All

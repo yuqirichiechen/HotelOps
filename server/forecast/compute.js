@@ -45,6 +45,32 @@ const SUB_LABELS = {
   B:   'Roll-In',
 };
 
+// Sprint 17.7: rGuest reservation status enum (confirmed from real
+// scrape data — see scraper/recon/20260604-141754/requests.jsonl).
+//   RES — Reserved / arriving today, not yet checked in
+//   INH — In house (checked in, currently in the property)
+//   DPT — Departed (already checked out)
+//   CXL — Cancelled         ← MUST exclude from all counts
+//   NS  — No-show           ← MUST exclude
+//   NSG — No-Show (Guaranteed) ← MUST exclude
+//   MOV — Moved             ← MUST exclude (duplicates the row)
+const EXCLUDED_STATUSES = new Set(['CXL', 'NS', 'NSG', 'MOV']);
+
+// Display label for a status code, taking pre-assignment into
+// account. The mockup distinguishes a 'Confirmed' arriving guest
+// (room pre-assigned, deposit good) from a 'Pending' one (no
+// room picked yet). We approximate that by RES + has roomId.
+function statusLabel(rawStatus, hasRoom) {
+  if (rawStatus === 'INH') return 'In house';
+  if (rawStatus === 'DPT') return 'Departed';
+  if (rawStatus === 'RES') return hasRoom ? 'Confirmed' : 'Pending';
+  if (rawStatus === 'CXL') return 'Cancelled';
+  if (rawStatus === 'NS')  return 'No-show';
+  if (rawStatus === 'NSG') return 'No-show (G)';
+  if (rawStatus === 'MOV') return 'Moved';
+  return rawStatus || '—';
+}
+
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -60,21 +86,37 @@ function isoDate(reservation, field) {
 }
 
 // Classify a reservation for the forecast date.
-//   arrival   — arrives today
-//   departure — departs today (and arrived earlier)
-//   stayover  — arrived earlier, departs later (in-house today)
-//   null      — doesn't affect today
 //
-// Same-day arrival+departure (rare; a no-show-then-rebook?) counts
-// as 'arrival' since the room still gets prepped.
+// Sprint 17.7: returns a multi-flag object instead of a single
+// kind, because a single reservation can be both an arrival AND a
+// departure (day-use), or both an arrival AND in-house (already
+// checked in for today's stay). The previous single-kind classifier
+// double-counted day-uses and under-counted in-house guests.
+//
+// Returns null if the reservation should not appear in any count
+// (cancelled, no-show, moved, or doesn't actually intersect the
+// forecast date).
 function classifyForDate(reservation, forecastDate) {
+  if (EXCLUDED_STATUSES.has(reservation.status)) return null;
   const arr = isoDate(reservation, 'arrivalDate');
   const dep = isoDate(reservation, 'departureDate');
   if (!arr || !dep) return null;
-  if (arr === forecastDate) return 'arrival';
-  if (dep === forecastDate) return 'departure';
-  if (arr < forecastDate && dep > forecastDate) return 'stayover';
-  return null;
+  const status = reservation.status;
+  const meta = {
+    arrivesToday:  arr === forecastDate,
+    departsToday:  dep === forecastDate,
+    isStayover:    arr < forecastDate && dep > forecastDate && status === 'INH',
+    isInHouse:     status === 'INH',
+    hasRoom:       !!(reservation.roomId || reservation.roomNumber),
+  };
+  // A reservation that touches the date in no way (e.g. an INH from
+  // earlier this week that's already past departure but somehow
+  // surfaced in the search) gets dropped so it doesn't pollute the
+  // in-house count.
+  const touchesDay = meta.arrivesToday || meta.departsToday || meta.isStayover ||
+    (status === 'INH' && arr <= forecastDate && dep >= forecastDate);
+  if (!touchesDay) return null;
+  return meta;
 }
 
 // Derive a room_type_mapping row from a typeCode + optional display
@@ -118,14 +160,55 @@ function shortGuestName(reservation) {
   return `${last}, ${first.charAt(0)}.`;
 }
 
+// Full guest name "First Last" — for the per-reservation list in
+// 17.8's revised UI.
+function fullGuestName(reservation) {
+  const g = reservation.primaryGuestInfo || {};
+  const first = (g.firstName || '').trim();
+  const last  = (g.lastName  || '').trim();
+  return [first, last].filter(Boolean).join(' ');
+}
+
+// Whole-day count from arrival to departure. Min 0.
+function nightsBetween(arr, dep) {
+  if (!arr || !dep) return 0;
+  const a = new Date(`${arr}T00:00:00`);
+  const d = new Date(`${dep}T00:00:00`);
+  const n = Math.round((d - a) / 86400000);
+  return n > 0 ? n : 0;
+}
+
+// Sprint 17.7: resolve a reservation's room type to a `typeCode`.
+// rGuest stores `reservation.roomType` as a UUID string pointing at
+// the /config/roomTypes record (not an embedded object). Earlier
+// guesses assumed `.typeCode` on the field directly and silently
+// returned null — that's why baseLabel was missing on every
+// reservation in 17.x. The fallback handles a possible object
+// shape too in case rGuest ever changes their mind.
+function resolveReservationTypeCode(reservation, roomTypeById) {
+  const ref = reservation.roomType;
+  if (!ref) return null;
+  if (typeof ref === 'string') {
+    const rt = roomTypeById.get(ref);
+    return rt ? rt.typeCode : null;
+  }
+  if (typeof ref === 'object') {
+    return ref.typeCode || ref.code || null;
+  }
+  return null;
+}
+
 // Picks the cleaning category for a room on the forecast date.
 //   checkoutClean   — room had a guest depart today; needs full turn
 //   stayoverService — room has a guest still in-house today
 //   none            — nothing scheduled (vacant or arrival-only)
+//
+// Sprint 17.7: uses the multi-flag classifier output (`_meta`)
+// instead of the old exclusive `_kind` string.
 function actionForRoom(room, classifiedResn) {
   const reservations = classifiedResn.filter(r => r.roomId === room.id || r.roomNumber === room.roomNumber);
-  if (reservations.some(r => r._kind === 'departure')) return 'checkoutClean';
-  if (reservations.some(r => r._kind === 'stayover'))  return 'stayoverService';
+  if (reservations.some(r => r._meta.departsToday)) return 'checkoutClean';
+  if (reservations.some(r => r._meta.isStayover))   return 'stayoverService';
   return 'none';
 }
 
@@ -160,11 +243,14 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
   const roomTypeById  = new Map(roomTypes.map(rt => [rt.id, rt]));
   const mappingByCode = new Map((roomTypeMapping || []).map(m => [m.type_code, m]));
 
-  // 2. Classify reservations for the forecast date.
-  const classifiedResn = reservations.map(r => ({
-    ...r,
-    _kind: classifyForDate(r, forecastDate),
-  })).filter(r => r._kind !== null);
+  // 2. Classify reservations for the forecast date. Multi-flag
+  //    model (Sprint 17.7) — a reservation can be both an arrival
+  //    AND in-house, or both an arrival AND a departure (day-use).
+  //    `_meta = null` means filtered out (CXL / NS / NSG / MOV, or
+  //    the reservation doesn't actually intersect today).
+  const classifiedResn = reservations
+    .map(r => ({ ...r, _meta: classifyForDate(r, forecastDate) }))
+    .filter(r => r._meta !== null);
 
   // 3. Auto-onboard new typeCodes — anything in roomTypes the admin
   //    hasn't mapped yet. The endpoint upserts these into
@@ -179,11 +265,24 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
   }
 
   // 4. KPI counters (top of the page).
+  //
+  // Sprint 17.7: counts derived from the new multi-flag model so
+  // they match rGuest's UI numbers. A day-use reservation now
+  // shows up in BOTH arrivals AND departures (matches rGuest); an
+  // INH whose arrival is today shows up in both arrivals and
+  // inHouse (rGuest treats checked-in arrivals as "already
+  // arrived" — still counts toward total arrivals for the day).
   const kpis = {
-    arrivals:   classifiedResn.filter(r => r._kind === 'arrival').length,
-    departures: classifiedResn.filter(r => r._kind === 'departure').length,
-    stayovers:  classifiedResn.filter(r => r._kind === 'stayover').length,
+    arrivals:   classifiedResn.filter(r => r._meta.arrivesToday).length,
+    departures: classifiedResn.filter(r => r._meta.departsToday).length,
+    stayovers:  classifiedResn.filter(r => r._meta.isStayover).length,
+    inHouse:    classifiedResn.filter(r => r._meta.isInHouse).length,
   };
+  // "Remaining arrivals" is rGuest's headline number (the FD has
+  // already checked some in). Useful for the FD widget but doesn't
+  // change anything HK plans.
+  kpis.remainingArrivals = classifiedResn
+    .filter(r => r._meta.arrivesToday && r.status === 'RES').length;
   kpis.roomsToCleanToday = kpis.departures + kpis.stayovers;
   const productivity     = Number(config.productivity_target) || 6;
   kpis.housekeepersNeeded = Math.ceil(kpis.roomsToCleanToday / productivity);
@@ -205,9 +304,9 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
     const myResns = classifiedResn.filter(
       r => r.roomId === room.id || r.roomNumber === room.roomNumber,
     );
-    const departingResn = myResns.find(r => r._kind === 'departure');
-    const stayoverResn  = myResns.find(r => r._kind === 'stayover');
-    const arrivingResn  = myResns.find(r => r._kind === 'arrival');
+    const departingResn = myResns.find(r => r._meta.departsToday);
+    const stayoverResn  = myResns.find(r => r._meta.isStayover);
+    const arrivingResn  = myResns.find(r => r._meta.arrivesToday);
     const relevantResn  = departingResn || stayoverResn || arrivingResn || null;
 
     return {
@@ -275,15 +374,21 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
   }
 
   // First, walk reservations for arrivals/departures/stayovers counts.
+  // Sprint 17.7: multi-flag — same reservation can bump multiple
+  // counters (day-use adds arrival + departure; INH with arrival
+  // today adds arrival + an implicit inHouse). Also fixes the
+  // longstanding "everything bucketed as Other" bug:
+  // r.roomType is a UUID string, not an object — resolve via
+  // roomTypeById.
   for (const r of classifiedResn) {
-    const rtCode = r.roomType && (r.roomType.typeCode || r.roomType.code);
+    const rtCode = resolveReservationTypeCode(r, roomTypeById);
     const mapping = rtCode ? mappingByCode.get(rtCode) : null;
     const baseCode  = mapping ? mapping.base_code  : null;
     const baseLabel = mapping ? mapping.base_label : null;
     const row = bucketFor(baseCode, baseLabel);
-    if (r._kind === 'arrival')   row.arrivals++;
-    if (r._kind === 'departure') row.departures++;
-    if (r._kind === 'stayover')  row.stayovers++;
+    if (r._meta.arrivesToday) row.arrivals++;
+    if (r._meta.departsToday) row.departures++;
+    if (r._meta.isStayover)   row.stayovers++;
   }
   // Then derive rooms-needed from per-room sheet (more accurate
   // than reservation-side counts because it reflects actual room
@@ -342,7 +447,52 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
     housekeepersNeeded:  kpis.housekeepersNeeded,
   };
 
-  // 10. Scraper output card (matches the mockup's right-rail card).
+  // 10. Per-reservation array (Sprint 17.7) — the 17.8 UI renders
+  //     guest-by-guest cards from this. Includes pre-assignment
+  //     flag (`isPreAssigned`), normalized status label, kind tag
+  //     for tab filtering, and a guessed source from ratePlanCode.
+  const reservationsOut = classifiedResn.map(r => {
+    const arr = isoDate(r, 'arrivalDate');
+    const dep = isoDate(r, 'departureDate');
+    const rtCode  = resolveReservationTypeCode(r, roomTypeById);
+    const mapping = rtCode ? mappingByCode.get(rtCode) : null;
+    const isPreAssigned = !!r.roomId;
+    // "Kind" — primary bucket for the filter chips in the new UI.
+    // Day-uses end up under 'departure' (they require a checkout
+    // clean today). Pure stayovers and pure in-house arrivals get
+    // their own tags so the UI can split them.
+    let kind = null;
+    if (r._meta.departsToday) kind = 'departure';
+    else if (r._meta.arrivesToday) kind = 'arrival';
+    else if (r._meta.isStayover)   kind = 'stayover';
+    else if (r._meta.isInHouse)    kind = 'inhouse';
+    return {
+      id:                r.id,
+      confirmationId:    r.confirmationId || null,
+      guestName:         fullGuestName(r),
+      arrivalDate:       arr,
+      departureDate:     dep,
+      nights:            nightsBetween(arr, dep),
+      roomId:            r.roomId    || null,
+      roomNumber:        r.roomNumber || null,
+      isPreAssigned,
+      typeCode:          rtCode || null,
+      baseCode:          mapping ? mapping.base_code  : null,
+      baseLabel:         mapping ? mapping.base_label : null,
+      subLabel:          mapping ? mapping.sub_label  : null,
+      source:            r.ratePlanCode || null,
+      status:            r.status || null,
+      statusLabel:       statusLabel(r.status, isPreAssigned),
+      kind,
+      isDayUse:          !!r.dayUse,
+      isEarlyArrival:    !!r.earlyArrival,
+      isRedEye:          r.redEyeArrival && typeof r.redEyeArrival === 'object'
+                           && Object.keys(r.redEyeArrival).length > 0,
+      scheduledForRoomMove: !!r.scheduledForRoomMove,
+    };
+  });
+
+  // 11. Scraper output card (matches the mockup's right-rail card).
   const scraperOutput = {
     source:           'Agilysys rGuest Stay',
     dataWindow:       forecastDate,
@@ -357,14 +507,26 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
     byRoomType,
     byFloor,
     perRoomSheet,
+    reservations: reservationsOut, // Sprint 17.7 — for the per-guest UI
     dispatchSummary,
     scraperOutput,
     newMappings, // caller upserts into room_type_mapping
     meta: {
-      roomsCount:        rooms.length,
-      roomTypesCount:    roomTypes.length,
-      reservationsCount: reservations.length,
-      classifiedCount:   classifiedResn.length,
+      roomsCount:           rooms.length,
+      roomTypesCount:       roomTypes.length,
+      reservationsCount:    reservations.length,
+      classifiedCount:      classifiedResn.length,
+      // Sprint 17.7: diagnostics so the admin can see what got
+      // filtered (cancelled / no-show / past) at a glance.
+      excludedCount:        reservations.length - classifiedResn.length,
+      excludedByStatus:     Object.fromEntries(
+        Object.entries(reservations.reduce((acc, r) => {
+          if (EXCLUDED_STATUSES.has(r.status)) {
+            acc[r.status] = (acc[r.status] || 0) + 1;
+          }
+          return acc;
+        }, {})),
+      ),
     },
   };
 }
