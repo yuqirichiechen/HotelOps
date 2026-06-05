@@ -859,7 +859,7 @@ const Forecasting = () => {
           >
             <IconBack /> <span>Home</span>
           </button>
-          <h1>Room Forecast</h1>
+          <h1>Reservations</h1>
           {/* Sprint 17.9 — subtitle removed (was descriptive only);
               the three meta links carry the actionable affordances. */}
           <div className="fc-header-meta-actions">

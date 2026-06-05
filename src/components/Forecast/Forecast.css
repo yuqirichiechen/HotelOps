@@ -1,0 +1,456 @@
+/* Sprint 17.11 — Admin Forecast page (room-type availability).
+   `fb-` prefix (forecast-balance) to keep it cleanly separate
+   from the `fc-` classes that power the Reservations page. */
+
+.fb-page {
+  padding: 24px 32px 80px;
+  background: var(--bg-base);
+  min-height: 100vh;
+  font-family: 'TiemposText', Georgia, serif;
+  color: var(--text-primary);
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.fb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+.fb-header-left { flex: 1; min-width: 0; }
+.fb-header-left h1 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 32px;
+  margin: 0 0 6px;
+  color: var(--brand-text);
+}
+.fb-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 620px;
+}
+.fb-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.fb-breadcrumb button {
+  background: transparent;
+  border: 0;
+  color: var(--accent-alt);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.fb-breadcrumb button:hover { text-decoration: underline; }
+.fb-breadcrumb svg { color: var(--text-muted); }
+
+.fb-meta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  margin-top: 10px;
+}
+.fb-meta-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent-alt);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fb-meta-link:hover:not(:disabled) {
+  color: var(--brand-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fb-meta-link:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.fb-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.fb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.fb-btn:active { transform: scale(0.98); }
+.fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.fb-btn-primary {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.fb-btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
+.fb-btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.fb-btn-secondary:hover:not(:disabled) { background: var(--bg-surface-alt); }
+
+.fb-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.fb-sync-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--success);
+}
+.fb-sync-badge strong { color: var(--text-primary); }
+
+/* ── Top stats strip (5 cards) ───────────────────────────── */
+.fb-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.fb-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-light);
+}
+.fb-stat:last-child { border-right: none; padding-right: 0; }
+.fb-stat-icon {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.fb-stat-warn .fb-stat-icon    { background: #fed7d7; color: #9b2c2c; }
+.fb-stat-success .fb-stat-icon { background: #c6f6d5; color: #276749; }
+.fb-stat-info .fb-stat-icon    { background: #bee3f8; color: #2b6cb0; }
+.fb-stat-default .fb-stat-icon { background: var(--bg-raised); color: var(--text-secondary); }
+.fb-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.fb-stat-value {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 26px;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+/* ── Body grid ───────────────────────────────────────────── */
+.fb-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+.fb-main { display: flex; flex-direction: column; gap: 18px; }
+.fb-rail { display: flex; flex-direction: column; gap: 18px; }
+
+.fb-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 22px;
+}
+.fb-card h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 17px;
+  color: var(--brand-text);
+  margin: 0 0 14px;
+}
+.fb-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.fb-card-head h2 { margin: 0; }
+.fb-card-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Formula tooltip in Need-by-Room-Type header ─────────── */
+.fb-formula {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--accent-bg);
+  border: 1px solid #bee3f8;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #2c5282;
+  max-width: 380px;
+}
+.fb-formula svg { flex-shrink: 0; margin-top: 2px; }
+.fb-formula-sub { color: #4a5568; margin-top: 2px; }
+
+/* ── Table ───────────────────────────────────────────────── */
+.fb-table-wrap { overflow-x: auto; }
+.fb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fb-table th {
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.fb-table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+.fb-table tr:last-child td { border-bottom: none; }
+.fb-table code {
+  background: var(--bg-raised);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+.fb-table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 28px;
+}
+.fb-table-footnote {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 10px 0 0;
+}
+.fb-balance { font-weight: 600; }
+.fb-balance-short   { color: var(--danger);  }
+.fb-balance-surplus { color: var(--success); }
+.fb-balance-even    { color: var(--text-muted); }
+.fb-emph-warn { color: var(--danger);  font-weight: 600; }
+.fb-emph-ok   { color: var(--success); font-weight: 600; }
+
+.fb-pill {
+  display: inline-block;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+.fb-pill-short   { background: var(--danger-bg);  color: var(--danger-text); }
+.fb-pill-surplus { background: var(--success-bg); color: var(--success-text); }
+.fb-pill-even    { background: var(--bg-raised);  color: var(--text-secondary); }
+.fb-pill-status-confirmed { background: #c6f6d5; color: #276749; }
+.fb-pill-status-pending   { background: #e9d8fd; color: #5b21b6; }
+.fb-pill-status-inhouse   { background: #bee3f8; color: #2c5282; }
+.fb-pill-status-departed  { background: var(--bg-raised); color: var(--text-muted); }
+
+.fb-cell-name { font-weight: 600; }
+
+/* ── Forecast Summary card (right rail) ──────────────────── */
+.fb-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 1.6fr);
+  gap: 18px;
+}
+.fb-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fb-summary-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-light);
+}
+.fb-summary-list li:last-child { border-bottom: none; }
+.fb-summary-list strong { font-size: 16px; font-family: 'TiemposHeadline', Georgia, serif; }
+.fb-summary-total {
+  border-top: 1px solid var(--border) !important;
+  padding-top: 10px !important;
+  margin-top: 4px;
+}
+
+/* ── SVG bar chart ───────────────────────────────────────── */
+.fb-chart {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.fb-chart-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.fb-chart-legend {
+  display: inline-flex;
+  gap: 14px;
+  margin-bottom: 10px;
+  font-size: 11px;
+}
+.fb-chart-key { position: relative; padding-left: 14px; color: var(--text-muted); }
+.fb-chart-key::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 10px; height: 10px;
+  border-radius: 2px;
+}
+.fb-chart-key-vc::before { background: var(--success); }
+.fb-chart-key-ar::before { background: var(--accent-alt); }
+.fb-bar-group {
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.fb-bar-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  align-self: center;
+}
+.fb-bars { display: flex; flex-direction: column; gap: 3px; }
+.fb-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fb-bar {
+  height: 10px;
+  border-radius: 2px;
+  min-width: 2px;
+}
+.fb-bar-vc { background: var(--success); }
+.fb-bar-ar { background: var(--accent-alt); }
+.fb-bar-val { font-size: 11px; color: var(--text-secondary); }
+.fb-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  padding-left: 56px;
+}
+
+/* ── Operational Notes ───────────────────────────────────── */
+.fb-notes { list-style: none; margin: 0; padding: 0; }
+.fb-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+.fb-note:last-child { border-bottom: none; }
+.fb-note-dot { display: inline-flex; flex-shrink: 0; margin-top: 4px; }
+.fb-note-urgent  .fb-note-dot { color: var(--danger); }
+.fb-note-info    .fb-note-dot { color: var(--success); }
+.fb-note-neutral .fb-note-dot { color: var(--accent-alt); }
+
+/* ── HK Message card ─────────────────────────────────────── */
+.fb-msg-card { display: flex; flex-direction: column; gap: 12px; }
+.fb-msg-head { display: flex; justify-content: space-between; align-items: center; }
+.fb-msg-card h2 { margin: 0; }
+.fb-msg-body {
+  margin: 0;
+  background: var(--bg-base);
+  border-left: 3px solid var(--accent-alt);
+  padding: 14px 16px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.fb-msg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ── States ──────────────────────────────────────────────── */
+.fb-loading,
+.fb-empty {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.fb-empty h2 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  margin: 0 0 10px;
+  color: var(--brand-text);
+}
+.fb-empty p { margin: 0; }
+.fb-error {
+  padding: 14px 18px;
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 1280px) and (min-width: 901px) {
+  .fb-stats { grid-template-columns: repeat(3, 1fr); }
+  .fb-body { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .fb-page { padding: 16px 16px 80px; }
+  .fb-header { flex-direction: column; align-items: stretch; }
+  .fb-stats { grid-template-columns: repeat(2, 1fr); }
+  .fb-stat { border-right: none; border-bottom: 1px solid var(--border-light); padding-bottom: 12px; }
+  .fb-body { grid-template-columns: 1fr; }
+  .fb-summary-grid { grid-template-columns: 1fr; }
+}

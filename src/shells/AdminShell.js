@@ -9,7 +9,8 @@ import AdminReports from '../pages/AdminReports';
 import Assistant from '../pages/Assistant';
 import AdminSettings from '../components/AdminPanel/AdminSettings';
 import ShiftSheet from '../pages/ShiftSheet';
-import Forecasting from '../components/Forecasting'; // Sprint 17.3 — replaces ComingSoon
+import Forecasting from '../components/Forecasting'; // Sprint 17.3 — reservations overview (renamed in 17.11)
+import Forecast    from '../components/Forecast';    // Sprint 17.11 — room-type availability forecast
 // Sprint 12.1: NotesPage no longer reachable from the admin shell —
 // handoff notes moved to the Logbook surface (AdminReports). Staff
 // shell still maps view='notes' to NotesPage for the staff calendar
@@ -32,9 +33,12 @@ const NAV = [
   { view: 'home',      label: 'Home',      icon: 'home',       live: true, mobilePrimary: true },
   { view: 'staff',     label: 'Staff',     icon: 'stafficon',  live: true },
   { view: 'calendar',  label: 'Calendar',  icon: 'calendar',   live: true, mobilePrimary: true },
-  // Sprint 17.3: Forecast page wired in. Uses `calendar` icon as a
-  // temporary placeholder until /public/logo/forecast.png is added.
-  { view: 'forecast',  label: 'Forecast',  icon: 'calendar',   live: true, mobilePrimary: true },
+  // Sprint 17.11: split the prior "Forecast" nav item in two.
+  // "Reservations" = booking-list / arrivals-detail view (the page
+  // previously labelled Forecast). "Forecast" = room-type
+  // availability projection (new page). Both share the same scrape.
+  { view: 'reservations', label: 'Reservations', icon: 'calendar', live: true, mobilePrimary: true },
+  { view: 'forecast',     label: 'Forecast',     icon: 'calendar', live: true, mobilePrimary: true },
   { view: 'reports',   label: 'Logbook',   icon: 'logbook' },
   { view: 'assistant', label: 'Assistant', icon: 'assistant' },
   { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
@@ -46,7 +50,8 @@ const VIEWS = {
   staffDetail: StaffDetail,
   calendar:    SchedulingManager,
   sheet:       ShiftSheet,
-  forecast:    Forecasting, // Sprint 17.3
+  reservations: Forecasting, // Sprint 17.11: was 'forecast' → 'reservations'
+  forecast:     Forecast,    // Sprint 17.11: room-type availability page
   reports:     AdminReports,
   assistant:   Assistant,
   settings:    AdminSettings,

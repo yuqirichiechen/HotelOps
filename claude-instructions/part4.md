@@ -179,6 +179,108 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.11: split the page into Reservations + Forecast (new room-availability view)
+
+User noticed the page labelled "Forecast" was actually a
+reservations/booking overview (arrivals/departures/in-house) — the
+*forecast* concept hadn't been built yet. Split into two pages.
+
+**1. Renamed the existing page → Reservations.**
+
+- `AdminShell.js`: NAV gains a `reservations` entry pointing at the
+  existing `Forecasting` component; the `forecast` entry now points
+  at the new `Forecast` component (below).
+- `src/components/Forecasting/index.js`: page title `Room Forecast`
+  → `Reservations`. Internal file/folder name stays `Forecasting`
+  (would otherwise cascade through CSS classnames + modal imports
+  + sub-component identifiers; not worth the churn). The mental
+  model is: "Forecasting/" = the *reservations-detail* page,
+  "Forecast/" = the *availability-forecast* page. Code comments
+  flag the slight mismatch.
+
+**2. New `Forecast` page — `src/components/Forecast/index.js`.**
+
+Matches the user's mockup at image 19. Self-contained file (~440
+lines) + its own CSS (~360 lines). Uses the `fb-` prefix
+(forecast-balance) so its styles are independent of the
+Reservations page's `fc-` styles.
+
+**Compute.**
+
+For each base room type (NKRR / NKJZ / NQRR / NQJZ) the page
+shows:
+```
+vacantClean = perRoomSheet rooms matching baseCode WHERE
+              occupancyStatus='VAC' AND hkStatus='VI'
+arrivals    = byRoomType[i].arrivals
+netBalance  = vacantClean − arrivals
+roomsNeeded = max(0, −netBalance)
+status      = 'surplus' | 'short' | 'even'
+```
+
+Logic lives in `computeNeedRows(payload)` — pure, no I/O.
+
+**Layout.**
+
+- Breadcrumb (`Home > Forecast`) + title + descriptive subtitle
+  ("Room-type availability forecast from Agilysys rGuest Stay and
+  housekeeping room conditions.").
+- Meta-link row: Snapshot history (clock), Forecast settings
+  (gear), Reservations detail (briefcase — cross-link to the
+  sister page).
+- Header actions: **Sync arrivals** (refresh icon, runs the same
+  scrape endpoint), **Generate forecast** (chart icon, no-op stub
+  — placeholder for a PDF-style output in 17.12), **Send to
+  housekeeping** (paper-plane, stub), Last sync badge.
+- 5 top stats: Total rooms needed today, Total vacant clean, Total
+  arrivals, Deficit room types, Surplus room types. Colored icon
+  chips (warn/success/info backgrounds).
+- Main column: **Need by Room Type** table (room code / name /
+  vacant clean / arrivals / net balance / rooms needed / status
+  pill) with a callout box explaining the formula, then **Arrival
+  Detail Reference** table showing today's arrivals (first 30,
+  sorted by guest name).
+- Right rail: **Forecast Summary** card (per-type needed counts +
+  a pure-SVG horizontal bar chart comparing Vacant Clean vs
+  Arrivals per type) and **Operational Notes** (auto-generated
+  bullet list — prioritization for short types, surplus call-outs,
+  reminder to confirm late arrivals).
+- Bottom: **Housekeeping Message Preview** with auto-generated
+  text (uses the same compute output) + Edit / Send to
+  housekeeping actions.
+
+**Pure-SVG bar chart.** Two-row-per-type bars, scaled to the max
+value across all types. Legend chips (green = Vacant Clean, blue
+= Arrivals) + axis labels (0 → maxVal/4 → maxVal/2 → 3/4 →
+maxVal). Lightweight; no charting library added.
+
+**Shared modals.** Imports `ForecastSettings` and `ForecastHistory`
+from `../Forecasting/` rather than duplicating. Both pages drive
+the same scrape pipeline so it's correct to share.
+
+**Files touched:**
+- `src/shells/AdminShell.js` (new import + 2 NAV entries + VIEWS
+  map update).
+- `src/components/Forecasting/index.js` (title text only).
+- `src/components/Forecast/index.js` (new, ~440 lines).
+- `src/components/Forecast/Forecast.css` (new, ~360 lines).
+
+**Verified.** Brace balance OK across all touched JS files.
+
+**Follow-ups for 17.12+:**
+
+- "Generate forecast" + "Send to housekeeping" buttons are stubs
+  — they don't yet produce a PDF or distribute the message.
+- The Reservations page still uses the 17.10 KPI cards designed
+  for that view (in-house, arrivals, etc.). Forecast page uses
+  its own different top-stat strip. They aren't kept in sync on
+  purpose — different audiences, different urgency.
+- "Reservations detail" cross-link uses the briefcase icon —
+  worth swapping to a more distinctive icon if visually
+  confusing.
+
+---
+
 ### 2026-06-04 — Sprint 17.10: KPI row redesigned to 6 cards, button width stabilized, "Home" back-button
 
 Three things off the user's punch list.
