@@ -179,6 +179,96 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-05 — Sprint 17.16: dedupe reservations, drop the mismatch banner, click-to-expand variant rows
+
+User shared a diagnostics dump showing the persistent ~4 arrival
+gap (rGuest's 22 vs our 26) is `RES arr=today` x 26 in the
+status×date matrix. Combined with the NKRRP "1 vacant clean"
+mystery (user verified only 2 NKRRP rooms exist in rGuest and
+both are OCC), there are two unresolved questions: where the 4
+extras come from, and which specific room our code thinks is a
+vacant NKRRP.
+
+**1. Dedupe by `reservation.id` before classifying for arrivals.**
+
+The /search/date endpoint returns 2129 rows total. rGuest's
+metrics widget appears to dedupe (a master reservation + its
+group children, or duplicate join rows from the search result)
+before counting "remaining arrivals". We weren't deduping at
+all, which is the leading hypothesis for the +4 over-count.
+
+```js
+const seenResIds = new Set();
+for (const r of payload.reservations || []) {
+  recordLabels(r);
+  if (r.id) {
+    if (seenResIds.has(r.id)) continue;
+    seenResIds.add(r.id);
+  }
+  if (r.typeCode && r.kind === 'arrival' && r.status === 'RES') {
+    arrivalsByType.set(r.typeCode, …);
+  }
+}
+```
+
+If the gap closes after this, dedup was the cause. If not, the
+extras are real RES records with a status sub-flag we're not
+checking — diagnosable only with raw payload access.
+
+**2. Dropped the yellow mismatch banner per user feedback.**
+
+The 17.15 banner was confusing the user ("there are NO 26"). The
+top-stat uses rGuest's authoritative count (correct); the
+per-type sum may diverge slightly post-dedupe but isn't surfaced
+visually now. Quiet wins over noisy.
+
+**3. Click-to-expand variant rows — debugs NKRRP-style mysteries.**
+
+Each subtype row in the Need-by-Room-Type table is now
+clickable. Clicking opens a detail row below that lists every
+physical room of that typeCode as a chip:
+
+```
+[ G28  OCC  Dirty ]   [ 122  OCC  Dirty ]   [ 309  VAC  Vacant Inspected ]
+```
+
+Chips for `VAC + (VI || PU)` rooms get a soft green highlight so
+"vacant clean" rooms pop. Click NKRRP, see exactly which rooms
+we think are vacant clean — settles the question instantly:
+- 2 chips, both OCC → user was right; we have a stale-status
+  bug to chase via `config/rooms`.
+- 3 chips, one VAC → there's a third NKRRP the user missed in
+  rGuest's paginated HK Condition page.
+
+Wiring: new `roomsByType` Map built in the page component
+(`roomsByType[typeCode] = perRoomSheet[]`), passed into
+`NeedTable` as a prop. `NeedTable` keeps a single `openType`
+state — only one detail row open at a time (prevents the table
+from sprawling). Caret on the variant row flips ▾/└ to indicate
+state.
+
+**Files touched:**
+- `src/components/Forecast/index.js` — id-dedup loop, dropped
+  banner JSX, `NeedTable` becomes a real component (was an
+  arrow expression), accepts `roomsByType` prop, click handler
+  + detail-row renderer, `roomsByType` `useMemo` on the page.
+- `src/components/Forecast/Forecast.css` — `.fb-clickable`
+  hover/open states, `.fb-detail-row` background, `.fb-detail-grid`
+  flex wrap for room chips, `.fb-room-chip` chip styling,
+  `.fb-room-clean` green highlight, `.fb-room-stat` pill.
+
+**Verified.** Brace + paren balance OK (240/240, 297/297;
+css 142/142).
+
+**Action needed from user:** Re-sync, expand NKRRP. Share what
+the detail row shows (specifically the room numbers + statuses).
+If you see G28 + 122 only and our "Vacant Clean: 1" is still
+showing, dump the raw payload from "Raw scraper output" so I
+can look at the specific perRoomSheet entries. If you see 3
+chips, mystery solved.
+
+---
+
 ### 2026-06-05 — Sprint 17.15: PU = clean, Total Rooms column, metrics-backed top arrival count
 
 Three fixes to the Forecast page based on user testing.

@@ -126,16 +126,23 @@ function computeNeedTree(payload) {
   // Per-typeCode arrival count, from reservations[].
   //
   // Sprint 17.13 — count only **remaining** arrivals (status=RES,
-  // not yet checked in). Already-checked-in guests (status=INH
-  // with arrival=today) have rooms — those rooms are now OCC, so
-  // they're not in the VAC+VI supply pool we're comparing against.
-  // Counting INH arrivals as demand was double-counting.
+  // not yet checked in).
   //
-  // Verified against the Reservations page KPI which already
-  // shows "X of Y not yet arrived" using the same RES filter.
+  // Sprint 17.16 — dedupe by reservation `id` before counting.
+  // The /search/date endpoint occasionally returns the same
+  // reservation under multiple criteria (master + group child,
+  // duplicate join rows, etc.); rGuest's metrics widget already
+  // dedupes so we were over-counting by ~4 vs. their authoritative
+  // number. Defensive: if no id present (shouldn't happen but
+  // safety), include the row.
   const arrivalsByType = new Map();
+  const seenResIds = new Set();
   for (const r of payload.reservations || []) {
     recordLabels(r);
+    if (r.id) {
+      if (seenResIds.has(r.id)) continue;
+      seenResIds.add(r.id);
+    }
     if (r.typeCode && r.kind === 'arrival' && r.status === 'RES') {
       arrivalsByType.set(r.typeCode, (arrivalsByType.get(r.typeCode) || 0) + 1);
     }
@@ -281,74 +288,121 @@ const StatusPill = ({ status }) => {
 // showing the substitutability-aware totals; below it, one row
 // per specific subtype (NKRRA / NKRRP / etc.) with its own
 // independent balance.
-const NeedTable = ({ groups }) => (
-  <div className="fb-card">
-    <div className="fb-card-head">
-      <h2>Need by Room Type</h2>
-      <div className="fb-formula" title="Vacant Clean − Remaining Arrivals = Net Balance. Negative means rooms are needed. Already-checked-in guests are excluded — they're already in their rooms (those rooms are OCC, not in the VAC+VI pool).">
-        <IconInfo />
-        <div>
-          <div><strong>Formula:</strong> Vacant Clean − Remaining Arrivals = Net Balance</div>
-          <div className="fb-formula-sub">Counts only guests still to arrive. Group totals roll up subtypes — accessible/pet/etc. rooms can fulfil generic bookings.</div>
+// Sprint 17.16 — variant rows are click-to-expand. Clicking opens
+// a detail row listing every physical room of that typeCode with
+// its current occupancy + HK status. Lets the FD verify questions
+// like "where is that 1 vacant NKRRP coming from?" without leaving
+// the page.
+const NeedTable = ({ groups, roomsByType }) => {
+  const [openType, setOpenType] = React.useState(null);
+
+  const toggle = (typeCode) => {
+    setOpenType(prev => prev === typeCode ? null : typeCode);
+  };
+
+  const renderDetailRow = (typeCode) => {
+    const rooms = (roomsByType.get(typeCode) || []).slice()
+      .sort((a, b) => (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true }));
+    return (
+      <tr className="fb-detail-row">
+        <td colSpan={8}>
+          <div className="fb-detail-grid">
+            {rooms.length === 0 && <span className="fb-detail-empty">No rooms of this type in the snapshot.</span>}
+            {rooms.map(r => {
+              const cleanish = r.occupancyStatus === 'VAC' && (r.hkStatus === 'VI' || r.hkStatus === 'PU');
+              return (
+                <span key={r.roomNumber || r.reservationId} className={`fb-room-chip fb-room-${cleanish ? 'clean' : 'busy'}`}>
+                  <strong>{r.roomNumber || '?'}</strong>
+                  <span className="fb-room-stat">{r.occupancyStatus || '—'}</span>
+                  <span className="fb-room-stat">{r.hkStatusLabel || r.hkStatus || '—'}</span>
+                </span>
+              );
+            })}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <div className="fb-card">
+      <div className="fb-card-head">
+        <h2>Need by Room Type</h2>
+        <div className="fb-formula" title="Vacant Clean − Remaining Arrivals = Net Balance. Click any row to inspect the individual rooms.">
+          <IconInfo />
+          <div>
+            <div><strong>Formula:</strong> Vacant Clean − Remaining Arrivals = Net Balance</div>
+            <div className="fb-formula-sub">Click a row to inspect specific rooms. Group totals roll up subtypes — accessible/pet rooms can fulfil generic bookings.</div>
+          </div>
         </div>
       </div>
-    </div>
-    <div className="fb-table-wrap">
-      <table className="fb-table fb-need-table">
-        <thead>
-          <tr>
-            <th>Room Type Code</th>
-            <th>Room Type</th>
-            <th title="Total physical rooms of this type in inventory">Total Rooms</th>
-            <th title="Vacant + (VI Vacant Inspected OR PU Pickup awaiting FD inspection)">Vacant Clean</th>
-            <th title="Guests not yet checked in">Remaining Arrivals</th>
-            <th>Net Balance</th>
-            <th>Rooms Needed</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groups.length === 0 && (
-            <tr><td colSpan={8} className="fb-table-empty">No room types in the snapshot yet.</td></tr>
-          )}
-          {groups.map(g => (
-            <React.Fragment key={g.baseCode || g.baseLabel}>
-              <tr className="fb-group-row">
-                <td><code className="fb-group-code">{g.baseCode || '—'}</code></td>
-                <td><strong>{g.baseLabel}</strong> <span className="fb-group-sub">· all subtypes</span></td>
-                <td className="fb-cell-total">{g.totals.totalRooms}</td>
-                <td>{g.totals.vacantClean}</td>
-                <td>{g.totals.arrivals}</td>
-                <td className={`fb-balance fb-balance-${g.totals.status}`}>
-                  {g.totals.netBalance > 0 ? `+${g.totals.netBalance}` : g.totals.netBalance}
-                </td>
-                <td className={g.totals.roomsNeeded > 0 ? 'fb-emph-warn' : ''}>{g.totals.roomsNeeded}</td>
-                <td><StatusPill status={g.totals.status} /></td>
-              </tr>
-              {g.variants.map(v => (
-                <tr key={v.typeCode} className="fb-variant-row">
-                  <td>
-                    <span className="fb-variant-tree" aria-hidden>└</span>
-                    <code>{v.typeCode}</code>
+      <div className="fb-table-wrap">
+        <table className="fb-table fb-need-table">
+          <thead>
+            <tr>
+              <th>Room Type Code</th>
+              <th>Room Type</th>
+              <th title="Total physical rooms of this type in inventory">Total Rooms</th>
+              <th title="Vacant + (VI Vacant Inspected OR PU Pickup awaiting FD inspection)">Vacant Clean</th>
+              <th title="Guests not yet checked in">Remaining Arrivals</th>
+              <th>Net Balance</th>
+              <th>Rooms Needed</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.length === 0 && (
+              <tr><td colSpan={8} className="fb-table-empty">No room types in the snapshot yet.</td></tr>
+            )}
+            {groups.map(g => (
+              <React.Fragment key={g.baseCode || g.baseLabel}>
+                <tr className="fb-group-row">
+                  <td><code className="fb-group-code">{g.baseCode || '—'}</code></td>
+                  <td><strong>{g.baseLabel}</strong> <span className="fb-group-sub">· all subtypes</span></td>
+                  <td className="fb-cell-total">{g.totals.totalRooms}</td>
+                  <td>{g.totals.vacantClean}</td>
+                  <td>{g.totals.arrivals}</td>
+                  <td className={`fb-balance fb-balance-${g.totals.status}`}>
+                    {g.totals.netBalance > 0 ? `+${g.totals.netBalance}` : g.totals.netBalance}
                   </td>
-                  <td className="fb-variant-label">{v.subLabel || 'Standard'}</td>
-                  <td className="fb-cell-total">{v.totalRooms}</td>
-                  <td>{v.vacantClean}</td>
-                  <td>{v.arrivals}</td>
-                  <td className={`fb-balance fb-balance-${v.status}`}>
-                    {v.netBalance > 0 ? `+${v.netBalance}` : v.netBalance}
-                  </td>
-                  <td className={v.roomsNeeded > 0 ? 'fb-emph-warn' : ''}>{v.roomsNeeded}</td>
-                  <td><StatusPill status={v.status} /></td>
+                  <td className={g.totals.roomsNeeded > 0 ? 'fb-emph-warn' : ''}>{g.totals.roomsNeeded}</td>
+                  <td><StatusPill status={g.totals.status} /></td>
                 </tr>
-              ))}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+                {g.variants.map(v => {
+                  const isOpen = openType === v.typeCode;
+                  return (
+                    <React.Fragment key={v.typeCode}>
+                      <tr
+                        className={`fb-variant-row fb-clickable${isOpen ? ' open' : ''}`}
+                        onClick={() => toggle(v.typeCode)}
+                        title="Click to inspect specific rooms"
+                      >
+                        <td>
+                          <span className="fb-variant-tree" aria-hidden>{isOpen ? '▾' : '└'}</span>
+                          <code>{v.typeCode}</code>
+                        </td>
+                        <td className="fb-variant-label">{v.subLabel || 'Standard'}</td>
+                        <td className="fb-cell-total">{v.totalRooms}</td>
+                        <td>{v.vacantClean}</td>
+                        <td>{v.arrivals}</td>
+                        <td className={`fb-balance fb-balance-${v.status}`}>
+                          {v.netBalance > 0 ? `+${v.netBalance}` : v.netBalance}
+                        </td>
+                        <td className={v.roomsNeeded > 0 ? 'fb-emph-warn' : ''}>{v.roomsNeeded}</td>
+                        <td><StatusPill status={v.status} /></td>
+                      </tr>
+                      {isOpen && renderDetailRow(v.typeCode)}
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ArrivalDetailTable = ({ rows }) => {
   // Limit to today's arrivals only (the page's purpose), sort by
@@ -524,6 +578,18 @@ const Forecast = () => {
 
   const needGroups = useMemo(() => computeNeedTree(snapshot?.payload), [snapshot]);
   const notes      = useMemo(() => deriveOperationalNotes(needGroups), [needGroups]);
+  // Sprint 17.16 — index rooms by typeCode so the click-to-expand
+  // detail rows in NeedTable can list which specific rooms each
+  // typeCode contains + their current statuses.
+  const roomsByType = useMemo(() => {
+    const m = new Map();
+    for (const r of snapshot?.payload?.perRoomSheet || []) {
+      if (!r.typeCode) continue;
+      if (!m.has(r.typeCode)) m.set(r.typeCode, []);
+      m.get(r.typeCode).push(r);
+    }
+    return m;
+  }, [snapshot]);
 
   const totals = useMemo(() => {
     // Sums roll up the group totals (substitutability already
@@ -631,23 +697,15 @@ const Forecast = () => {
             <StatBar label="Surplus room types"       value={totals.surplusTypes}     accent="success" icon={<IconTrend />} />
           </section>
 
-          {/* Sprint 17.15 — surface the gap when rGuest's total
-              disagrees with our per-type breakdown. Helps the user
-              spot when arrivals are slipping through unmapped room
-              types (or rGuest is counting something we don't). */}
-          {totals.metricRemaining != null && totals.metricRemaining !== totals.derivedArrivals && (
-            <div className="fb-mismatch-note" role="note">
-              <IconInfo />
-              <span>
-                rGuest reports <strong>{totals.metricRemaining}</strong> remaining arrivals across the property, but our per-type breakdown sums to <strong>{totals.derivedArrivals}</strong>.
-                {' '}Gap of <strong>{Math.abs(totals.metricRemaining - totals.derivedArrivals)}</strong> may be walk-ins, reservations with unmapped/unknown room types, or status codes we haven't seen before.
-              </span>
-            </div>
-          )}
+          {/* Sprint 17.16 — mismatch banner removed per user
+              feedback. The top-stat now uses rGuest's metric (the
+              source of truth) and the per-type breakdown is
+              derived; if a small residual gap persists after
+              17.16's dedup, it's not surfaced visually. */}
 
           <div className="fb-body">
             <main className="fb-main">
-              <NeedTable groups={needGroups} />
+              <NeedTable groups={needGroups} roomsByType={roomsByType} />
               <ArrivalDetailTable rows={snapshot.payload.reservations || []} />
             </main>
             <aside className="fb-rail">
