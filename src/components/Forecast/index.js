@@ -109,10 +109,19 @@ function computeNeedTree(payload) {
   }
 
   // Per-typeCode arrival count, from reservations[].
+  //
+  // Sprint 17.13 — count only **remaining** arrivals (status=RES,
+  // not yet checked in). Already-checked-in guests (status=INH
+  // with arrival=today) have rooms — those rooms are now OCC, so
+  // they're not in the VAC+VI supply pool we're comparing against.
+  // Counting INH arrivals as demand was double-counting.
+  //
+  // Verified against the Reservations page KPI which already
+  // shows "X of Y not yet arrived" using the same RES filter.
   const arrivalsByType = new Map();
   for (const r of payload.reservations || []) {
     recordLabels(r);
-    if (r.typeCode && r.kind === 'arrival') {
+    if (r.typeCode && r.kind === 'arrival' && r.status === 'RES') {
       arrivalsByType.set(r.typeCode, (arrivalsByType.get(r.typeCode) || 0) + 1);
     }
   }
@@ -257,11 +266,11 @@ const NeedTable = ({ groups }) => (
   <div className="fb-card">
     <div className="fb-card-head">
       <h2>Need by Room Type</h2>
-      <div className="fb-formula" title="Vacant Clean − Arrivals = Net Balance. Negative means rooms are needed. Group totals consider substitutability — specific subtype rooms can serve generic-type reservations.">
+      <div className="fb-formula" title="Vacant Clean − Remaining Arrivals = Net Balance. Negative means rooms are needed. Already-checked-in guests are excluded — they're already in their rooms (those rooms are OCC, not in the VAC+VI pool).">
         <IconInfo />
         <div>
-          <div><strong>Forecast formula:</strong> Vacant Clean − Arrivals = Net Balance</div>
-          <div className="fb-formula-sub">Group rows roll up subtypes — accessible/pet/etc. rooms can fulfil generic bookings.</div>
+          <div><strong>Formula:</strong> Vacant Clean − Remaining Arrivals = Net Balance</div>
+          <div className="fb-formula-sub">Counts only guests still to arrive. Group totals roll up subtypes — accessible/pet/etc. rooms can fulfil generic bookings.</div>
         </div>
       </div>
     </div>
@@ -272,7 +281,7 @@ const NeedTable = ({ groups }) => (
             <th>Room Type Code</th>
             <th>Room Type</th>
             <th>Vacant Clean</th>
-            <th>Arrivals</th>
+            <th title="Guests not yet checked in">Remaining Arrivals</th>
             <th>Net Balance</th>
             <th>Rooms Needed</th>
             <th>Status</th>
@@ -392,10 +401,10 @@ const ForecastSummaryCard = ({ groups }) => {
         </ul>
 
         <div className="fb-chart">
-          <div className="fb-chart-title">Vacant Clean vs Arrivals</div>
+          <div className="fb-chart-title">Vacant Clean vs Remaining Arrivals</div>
           <div className="fb-chart-legend">
             <span className="fb-chart-key fb-chart-key-vc">Vacant Clean</span>
-            <span className="fb-chart-key fb-chart-key-ar">Arrivals</span>
+            <span className="fb-chart-key fb-chart-key-ar">Remaining Arrivals</span>
           </div>
           {groups.map(g => {
             const vcW = (g.totals.vacantClean / maxVal) * 100;
@@ -579,7 +588,7 @@ const Forecast = () => {
           <section className="fb-stats" aria-label="Top stats">
             <StatBar label="Total rooms needed today" value={totals.totalRoomsNeeded} accent="warn"    icon={<IconBed />} />
             <StatBar label="Total vacant clean"       value={totals.totalVacantClean} accent="success" icon={<IconCheck />} />
-            <StatBar label="Total arrivals"           value={totals.totalArrivals}    accent="info"    icon={<IconBriefcase />} />
+            <StatBar label="Remaining arrivals"       value={totals.totalArrivals}    accent="info"    icon={<IconBriefcase />} />
             <StatBar label="Deficit room types"       value={totals.deficitTypes}     accent="warn"    icon={<IconWarn />} />
             <StatBar label="Surplus room types"       value={totals.surplusTypes}     accent="success" icon={<IconTrend />} />
           </section>

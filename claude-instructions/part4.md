@@ -179,6 +179,81 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-05 — Sprint 17.13: forecast counted all today's arrivals, not just remaining
+
+Live test surfaced the math error. Reservations page (correct):
+"Arrivals 4 of 39 not yet arrived". Forecast page (wrong):
+showed NKRR at 17 arrivals vs 1 vacant — 16 short. Cause: the
+Forecast was using `kind === 'arrival'` for demand without
+filtering by status, so it counted everyone arriving today
+including the 35 already-checked-in guests who were already in
+their rooms.
+
+**The conceptual bug:** an already-checked-in arrival is no
+longer demand. Their room is already OCC and *not* in the
+VAC+VI supply we're comparing against. Counting them as demand
+was effectively asking "do we have rooms for guests we've
+already housed?" — which always under-reports availability.
+
+**The fix** in `computeNeedTree` (`server-less, pure compute,
+in src/components/Forecast/index.js`):
+
+```js
+// before
+if (r.typeCode && r.kind === 'arrival') {
+  arrivalsByType.set(r.typeCode, …);
+}
+// after
+if (r.typeCode && r.kind === 'arrival' && r.status === 'RES') {
+  arrivalsByType.set(r.typeCode, …);
+}
+```
+
+Matches the Reservations page semantics: arrivals = RES status
+(not yet checked in). INH-with-arrival-today are excluded —
+they're already in their rooms.
+
+**Label sweep** so the page is honest about what it's counting:
+- Top stat card "Total arrivals" → **"Remaining arrivals"**.
+- Need-by-Room-Type column header "Arrivals" →
+  **"Remaining Arrivals"** with a `title` tooltip ("Guests not
+  yet checked in").
+- Forecast formula tooltip now reads `Vacant Clean − Remaining
+  Arrivals = Net Balance` with a clarifying note that
+  already-checked-in guests are excluded because their rooms
+  are already OCC.
+- ForecastSummaryCard chart title + legend → "Vacant Clean vs
+  **Remaining Arrivals**" / "Remaining Arrivals" key.
+
+**Verified against the recon** (14:17 snapshot, 33 arrivals
+total): RES-only count = 31, INH-today = 2 → 33 total, matches
+expectation. For the user's 23:56 snapshot the headline drops
+from 39 to 4 — the operational truth for "how many rooms do we
+still need tonight."
+
+**Files touched:**
+- `src/components/Forecast/index.js` — RES-only filter in
+  `computeNeedTree`, label updates in `StatBar`, `NeedTable`,
+  `ForecastSummaryCard`, formula tooltip.
+
+**Verified.** Brace balance OK (213/213, 246/246).
+
+**Follow-ups:**
+
+- Pre-assigned-vs-unassigned isn't yet considered. A VAC+VI
+  room that's already earmarked for a RES guest tonight is
+  "spoken for" in real life — but our supply count still
+  includes it. The current math is still self-consistent: that
+  room counts as supply, that guest counts as demand, they
+  match. Worth a closer look if the FD wants to filter "rooms
+  unassigned + unassigned arrivals" specifically.
+- Some rooms might also be at "VAC + PU" (vacant pickup-clean
+  needed) — currently excluded from supply. If HK reliably
+  clears those before tonight, they could count as available.
+  Loosening this is a forecast-policy choice; flag as TBD.
+
+---
+
 ### 2026-06-04 — Sprint 17.12: Forecast page polish — sync-only, generate forecast moved over, subtypes under generics
 
 Five items off the user's punch list. Forecast page is the
