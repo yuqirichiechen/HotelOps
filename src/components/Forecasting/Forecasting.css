@@ -19,6 +19,26 @@
   gap: 24px;
   margin-bottom: 24px;
 }
+/* Sprint 17.10 — small quiet back-to-Home chevron above the
+   title. Acts as breadcrumb. Borrows the same color/treatment
+   as the meta links so the top-left feels visually grouped. */
+.fc-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 0 6px;
+  margin-left: -2px;
+}
+.fc-back-btn:hover {
+  color: var(--accent-alt);
+}
+
 .fc-header-text h1 {
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 32px;
@@ -85,13 +105,23 @@
 }
 .fc-btn:active { transform: scale(0.98); }
 .fc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-/* Sprint 17.9 — inline SVG icon sits inside the button. Force
-   a stable size so the label stays vertically centered while the
-   ring animates. */
-.fc-btn svg { flex-shrink: 0; }
-/* Reserve the same square as the progress ring so the button
-   width doesn't jump when the spinner appears. */
-.fc-btn > svg + span { line-height: 1; }
+/* Sprint 17.9/17.10 — inline SVG icon sits inside the button.
+   Lock the icon slot to a 16px square (matches both IconRefresh
+   and ProgressRing), use tabular-nums on the label so the
+   `Running… 7%` → `Running… 95%` width transition doesn't push
+   the button around, and reserve a min-width so the whole button
+   never resizes between idle and running states. */
+.fc-btn {
+  font-variant-numeric: tabular-nums;
+  min-width: 154px;  /* fits "Running… 100%" comfortably */
+  justify-content: center;
+}
+.fc-btn > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.fc-btn > span { line-height: 1; }
 .fc-btn-primary {
   background: var(--brand-bg);
   color: white;
@@ -125,63 +155,81 @@
 .fc-sync-success .fc-sync-dot { background: var(--success); }
 .fc-sync-failed  .fc-sync-dot { background: var(--danger); }
 
-/* ── KPI cards ───────────────────────────────────────────── */
+/* ── KPI cards (Sprint 17.10 — 6 cards, primary/secondary) ─ */
 .fc-kpis {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
   margin-bottom: 24px;
 }
 .fc-kpi-card {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 14px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
 }
 .fc-kpi-icon {
-  width: 44px; height: 44px;
+  width: 38px; height: 38px;
   border-radius: 50%;
   background: var(--accent-bg);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.fc-kpi-arrivals   .fc-kpi-icon { background: #e9d8fd; }
-.fc-kpi-departures .fc-kpi-icon { background: #feebc8; }
-.fc-kpi-stayovers  .fc-kpi-icon { background: #c6f6d5; }
-.fc-kpi-clean      .fc-kpi-icon { background: #bee3f8; }
-.fc-kpi-staff      .fc-kpi-icon { background: #fefcbf; }
+.fc-kpi-icon svg { display: block; }
+/* Per-accent icon bg + stroke color. Light bg, darker stroke that
+   reads on the chip and matches rGuest's visual language. */
+.fc-kpi-arrivals   .fc-kpi-icon { background: #e9d8fd; color: #6b46c1; }
+.fc-kpi-departures .fc-kpi-icon { background: #feebc8; color: #c05621; }
+.fc-kpi-inhouse    .fc-kpi-icon { background: #bee3f8; color: #2b6cb0; }
+.fc-kpi-stayover   .fc-kpi-icon { background: #e2e8f0; color: #4a5568; }
+.fc-kpi-clean      .fc-kpi-icon { background: #c6f6d5; color: #276749; }
+.fc-kpi-staff      .fc-kpi-icon { background: #fefcbf; color: #744210; }
+.fc-kpi-default    .fc-kpi-icon { background: var(--bg-raised); color: var(--text-secondary); }
+
+.fc-kpi-body { flex: 1; min-width: 0; }
 .fc-kpi-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  margin-bottom: 2px;
+  margin-bottom: 6px;
+  letter-spacing: 0.01em;
 }
-.fc-kpi-value {
+.fc-kpi-numbers {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fc-kpi-primary {
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 28px;
+  font-size: 30px;
   line-height: 1;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.fc-kpi-secondary {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .fc-kpi-sublabel {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  margin-top: 4px;
-}
-/* Sprint 17.8 — "X remaining" line on KPI cards that have an
-   actionable countdown (arrivals/departures/rooms-to-service). */
-.fc-kpi-remaining {
-  font-size: 12px;
-  color: var(--accent-alt);
   margin-top: 6px;
 }
-.fc-kpi-remaining strong { font-weight: 600; }
-.fc-kpi-remaining.done   { color: var(--success); }
+/* "Done" state — primary = 0 → green outline. */
 .fc-kpi-done {
   outline: 1px solid var(--success-faint);
   background: var(--success-subtle);
 }
+.fc-kpi-done .fc-kpi-primary { color: var(--success-text); }
+/* (Sprint 17.8 .fc-kpi-remaining removed in 17.10 — KpiCard now
+   uses the primary/secondary number layout instead.) */
 
 /* ── Body grid (main + right rail) ───────────────────────── */
 .fc-body {
@@ -660,7 +708,13 @@
   overflow: auto;
 }
 
-/* ── Mobile-ish (≤900px) ─────────────────────────────────── */
+/* ── Responsive breakpoints ──────────────────────────────── */
+/* Sprint 17.10 — between mobile and desktop, 6 cards in one row
+   crowd. Drop to 3-wide. */
+@media (max-width: 1280px) and (min-width: 901px) {
+  .fc-kpis { grid-template-columns: repeat(3, 1fr); }
+}
+
 @media (max-width: 900px) {
   .fc-page { padding: 16px 16px 80px; }
   .fc-header { flex-direction: column; align-items: stretch; }

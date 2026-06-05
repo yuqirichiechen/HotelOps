@@ -179,6 +179,105 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.10: KPI row redesigned to 6 cards, button width stabilized, "Home" back-button
+
+Three things off the user's punch list.
+
+**1. Run scraper button no longer fluctuates during scrape.**
+
+Two contributing causes; both fixed:
+- The progress ring (size 18) was bigger than IconRefresh (size 16),
+  so the icon slot jumped when scraping started. Dropped
+  `ProgressRing` default size to **16** (stroke 2.2) — same square
+  as IconRefresh.
+- The `Running… 7%` → `Running… 100%` digit-count change pushed
+  the button width around. Added `font-variant-numeric:
+  tabular-nums` to `.fc-btn`, a `min-width: 154px` (fits
+  "Running… 100%" + icon), and a fixed 16×16 slot for the
+  icon SVG. Whole button now feels rock-stable across states.
+
+**2. "< Home" back-button above the title.**
+
+Quiet text+chevron link styled like a breadcrumb. Uses
+`useView` from `shells/ViewContext` — calls `goTo('home')` to
+return to the admin shell's Home page without a full URL
+navigation. Redundant with the sidebar Home link on desktop but
+matches the mobile mockup's "back chevron at top-left" pattern
+and reads as an intentional breadcrumb.
+
+**3. KPI row → 6 cards with primary/secondary number layout.**
+
+Per the user's spec (and the reference snapshot):
+
+| # | Card | Primary | Secondary | Sublabel |
+|---|------|---------|-----------|----------|
+| 1 | Rooms to service today | remaining (= remDep + stay) | of {total} | full cleans + touch-ups |
+| 2 | Arrivals | `kpis.remainingArrivals` | of `kpis.arrivals` | not yet arrived |
+| 3 | Departures | `kpis.remainingDepartures` | of `kpis.departures` | not yet checked out |
+| 4 | In-house | **inHouseTonight** | — | staying tonight |
+| 5 | Stayover service | `kpis.stayovers` | — | touch-ups needed |
+| 6 | Housekeepers needed | `kpis.housekeepersNeeded` | — | attendants recommended |
+
+`inHouseTonight = inHouse − remainingDepartures` — i.e. currently
+in-house minus the ones leaving today. Matches the user's spec
+("current staying AND checkout date is not today").
+
+When `primary === 0` the card gains a soft-green outline + green
+primary number ("done").
+
+User asked for "2 more useful metrics" beyond their first 4
+(rooms-to-service, arrivals, departures, in-house). Picked
+**Stayover service** (touch-up subset of cleaning workload —
+makes the workload mix legible) and **Housekeepers needed**
+(operational core of the whole feature — staffing target).
+Alternative is **Total guests** (`metricsSnapshot.totalGuests.total`,
+people in property); swap one out if the GM prefers headcount
+over staffing.
+
+**KpiCard component refactored.** Old props (`value`, `remaining`,
+`sublabel`) replaced with (`primary`, `secondary`, `sublabel`,
+`icon`). The icon is rendered inside a colored circle by the
+card, using a fresh accent palette per KPI:
+
+- arrivals  → purple (#e9d8fd / #6b46c1)
+- departures → orange (#feebc8 / #c05621)
+- inhouse   → blue   (#bee3f8 / #2b6cb0)
+- stayover  → gray   (#e2e8f0 / #4a5568)
+- clean     → green  (#c6f6d5 / #276749)
+- staff     → yellow (#fefcbf / #744210)
+
+Stroke uses currentColor so each icon picks up its accent
+foreground.
+
+**6 new SVG icons** (broom, briefcase, exit, bed, sparkle, users
++ back chevron) added inline. No new PNGs.
+
+**Responsive:** 6-across on ≥1281 px, drops to 3-across at
+1280–901 px (6 in a row is cramped on most laptop widths), drops
+to 2-across on ≤900 px.
+
+**Files touched:**
+- `src/components/Forecasting/index.js` — `useView` import, 7
+  new icon components, `ProgressRing` default size 16, KpiCard
+  signature rewritten, 6-card render block with `inHouseTonight`
+  computation, back-button in header.
+- `src/components/Forecasting/Forecasting.css` — back-button
+  style, new KPI card layout (`.fc-kpi-numbers`,
+  `.fc-kpi-primary`, `.fc-kpi-secondary`), per-accent icon
+  palette, `.fc-btn` min-width + tabular-nums + fixed icon
+  slot, dropped stale `.fc-kpi-remaining` from 17.8, added
+  1280px mid-breakpoint.
+
+**Verified.** Brace balance OK (375/375, 317/317, css 173/173).
+
+**Follow-ups not in scope:**
+- Donut-legend block still lingers as dead code (referenced in
+  17.8 follow-ups).
+- ServiceProgress card duplicates the rooms-to-service KPI
+  ratio. Could consolidate in 17.11.
+
+---
+
 ### 2026-06-04 — Sprint 17.9: page header polish — SVG icons + progress ring + Raw output link
 
 Three small UX fixes on the Forecast page header.

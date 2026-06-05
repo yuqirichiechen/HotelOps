@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../auth';
+import { useView } from '../../shells/ViewContext';
 import ForecastSheet from './ForecastSheet';
 import ForecastSettings from './ForecastSettings';
 import ForecastHistory from './ForecastHistory';
@@ -62,9 +63,83 @@ const IconDocument = ({ size = 14 }) => (
   </svg>
 );
 
+// Sprint 17.10 — KPI card icons + back chevron.
+
+const IconBack = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+const IconBroom = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M15 4 9 10" />
+    <path d="m19 8-3-3" />
+    <path d="M9 10 4 21l11-5z" />
+    <path d="M7 17h5" />
+  </svg>
+);
+
+const IconBriefcase = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="7" width="18" height="13" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+
+const IconExit = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+    <polyline points="10 17 15 12 10 7" />
+    <line x1="15" y1="12" x2="3" y2="12" />
+  </svg>
+);
+
+const IconBed = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 17v-5a2 2 0 0 1 2-2h11a4 4 0 0 1 4 4v3" />
+    <path d="M2 17h20" />
+    <path d="M2 20v-3" />
+    <path d="M22 20v-3" />
+    <circle cx="7.5" cy="12.5" r="1.5" />
+  </svg>
+);
+
+const IconSparkle = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3v4" />
+    <path d="M12 17v4" />
+    <path d="M3 12h4" />
+    <path d="M17 12h4" />
+    <path d="m5.6 5.6 2.8 2.8" />
+    <path d="m15.6 15.6 2.8 2.8" />
+    <path d="m5.6 18.4 2.8-2.8" />
+    <path d="m15.6 8.4 2.8-2.8" />
+  </svg>
+);
+
+const IconUsers = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.9" />
+    <path d="M16 3.1a4 4 0 0 1 0 7.8" />
+  </svg>
+);
+
 // SVG progress ring. `pct` 0–100; while indeterminate (no real
 // signal from the server), the parent fakes it from elapsed time.
-const ProgressRing = ({ pct = 0, size = 18, stroke = 2.5 }) => {
+// Sprint 17.10 — default size 16 so it swaps cleanly with the
+// 16px IconRefresh (the button width doesn't jump when scraping
+// starts/stops).
+const ProgressRing = ({ pct = 0, size = 16, stroke = 2.2 }) => {
   const r = (size - stroke) / 2;
   const C = 2 * Math.PI * r;
   const offset = C * (1 - Math.min(100, Math.max(0, pct)) / 100);
@@ -116,25 +191,30 @@ const ACTION_LABEL = {
 
 // ── Sub-components ─────────────────────────────────────────
 
-// Sprint 17.8 KpiCard. Adds a "remaining" line when supplied — for
-// arrivals / departures / rooms-to-service this is the actionable
-// number the FD cares about ("how much is left to happen / get
-// done"). When remaining === 0 the card is dimmed-green ("done").
-const KpiCard = ({ label, value, remaining, sublabel, accent }) => {
-  const showRem = Number.isFinite(remaining);
-  const done    = showRem && remaining === 0;
+// Sprint 17.10 KpiCard. Layout per the user's reference mockup:
+//
+//   [ICON]  Label
+//           PRIMARY  secondary
+//           sublabel
+//
+// `primary` is the big foreground number (e.g. "16 not-yet-arrived");
+// `secondary` is the muted "of N" companion (e.g. "of 38"). When
+// primary === 0 (work finished) the card outlines green. Icon
+// renders inside a colored circle — accent picks the bg color.
+const KpiCard = ({ label, primary, secondary, sublabel, accent, icon }) => {
+  const done = primary === 0;
   return (
-    <div className={`fc-kpi-card${accent ? ` fc-kpi-${accent}` : ''}${done ? ' fc-kpi-done' : ''}`}>
-      <div className="fc-kpi-icon" aria-hidden="true" />
+    <div className={`fc-kpi-card fc-kpi-${accent || 'default'}${done ? ' fc-kpi-done' : ''}`}>
+      <div className="fc-kpi-icon" aria-hidden="true">{icon}</div>
       <div className="fc-kpi-body">
         <div className="fc-kpi-label">{label}</div>
-        <div className="fc-kpi-value">{value ?? '—'}</div>
+        <div className="fc-kpi-numbers">
+          <span className="fc-kpi-primary">{primary ?? '—'}</span>
+          {secondary != null && secondary !== '' && (
+            <span className="fc-kpi-secondary">{secondary}</span>
+          )}
+        </div>
         {sublabel && <div className="fc-kpi-sublabel">{sublabel}</div>}
-        {showRem && (
-          <div className={`fc-kpi-remaining${done ? ' done' : ''}`}>
-            <strong>{remaining}</strong> remaining
-          </div>
-        )}
       </div>
     </div>
   );
@@ -639,6 +719,7 @@ const DonutLegend = ({ rows, total }) => (
 // ── Page ───────────────────────────────────────────────────
 
 const Forecasting = () => {
+  const { goTo } = useView(); // Sprint 17.10 — back-to-Home button
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [scraping, setScraping] = useState(false);
@@ -767,6 +848,17 @@ const Forecasting = () => {
     <div className="fc-page">
       <header className="fc-header">
         <div className="fc-header-text">
+          {/* Sprint 17.10 — quick back to admin Home. Redundant
+              with the sidebar Home button on desktop but matches
+              the mobile mockup pattern (top-left chevron). */}
+          <button
+            type="button"
+            className="fc-back-btn"
+            onClick={() => goTo('home')}
+            aria-label="Back to Home"
+          >
+            <IconBack /> <span>Home</span>
+          </button>
           <h1>Room Forecast</h1>
           {/* Sprint 17.9 — subtitle removed (was descriptive only);
               the three meta links carry the actionable affordances. */}
@@ -845,47 +937,65 @@ const Forecasting = () => {
       {snapshot && (
         <>
           <section className="fc-kpis" aria-label="Daily KPIs">
-            <KpiCard
-              label="Arrivals"
-              value={kpis.arrivals}
-              remaining={kpis.remainingArrivals}
-              sublabel="check-ins today"
-              accent="arrivals"
-            />
-            <KpiCard
-              label="Departures"
-              value={kpis.departures}
-              remaining={kpis.remainingDepartures}
-              sublabel="check-outs today"
-              accent="departures"
-            />
-            <KpiCard
-              label="Stayovers"
-              value={kpis.stayovers}
-              sublabel="occupied rooms needing service"
-              accent="stayovers"
-            />
-            <KpiCard
-              label="Rooms to service"
-              value={kpis.roomsToCleanToday}
-              remaining={(() => {
-                // Remaining cleaning = still-to-depart departures
-                // (they haven't left yet, so their room isn't yet
-                // ready for full clean) + every stayover (no live
-                // progress signal yet).
-                const remDep = kpis.remainingDepartures ?? kpis.departures ?? 0;
-                const stay   = kpis.stayovers ?? 0;
-                return remDep + stay;
-              })()}
-              sublabel="full cleans + touch-ups"
-              accent="clean"
-            />
-            <KpiCard
-              label="In-house"
-              value={kpis.inHouse}
-              sublabel="currently occupied rooms"
-              accent="staff"
-            />
+            {(() => {
+              // Sprint 17.10 — KPI math.
+              const remDep         = kpis.remainingDepartures ?? kpis.departures ?? 0;
+              const stay           = kpis.stayovers ?? 0;
+              const remToService   = remDep + stay;
+              // "In-house" per user spec: currently in the property
+              // AND not leaving today. INH total minus INH-who-leave-
+              // today (= remainingDepartures) gives "staying tonight".
+              const inHouseTonight = Math.max(0, (kpis.inHouse ?? 0) - remDep);
+              return (
+                <>
+                  <KpiCard
+                    accent="clean"
+                    icon={<IconBroom />}
+                    label="Rooms to service today"
+                    primary={remToService}
+                    secondary={`of ${kpis.roomsToCleanToday ?? 0}`}
+                    sublabel="full cleans + touch-ups"
+                  />
+                  <KpiCard
+                    accent="arrivals"
+                    icon={<IconBriefcase />}
+                    label="Arrivals"
+                    primary={kpis.remainingArrivals ?? 0}
+                    secondary={`of ${kpis.arrivals ?? 0}`}
+                    sublabel="not yet arrived"
+                  />
+                  <KpiCard
+                    accent="departures"
+                    icon={<IconExit />}
+                    label="Departures"
+                    primary={kpis.remainingDepartures ?? 0}
+                    secondary={`of ${kpis.departures ?? 0}`}
+                    sublabel="not yet checked out"
+                  />
+                  <KpiCard
+                    accent="inhouse"
+                    icon={<IconBed />}
+                    label="In-house"
+                    primary={inHouseTonight}
+                    sublabel="staying tonight"
+                  />
+                  <KpiCard
+                    accent="stayover"
+                    icon={<IconSparkle />}
+                    label="Stayover service"
+                    primary={stay}
+                    sublabel="touch-ups needed"
+                  />
+                  <KpiCard
+                    accent="staff"
+                    icon={<IconUsers />}
+                    label="Housekeepers needed"
+                    primary={kpis.housekeepersNeeded ?? 0}
+                    sublabel="attendants recommended"
+                  />
+                </>
+              );
+            })()}
           </section>
 
           <div className="fc-body">
