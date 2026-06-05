@@ -103,6 +103,14 @@
 }
 .fb-btn:active { transform: scale(0.98); }
 .fb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Sprint 17.12 — stable icon slot + tabular nums so the Sync
+   button doesn't jump between "Sync arrivals" and "Syncing…". */
+.fb-btn > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.fb-btn > span { line-height: 1; }
 .fb-btn-primary {
   background: var(--brand-bg);
   color: white;
@@ -266,6 +274,41 @@
   color: var(--text-muted);
   margin: 10px 0 0;
 }
+/* Sprint 17.12 — grouped Need-by-Room-Type table. Group header
+   rows have a soft accent strip on the left + a heavier baseline;
+   indented variant rows underneath show specific subtypes. */
+.fb-need-table .fb-group-row td {
+  background: var(--bg-surface-alt);
+  border-top: 2px solid var(--border);
+  font-size: 13px;
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+.fb-need-table .fb-group-row:first-child td { border-top: none; }
+.fb-group-code {
+  background: var(--brand-bg) !important;
+  color: white !important;
+  font-weight: 600;
+}
+.fb-group-sub { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+
+.fb-need-table .fb-variant-row td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.fb-need-table .fb-variant-row td:first-child {
+  padding-left: 22px;
+}
+.fb-variant-tree {
+  color: var(--text-lightest);
+  margin-right: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+.fb-variant-label { color: var(--text-secondary); }
+
 .fb-balance { font-weight: 600; }
 .fb-balance-short   { color: var(--danger);  }
 .fb-balance-surplus { color: var(--success); }
@@ -431,6 +474,16 @@
   color: var(--brand-text);
 }
 .fb-empty p { margin: 0; }
+.fb-empty-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--accent-alt);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .fb-error {
   padding: 14px 18px;
   background: var(--danger-subtle);

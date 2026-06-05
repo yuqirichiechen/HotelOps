@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
-import ForecastSheet from './ForecastSheet';
+// ForecastSheet import removed in 17.12 — modal lives on Forecast page now.
 import ForecastSettings from './ForecastSettings';
 import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
@@ -728,7 +728,7 @@ const Forecasting = () => {
   const [resnFilter, setResnFilter]     = useState('all');   // 17.8: filter chips
   const [resnSourceFilter, setResnSourceFilter] = useState(null);
   const [resnTypeFilter, setResnTypeFilter]     = useState(null);
-  const [sheetOpen, setSheetOpen] = useState(false);    // Sprint 17.4: printable sheet
+  // sheetOpen state removed in 17.12 (Generate Forecast moved off this page).
   const [settingsOpen, setSettingsOpen] = useState(false); // Sprint 17.5
   const [historyOpen, setHistoryOpen]   = useState(false); // Sprint 17.5
   const [rawOpen, setRawOpen]           = useState(false); // Sprint 17.9
@@ -801,8 +801,7 @@ const Forecasting = () => {
   // Sprint 17.4: open the printable forecast sheet over the page.
   // We keep it as an in-page modal (rather than a new tab) so the
   // print stylesheet can guarantee what reaches paper.
-  const handleGenerate = () => setSheetOpen(true);
-  const generateDisabled = !snapshot;
+  // handleGenerate / generateDisabled removed in 17.12 — see Forecast/.
 
   const lastSync = snapshot ? fmtTime(snapshot.scraped_at) : '—';
   const kpis = snapshot?.payload?.kpis || {};
@@ -900,15 +899,9 @@ const Forecasting = () => {
             {scraping ? <ProgressRing pct={scrapePct} /> : <IconRefresh />}
             <span>{scraping ? `Running… ${scrapePct}%` : 'Run scraper'}</span>
           </button>
-          <button
-            className="fc-btn fc-btn-secondary"
-            onClick={handleGenerate}
-            disabled={generateDisabled}
-            title={generateDisabled ? 'Run the scraper first' : 'Open a printable forecast sheet'}
-          >
-            <IconSend />
-            <span>Generate forecast</span>
-          </button>
+          {/* Sprint 17.12: Generate Forecast moved to the Forecast
+              page (lives next to the room-availability projection
+              it summarizes). */}
           <div className={`fc-sync-badge fc-sync-${snapshot?.status || 'idle'}`}>
             <span className="fc-sync-dot" aria-hidden="true" />
             <span>Last sync</span>
@@ -1029,7 +1022,8 @@ const Forecasting = () => {
               />
               <ScraperOutputCard snapshot={snapshot} />
               <DispatchSummaryCard data={snapshot.payload.dispatchSummary} />
-              <SendoutCard onClick={handleGenerate} disabled={generateDisabled} snapshot={snapshot} />
+              {/* Sprint 17.12: SendoutCard removed — Generate
+                  Forecast lives on the Forecast page now. */}
             </aside>
           </div>
 
@@ -1039,12 +1033,8 @@ const Forecasting = () => {
         </>
       )}
 
-      {sheetOpen && (
-        <ForecastSheet
-          snapshot={snapshot}
-          onClose={() => setSheetOpen(false)}
-        />
-      )}
+      {/* Sprint 17.12: ForecastSheet modal moved to the Forecast
+          page. The page's SendoutCard is also gone. */}
 
       {settingsOpen && (
         <ForecastSettings

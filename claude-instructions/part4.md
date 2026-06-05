@@ -179,6 +179,151 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.12: Forecast page polish — sync-only, generate forecast moved over, subtypes under generics
+
+Five items off the user's punch list. Forecast page is the
+target; Reservations only loses the Generate Forecast affordance.
+
+**1. Removed Send to housekeeping button.** That button belongs to
+the handoff/Reservations workflow, not the room-availability
+projection. `HkMessageCard` component and `buildHkMessage()`
+helper deleted from the Forecast page.
+
+**2. Removed Housekeeping Message Preview card.** Same reasoning —
+not a forecast deliverable.
+
+**3. Sync arrivals no longer triggers a new scrape.** The button
+is now read-only: it re-fetches the latest snapshot via `GET
+/admin/forecast/snapshots/latest`. Renamed local state
+`scraping` → `syncing` to reflect that. Title attribute spells
+out that scrapes still happen on the Reservations page. Both
+pages always render from the same persisted snapshot.
+
+**4. Generate Forecast moved Reservations → Forecast.**
+
+- Reservations (`Forecasting/index.js`):
+  - `ForecastSheet` import dropped.
+  - `sheetOpen` state + `handleGenerate` + `generateDisabled` dropped.
+  - Header "Generate forecast" button removed.
+  - Right-rail `SendoutCard` removed.
+  - `<ForecastSheet>` modal mount removed.
+  - `HousekeepingMessagePreview` kept (still serves the
+    Reservations / FD audience — different from the Forecast page).
+- Forecast (`Forecast/index.js`):
+  - `ForecastSheet` imported from `../Forecasting/ForecastSheet`.
+  - New `sheetOpen` state.
+  - "Generate forecast" button wires to `setSheetOpen(true)`,
+    disabled until a snapshot exists.
+  - `<ForecastSheet snapshot={snapshot} onClose={…} />` mount
+    added at the bottom of the page.
+
+**5. Need-by-Room-Type now shows subtypes under each generic.**
+
+`computeNeedRows` → **`computeNeedTree`**. Replaces the flat
+list keyed by 4-char base code with a 2-level structure:
+
+```
+groups: [
+  {
+    baseCode: 'NKRR', baseLabel: 'King Standard',
+    totals: { vacantClean, arrivals, netBalance, roomsNeeded, status },
+    variants: [
+      { typeCode: 'NKRR',  subLabel: 'Standard',                 vacantClean, arrivals, … },
+      { typeCode: 'NKRRA', subLabel: 'Accessible',               … },
+      { typeCode: 'NKRRP', subLabel: 'Pets',                     … },
+      { typeCode: 'NKRRD', subLabel: 'Hearing Accessible / ADA Tub', … },
+      …
+    ]
+  },
+  …
+]
+```
+
+**Counts.** Per-typeCode `vacantClean` is `perRoomSheet.filter(r
+=> r.typeCode === code && r.occupancyStatus === 'VAC' && r.hkStatus
+=== 'VI').length`. Per-typeCode `arrivals` is
+`reservations.filter(r => r.typeCode === code && r.kind ===
+'arrival').length`. Variant rows show those exact counts (`netBalance =
+vacantClean - arrivals`).
+
+**Substitutability** baked into group totals only. A NKRR
+reservation can be fulfilled by NKRRA / NKRRP rooms (the guest
+didn't ask for accessible), so group-level `roomsNeeded` is
+`max(0, sum(arrivals) − sum(vacantClean))` across all variants
+in the base. A NKRRA reservation can only be served by NKRRA →
+the variant row shows the specific shortage; this also drives a
+new "can't be substituted" operational note for guests who
+booked a subtype that's short.
+
+**Render.** `NeedTable` switched to a tree render. Each group
+emits a header row (bold base code in a navy chip + base label +
+"all subtypes" subtitle + aggregated stats) followed by indented
+variant rows (└ + monospace typeCode + sub label). Group rows
+get a heavier top border + soft accent background; variant rows
+sit lighter and smaller.
+
+**Group order:** NKRR → NKJZ → NQRR → NQJZ → Other (anything
+that didn't match a known base).
+
+**ForecastSummaryCard** also rewritten to take `groups` and roll
+totals up per group both in the list (left) and bar chart
+(right).
+
+**`deriveOperationalNotes`** now consumes groups too:
+- Category-level shortages bubble up as one consolidated
+  "Prioritize clean turns" note (with each baseCode + count).
+- Within an otherwise-fine group, a short subtype gets its own
+  urgent note ("NKRRA (Accessible) is short 2 — can't substitute
+  another type").
+- Surplus per group still surfaces.
+- Trailing reminder to confirm late check-ins stays.
+
+**Top stats** (`totalRoomsNeeded`, `totalVacantClean`,
+`totalArrivals`, `deficitTypes`, `surplusTypes`) read from group
+totals — `deficitTypes` is the count of groups whose totals are
+short (not the count of short variants), keeping the headline
+honest about substitutability.
+
+**Sync button stabilized.** Added the same icon-slot lock
+(`width:16px / height:16px / flex-shrink:0`) we did for
+Reservations in 17.10 so the button doesn't jump width when the
+label flips between "Sync arrivals" and "Syncing…".
+
+**Files touched:**
+- `src/components/Forecast/index.js` — new `computeNeedTree`,
+  rewritten `NeedTable`, rewritten `ForecastSummaryCard`,
+  rewritten `deriveOperationalNotes`, new `handleSync` replacing
+  `handleScrape`, `ForecastSheet` import + sheetOpen state,
+  removed `HkMessageCard` + `buildHkMessage`, empty-state copy
+  points the user back to Reservations.
+- `src/components/Forecast/Forecast.css` — group-row /
+  variant-row styles, `.fb-empty-link`, `.fb-btn > svg` size
+  lock.
+- `src/components/Forecasting/index.js` — removed
+  `ForecastSheet` import, `sheetOpen` state, `handleGenerate`,
+  `generateDisabled`, the Generate Forecast button, the
+  `SendoutCard` from the right rail, and the `<ForecastSheet>`
+  modal mount.
+
+**Verified.** Brace balance OK across all 3 touched JS files.
+
+**Follow-ups for 17.13:**
+
+- Substitutability math currently is symmetric on group totals
+  ("sum supply − sum demand"). A more rigorous version would
+  first satisfy specific-subtype demand from its own pool, then
+  spill leftover specific supply into generic demand. Today's
+  math undercounts category need when there's a subtype
+  shortage AND a generic surplus that can't actually substitute
+  for the subtype. Visible operationally because the per-row
+  shortage flags catch it; the group total doesn't.
+- Operational Notes ordering could prioritise urgent before
+  info; currently chronological by group order.
+- "Reservations detail" cross-link icon is still the briefcase
+  used elsewhere on the page — consider swapping.
+
+---
+
 ### 2026-06-04 — Sprint 17.11: split the page into Reservations + Forecast (new room-availability view)
 
 User noticed the page labelled "Forecast" was actually a
