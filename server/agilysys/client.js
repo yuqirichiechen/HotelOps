@@ -220,28 +220,60 @@ function createAgilysysClient(overrides = {}) {
     return all;
   }
 
+  // GET /reservation-service/v1/.../reservations/reservationMetrics?endDate=DATE
+  // The authoritative source for rGuest's dashboard widget numbers
+  // (REMAINING ARRIVALS x/y, REMAINING DEPARTURES x/y, TOTAL
+  // GUESTS, ROOM CONDITION). Sprint 17.7.2 — discovered after our
+  // /search/date-derived counts couldn't match rGuest's UI. Use
+  // these as source-of-truth for KPIs; use /search/date only for
+  // the per-reservation list we render to the user.
+  //
+  // Returns the raw rGuest body; computeForecast picks the fields
+  // it needs.
+  async function getReservationMetrics(date) {
+    const qs   = date ? `?endDate=${encodeURIComponent(date)}` : '';
+    const path = `/reservation-service/v1/tenants/${tenantId}/properties/${propertyId}/reservations/reservationMetrics${qs}`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.metrics.fetched', {
+      date,
+      arrivalsTotal:     result?.remainingArrivalsSummary?.total,
+      arrivalsRemaining: result?.remainingArrivalsSummary?.remaining,
+      departuresTotal:   result?.remainingDeparturesSummary?.total,
+      departuresRemaining: result?.remainingDeparturesSummary?.remaining,
+      totalGuests:       result?.totalGuestsSummary?.total,
+    });
+    return result;
+  }
+
   // Convenience: fetch everything one forecast snapshot needs.
   //
   // Sprint 17.6: pre-login serially before the parallel fetch. The
   // previous version called Promise.all([rooms, roomTypes, reservations])
   // first; with no cached token, all three independently raced into
   // login() and we issued three logins per scrape. Now: one login,
-  // then the three data calls in parallel.
+  // then the data calls in parallel.
+  //
+  // Sprint 17.7.2: also fetches reservationMetrics. Adds one round
+  // trip but lets the compute fn produce KPIs that match rGuest's
+  // UI exactly.
   async function fetchForecastInputs(date) {
     log('info', 'agilysys.scrape.start', { date });
     if (!token) await login();
-    const [rooms, roomTypes, reservations] = await Promise.all([
+    const [rooms, roomTypes, reservations, metrics] = await Promise.all([
       listRooms(),
       listRoomTypes(),
       searchAllReservationsByDate(date),
+      getReservationMetrics(date),
     ]);
     log('info', 'agilysys.scrape.done', {
       date,
       rooms: rooms.length,
       roomTypes: roomTypes.length,
       reservations: reservations.length,
+      metricsArrivals:   metrics?.remainingArrivalsSummary?.total,
+      metricsDepartures: metrics?.remainingDeparturesSummary?.total,
     });
-    return { rooms, roomTypes, reservations };
+    return { rooms, roomTypes, reservations, metrics };
   }
 
   return {
@@ -250,6 +282,7 @@ function createAgilysysClient(overrides = {}) {
     listRoomTypes,
     searchReservationsByDate,
     searchAllReservationsByDate,
+    getReservationMetrics,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
     // Exposed for testing / introspection — don't rely on these in

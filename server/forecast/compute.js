@@ -236,7 +236,7 @@ function floorLabel(floorId) {
  * @param {string} input.forecastDate      — YYYY-MM-DD
  * @returns {Object} snapshot payload
  */
-function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, config, forecastDate }) {
+function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapping, config, forecastDate }) {
   if (!forecastDate) throw new Error('computeForecast: forecastDate required');
 
   // 1. Build lookups.
@@ -264,27 +264,49 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
     }
   }
 
-  // 4. KPI counters (top of the page).
+  // 4. KPI counters.
   //
-  // Sprint 17.7: counts derived from the new multi-flag model so
-  // they match rGuest's UI numbers. A day-use reservation now
-  // shows up in BOTH arrivals AND departures (matches rGuest); an
-  // INH whose arrival is today shows up in both arrivals and
-  // inHouse (rGuest treats checked-in arrivals as "already
-  // arrived" — still counts toward total arrivals for the day).
-  const kpis = {
-    arrivals:   classifiedResn.filter(r => r._meta.arrivesToday).length,
-    departures: classifiedResn.filter(r => r._meta.departsToday).length,
-    stayovers:  classifiedResn.filter(r => r._meta.isStayover).length,
-    inHouse:    classifiedResn.filter(r => r._meta.isInHouse).length,
-  };
-  // "Remaining arrivals" is rGuest's headline number (the FD has
-  // already checked some in). Useful for the FD widget but doesn't
-  // change anything HK plans.
-  kpis.remainingArrivals = classifiedResn
+  // Sprint 17.7.2: arrivals / departures / totalGuests come
+  // straight from rGuest's `reservationMetrics` endpoint when
+  // available — that's the authoritative source feeding their FD
+  // dashboard widgets (and what the property manager sees). Our
+  // /search/date-derived counts kept being off by ~5 because
+  // rGuest's UI counts differently than "arrivalDate === today"
+  // for some INH cases (modified stays, etc. — we can't tell from
+  // the raw data which 5 they exclude).
+  //
+  // Stayovers + inHouse stay computed locally — rGuest's metrics
+  // doesn't expose those directly. They're approximate but
+  // useful.
+  //
+  // If `metrics` is missing (e.g. the endpoint changed), fall back
+  // to the multi-flag derived counts so the forecast still
+  // populates rather than crashing.
+  const fromMetrics = metrics && typeof metrics === 'object';
+  const productivity = Number(config.productivity_target) || 6;
+  const derivedArrivals   = classifiedResn.filter(r => r._meta.arrivesToday).length;
+  const derivedDepartures = classifiedResn.filter(r => r._meta.departsToday).length;
+  const derivedStayovers  = classifiedResn.filter(r => r._meta.isStayover).length;
+  const derivedInHouse    = classifiedResn.filter(r => r._meta.isInHouse).length;
+  const derivedRemainingArrivals = classifiedResn
     .filter(r => r._meta.arrivesToday && r.status === 'RES').length;
-  kpis.roomsToCleanToday = kpis.departures + kpis.stayovers;
-  const productivity     = Number(config.productivity_target) || 6;
+
+  const arrivalsAuth   = fromMetrics ? metrics.remainingArrivalsSummary?.total       : null;
+  const arrivalsRem    = fromMetrics ? metrics.remainingArrivalsSummary?.remaining   : null;
+  const departuresAuth = fromMetrics ? metrics.remainingDeparturesSummary?.total     : null;
+  const departuresRem  = fromMetrics ? metrics.remainingDeparturesSummary?.remaining : null;
+  const totalGuests    = fromMetrics ? metrics.totalGuestsSummary?.total             : null;
+
+  const kpis = {
+    arrivals:           arrivalsAuth   != null ? arrivalsAuth   : derivedArrivals,
+    departures:         departuresAuth != null ? departuresAuth : derivedDepartures,
+    stayovers:          derivedStayovers,
+    inHouse:            derivedInHouse,
+    remainingArrivals:  arrivalsRem    != null ? arrivalsRem    : derivedRemainingArrivals,
+    remainingDepartures: departuresRem != null ? departuresRem  : null,
+    totalGuests:        totalGuests != null    ? totalGuests    : null,
+  };
+  kpis.roomsToCleanToday  = kpis.departures + kpis.stayovers;
   kpis.housekeepersNeeded = Math.ceil(kpis.roomsToCleanToday / productivity);
 
   // 5. Per-room sheet. One row per physical room, with the action
@@ -511,9 +533,28 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
     dispatchSummary,
     scraperOutput,
     newMappings, // caller upserts into room_type_mapping
+    // Sprint 17.7.2 — raw rGuest metrics surfaced on the payload
+    // so the UI can render the "Room Condition" widget directly
+    // (matches the dashboard the GM sees in rGuest).
+    metricsSnapshot: metrics ? {
+      remainingArrivals:   metrics.remainingArrivalsSummary  || null,
+      remainingDepartures: metrics.remainingDeparturesSummary || null,
+      totalGuests:         metrics.totalGuestsSummary         || null,
+      roomConditions:      metrics.roomConditionSummary       || [],
+      vips:                metrics.vipsSummary                || null,
+      digitalRequests:     metrics.digitalRequestSummary      || null,
+    } : null,
     meta: buildDiagnostics({
       rooms, roomTypes, reservations, classifiedResn, forecastDate,
       kpis,
+      metrics,
+      derived: {
+        arrivals:          derivedArrivals,
+        departures:        derivedDepartures,
+        stayovers:         derivedStayovers,
+        inHouse:           derivedInHouse,
+        remainingArrivals: derivedRemainingArrivals,
+      },
     }),
   };
 }
@@ -522,7 +563,7 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
 // discrepancy with rGuest comes from (a) us under/over-fetching,
 // (b) us misclassifying a status, or (c) a date-format edge case.
 // Everything in this block lands in forecast_snapshot.payload.meta.
-function buildDiagnostics({ rooms, roomTypes, reservations, classifiedResn, forecastDate, kpis }) {
+function buildDiagnostics({ rooms, roomTypes, reservations, classifiedResn, forecastDate, kpis, metrics, derived }) {
   // Status histogram across ALL raw reservations (incl. filtered).
   const rawByStatus = {};
   // Status × date relation — for each status, count how arr / dep
@@ -605,6 +646,22 @@ function buildDiagnostics({ rooms, roomTypes, reservations, classifiedResn, fore
       inHouseSum:    Object.values(inHouseByStatus).reduce((s, n) => s + n, 0),
       kpis,
     },
+    // Sprint 17.7.2 — side-by-side rGuest authoritative numbers vs
+    // what we'd derive from /search/date. When these disagree the
+    // gap is either rGuest's UI semantics (which we don't know) or
+    // a status code we haven't seen.
+    kpiSourceComparison: metrics ? {
+      arrivalsRGuest:     metrics.remainingArrivalsSummary?.total,
+      arrivalsDerived:    derived?.arrivals,
+      arrivalsGap:        (metrics.remainingArrivalsSummary?.total ?? null)
+                          - (derived?.arrivals ?? null),
+      departuresRGuest:   metrics.remainingDeparturesSummary?.total,
+      departuresDerived:  derived?.departures,
+      departuresGap:      (metrics.remainingDeparturesSummary?.total ?? null)
+                          - (derived?.departures ?? null),
+      remArrivalsRGuest:  metrics.remainingArrivalsSummary?.remaining,
+      remArrivalsDerived: derived?.remainingArrivals,
+    } : { note: 'reservationMetrics endpoint did not respond — using derived counts' },
   };
 }
 

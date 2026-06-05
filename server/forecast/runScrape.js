@@ -152,6 +152,7 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       rooms:           inputs.rooms,
       roomTypes:       inputs.roomTypes,
       reservations:    inputs.reservations,
+      metrics:         inputs.metrics,  // Sprint 17.7.2 — source of truth for KPIs
       roomTypeMapping: mapping,
       config,
       forecastDate:    date,

@@ -179,6 +179,103 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.7.2: use rGuest's authoritative `reservationMetrics` for KPIs
+
+17.7.1's diagnostics surfaced the real problem: `/reservations/search/date`
+returns **every reservation from `date` forward** (2112 results for
+Snoqualmie at 7 PM — 22 pages — of which 2031 were future or
+cancelled noise and only 81 actually touched today). And of those
+81, our derived headline numbers didn't match what rGuest's UI
+showed (43 arrivals vs rGuest's 38) because their dashboard counts
+some INH cases differently than "arrivalDate === today" — semantics
+we can't reproduce from the raw data alone.
+
+**The fix.** rGuest has a dedicated `reservationMetrics` endpoint
+that returns exactly the dashboard widget numbers:
+
+```
+GET /reservation-service/v1/tenants/{tid}/properties/{pid}/reservations/reservationMetrics?endDate=YYYY-MM-DD
+→ {
+  remainingArrivalsSummary:   { remaining, total, walkIns, earlyCheckIns },
+  remainingDeparturesSummary: { remaining, total },
+  totalGuestsSummary:         { adults, children, total },
+  vipsSummary:                { arriving, inHouse, departing },
+  roomConditionSummary:       [{ name: 'D', value: 36 }, …]  // matches HK widget
+}
+```
+
+Discovered in the existing recon at
+`scraper/recon/20260604-141754/requests.jsonl` — rGuest's UI is
+calling this on every dashboard load. Use it.
+
+**Wiring:**
+
+1. `server/agilysys/client.js` — added
+   `getReservationMetrics(date)` (GET, no body). `fetchForecastInputs`
+   now runs four parallel calls instead of three (rooms, roomTypes,
+   reservations, metrics). One extra round-trip; same single login
+   thanks to 17.6's pre-login.
+2. `server/forecast/runScrape.js` — passes `inputs.metrics`
+   through to `computeForecast`.
+3. `server/forecast/compute.js` — KPI table now sources headline
+   counts from metrics when present, falls back to derived counts
+   if the endpoint changed:
+   ```
+   arrivals          ← metrics.remainingArrivalsSummary.total
+   departures        ← metrics.remainingDeparturesSummary.total
+   remainingArrivals ← metrics.remainingArrivalsSummary.remaining
+   remainingDepartures ← metrics.remainingDeparturesSummary.remaining
+   totalGuests       ← metrics.totalGuestsSummary.total
+   stayovers         ← derived (no equivalent in metrics)
+   inHouse           ← derived (no equivalent in metrics)
+   ```
+
+**Verified against the 14:17 recon:**
+- KPIs: arrivals 33, departures 31, remainingArrivals 31,
+  remainingDepartures 6, totalGuests 53 — all match rGuest's
+  dashboard exactly.
+- `kpiSourceComparison`: zero gap at recon time (the dataset was
+  small enough that derived = metrics). For the user's live 7 PM
+  data, `arrivalsGap` was −5 / `departuresGap` was +15 — those
+  gaps will now be invisible to the user since we trust metrics.
+- `metricsSnapshot.roomConditions`: VI=29, IP=3, PU=29, OC=2, D=36
+  — exact match for rGuest's "ROOM CONDITION" widget. Surfaced on
+  the snapshot so 17.8's UI can render it directly.
+
+**New diagnostic field:** `meta.kpiSourceComparison` shows
+arrivalsRGuest vs arrivalsDerived (and gap) side-by-side. When
+they disagree, the metrics endpoint wins — but the gap shows up
+in the History → Diagnostics panel so any future
+silently-divergent drift is obvious.
+
+**Open questions / acknowledged limitations:**
+
+- `stayovers` + `inHouse` are still derived from /search/date.
+  metrics doesn't expose those. For now they're approximate; if
+  the gap is material we can compute inHouse from rooms[]
+  (count `currentOccupancyStatus === 'OCC'`).
+- `/search/date` still fetches the 22-page firehose. Bandwidth
+  waste, not correctness — defer the body-shape investigation
+  (probably needs a `startDate`+`endDate` filter or a `statuses`
+  array) until 17.9.
+- New status codes seen in the live data: `PND` (pending),
+  `RLS` (released). Both are future-only in the recon, so they
+  don't affect today's counts; mention added to the status
+  enum comment so future-me knows.
+
+**Files touched:**
+- `server/agilysys/client.js` (new `getReservationMetrics`,
+  `fetchForecastInputs` now 4-way parallel).
+- `server/forecast/runScrape.js` (threads `metrics` through).
+- `server/forecast/compute.js` (metrics-first KPI sourcing,
+  `metricsSnapshot` on payload, `kpiSourceComparison` in meta,
+  `derived` destructure on `buildDiagnostics`).
+
+**Action needed:** restart server, run scraper again. The 38/30
+should now match rGuest's dashboard exactly.
+
+---
+
 ### 2026-06-04 — Sprint 17.7.1: diagnostic instrumentation (data still mismatches)
 
 After 17.7 fixed the CXL over-count, a fresh live scrape at 18:59
