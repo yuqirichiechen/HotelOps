@@ -139,23 +139,33 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
   if (!['manual', 'cron'].includes(source)) {
     throw new Error(`runScrape: bad source: ${source}`);
   }
-  const date = forecastDate || todayInLA();
 
   const client = createAgilysysClient();
+  // Hoisted so the catch block can use it when reporting the
+  // failure snapshot's forecast_date. Filled in by the try block
+  // once we've resolved rGuest's propertyDate.
+  let effectiveDate = null;
   try {
     const config  = await loadConfig(pool);
     const mapping = await loadMapping(pool);
 
-    const inputs = await client.fetchForecastInputs(date);
+    // Sprint 17.14 — pass the (possibly null) requested date to
+    // the client. If null, the client resolves the date from
+    // rGuest's propertyDate (the property's business day) so our
+    // forecastDate matches whatever rGuest's dashboard widgets
+    // are operating on. `todayInLA()` is the last-resort fallback
+    // only used when both requested date AND propertyDate fail.
+    const inputs = await client.fetchForecastInputs(forecastDate || null);
+    effectiveDate = inputs.effectiveDate || forecastDate || todayInLA();
 
     const payload = computeForecast({
       rooms:           inputs.rooms,
       roomTypes:       inputs.roomTypes,
       reservations:    inputs.reservations,
-      metrics:         inputs.metrics,  // Sprint 17.7.2 — source of truth for KPIs
+      metrics:         inputs.metrics,
       roomTypeMapping: mapping,
       config,
-      forecastDate:    date,
+      forecastDate:    effectiveDate,
     });
 
     const inserted = await upsertNewMappings(pool, payload.newMappings);
@@ -175,7 +185,7 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       (inputs.reservations ? inputs.reservations.length : 0);
 
     const snapshot = await insertSnapshot(pool, {
-      forecast_date:     date,
+      forecast_date:     effectiveDate,
       source,
       triggered_by:      triggeredBy,
       status:            'success',
@@ -198,9 +208,14 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       message: 'scrape.failed',
       context: { error: err.message, stack: (err.stack || '').split('\n').slice(0, 5).join('\n') },
     });
-    const emptyPayload = { forecastDate: date, error: err.message };
+    // Best-effort date for the failure record. Use whatever was
+    // resolved before the throw; fall back to forecastDate, then
+    // local clock, so the row at least has a non-null
+    // forecast_date.
+    const failureDate = effectiveDate || forecastDate || todayInLA();
+    const emptyPayload = { forecastDate: failureDate, error: err.message };
     await insertSnapshot(pool, {
-      forecast_date:     date,
+      forecast_date:     failureDate,
       source,
       triggered_by:      triggeredBy,
       status:            'failed',

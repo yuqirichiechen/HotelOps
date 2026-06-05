@@ -220,6 +220,28 @@ function createAgilysysClient(overrides = {}) {
     return all;
   }
 
+  // GET /property-service/.../propertyDate
+  //
+  // Sprint 17.14 — returns rGuest's *property date* (business
+  // day). Comes back as a bare JSON string like `"2026-06-04"`.
+  // Importantly: this is what the FD considers "today" — the
+  // property day-rolls some time around 3–4 AM, so at 12:08 AM
+  // the local calendar already says Jun 5 but rGuest still has
+  // the operation pinned at Jun 4 until day-roll completes.
+  //
+  // Use this everywhere we currently use a local clock-derived
+  // date, otherwise our derived KPIs (Jun 5 pipeline) disagree
+  // with rGuest's dashboard widgets (Jun 4 remaining).
+  async function getPropertyDate() {
+    const path = `/property-service/tenants/${tenantId}/properties/${propertyId}/propertyDate`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.propertyDate.fetched', { propertyDate: result });
+    // Response is a bare string ("2026-06-04"). Defensive cast.
+    if (typeof result === 'string') return result;
+    if (result && typeof result === 'object' && result.date) return result.date;
+    return null;
+  }
+
   // GET /reservation-service/v1/.../reservations/reservationMetrics?endDate=DATE
   // The authoritative source for rGuest's dashboard widget numbers
   // (REMAINING ARRIVALS x/y, REMAINING DEPARTURES x/y, TOTAL
@@ -256,24 +278,39 @@ function createAgilysysClient(overrides = {}) {
   // Sprint 17.7.2: also fetches reservationMetrics. Adds one round
   // trip but lets the compute fn produce KPIs that match rGuest's
   // UI exactly.
-  async function fetchForecastInputs(date) {
-    log('info', 'agilysys.scrape.start', { date });
+  async function fetchForecastInputs(requestedDate) {
+    log('info', 'agilysys.scrape.start', { requestedDate });
     if (!token) await login();
+
+    // Sprint 17.14 — resolve effective date from rGuest's
+    // propertyDate first; fall back to the caller's date only if
+    // propertyDate is null. This guarantees our derived counts
+    // and rGuest's metrics widgets share a denominator.
+    const propertyDate = await getPropertyDate();
+    const effectiveDate = requestedDate || propertyDate;
+    log('info', 'agilysys.scrape.dateResolved', {
+      requestedDate, propertyDate, effectiveDate,
+    });
+
     const [rooms, roomTypes, reservations, metrics] = await Promise.all([
       listRooms(),
       listRoomTypes(),
-      searchAllReservationsByDate(date),
-      getReservationMetrics(date),
+      searchAllReservationsByDate(effectiveDate),
+      getReservationMetrics(effectiveDate),
     ]);
     log('info', 'agilysys.scrape.done', {
-      date,
+      effectiveDate,
       rooms: rooms.length,
       roomTypes: roomTypes.length,
       reservations: reservations.length,
       metricsArrivals:   metrics?.remainingArrivalsSummary?.total,
       metricsDepartures: metrics?.remainingDeparturesSummary?.total,
     });
-    return { rooms, roomTypes, reservations, metrics };
+    return {
+      rooms, roomTypes, reservations, metrics,
+      propertyDate,
+      effectiveDate,
+    };
   }
 
   return {
@@ -283,6 +320,7 @@ function createAgilysysClient(overrides = {}) {
     searchReservationsByDate,
     searchAllReservationsByDate,
     getReservationMetrics,
+    getPropertyDate,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
     // Exposed for testing / introspection — don't rely on these in

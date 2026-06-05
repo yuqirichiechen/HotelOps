@@ -179,6 +179,110 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-05 — Sprint 17.14: align scrape date with rGuest's property day (fixes Reservations ↔ Forecast mismatch)
+
+Live test at 12:08 AM showed the two pages disagreeing about
+basic numbers. Reservations: "Arrivals 3 of 39 not yet arrived"
+(from `metrics.remainingArrivalsSummary.remaining`). Forecast:
+"Remaining arrivals 18" (derived from `reservations[] where
+status === 'RES' && kind === 'arrival'`). Same snapshot, 6×
+disagreement.
+
+**Root cause: date mismatch between our local clock and rGuest's
+business day.**
+
+At 12:08 AM PT on Jun 5, `todayInLA()` returns `'2026-06-05'`.
+But the property hasn't done its day-roll yet (rGuest day-rolls
+some time around 3–4 AM), so rGuest's dashboard widgets are
+*still* operating on Jun 4. The Reservations KPI reads
+`metrics.remainingArrivalsSummary.remaining` which is rGuest's
+Jun 4 number (3); the Forecast page derives against
+`forecastDate=Jun 5` which picks up the 18 RES bookings for the
+**next** business day (Jun 5) — all "pending" because none of
+those Jun 5 guests have arrived yet (it's still mid-Jun-4
+operationally).
+
+Both numbers are internally self-consistent for their own
+denominator; they disagree because they're for different days.
+
+**The fix — `propertyDate` is the source of truth.**
+
+rGuest exposes `GET
+/property-service/tenants/{tid}/properties/{pid}/propertyDate`
+that returns a bare string (`"2026-06-04"`). That's the
+property's current business day. When we use it as our scrape's
+`forecastDate`, our derived counts and rGuest's metrics widgets
+share a denominator.
+
+**Wiring** (3 files):
+
+`server/agilysys/client.js`:
+- New `getPropertyDate()` exported from the factory. Returns the
+  bare string or null (defensive parse against `{date}` object
+  shape too).
+- `fetchForecastInputs(requestedDate)` now resolves an
+  `effectiveDate`:
+  ```
+  const propertyDate = await getPropertyDate();
+  const effectiveDate = requestedDate || propertyDate;
+  ```
+  All four parallel calls (rooms / roomTypes / reservations /
+  metrics) use `effectiveDate`, and the result object includes
+  `{ propertyDate, effectiveDate }` so the orchestration layer
+  knows what was actually used.
+
+`server/forecast/runScrape.js`:
+- `effectiveDate` hoisted to the top-level let so both the
+  success path and the catch-block failure record can use it.
+- Passes `forecastDate || null` to `fetchForecastInputs` —
+  `null` lets the client default to rGuest's propertyDate.
+- After `await`, reassigns `effectiveDate` from
+  `inputs.effectiveDate`; falls back through `forecastDate` then
+  `todayInLA()` only if everything upstream failed.
+- `computeForecast({ forecastDate: effectiveDate })` and the DB
+  insert's `forecast_date` both use the resolved date.
+- Failure-record `forecast_date` uses the best-available
+  fallback chain.
+
+**Operational effect.** From 12:08 AM scrape:
+- propertyDate = `"2026-06-04"` (rGuest's view)
+- forecastDate = `"2026-06-04"` (our compute)
+- searchReservationsByDate(`"2026-06-04"`) ← Jun 4-affecting
+- getReservationMetrics(`"2026-06-04"`) ← Jun 4 dashboard
+- `_meta.arrivesToday = (arrivalDateLocalDate === "2026-06-04")`
+- → Forecast page's "Remaining arrivals" drops from 18 → **3**
+- → matches Reservations KPI; matches rGuest UI
+
+Once rGuest does its day-roll (~3–4 AM), the next sync returns
+propertyDate `"2026-06-05"` and everything moves over together.
+
+**Files touched:**
+- `server/agilysys/client.js` — `getPropertyDate` + reworked
+  `fetchForecastInputs`.
+- `server/forecast/runScrape.js` — hoisted `effectiveDate`,
+  passes `null` through to let the client choose, success +
+  failure inserts both use the resolved date.
+
+**Verified.** Brace + paren balance OK across both files
+(85/85, 42/42). `getPropertyDate` is on the exported surface;
+module loads cleanly; the existing recon shows
+`'2026-06-04'` as the returned shape.
+
+**Follow-ups:**
+
+- The previous snapshot stored with `forecast_date='2026-06-05'`
+  is now stale relative to the new scrapes' `'2026-06-04'`. No
+  data corruption; subsequent scrapes will use the right date
+  going forward. Old snapshot can be deleted from History if
+  the user wants a clean list.
+- If `propertyDate` endpoint ever 500s, the client falls back
+  to whatever the caller passed (or eventually `todayInLA()`
+  via runScrape). The fallback should never silently mismatch
+  again, but worth a Datadog-style sanity log entry if
+  `propertyDate === null` happens in prod.
+
+---
+
 ### 2026-06-05 — Sprint 17.13: forecast counted all today's arrivals, not just remaining
 
 Live test surfaced the math error. Reservations page (correct):
