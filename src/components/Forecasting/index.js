@@ -17,6 +17,73 @@ import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
 
 
+// ── Sprint 17.9 inline SVG icons ───────────────────────────
+// Stroke uses currentColor so each icon matches its button's text.
+
+const IconRefresh = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 12a9 9 0 1 1-3.2-6.9" />
+    <polyline points="21 4 21 10 15 10" />
+  </svg>
+);
+
+const IconSend = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M22 2 11 13" />
+    <path d="M22 2 15 22 11 13 2 9z" />
+  </svg>
+);
+
+const IconClock = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <polyline points="12 7 12 12 15 14" />
+  </svg>
+);
+
+const IconGear = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+  </svg>
+);
+
+const IconDocument = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="9" y1="13" x2="15" y2="13" />
+    <line x1="9" y1="17" x2="15" y2="17" />
+  </svg>
+);
+
+// SVG progress ring. `pct` 0–100; while indeterminate (no real
+// signal from the server), the parent fakes it from elapsed time.
+const ProgressRing = ({ pct = 0, size = 18, stroke = 2.5 }) => {
+  const r = (size - stroke) / 2;
+  const C = 2 * Math.PI * r;
+  const offset = C * (1 - Math.min(100, Math.max(0, pct)) / 100);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle cx={size/2} cy={size/2} r={r}
+        fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r}
+        fill="none" stroke="currentColor" strokeWidth={stroke}
+        strokeDasharray={C} strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{ transition: 'stroke-dashoffset 0.25s linear' }}
+      />
+    </svg>
+  );
+};
+
+
 // ── Formatters ─────────────────────────────────────────────
 
 const fmtTime = (iso) => {
@@ -236,6 +303,38 @@ const ServiceProgress = ({ kpis, metricsSnapshot }) => {
       <h3>Service Progress</h3>
       <Row label="Departure cleans"  done={depDone}  total={depTotal}  pct={depPct}  accent="dep"  />
       <Row label="Stayover touch-ups" done={stayDone} total={stayTotal} pct={stayPct} accent="stay" />
+    </div>
+  );
+};
+
+// Sprint 17.9 — raw payload viewer. Light modal that just pretty-
+// prints `snapshot.payload` as JSON. Useful for FD/admin to verify
+// what's coming from rGuest without diving into the History modal.
+const RawOutputModal = ({ snapshot, onClose }) => {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose && onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  if (!snapshot) return null;
+  const json = JSON.stringify(snapshot.payload, null, 2);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(json); } catch { /* noop */ }
+  };
+  return (
+    <div className="fc-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="fc-modal fc-modal-wide" onClick={(e) => e.stopPropagation()}>
+        <header className="fc-modal-header">
+          <h2>Raw scraper output</h2>
+          <div className="fc-modal-header-actions">
+            <button className="fc-modal-btn fc-modal-btn-small" onClick={copy}>Copy JSON</button>
+            <button className="fc-modal-close" onClick={onClose} aria-label="Close">×</button>
+          </div>
+        </header>
+        <div className="fc-modal-body">
+          <pre className="fc-raw-pre">{json}</pre>
+        </div>
+      </div>
     </div>
   );
 };
@@ -551,6 +650,8 @@ const Forecasting = () => {
   const [sheetOpen, setSheetOpen] = useState(false);    // Sprint 17.4: printable sheet
   const [settingsOpen, setSettingsOpen] = useState(false); // Sprint 17.5
   const [historyOpen, setHistoryOpen]   = useState(false); // Sprint 17.5
+  const [rawOpen, setRawOpen]           = useState(false); // Sprint 17.9
+  const [scrapePct, setScrapePct]       = useState(0);     // 17.9 progress ring
 
   const loadLatest = useCallback(async () => {
     setError(null);
@@ -569,10 +670,14 @@ const Forecasting = () => {
   const handleScrape = async () => {
     setScraping(true);
     setError(null);
+    setScrapePct(2);
     const { ok, data } = await apiFetch('/admin/forecast/scrape', {
       method: 'POST',
       body:   JSON.stringify({}),
     });
+    // Snap to 100% on completion regardless of where the fake
+    // timer landed, then let the effect clear it.
+    setScrapePct(100);
     setScraping(false);
     if (!ok || !data?.success) {
       setError(data?.message || 'Scrape failed. Check Agilysys credentials + the snapshot logs.');
@@ -580,6 +685,37 @@ const Forecasting = () => {
     }
     setSnapshot(data.snapshot);
   };
+
+  // Sprint 17.9 — faux progress timer. Backend doesn't stream
+  // per-step progress, so we approximate. Live scrapes empirically
+  // take 10–18 s (login + 4 parallel calls + DB upsert). Ease the
+  // ring toward 95% over ~14 s; when the request completes,
+  // handleScrape snaps it to 100% and this effect drops it back to
+  // 0 after a short rest.
+  useEffect(() => {
+    if (!scraping) {
+      if (scrapePct !== 0) {
+        const t = setTimeout(() => setScrapePct(0), 700);
+        return () => clearTimeout(t);
+      }
+      return undefined;
+    }
+    const TICK_MS  = 200;
+    const TARGET   = 95;
+    const DURATION = 14000; // ms — feels about right empirically
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const ratio   = Math.min(1, elapsed / DURATION);
+      // Ease-out so the ring slows visibly as it nears 95% (avoids
+      // the "appears stalled at 100%" feel).
+      const eased = 1 - Math.pow(1 - ratio, 1.8);
+      setScrapePct(Math.min(TARGET, Math.round(eased * TARGET)));
+    }, TICK_MS);
+    return () => clearInterval(id);
+    // scrapePct intentionally not in deps — that's the value we set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scraping]);
 
   // Sprint 17.4: open the printable forecast sheet over the page.
   // We keep it as an in-page modal (rather than a new tab) so the
@@ -632,24 +768,34 @@ const Forecasting = () => {
       <header className="fc-header">
         <div className="fc-header-text">
           <h1>Room Forecast</h1>
-          <p className="fc-subtitle">
-            Scraped from Agilysys rGuest Stay and compared with housekeeping conditions.
-          </p>
+          {/* Sprint 17.9 — subtitle removed (was descriptive only);
+              the three meta links carry the actionable affordances. */}
           <div className="fc-header-meta-actions">
             <button
               type="button"
               className="fc-meta-link"
               onClick={() => setHistoryOpen(true)}
             >
-              Snapshot history
+              <IconClock />
+              <span>Snapshot history</span>
             </button>
-            <span className="fc-meta-sep" aria-hidden>·</span>
             <button
               type="button"
               className="fc-meta-link"
               onClick={() => setSettingsOpen(true)}
             >
-              Forecast settings
+              <IconGear />
+              <span>Forecast settings</span>
+            </button>
+            <button
+              type="button"
+              className="fc-meta-link"
+              onClick={() => setRawOpen(true)}
+              disabled={!snapshot}
+              title={!snapshot ? 'Run the scraper first' : 'View raw payload as JSON'}
+            >
+              <IconDocument />
+              <span>Raw scraper output</span>
             </button>
           </div>
         </div>
@@ -659,7 +805,8 @@ const Forecasting = () => {
             onClick={handleScrape}
             disabled={scraping}
           >
-            {scraping ? '⟳ Running…' : '⟳ Run scraper'}
+            {scraping ? <ProgressRing pct={scrapePct} /> : <IconRefresh />}
+            <span>{scraping ? `Running… ${scrapePct}%` : 'Run scraper'}</span>
           </button>
           <button
             className="fc-btn fc-btn-secondary"
@@ -667,7 +814,8 @@ const Forecasting = () => {
             disabled={generateDisabled}
             title={generateDisabled ? 'Run the scraper first' : 'Open a printable forecast sheet'}
           >
-            ▸ Generate forecast
+            <IconSend />
+            <span>Generate forecast</span>
           </button>
           <div className={`fc-sync-badge fc-sync-${snapshot?.status || 'idle'}`}>
             <span className="fc-sync-dot" aria-hidden="true" />
@@ -797,6 +945,13 @@ const Forecasting = () => {
       {historyOpen && (
         <ForecastHistory
           onClose={() => setHistoryOpen(false)}
+        />
+      )}
+
+      {rawOpen && (
+        <RawOutputModal
+          snapshot={snapshot}
+          onClose={() => setRawOpen(false)}
         />
       )}
     </div>

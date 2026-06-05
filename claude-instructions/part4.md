@@ -179,6 +179,74 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.9: page header polish — SVG icons + progress ring + Raw output link
+
+Three small UX fixes on the Forecast page header.
+
+**1. Subtitle removed.** "Scraped from Agilysys rGuest Stay and
+compared with housekeeping conditions." was descriptive filler;
+the three meta links carry the actionable affordances now.
+
+**2. Inline SVG icons everywhere — no new PNGs.**
+
+Stroke uses `currentColor` so each icon matches whatever color the
+parent button paints in.
+
+- `IconRefresh` — circular arrow (Run scraper).
+- `IconSend` — paper-plane (Generate forecast).
+- `IconClock` — clock with hour/minute hand (Snapshot history).
+- `IconGear` — settings cog (Forecast settings).
+- `IconDocument` — file with lines (Raw scraper output).
+
+**3. `ProgressRing` component for scrape progress.**
+
+Backend doesn't stream per-step progress, so the ring is
+**fake-progress**: a `useEffect` started by `scraping = true`
+runs a 200 ms tick over a 14-second ease-out curve up to 95%.
+`handleScrape` snaps to 100 on completion; a 700 ms tail effect
+drops it back to 0 so the next run starts clean.
+
+Button label becomes `Running… 87%` while in flight; the SVG
+ring sits next to it (`strokeDashoffset` driven by `pct`,
+0.25 s transition between ticks). The percentage shown is the
+fake one — fine for FD perception, not a real measurement.
+
+The ring is also reusable for stayover-touch-up progress in a
+future sprint once we wire up real signals.
+
+**4. Meta links restyled — icon + label, three of them.**
+
+Was: `Snapshot history · Forecast settings` (small underlined
+text). Now: three blue icon+text links, no separator dots, hover
+adds the underline:
+
+- Snapshot history (clock)
+- Forecast settings (gear)
+- **Raw scraper output** (document — new)
+
+The Raw output link opens `<RawOutputModal>` — a quiet wide modal
+that pretty-prints the snapshot's full `payload` as JSON with a
+Copy JSON button. Useful when the FD wants to verify what's
+actually coming from rGuest without leaving the Forecast page.
+Disabled (40% opacity, "Run the scraper first" title) until a
+snapshot exists. The dispatch-summary card's stale "View raw
+output" text-link is now redundant; could be removed in a 17.10
+cleanup.
+
+**Files touched:**
+- `src/components/Forecasting/index.js` — 5 inline SVG icon
+  components, `ProgressRing`, `RawOutputModal`, `scrapePct`
+  state + the 14-second ease-out effect, header refactor.
+- `src/components/Forecasting/Forecasting.css` — meta-link
+  icon+text styling (gap: 20px, no dot separator, hover
+  underline), `.fc-btn svg` flex-shrink helper, `.fc-raw-pre`
+  for the JSON pre tag inside the new modal.
+
+**Verified.** Brace + paren balance OK (341/341, 296/296);
+962 lines total now.
+
+---
+
 ### 2026-06-04 — Sprint 17.8: Forecast page UI revision (KPI cards + Reservation Details tab + HK Message Preview)
 
 User-approved mockup pass after the data was correct in 17.7.2.
