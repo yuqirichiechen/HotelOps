@@ -511,22 +511,99 @@ function computeForecast({ rooms, roomTypes, reservations, roomTypeMapping, conf
     dispatchSummary,
     scraperOutput,
     newMappings, // caller upserts into room_type_mapping
-    meta: {
-      roomsCount:           rooms.length,
-      roomTypesCount:       roomTypes.length,
-      reservationsCount:    reservations.length,
-      classifiedCount:      classifiedResn.length,
-      // Sprint 17.7: diagnostics so the admin can see what got
-      // filtered (cancelled / no-show / past) at a glance.
-      excludedCount:        reservations.length - classifiedResn.length,
-      excludedByStatus:     Object.fromEntries(
-        Object.entries(reservations.reduce((acc, r) => {
-          if (EXCLUDED_STATUSES.has(r.status)) {
-            acc[r.status] = (acc[r.status] || 0) + 1;
-          }
-          return acc;
-        }, {})),
-      ),
+    meta: buildDiagnostics({
+      rooms, roomTypes, reservations, classifiedResn, forecastDate,
+      kpis,
+    }),
+  };
+}
+
+// Sprint 17.7.1: detailed diagnostics so we can spot whether a
+// discrepancy with rGuest comes from (a) us under/over-fetching,
+// (b) us misclassifying a status, or (c) a date-format edge case.
+// Everything in this block lands in forecast_snapshot.payload.meta.
+function buildDiagnostics({ rooms, roomTypes, reservations, classifiedResn, forecastDate, kpis }) {
+  // Status histogram across ALL raw reservations (incl. filtered).
+  const rawByStatus = {};
+  // Status × date relation — for each status, count how arr / dep
+  // relate to the forecast date. Catches "ghost departures" or
+  // arrivals that don't actually match today.
+  const statusDateMatrix = {};
+  // Per-status breakdown for the headline buckets.
+  const arrivalsByStatus   = {};
+  const departuresByStatus = {};
+  const stayoversByStatus  = {};
+  const inHouseByStatus    = {};
+  // Reservations whose room assignment doesn't match any room in
+  // the rooms list (departure won't show up in perRoomSheet, so
+  // departure KPI vs perRoomSheet may diverge).
+  const roomIndex = new Set();
+  for (const r of rooms) {
+    if (r.id)         roomIndex.add(`id:${r.id}`);
+    if (r.roomNumber) roomIndex.add(`num:${r.roomNumber}`);
+  }
+  let unmatchedDepartures = 0;
+  let unmatchedArrivals   = 0;
+
+  const dateRel = (val) => {
+    if (!val) return 'missing';
+    if (val === forecastDate) return 'today';
+    if (val <  forecastDate)  return 'past';
+    return 'future';
+  };
+
+  for (const r of reservations) {
+    const st = r.status || '(none)';
+    rawByStatus[st] = (rawByStatus[st] || 0) + 1;
+    const arrRel = dateRel(r.arrivalDateLocalDate || (r.arrivalDate || '').slice(0, 10));
+    const depRel = dateRel(r.departureDateLocalDate || (r.departureDate || '').slice(0, 10));
+    const key = `${st} arr=${arrRel} dep=${depRel}`;
+    statusDateMatrix[key] = (statusDateMatrix[key] || 0) + 1;
+  }
+  for (const r of classifiedResn) {
+    const st = r.status || '(none)';
+    if (r._meta.arrivesToday) {
+      arrivalsByStatus[st] = (arrivalsByStatus[st] || 0) + 1;
+      const match = (r.roomId    && roomIndex.has(`id:${r.roomId}`)) ||
+                    (r.roomNumber && roomIndex.has(`num:${r.roomNumber}`));
+      if (!match) unmatchedArrivals++;
+    }
+    if (r._meta.departsToday) {
+      departuresByStatus[st] = (departuresByStatus[st] || 0) + 1;
+      const match = (r.roomId    && roomIndex.has(`id:${r.roomId}`)) ||
+                    (r.roomNumber && roomIndex.has(`num:${r.roomNumber}`));
+      if (!match) unmatchedDepartures++;
+    }
+    if (r._meta.isStayover) {
+      stayoversByStatus[st] = (stayoversByStatus[st] || 0) + 1;
+    }
+    if (r._meta.isInHouse) {
+      inHouseByStatus[st] = (inHouseByStatus[st] || 0) + 1;
+    }
+  }
+
+  return {
+    roomsCount:           rooms.length,
+    roomTypesCount:       roomTypes.length,
+    reservationsCount:    reservations.length,
+    classifiedCount:      classifiedResn.length,
+    excludedCount:        reservations.length - classifiedResn.length,
+    rawByStatus,
+    statusDateMatrix,
+    arrivalsByStatus,
+    departuresByStatus,
+    stayoversByStatus,
+    inHouseByStatus,
+    unmatchedArrivals,
+    unmatchedDepartures,
+    // Sanity-check the KPIs against the breakdown sums — if these
+    // ever disagree, the per-bucket counter is wrong.
+    consistency: {
+      arrivalsSum:   Object.values(arrivalsByStatus).reduce((s, n) => s + n, 0),
+      departuresSum: Object.values(departuresByStatus).reduce((s, n) => s + n, 0),
+      stayoversSum:  Object.values(stayoversByStatus).reduce((s, n) => s + n, 0),
+      inHouseSum:    Object.values(inHouseByStatus).reduce((s, n) => s + n, 0),
+      kpis,
     },
   };
 }

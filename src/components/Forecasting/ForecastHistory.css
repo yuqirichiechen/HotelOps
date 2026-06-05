@@ -135,6 +135,29 @@
   color: var(--brand-text);
 }
 
+/* ── Diagnostics block (Sprint 17.7.1) ───────────────────── */
+.fc-history-diag { margin-bottom: 22px; }
+.fc-history-diag h4 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 13px;
+  color: var(--brand-text);
+  margin: 0 0 8px;
+}
+.fc-history-diag-pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── Log viewer ──────────────────────────────────────────── */
 .fc-history-logs h4 {
   font-family: 'TiemposHeadline', Georgia, serif;

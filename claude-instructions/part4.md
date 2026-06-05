@@ -179,6 +179,104 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.7.1: diagnostic instrumentation (data still mismatches)
+
+After 17.7 fixed the CXL over-count, a fresh live scrape at 18:59
+showed arrivals=28 / departures=42 / stayovers=25 vs rGuest's
+arrivals=38 (17 remaining of 38) / departures=30 (0 remaining of
+30). The 17.7 fix correctly handles the recon-time data (33
+arrivals at 14:17 — matches rGuest's curve), but something is off
+in live data we can't see from here.
+
+**Suspected vectors, ranked by likelihood:**
+
+1. **Pagination boundary.** size=99 fits in one page at 14:17
+   (100 raw reservations) but the property could be over 99 by
+   evening (rooms sold = 60, today's resv ≥ 38 arrivals + 30
+   departures + ~30 stayovers + ~15 cancelled ≈ 113+). If
+   `searchAllReservationsByDate` thinks `totalPages = 1` when
+   rGuest's `totalElements > 99`, we silently miss the tail.
+2. **Departure KPI vs perRoomSheet gap (42 vs 28).** The 14-room
+   gap suggests reservations are bumping the KPI without
+   appearing on any room — i.e. departures whose `roomId`
+   doesn't match a `rooms[].id`. Could be rGuest clearing
+   roomId after checkout, or a different field name.
+3. **Date-format edge case** on the live data — some
+   `arrivalDateLocalDate` missing → fallback to slicing
+   `arrivalDate` ISO, which on a late-night arrival can shift
+   the day in the wrong direction.
+
+**Diagnostics added** so the next snapshot tells us which it is.
+
+`server/forecast/compute.js` — `payload.meta` block extended:
+- `rawByStatus` — every status seen in the raw payload (incl.
+  filtered).
+- `statusDateMatrix` — status × arr-vs-today × dep-vs-today
+  cross-tab so we can see what buckets reservations actually
+  fell into.
+- `arrivalsByStatus` / `departuresByStatus` / `stayoversByStatus`
+  / `inHouseByStatus` — per-bucket histograms with their KPI
+  sums.
+- `unmatchedArrivals` / `unmatchedDepartures` — reservations
+  classified into those buckets but whose `roomId`/`roomNumber`
+  doesn't match any record in `rooms`. Catches "ghost
+  cleanings" that bloat KPIs without showing up on the floor
+  sheet.
+- `consistency` block — `arrivalsSum` / `departuresSum` /
+  `stayoversSum` / `inHouseSum` next to `kpis`. If these ever
+  disagree the per-bucket counter is wrong.
+
+`server/agilysys/client.js` — `searchAllReservationsByDate` now
+emits per-page log entries:
+```
+agilysys.reservations.page_fetched
+  { pageNum, gotInPage, totalPages, totalElements }
+```
+and a summary at the end:
+```
+agilysys.reservations.all_pages_fetched
+  { date, pagesFetched, total, totalElements, walkComplete }
+```
+`walkComplete: false` flags a pagination bug (sum of pages ≠
+`totalElements`).
+
+**Snapshot History detail view** — added a Diagnostics panel
+that JSON-dumps `payload.meta`. Screenshot it; that's the
+fastest path to telling me what's going on.
+
+**Verified on recon (14:17):** the diagnostic block reproduces
+the breakdown exactly:
+- rawByStatus: {RES:31, INH:29, CXL:15, DPT:25}
+- arrivalsByStatus: {RES:31, INH:2} = 33 ✓ matches kpis
+- departuresByStatus: {INH:6, DPT:25} = 31 ✓
+- stayoversByStatus: {INH:21}, inHouseByStatus: {INH:29}
+- unmatched: arrivals=19 (the 19 RES without pre-assigned room),
+  departures=0
+- statusDateMatrix gives full visibility into how each status's
+  arr/dep relates to today.
+
+**Files touched:**
+- `server/forecast/compute.js` (~120-line `buildDiagnostics()`
+  helper called from the main return).
+- `server/agilysys/client.js` (pagination logging).
+- `src/components/Forecasting/ForecastHistory.js` + `.css`
+  (Diagnostics panel rendering `payload.meta` as JSON).
+
+**Action needed from user:**
+
+1. Restart the server (compute.js + client.js touched).
+2. Open the admin Forecast page, click **Run scraper**.
+3. Open **Snapshot history** → click the latest snapshot.
+4. Send back: the **Diagnostics** JSON block + the
+   **agilysys.reservations.all_pages_fetched** log entry's
+   context.
+
+That tells us whether (1) pagination is broken, (2) reservations
+are bumping KPIs without matching rooms, or (3) something else
+we haven't thought of yet.
+
+---
+
 ### 2026-06-04 — Sprint 17.7: data-correctness fixes (arrivals over-count + missing room types)
 
 Live-test surfaced the forecast over-counting arrivals: our scrape

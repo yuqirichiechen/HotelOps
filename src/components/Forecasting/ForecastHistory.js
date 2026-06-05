@@ -230,6 +230,13 @@ const ForecastHistory = ({ onClose }) => {
                   </div>
                 )}
 
+                {detail.payload?.meta && (
+                  <section className="fc-history-diag">
+                    <h4>Diagnostics (Sprint 17.7.1)</h4>
+                    <pre className="fc-history-diag-pre">{JSON.stringify(detail.payload.meta, null, 2)}</pre>
+                  </section>
+                )}
+
                 <section className="fc-history-logs">
                   <div className="fc-history-logs-head">
                     <h4>Run logs ({(detail.logs || []).length})</h4>

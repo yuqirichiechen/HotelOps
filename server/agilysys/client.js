@@ -185,18 +185,38 @@ function createAgilysysClient(overrides = {}) {
   // Walks every page of /reservations/search/date and returns a flat
   // array. For Snoqualmie's load, a single page (99) covers it — but
   // remain robust against larger properties / multi-day windows.
+  //
+  // Sprint 17.7.1: also log per-page details so we can tell whether
+  // pagination is the source of a count discrepancy (e.g. rGuest says
+  // totalElements=120 but we only walk 1 page = 99 → 21 missing).
   async function searchAllReservationsByDate(date, { size = 99 } = {}) {
     const all = [];
     let pageNum = 0;
     let totalPages = 1;
+    let totalElements = null;
     do {
       const page = await searchReservationsByDate(date, { page: pageNum, size });
       const content = (page && page.content) || [];
       all.push(...content);
       totalPages = (page && page.totalPages) || 1;
+      if (page && typeof page.totalElements === 'number') {
+        totalElements = page.totalElements;
+      }
+      log('info', 'agilysys.reservations.page_fetched', {
+        pageNum,
+        gotInPage: content.length,
+        totalPages,
+        totalElements,
+      });
       pageNum += 1;
     } while (pageNum < totalPages);
-    log('info', 'agilysys.reservations.all_pages_fetched', { date, total: all.length });
+    log('info', 'agilysys.reservations.all_pages_fetched', {
+      date,
+      pagesFetched: pageNum,
+      total:        all.length,
+      totalElements,
+      walkComplete: totalElements === null || all.length === totalElements,
+    });
     return all;
   }
 
