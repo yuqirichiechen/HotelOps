@@ -179,6 +179,99 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-05 — Sprint 17.15: PU = clean, Total Rooms column, metrics-backed top arrival count
+
+Three fixes to the Forecast page based on user testing.
+
+**1. Pickup (PU) status now counts as vacant-clean.**
+
+The user clarified: when a room is `PU - Pickup` it means HK has
+finished cleaning and it's waiting for FD inspection before flipping
+to `VI - Vacant Inspected`. Operationally those rooms are *ready
+to sell* — they were unnecessarily excluded from "vacant clean"
+before, which under-reported supply.
+
+`isVacantClean` in `computeNeedTree`:
+```js
+// before
+occ === 'VAC' && hk === 'VI'
+// after
+occ === 'VAC' && (hk === 'VI' || hk === 'PU')
+```
+
+**2. New "Total Rooms" column.**
+
+Lets the FD verify counts directly: an NKRRP row that says
+"Total: 2, Vacant Clean: 1" plus knowing both physical NKRRP
+rooms are occupied = data bug we need to look at; "Total: 3"
+= "I missed a room in rGuest's paginated UI." The user's
+specific NKRRP=1-vacant-clean question gets answered at a
+glance.
+
+`totalByType` map built alongside `vacantByType` in the same
+pass over `perRoomSheet`. Wired through `variants` and
+`g.totals.totalRooms`. Table now has 8 columns
+(`colSpan` updated on the empty-state row).
+
+**3. Top "Remaining arrivals" stat now uses rGuest's metric
+when available.**
+
+The user reported "Reservations shows 23 check-ins; Forecast
+shows 20 remaining arrivals." Reservations reads
+`metrics.remainingArrivalsSummary.remaining` (rGuest
+authoritative); Forecast was summing per-type derived RES
+counts. The two can disagree when a reservation:
+- has an unmapped room type (we skip it in the per-type
+  bucketing) ;
+- carries an exotic status code (e.g. PND, RLS — we treat as
+  non-arrival) ;
+- is a walk-in that rGuest counts but isn't in the
+  /search/date payload.
+
+Forecast top stat now reads from `metricsSnapshot` first, falls
+back to the derived sum. The per-type rows still show the
+derived value (we can't break it down without that data).
+
+**Visible breakdown-mismatch notice** between the stats strip
+and the table:
+
+> rGuest reports **23** remaining arrivals across the property,
+> but our per-type breakdown sums to **20**. Gap of **3** may be
+> walk-ins, reservations with unmapped/unknown room types, or
+> status codes we haven't seen before.
+
+Yellow warn-bg banner, shows only when the two disagree. Both
+pages now match on the headline; the FD sees that the per-type
+breakdown is best-effort but is explicit about why.
+
+**Files touched:**
+- `src/components/Forecast/index.js` — `isVacantClean` helper,
+  `totalByType` map, `totalRooms` on variants + group totals,
+  Total Rooms column in `NeedTable`, mismatch notice block,
+  `totals` memo now also computes `derivedArrivals` +
+  `metricRemaining` for the gap calc.
+- `src/components/Forecast/Forecast.css` — `.fb-cell-total`
+  (muted color for the new column), `.fb-mismatch-note` banner
+  style.
+
+**Verified.** Brace + paren balance OK (221/221, 266/266).
+
+**Not in scope yet (follow-ups):**
+
+- The NKRRP=1-vacant-clean question is a data verification
+  story now that Total Rooms is visible. If it shows
+  `Total: 2, Vacant Clean: 1` we need to look at the
+  `perRoomSheet` row for that 1 room (almost certainly will
+  show a third NKRRP the user didn't notice in rGuest's
+  paginated HK Condition page, but if not it points at stale
+  inventory data).
+- The 3-arrival gap should be diagnosable now too — open
+  Snapshot history → latest → Diagnostics, look for any RES
+  arrivals with a typeCode we don't have a `room_type_mapping`
+  row for.
+
+---
+
 ### 2026-06-05 — Sprint 17.14: align scrape date with rGuest's property day (fixes Reservations ↔ Forecast mismatch)
 
 Live test at 12:08 AM showed the two pages disagreeing about

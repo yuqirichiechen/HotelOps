@@ -333,6 +333,28 @@
 
 .fb-cell-name { font-weight: 600; }
 
+/* Sprint 17.15 — Total Rooms column. Quiet color so it doesn't
+   compete with the more actionable "Vacant Clean" / "Remaining
+   Arrivals" / "Rooms Needed" cells. */
+.fb-cell-total { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Sprint 17.15 — breakdown-mismatch banner. Shows when rGuest's
+   metric headline disagrees with our per-type sum. */
+.fb-mismatch-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--warn-bg);
+  border: 1px solid #f6e05e;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--warn-text);
+  margin-bottom: 18px;
+}
+.fb-mismatch-note svg { flex-shrink: 0; margin-top: 2px; }
+.fb-mismatch-note strong { color: var(--text-primary); }
+
 /* ── Forecast Summary card (right rail) ──────────────────── */
 .fb-summary-grid {
   display: grid;

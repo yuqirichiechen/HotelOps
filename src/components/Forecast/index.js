@@ -99,11 +99,26 @@ function computeNeedTree(payload) {
     });
   }
 
-  // Per-typeCode vacant-clean count, from perRoomSheet.
+  // Per-typeCode total + vacant-clean counts, from perRoomSheet.
+  //
+  // Sprint 17.15:
+  //   • Total = every room of that typeCode in inventory (regardless
+  //     of status). Lets the FD see at a glance whether a "1 vacant
+  //     clean NKRRP" stat is from a 3rd NKRRP they didn't notice in
+  //     rGuest's paginated UI, or from stale data.
+  //   • Vacant-clean now counts BOTH `VI` (Vacant Inspected) AND
+  //     `PU` (Pickup). The user clarified PU means HK has cleaned
+  //     the room and it's waiting for FD inspection — operationally
+  //     ready to sell. Was excluded before in 17.7.
+  const totalByType  = new Map();
   const vacantByType = new Map();
+  const isVacantClean = (occ, hk) =>
+    occ === 'VAC' && (hk === 'VI' || hk === 'PU');
   for (const r of payload.perRoomSheet || []) {
     recordLabels(r);
-    if (r.typeCode && r.occupancyStatus === 'VAC' && r.hkStatus === 'VI') {
+    if (!r.typeCode) continue;
+    totalByType.set(r.typeCode, (totalByType.get(r.typeCode) || 0) + 1);
+    if (isVacantClean(r.occupancyStatus, r.hkStatus)) {
       vacantByType.set(r.typeCode, (vacantByType.get(r.typeCode) || 0) + 1);
     }
   }
@@ -138,15 +153,17 @@ function computeNeedTree(payload) {
       subLabel:  'Standard',
       subSuffix: code.length > 4 ? code.slice(4) : '',
     };
-    const vc  = vacantByType.get(code)   || 0;
-    const arr = arrivalsByType.get(code) || 0;
-    const net = vc - arr;
+    const vc    = vacantByType.get(code)   || 0;
+    const arr   = arrivalsByType.get(code) || 0;
+    const total = totalByType.get(code)    || 0;
+    const net   = vc - arr;
     variants.push({
       typeCode:    code,
       baseCode:    meta.baseCode,
       baseLabel:   meta.baseLabel,
       subLabel:    meta.subLabel,
       subSuffix:   meta.subSuffix,
+      totalRooms:  total,
       vacantClean: vc,
       arrivals:    arr,
       netBalance:  net,
@@ -172,10 +189,12 @@ function computeNeedTree(payload) {
 
   // Per-group totals + sort variants (generic first, then alpha).
   for (const g of groupMap.values()) {
-    const sumVC  = g.variants.reduce((s, v) => s + v.vacantClean, 0);
-    const sumArr = g.variants.reduce((s, v) => s + v.arrivals,    0);
-    const net    = sumVC - sumArr;
+    const sumTotal = g.variants.reduce((s, v) => s + v.totalRooms,  0);
+    const sumVC    = g.variants.reduce((s, v) => s + v.vacantClean, 0);
+    const sumArr   = g.variants.reduce((s, v) => s + v.arrivals,    0);
+    const net      = sumVC - sumArr;
     g.totals = {
+      totalRooms:  sumTotal,
       vacantClean: sumVC,
       arrivals:    sumArr,
       netBalance:  net,
@@ -280,7 +299,8 @@ const NeedTable = ({ groups }) => (
           <tr>
             <th>Room Type Code</th>
             <th>Room Type</th>
-            <th>Vacant Clean</th>
+            <th title="Total physical rooms of this type in inventory">Total Rooms</th>
+            <th title="Vacant + (VI Vacant Inspected OR PU Pickup awaiting FD inspection)">Vacant Clean</th>
             <th title="Guests not yet checked in">Remaining Arrivals</th>
             <th>Net Balance</th>
             <th>Rooms Needed</th>
@@ -289,13 +309,14 @@ const NeedTable = ({ groups }) => (
         </thead>
         <tbody>
           {groups.length === 0 && (
-            <tr><td colSpan={7} className="fb-table-empty">No room types in the snapshot yet.</td></tr>
+            <tr><td colSpan={8} className="fb-table-empty">No room types in the snapshot yet.</td></tr>
           )}
           {groups.map(g => (
             <React.Fragment key={g.baseCode || g.baseLabel}>
               <tr className="fb-group-row">
                 <td><code className="fb-group-code">{g.baseCode || '—'}</code></td>
                 <td><strong>{g.baseLabel}</strong> <span className="fb-group-sub">· all subtypes</span></td>
+                <td className="fb-cell-total">{g.totals.totalRooms}</td>
                 <td>{g.totals.vacantClean}</td>
                 <td>{g.totals.arrivals}</td>
                 <td className={`fb-balance fb-balance-${g.totals.status}`}>
@@ -311,6 +332,7 @@ const NeedTable = ({ groups }) => (
                     <code>{v.typeCode}</code>
                   </td>
                   <td className="fb-variant-label">{v.subLabel || 'Standard'}</td>
+                  <td className="fb-cell-total">{v.totalRooms}</td>
                   <td>{v.vacantClean}</td>
                   <td>{v.arrivals}</td>
                   <td className={`fb-balance fb-balance-${v.status}`}>
@@ -510,11 +532,27 @@ const Forecast = () => {
     // dashboard view is category-level.
     const totalRoomsNeeded = needGroups.reduce((s, g) => s + g.totals.roomsNeeded, 0);
     const totalVacantClean = needGroups.reduce((s, g) => s + g.totals.vacantClean, 0);
-    const totalArrivals    = needGroups.reduce((s, g) => s + g.totals.arrivals,    0);
+    const derivedArrivals  = needGroups.reduce((s, g) => s + g.totals.arrivals,    0);
     const deficitTypes     = needGroups.filter(g => g.totals.status === 'short').length;
     const surplusTypes     = needGroups.filter(g => g.totals.status === 'surplus').length;
-    return { totalRoomsNeeded, totalVacantClean, totalArrivals, deficitTypes, surplusTypes };
-  }, [needGroups]);
+    // Sprint 17.15 — for the top "Remaining arrivals" stat use
+    // rGuest's authoritative number when available so the
+    // Forecast page matches the Reservations page's headline. If
+    // the metrics endpoint didn't respond, fall back to our
+    // derived sum. `derivedArrivals` is exposed separately so
+    // the UI can show a small note when the two disagree.
+    const metricRemaining = snapshot?.payload?.metricsSnapshot?.remainingArrivals?.remaining;
+    const totalArrivals   = Number.isFinite(metricRemaining) ? metricRemaining : derivedArrivals;
+    return {
+      totalRoomsNeeded,
+      totalVacantClean,
+      totalArrivals,
+      derivedArrivals,
+      metricRemaining: Number.isFinite(metricRemaining) ? metricRemaining : null,
+      deficitTypes,
+      surplusTypes,
+    };
+  }, [needGroups, snapshot]);
 
   const lastSync = snapshot ? fmtTime(snapshot.scraped_at) : '—';
 
@@ -592,6 +630,20 @@ const Forecast = () => {
             <StatBar label="Deficit room types"       value={totals.deficitTypes}     accent="warn"    icon={<IconWarn />} />
             <StatBar label="Surplus room types"       value={totals.surplusTypes}     accent="success" icon={<IconTrend />} />
           </section>
+
+          {/* Sprint 17.15 — surface the gap when rGuest's total
+              disagrees with our per-type breakdown. Helps the user
+              spot when arrivals are slipping through unmapped room
+              types (or rGuest is counting something we don't). */}
+          {totals.metricRemaining != null && totals.metricRemaining !== totals.derivedArrivals && (
+            <div className="fb-mismatch-note" role="note">
+              <IconInfo />
+              <span>
+                rGuest reports <strong>{totals.metricRemaining}</strong> remaining arrivals across the property, but our per-type breakdown sums to <strong>{totals.derivedArrivals}</strong>.
+                {' '}Gap of <strong>{Math.abs(totals.metricRemaining - totals.derivedArrivals)}</strong> may be walk-ins, reservations with unmapped/unknown room types, or status codes we haven't seen before.
+              </span>
+            </div>
+          )}
 
           <div className="fb-body">
             <main className="fb-main">
