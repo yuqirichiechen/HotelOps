@@ -179,6 +179,122 @@ already in the DB.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 17.8: Forecast page UI revision (KPI cards + Reservation Details tab + HK Message Preview)
+
+User-approved mockup pass after the data was correct in 17.7.2.
+Treats the mockup as a template; layout doesn't have to match
+pixel-for-pixel.
+
+**1. KPI cards — now show "remaining of total".**
+
+`KpiCard` updated with optional `remaining` prop. When set:
+- A second line renders `<strong>N</strong> remaining` in accent
+  color.
+- If `remaining === 0`, the card gets a subtle green outline and
+  the line goes green ("done").
+
+Five cards in the row (was the same five, now richer):
+1. Arrivals — `value=kpis.arrivals`, `remaining=kpis.remainingArrivals`,
+   sublabel `"check-ins today"`.
+2. Departures — `value=kpis.departures`,
+   `remaining=kpis.remainingDepartures`, sublabel `"check-outs today"`.
+3. Stayovers — value only (no progress signal yet),
+   sublabel `"occupied rooms needing service"`.
+4. **Rooms to service** — value = total cleaning load,
+   remaining = `remainingDepartures + stayovers` (no per-room
+   completion tracking yet, so this stays at total until 17.9
+   wires that up). User asked for "remaining 0 = done" semantics
+   and this is the closest we can do with current rGuest signals.
+5. In-house — value only, sublabel `"currently occupied rooms"`.
+
+Replaces the prior "Housekeepers needed" card; HK headcount
+still surfaces in the Dispatch Summary right-rail card.
+
+**2. New "Reservation Details" tab — the readable guest list.**
+
+`ReservationDetailsTable` reads from `payload.reservations`
+(added in 17.7). Default view is now this tab (was "By Cleaning
+Type"). Toggle order: Reservation Details / Cleaning Type / Room
+Type / Floor. The three legacy tabs still work for the
+analytics-style breakdowns.
+
+Columns: Guest · Room/Type · Check-in · Check-out · Nights ·
+Source · Status · HK Action.
+
+- Guest cell shows the full name + a `Pre-assigned` indicator
+  when `isPreAssigned=true` and a `No room assigned` warning
+  (yellow) when an arrival doesn't have a roomId yet.
+- Status badge: Confirmed / Pending / In house / Departed /
+  Cancelled — colored pills per status.
+- HK Action: derived from `r.kind` — departure → "Full Clean"
+  (warm), stayover → "Touch-up" (cool blue), arrival/inhouse →
+  "None" (gray).
+
+Filter chips above the table: **All / Arrivals / Departures /
+In-house / Stayovers** — matches the mockup's chip row. Two
+dropdowns alongside: **Room type** (populated from
+`detailRoomTypes` derived from the payload) and **Source**
+(populated from `detailSources`). All filters compose
+(`AND`-combined). Footer shows `Showing X of Y reservations`.
+
+**3. Service Progress card — right rail.**
+
+`ServiceProgress` component computes:
+- **Departure cleans** — progress from
+  `metricsSnapshot.remainingDepartures.{total, remaining}`.
+  `done = total - remaining`, `pct = round(done/total*100)`.
+  Bar accent: purple.
+- **Stayover touch-ups** — placeholder 0 / total for now (no
+  rGuest signal for per-room touch-up completion). Wire up in
+  17.9 once we figure out which HK status transitions imply
+  completion. Bar accent: green.
+
+Each row has label · % · bar · `done / total` counter.
+
+**4. Housekeeping Message Preview — bottom.**
+
+`HousekeepingMessagePreview` generates a one-paragraph handoff
+note from the KPIs:
+
+> Good {morning/afternoon/evening}, Housekeeping team — today's
+> forecast shows N rooms to service: X full cleans (check-outs)
+> and Y stayover touch-ups. Based on a productivity target of Z
+> rooms per attendant, K attendants are recommended. Please
+> review the assigned rooms below.
+
+Greeting flexes by clock hour. "Copy" button writes the message
+to the clipboard (silent failure if denied). Replaces the donut
+chart at the bottom (donut still defined in the file as dead
+code; safe to delete next pass).
+
+**Files touched:**
+- `src/components/Forecasting/index.js` (KpiCard prop signature
+  expanded; new `ReservationDetailsTable`, `ServiceProgress`,
+  `HousekeepingMessagePreview` components; toggle order +
+  default view + filter chip state).
+- `src/components/Forecasting/Forecasting.css` (chip styles,
+  status/action pill colors, Service Progress rows, HK
+  Message card, KPI remaining/done variants).
+
+**Verified.** Brace + paren balance OK (278/278, 230/230).
+
+**Open work / known limitations:**
+
+- Stayover touch-up progress is placeholder — no rGuest signal
+  for "this stayover room has been touched up." Possible
+  approaches for 17.9: track HK status changes between scrapes,
+  or surface a checkbox per room in the printable sheet.
+- "Rooms to service" remaining can't decrease until we have
+  per-room completion tracking. For now it equals
+  `remainingDepartures + stayovers` so the FD at least sees the
+  remaining departure work shrink throughout the day.
+- DonutLegend component is dead but still in the file — clean
+  up in 17.9 along with the dispatch-summary card consolidation.
+- HK Message Preview doesn't yet wire to the "Send to
+  housekeeping" button; copy-to-clipboard is the only output.
+
+---
+
 ### 2026-06-04 — Sprint 17.7.2: use rGuest's authoritative `reservationMetrics` for KPIs
 
 17.7.1's diagnostics surfaced the real problem: `/reservations/search/date`

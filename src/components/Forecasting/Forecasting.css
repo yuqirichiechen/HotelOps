@@ -153,6 +153,19 @@
   color: var(--text-muted);
   margin-top: 4px;
 }
+/* Sprint 17.8 — "X remaining" line on KPI cards that have an
+   actionable countdown (arrivals/departures/rooms-to-service). */
+.fc-kpi-remaining {
+  font-size: 12px;
+  color: var(--accent-alt);
+  margin-top: 6px;
+}
+.fc-kpi-remaining strong { font-weight: 600; }
+.fc-kpi-remaining.done   { color: var(--success); }
+.fc-kpi-done {
+  outline: 1px solid var(--success-faint);
+  background: var(--success-subtle);
+}
 
 /* ── Body grid (main + right rail) ───────────────────────── */
 .fc-body {
@@ -451,6 +464,164 @@
   border-radius: 8px;
   margin-bottom: 16px;
   font-size: 14px;
+}
+
+/* ── Sprint 17.8: Reservation Details table + filter chips ─ */
+.fc-detail-wrap { display: flex; flex-direction: column; gap: 14px; }
+.fc-detail-controls {
+  display: flex; justify-content: space-between; gap: 16px;
+  align-items: center; flex-wrap: wrap;
+}
+.fc-chip-row { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.fc-chip {
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.fc-chip:hover  { background: var(--bg-surface-alt); }
+.fc-chip.active {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.fc-detail-selects {
+  display: inline-flex; gap: 10px; flex-wrap: wrap;
+}
+.fc-detail-selects label {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  font-size: 11px; color: var(--text-muted);
+}
+.fc-detail-selects select {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.fc-detail-tablewrap { overflow-x: auto; }
+.fc-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.fc-detail-table th {
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.fc-detail-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+.fc-detail-guest { font-weight: 600; }
+.fc-detail-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.fc-detail-sub-warn { color: var(--warn-text); }
+.fc-detail-sub-inline { color: var(--text-muted); font-size: 12px; }
+.fc-detail-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 24px;
+}
+.fc-detail-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 6px 4px 0;
+}
+
+/* Status pills */
+.fc-pill-status-confirmed { background: #c6f6d5; color: #276749; }
+.fc-pill-status-pending   { background: #e9d8fd; color: #5b21b6; }
+.fc-pill-status-inhouse   { background: #bee3f8; color: #2c5282; }
+.fc-pill-status-departed  { background: var(--bg-raised); color: var(--text-muted); }
+.fc-pill-status-cancelled { background: var(--danger-bg); color: var(--danger-text); }
+/* HK action pills */
+.fc-pill-action-full  { background: #feebc8; color: #7c2d12; }
+.fc-pill-action-touch { background: #bee3f8; color: #2c5282; }
+.fc-pill-action-none  { background: var(--bg-raised); color: var(--text-muted); }
+
+/* ── Sprint 17.8: Service Progress card (right rail) ──────── */
+.fc-progress-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+}
+.fc-progress-row:last-child { margin-bottom: 0; }
+.fc-progress-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; }
+.fc-progress-label { font-size: 13px; color: var(--text-primary); }
+.fc-progress-pct   { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.fc-progress-bar {
+  grid-column: 1 / 2;
+  height: 6px;
+  background: var(--bg-raised);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.fc-progress-fill {
+  height: 100%;
+  background: var(--accent-alt);
+  transition: width 0.3s ease;
+}
+.fc-progress-dep  .fc-progress-fill { background: #805ad5; }
+.fc-progress-stay .fc-progress-fill { background: var(--success); }
+.fc-progress-counts {
+  grid-column: 2 / 3;
+  font-size: 12px;
+  color: var(--text-secondary);
+  align-self: end;
+  white-space: nowrap;
+}
+.fc-progress-counts strong { font-weight: 600; color: var(--text-primary); }
+
+/* ── Sprint 17.8: HK Message Preview card ─────────────────── */
+.fc-msg-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 22px;
+}
+.fc-msg-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.fc-msg-card h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  margin: 0;
+  color: var(--brand-text);
+}
+.fc-msg-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+  background: var(--bg-base);
+  padding: 12px 14px;
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-alt);
 }
 
 /* ── Mobile-ish (≤900px) ─────────────────────────────────── */

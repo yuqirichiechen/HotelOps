@@ -49,16 +49,236 @@ const ACTION_LABEL = {
 
 // ── Sub-components ─────────────────────────────────────────
 
-const KpiCard = ({ label, value, sublabel, accent }) => (
-  <div className={`fc-kpi-card${accent ? ` fc-kpi-${accent}` : ''}`}>
-    <div className="fc-kpi-icon" aria-hidden="true" />
-    <div className="fc-kpi-body">
-      <div className="fc-kpi-label">{label}</div>
-      <div className="fc-kpi-value">{value ?? '—'}</div>
-      {sublabel && <div className="fc-kpi-sublabel">{sublabel}</div>}
+// Sprint 17.8 KpiCard. Adds a "remaining" line when supplied — for
+// arrivals / departures / rooms-to-service this is the actionable
+// number the FD cares about ("how much is left to happen / get
+// done"). When remaining === 0 the card is dimmed-green ("done").
+const KpiCard = ({ label, value, remaining, sublabel, accent }) => {
+  const showRem = Number.isFinite(remaining);
+  const done    = showRem && remaining === 0;
+  return (
+    <div className={`fc-kpi-card${accent ? ` fc-kpi-${accent}` : ''}${done ? ' fc-kpi-done' : ''}`}>
+      <div className="fc-kpi-icon" aria-hidden="true" />
+      <div className="fc-kpi-body">
+        <div className="fc-kpi-label">{label}</div>
+        <div className="fc-kpi-value">{value ?? '—'}</div>
+        {sublabel && <div className="fc-kpi-sublabel">{sublabel}</div>}
+        {showRem && (
+          <div className={`fc-kpi-remaining${done ? ' done' : ''}`}>
+            <strong>{remaining}</strong> remaining
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+// Sprint 17.8 — flattened reservation list w/ filter chips. Reads
+// from `payload.reservations` (added in 17.7). Rendered when the
+// view toggle is on "details".
+const RESN_FILTER_LABELS = [
+  ['all',       'All'],
+  ['arrival',   'Arrivals'],
+  ['departure', 'Departures'],
+  ['inhouse',   'In-house'],
+  ['stayover',  'Stayovers'],
+];
+
+// HK action implied by the reservation's kind. Mirrors what the
+// per-room compute does — duplicated here so the table can show it
+// per reservation row without needing to look up rooms.
+const HK_ACTION_FOR_KIND = {
+  arrival:   { label: 'None',       cls: 'none' },
+  departure: { label: 'Full Clean', cls: 'full' },
+  stayover:  { label: 'Touch-up',   cls: 'touch' },
+  inhouse:   { label: 'None',       cls: 'none' },
+};
+
+const STATUS_PILL_CLASS = {
+  'Confirmed': 'confirmed',
+  'Pending':   'pending',
+  'In house':  'inhouse',
+  'Departed':  'departed',
+  'Cancelled': 'cancelled',
+};
+
+const ReservationDetailsTable = ({ rows, filter, onFilter, sources = [], roomTypes = [], sourceFilter, onSourceFilter, typeFilter, onTypeFilter }) => {
+  const filtered = rows.filter(r => {
+    if (filter !== 'all' && r.kind !== filter) return false;
+    if (sourceFilter && r.source !== sourceFilter) return false;
+    if (typeFilter   && r.baseLabel !== typeFilter) return false;
+    return true;
+  });
+
+  return (
+    <div className="fc-detail-wrap">
+      <div className="fc-detail-controls">
+        <div className="fc-chip-row" role="tablist">
+          {RESN_FILTER_LABELS.map(([key, lbl]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={filter === key}
+              className={`fc-chip${filter === key ? ' active' : ''}`}
+              onClick={() => onFilter(key)}
+            >{lbl}</button>
+          ))}
+        </div>
+        <div className="fc-detail-selects">
+          <label>
+            <span>Room type</span>
+            <select value={typeFilter || ''} onChange={e => onTypeFilter(e.target.value || null)}>
+              <option value="">All</option>
+              {roomTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Source</span>
+            <select value={sourceFilter || ''} onChange={e => onSourceFilter(e.target.value || null)}>
+              <option value="">All</option>
+              {sources.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="fc-detail-tablewrap">
+        <table className="fc-detail-table">
+          <thead>
+            <tr>
+              <th>Guest</th>
+              <th>Room / Type</th>
+              <th>Check-in</th>
+              <th>Check-out</th>
+              <th>Nights</th>
+              <th>Source</th>
+              <th>Status</th>
+              <th>HK Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="fc-detail-empty">No reservations match the current filters.</td></tr>
+            )}
+            {filtered.map(r => {
+              const action = HK_ACTION_FOR_KIND[r.kind] || HK_ACTION_FOR_KIND.inhouse;
+              const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
+              return (
+                <tr key={r.id}>
+                  <td>
+                    <div className="fc-detail-guest">{r.guestName || '(no name)'}</div>
+                    {r.isPreAssigned && <div className="fc-detail-sub">Pre-assigned</div>}
+                    {!r.isPreAssigned && r.kind === 'arrival' && (
+                      <div className="fc-detail-sub fc-detail-sub-warn">No room assigned</div>
+                    )}
+                  </td>
+                  <td>
+                    <div>{r.roomNumber || '—'} {r.baseLabel ? <span className="fc-detail-sub-inline">/ {r.baseLabel}</span> : null}</div>
+                    {r.subLabel && r.subLabel !== 'Standard' && (
+                      <div className="fc-detail-sub">{r.subLabel}</div>
+                    )}
+                  </td>
+                  <td>{fmtDate(r.arrivalDate)}</td>
+                  <td>{fmtDate(r.departureDate)}</td>
+                  <td>{r.nights}</td>
+                  <td>{r.source || '—'}</td>
+                  <td><span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span></td>
+                  <td><span className={`fc-pill fc-pill-action-${action.cls}`}>{action.label}</span></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="fc-detail-footer">
+        Showing <strong>{filtered.length}</strong> of <strong>{rows.length}</strong> reservations
+      </div>
+    </div>
+  );
+};
+
+// Sprint 17.8 — progress per cleaning category. Departure progress
+// uses the metrics endpoint (remainingDepartures.remaining gives
+// us "still to leave"; total - remaining = "already departed and
+// presumably needing clean"). Stayovers + rooms-reviewed can't be
+// tracked yet without a separate signal — show as 0% until we add
+// that.
+const ServiceProgress = ({ kpis, metricsSnapshot }) => {
+  const depTotal = metricsSnapshot?.remainingDepartures?.total ?? kpis.departures ?? 0;
+  const depRem   = metricsSnapshot?.remainingDepartures?.remaining ?? null;
+  const depDone  = depRem != null ? (depTotal - depRem) : 0;
+  const depPct   = depTotal > 0 ? Math.round((depDone / depTotal) * 100) : 0;
+
+  // Stayover progress isn't trackable from current rGuest signals.
+  // Placeholder — 0 of N until we wire up a per-room status check.
+  const stayTotal = kpis.stayovers ?? 0;
+  const stayDone  = 0;
+  const stayPct   = stayTotal > 0 ? Math.round((stayDone / stayTotal) * 100) : 0;
+
+  const Row = ({ label, done, total, pct, accent }) => (
+    <div className={`fc-progress-row fc-progress-${accent}`}>
+      <div className="fc-progress-meta">
+        <div className="fc-progress-label">{label}</div>
+        <div className="fc-progress-pct">{pct}%</div>
+      </div>
+      <div className="fc-progress-bar" aria-hidden="true">
+        <div className="fc-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="fc-progress-counts">
+        <strong>{done}</strong> / {total}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fc-rail-card">
+      <h3>Service Progress</h3>
+      <Row label="Departure cleans"  done={depDone}  total={depTotal}  pct={depPct}  accent="dep"  />
+      <Row label="Stayover touch-ups" done={stayDone} total={stayTotal} pct={stayPct} accent="stay" />
+    </div>
+  );
+};
+
+// Sprint 17.8 — auto-generated handoff message the GM can edit
+// before sending. For now editing is a stub (sends to clipboard).
+const HousekeepingMessagePreview = ({ kpis }) => {
+  const total   = kpis.roomsToCleanToday ?? 0;
+  const dep     = kpis.departures ?? 0;
+  const stay    = kpis.stayovers ?? 0;
+  const hk      = kpis.housekeepersNeeded ?? 0;
+
+  const hourPart = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'morning';
+    if (h < 18) return 'afternoon';
+    return 'evening';
+  })();
+
+  const text =
+    `Good ${hourPart}, Housekeeping team — today's forecast shows ${total} rooms to service: ` +
+    `${dep} full cleans (check-outs) and ${stay} stayover touch-ups. ` +
+    `Based on a productivity target of ${kpis.housekeepersNeeded ? Math.ceil(total / hk) : 6} rooms per attendant, ` +
+    `${hk} attendants are recommended. Please review the assigned rooms below.`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* clipboard may be denied; ignore silently */
+    }
+  };
+
+  return (
+    <div className="fc-msg-card">
+      <div className="fc-msg-head">
+        <h3>Housekeeping Message Preview</h3>
+        <button type="button" className="fc-meta-link" onClick={copy}>Copy</button>
+      </div>
+      <p className="fc-msg-body">{text}</p>
+    </div>
+  );
+};
 
 const ByCleaningTable = ({ rows }) => (
   <div className="fc-table-wrap">
@@ -324,7 +544,10 @@ const Forecasting = () => {
   const [loading, setLoading]   = useState(true);
   const [scraping, setScraping] = useState(false);
   const [error, setError]       = useState(null);
-  const [view, setView]         = useState('cleaning'); // 'cleaning' | 'room' | 'floor'
+  const [view, setView]         = useState('details'); // 'cleaning' | 'room' | 'floor' | 'details' (17.8 default)
+  const [resnFilter, setResnFilter]     = useState('all');   // 17.8: filter chips
+  const [resnSourceFilter, setResnSourceFilter] = useState(null);
+  const [resnTypeFilter, setResnTypeFilter]     = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);    // Sprint 17.4: printable sheet
   const [settingsOpen, setSettingsOpen] = useState(false); // Sprint 17.5
   const [historyOpen, setHistoryOpen]   = useState(false); // Sprint 17.5
@@ -367,13 +590,42 @@ const Forecasting = () => {
   const lastSync = snapshot ? fmtTime(snapshot.scraped_at) : '—';
   const kpis = snapshot?.payload?.kpis || {};
 
+  // Memoized derived lists for the Reservation Details filter dropdowns.
+  const detailSources = useMemo(() => {
+    if (!snapshot?.payload?.reservations) return [];
+    const set = new Set();
+    for (const r of snapshot.payload.reservations) if (r.source) set.add(r.source);
+    return [...set].sort();
+  }, [snapshot]);
+  const detailRoomTypes = useMemo(() => {
+    if (!snapshot?.payload?.reservations) return [];
+    const set = new Set();
+    for (const r of snapshot.payload.reservations) if (r.baseLabel) set.add(r.baseLabel);
+    return [...set].sort();
+  }, [snapshot]);
+
   const tableEl = useMemo(() => {
     if (!snapshot?.payload) return null;
+    if (view === 'details') {
+      return (
+        <ReservationDetailsTable
+          rows={snapshot.payload.reservations || []}
+          filter={resnFilter}
+          onFilter={setResnFilter}
+          sources={detailSources}
+          roomTypes={detailRoomTypes}
+          sourceFilter={resnSourceFilter}
+          onSourceFilter={setResnSourceFilter}
+          typeFilter={resnTypeFilter}
+          onTypeFilter={setResnTypeFilter}
+        />
+      );
+    }
     if (view === 'cleaning') return <ByCleaningTable rows={snapshot.payload.byCleaningType || []} />;
     if (view === 'room')     return <ByRoomTypeTable rows={snapshot.payload.byRoomType    || []} />;
     if (view === 'floor')    return <ByFloorTable    rows={snapshot.payload.byFloor       || []} />;
     return null;
-  }, [snapshot, view]);
+  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes]);
 
   return (
     <div className="fc-page">
@@ -445,21 +697,65 @@ const Forecasting = () => {
       {snapshot && (
         <>
           <section className="fc-kpis" aria-label="Daily KPIs">
-            <KpiCard label="Arrivals"             value={kpis.arrivals}           sublabel="rooms" accent="arrivals"   />
-            <KpiCard label="Departures"           value={kpis.departures}         sublabel="rooms" accent="departures" />
-            <KpiCard label="Stayovers"            value={kpis.stayovers}          sublabel="rooms" accent="stayovers"  />
-            <KpiCard label="Rooms to clean today" value={kpis.roomsToCleanToday}  sublabel="rooms" accent="clean"      />
-            <KpiCard label="Housekeepers needed"  value={kpis.housekeepersNeeded} sublabel="attendants" accent="staff" />
+            <KpiCard
+              label="Arrivals"
+              value={kpis.arrivals}
+              remaining={kpis.remainingArrivals}
+              sublabel="check-ins today"
+              accent="arrivals"
+            />
+            <KpiCard
+              label="Departures"
+              value={kpis.departures}
+              remaining={kpis.remainingDepartures}
+              sublabel="check-outs today"
+              accent="departures"
+            />
+            <KpiCard
+              label="Stayovers"
+              value={kpis.stayovers}
+              sublabel="occupied rooms needing service"
+              accent="stayovers"
+            />
+            <KpiCard
+              label="Rooms to service"
+              value={kpis.roomsToCleanToday}
+              remaining={(() => {
+                // Remaining cleaning = still-to-depart departures
+                // (they haven't left yet, so their room isn't yet
+                // ready for full clean) + every stayover (no live
+                // progress signal yet).
+                const remDep = kpis.remainingDepartures ?? kpis.departures ?? 0;
+                const stay   = kpis.stayovers ?? 0;
+                return remDep + stay;
+              })()}
+              sublabel="full cleans + touch-ups"
+              accent="clean"
+            />
+            <KpiCard
+              label="In-house"
+              value={kpis.inHouse}
+              sublabel="currently occupied rooms"
+              accent="staff"
+            />
           </section>
 
           <div className="fc-body">
             <main className="fc-main">
               <div className="fc-table-header">
-                <h2>Forecast {view === 'cleaning' ? 'by Cleaning Type' : view === 'room' ? 'by Room Type' : 'by Floor'}</h2>
+                <h2>
+                  Forecast {
+                    view === 'details'  ? 'Breakdown'
+                  : view === 'cleaning' ? 'by Cleaning Type'
+                  : view === 'room'     ? 'by Room Type'
+                                        : 'by Floor'
+                  }
+                </h2>
                 <div className="fc-toggle" role="tablist">
-                  <button role="tab" aria-selected={view === 'cleaning'} className={view === 'cleaning' ? 'active' : ''} onClick={() => setView('cleaning')}>By cleaning type</button>
-                  <button role="tab" aria-selected={view === 'room'}     className={view === 'room'     ? 'active' : ''} onClick={() => setView('room')}    >By room type</button>
-                  <button role="tab" aria-selected={view === 'floor'}    className={view === 'floor'    ? 'active' : ''} onClick={() => setView('floor')}   >By floor</button>
+                  <button role="tab" aria-selected={view === 'details'}  className={view === 'details'  ? 'active' : ''} onClick={() => setView('details')} >Reservation Details</button>
+                  <button role="tab" aria-selected={view === 'cleaning'} className={view === 'cleaning' ? 'active' : ''} onClick={() => setView('cleaning')}>Cleaning Type</button>
+                  <button role="tab" aria-selected={view === 'room'}     className={view === 'room'     ? 'active' : ''} onClick={() => setView('room')}    >Room Type</button>
+                  <button role="tab" aria-selected={view === 'floor'}    className={view === 'floor'    ? 'active' : ''} onClick={() => setView('floor')}   >Floor</button>
                 </div>
               </div>
               {tableEl}
@@ -469,6 +765,10 @@ const Forecasting = () => {
             </main>
 
             <aside className="fc-rail">
+              <ServiceProgress
+                kpis={kpis}
+                metricsSnapshot={snapshot.payload.metricsSnapshot}
+              />
               <ScraperOutputCard snapshot={snapshot} />
               <DispatchSummaryCard data={snapshot.payload.dispatchSummary} />
               <SendoutCard onClick={handleGenerate} disabled={generateDisabled} snapshot={snapshot} />
@@ -476,10 +776,7 @@ const Forecasting = () => {
           </div>
 
           <div className="fc-bottom">
-            <DonutLegend
-              rows={snapshot.payload.byCleaningType || []}
-              total={kpis.roomsToCleanToday || 0}
-            />
+            <HousekeepingMessagePreview kpis={kpis} />
           </div>
         </>
       )}
