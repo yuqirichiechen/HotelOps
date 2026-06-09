@@ -648,6 +648,146 @@
 .fc-detail-room   { font-variant-numeric: tabular-nums; }
 .fc-detail-nights { font-variant-numeric: tabular-nums; text-align: right; }
 
+/* Sprint 18.2 — row click selection. */
+.fc-detail-row { cursor: pointer; transition: background 0.1s; }
+.fc-detail-row:hover { background: var(--bg-surface-alt); }
+.fc-detail-row.selected {
+  background: var(--accent-bg);
+  outline: 1px solid var(--accent);
+}
+.fc-detail-row.selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent-alt);
+}
+
+/* Sprint 18.2 — Today at a glance compact list. Mirrors the top
+   KPI accents (purple/blue/orange/green/yellow) on the icon chips. */
+.fc-glance-card h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  color: var(--brand-text);
+  margin: 0 0 12px;
+}
+.fc-glance-list { list-style: none; margin: 0; padding: 0; }
+.fc-glance-row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.fc-glance-row:last-child { border-bottom: none; }
+.fc-glance-icon {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+}
+.fc-glance-row.fc-kpi-arrivals   .fc-glance-icon { background: #e9d8fd; color: #6b46c1; }
+.fc-glance-row.fc-kpi-departures .fc-glance-icon { background: #feebc8; color: #c05621; }
+.fc-glance-row.fc-kpi-inhouse    .fc-glance-icon { background: #bee3f8; color: #2b6cb0; }
+.fc-glance-row.fc-kpi-staying    .fc-glance-icon { background: #c6f6d5; color: #2f855a; }
+.fc-glance-row.fc-kpi-noroom     .fc-glance-icon { background: #fefcbf; color: #b7791f; }
+.fc-glance-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.fc-glance-label { font-size: 12.5px; color: var(--text-primary); font-weight: 500; }
+.fc-glance-sub   { font-size: 11px;   color: var(--text-muted); }
+.fc-glance-value {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.fc-glance-cta {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Sprint 18.2 — Selected reservation card. */
+.fc-selected-card { display: flex; flex-direction: column; gap: 14px; }
+.fc-selected-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.fc-selected-empty h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  color: var(--brand-text);
+  margin: 0 0 8px;
+}
+.fc-selected-empty p { margin: 0; line-height: 1.5; }
+.fc-selected-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.fc-selected-head h3 {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  color: var(--brand-text);
+  margin: 0;
+}
+.fc-selected-guest {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+.fc-selected-guest strong {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+.fc-selected-conf {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.fc-selected-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin: 0;
+}
+.fc-selected-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fc-selected-flags {
+  grid-column: 1 / -1;
+}
+.fc-selected-flags dd .fc-pill { margin-right: 4px; }
+.fc-selected-grid dt {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fc-selected-grid dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.fc-selected-actions {
+  display: flex;
+  gap: 8px;
+}
+.fc-selected-actions .fc-btn { flex: 1; justify-content: center; }
+.fc-selected-deep {
+  width: 100%;
+  justify-content: center;
+  text-decoration: none;
+}
+.fc-selected-close {
+  align-self: center;
+}
+
 /* ── Sprint 17.8: Service Progress card (right rail) ──────── */
 .fc-progress-row {
   display: grid;

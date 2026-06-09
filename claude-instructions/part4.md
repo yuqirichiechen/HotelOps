@@ -280,6 +280,104 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-09 — Sprint 18.2: right-rail "Today at a glance" + "Selected reservation" + Open-in-rGuest deep link
+
+Two-phase rail. Builds on 18.1's table; adds row-click selection,
+a compact rail summary, and the rGuest deep link confirmed
+yesterday.
+
+**1. Click-to-select on table rows.**
+
+Each `<tr>` in `ReservationDetailsTable` is now a click target.
+- First click highlights the row + populates the right-rail
+  panel.
+- Re-clicking the same row deselects.
+- New `selected` class on `<tr>` styles the highlight: accent
+  background tint + outline + 3px inset shadow on the first
+  cell as a "you're here" cue.
+
+Wiring: `selectedId` + `onSelect` props added to
+`ReservationDetailsTable`; page-level `selectedResId` state +
+`selectedReservation` memo (looks up the full reservation
+object from `payload.reservations`).
+
+**2. `TodayAtAGlance` compact rail card.**
+
+5-row vertical list mirroring the 18.1 top KPI cards but
+denser. Each row: small accent-colored icon chip · label +
+sublabel · big number on the right. Same math as the top cards
+so the rail stays useful as a quick reference.
+
+Bottom of the card: **"View all reservations →"** link that
+clears the current filter + deselection.
+
+**3. `SelectedReservation` panel — when a row is clicked.**
+
+Empty state ("Click a row in the table to see full reservation
+details here.") when nothing's selected. When populated:
+- Header: card title + status pill aligned right.
+- Guest name (big) + `Conf. {confirmationId}` underneath.
+- 2-col metadata grid with 9 cells: Room · Room Type ·
+  Arrival · Departure · Nights · Source · Reservation Status ·
+  Room Status · Notes/Flags.
+- Two side-by-side stub buttons (View details, Guest folio)
+  disabled with tooltips pointing at 18.3+.
+- Full-width **"Open in rGuest Stay ↗"** primary button that
+  `target="_blank"`s to:
+  ```
+  https://stay.rguest.com/v2/reservation/{id}?tenantId=1566&propertyId=481
+  ```
+  URL pattern confirmed via user-supplied URL on 2026-06-09;
+  encapsulated in `RGUEST_RESERVATION_URL(id)` helper for easy
+  per-tenant override later.
+- Small "Close" text-link at the bottom for keyboard-less
+  deselection.
+
+**4. Rail content cleanup.**
+
+The old rail cards from 17.x (ServiceProgress, ScraperOutputCard,
+DispatchSummaryCard) were forecast-y concerns left over from
+when this page was titled "Forecast". They're gone from the
+Reservations rail now. ScraperOutputCard's sync info still
+lives on the top "Last sync HH:MM" badge so we don't lose it.
+The component definitions are still in the file as dead code;
+safe to delete in a follow-up sweep.
+
+**Files touched:**
+- `src/components/Forecasting/index.js`:
+  - `RGUEST_RESERVATION_URL` helper added.
+  - `ReservationDetailsTable` signature gains `selectedId` +
+    `onSelect`; rows get `.fc-detail-row` class + onClick + the
+    `.selected` modifier.
+  - New `TodayAtAGlance` + `SelectedReservation` components.
+  - Page-level `selectedResId` state + `selectedReservation`
+    memo; `tableEl` memo deps + props updated.
+  - Rail's three legacy cards replaced with the two new cards.
+- `src/components/Forecasting/Forecasting.css`:
+  - `.fc-detail-row` hover + selected states.
+  - Full `.fc-glance-*` block for the compact rail KPI list.
+  - Full `.fc-selected-*` block for the detail panel
+    (head/guest/grid/actions/deep link).
+
+**Verified.** Brace + paren balance OK (450/450, 382/382).
+
+**Acknowledged limitations:**
+
+- "View details" + "Guest folio" buttons are stubs — pointed
+  at 18.3+ via title attributes. View details could expand
+  into a fuller modal once we surface more per-reservation
+  data; Guest folio likely needs an `account-service` endpoint
+  recon.
+- The legacy `view` toggle (Reservation Details / Cleaning Type
+  / Room Type / Floor) still renders at the top of the table
+  area — it's a vestige from when the page hosted analytic
+  views. Worth removing in 18.3 cleanup to match the mockup,
+  which only shows the reservation list.
+- ScraperOutputCard / DispatchSummaryCard / ServiceProgress
+  component definitions stay as dead code for now.
+
+---
+
 ### 2026-06-09 — Sprint 18.1: 5 new KPI cards + filter chips + restructured Reservations table
 
 First UX delivery of Sprint 18. Server-side gains a `kind='future'`

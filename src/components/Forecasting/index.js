@@ -274,6 +274,13 @@ const STATUS_PILL_CLASS = {
   'Cancelled': 'cancelled',
 };
 
+// Sprint 18.2 — deep-link URL pattern for an individual reservation
+// in rGuest Stay. Confirmed via user-supplied URL on 2026-06-09;
+// tenantId / propertyId are Snoqualmie's. If/when we add a second
+// hotel these should move into a per-property config row.
+const RGUEST_RESERVATION_URL = (id) =>
+  `https://stay.rguest.com/v2/reservation/${encodeURIComponent(id)}?tenantId=1566&propertyId=481`;
+
 // Sprint 18.1 — predicate per filter chip. Composes with the
 // Room Type + Source dropdowns inside the table.
 const FILTER_PREDICATES = {
@@ -285,7 +292,12 @@ const FILTER_PREDICATES = {
   noRoom:    r => r.kind === 'arrival' && !r.isPreAssigned,
 };
 
-const ReservationDetailsTable = ({ rows, filter, onFilter, sources = [], roomTypes = [], sourceFilter, onSourceFilter, typeFilter, onTypeFilter }) => {
+const ReservationDetailsTable = ({
+  rows, filter, onFilter, sources = [], roomTypes = [],
+  sourceFilter, onSourceFilter, typeFilter, onTypeFilter,
+  // Sprint 18.2 — selection wiring for the right-rail detail panel.
+  selectedId, onSelect,
+}) => {
   const filtered = rows.filter(r => {
     const pred = FILTER_PREDICATES[filter] || FILTER_PREDICATES.all;
     if (!pred(r)) return false;
@@ -365,8 +377,13 @@ const ReservationDetailsTable = ({ rows, filter, onFilter, sources = [], roomTyp
               if (r.isRedEye)              flags.push({ label: 'Late arrival',  cls: 'late' });
               if (r.scheduledForRoomMove)  flags.push({ label: 'Room move',     cls: 'move' });
               if (r.isDayUse)              flags.push({ label: 'Day use',       cls: 'day' });
+              const isSelected = selectedId === r.id;
               return (
-                <tr key={r.id}>
+                <tr
+                  key={r.id}
+                  className={`fc-detail-row${isSelected ? ' selected' : ''}`}
+                  onClick={() => onSelect && onSelect(isSelected ? null : r.id)}
+                >
                   <td>
                     <div className="fc-detail-guest">{r.guestName || '(no name)'}</div>
                     {r.confirmationId && (
@@ -447,6 +464,119 @@ const ServiceProgress = ({ kpis, metricsSnapshot }) => {
       <h3>Service Progress</h3>
       <Row label="Departure cleans"  done={depDone}  total={depTotal}  pct={depPct}  accent="dep"  />
       <Row label="Stayover touch-ups" done={stayDone} total={stayTotal} pct={stayPct} accent="stay" />
+    </div>
+  );
+};
+
+// Sprint 18.2 — compact "Today at a glance" rail card. Mirrors
+// the 5 top KPI cards in a slimmer vertical list so the rail
+// stays useful when a row hasn't been selected yet.
+const TodayAtAGlance = ({ kpis, reservations, onSelectAll }) => {
+  const remDep         = kpis.remainingDepartures ?? kpis.departures ?? 0;
+  const inHouseTonight = Math.max(0, (kpis.inHouse ?? 0) - remDep);
+  const noRoomCount    = (reservations || []).filter(r =>
+    r.kind === 'arrival' && !r.isPreAssigned
+  ).length;
+  const rows = [
+    { icon: <IconBriefcase    size={16} />, accent: 'arrivals',   label: 'Arrivals Today',   value: kpis.arrivals  ?? 0, sub: `${kpis.remainingArrivals ?? 0} not arrived` },
+    { icon: <IconBed          size={16} />, accent: 'inhouse',    label: 'In-house',         value: kpis.inHouse   ?? 0, sub: 'Guests currently staying' },
+    { icon: <IconExit         size={16} />, accent: 'departures', label: 'Departures Today', value: kpis.departures?? 0, sub: `${remDep} not checked out` },
+    { icon: <IconMoon         size={16} />, accent: 'staying',    label: 'Staying Tonight',  value: inHouseTonight,        sub: 'In-house, not departing today' },
+    { icon: <IconAlertTriangle size={16}/>, accent: 'noroom',     label: 'No Room Assigned', value: noRoomCount,           sub: 'Needs review' },
+  ];
+  return (
+    <div className="fc-rail-card fc-glance-card">
+      <h3>Today at a glance</h3>
+      <ul className="fc-glance-list">
+        {rows.map(r => (
+          <li key={r.label} className={`fc-glance-row fc-kpi-${r.accent}`}>
+            <span className="fc-glance-icon">{r.icon}</span>
+            <span className="fc-glance-body">
+              <span className="fc-glance-label">{r.label}</span>
+              <span className="fc-glance-sub">{r.sub}</span>
+            </span>
+            <span className="fc-glance-value">{r.value}</span>
+          </li>
+        ))}
+      </ul>
+      {onSelectAll && (
+        <button type="button" className="fc-meta-link fc-glance-cta" onClick={onSelectAll}>
+          View all reservations <span aria-hidden>→</span>
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Sprint 18.2 — detail panel for the currently-selected reservation.
+// Shows a compact metadata grid plus three actions: View details
+// (stub), Guest folio (stub — 18.3), and the rGuest deep link.
+const SelectedReservation = ({ reservation, onClose }) => {
+  if (!reservation) {
+    return (
+      <div className="fc-rail-card fc-selected-empty">
+        <h3>Selected reservation</h3>
+        <p>Click a row in the table to see full reservation details here.</p>
+      </div>
+    );
+  }
+  const r = reservation;
+  const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
+  const flags = [];
+  if (r.isEarlyArrival)       flags.push({ label: 'Early arrival', cls: 'early' });
+  if (r.isRedEye)             flags.push({ label: 'Late arrival',  cls: 'late' });
+  if (r.scheduledForRoomMove) flags.push({ label: 'Room move',     cls: 'move' });
+  if (r.isDayUse)             flags.push({ label: 'Day use',       cls: 'day' });
+  const roomStatusLabel = r.roomNumber
+    ? (r.hkStatusLabel || r.occupancyStatus || '—')
+    : 'No Room Assigned';
+  return (
+    <div className="fc-rail-card fc-selected-card">
+      <div className="fc-selected-head">
+        <h3>Selected reservation</h3>
+        <span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span>
+      </div>
+      <div className="fc-selected-guest">
+        <strong>{r.guestName || '(no name)'}</strong>
+        {r.confirmationId && <span className="fc-selected-conf">Conf. {r.confirmationId}</span>}
+      </div>
+      <dl className="fc-selected-grid">
+        <div><dt>Room</dt><dd>{r.roomNumber || '—'}</dd></div>
+        <div><dt>Room Type</dt><dd>{r.baseLabel || '—'}{r.subLabel && r.subLabel !== 'Standard' ? ` · ${r.subLabel}` : ''}</dd></div>
+        <div><dt>Arrival</dt><dd>{fmtDate(r.arrivalDate)}</dd></div>
+        <div><dt>Departure</dt><dd>{fmtDate(r.departureDate)}</dd></div>
+        <div><dt>Nights</dt><dd>{r.nights}</dd></div>
+        <div><dt>Source</dt><dd>{r.source || '—'}</dd></div>
+        <div><dt>Reservation Status</dt><dd><span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span></dd></div>
+        <div><dt>Room Status</dt><dd>
+          {r.roomNumber
+            ? <span className="fc-pill fc-pill-action-none">{roomStatusLabel}</span>
+            : <span className="fc-pill fc-pill-status-pending">No Room Assigned</span>}
+        </dd></div>
+        <div className="fc-selected-flags"><dt>Notes / Flags</dt><dd>
+          {flags.length === 0 && <span className="fc-detail-sub-inline">—</span>}
+          {flags.map(f => (
+            <span key={f.label} className={`fc-pill fc-flag-${f.cls}`}>{f.label}</span>
+          ))}
+        </dd></div>
+      </dl>
+      <div className="fc-selected-actions">
+        <button type="button" className="fc-btn fc-btn-secondary" disabled title="Detail view ships in 18.3+">View details</button>
+        <button type="button" className="fc-btn fc-btn-secondary" disabled title="Guest folio integration ships in 18.3+">Guest folio</button>
+      </div>
+      <a
+        className="fc-btn fc-btn-primary fc-selected-deep"
+        href={RGUEST_RESERVATION_URL(r.id)}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Open in rGuest Stay <span aria-hidden>↗</span>
+      </a>
+      {onClose && (
+        <button type="button" className="fc-meta-link fc-selected-close" onClick={onClose}>
+          Close
+        </button>
+      )}
     </div>
   );
 };
@@ -792,6 +922,9 @@ const Forecasting = () => {
   const [resnFilter, setResnFilter]     = useState('all');   // 17.8: filter chips
   const [resnSourceFilter, setResnSourceFilter] = useState(null);
   const [resnTypeFilter, setResnTypeFilter]     = useState(null);
+  // Sprint 18.2 — currently-selected reservation. Drives the
+  // right-rail detail panel + row highlight.
+  const [selectedResId, setSelectedResId] = useState(null);
   // sheetOpen state removed in 17.12 (Generate Forecast moved off this page).
   const [settingsOpen, setSettingsOpen] = useState(false); // Sprint 17.5
   const [historyOpen, setHistoryOpen]   = useState(false); // Sprint 17.5
@@ -884,6 +1017,14 @@ const Forecasting = () => {
     return [...set].sort();
   }, [snapshot]);
 
+  // Sprint 18.2 — resolve the currently-selected reservation
+  // object (if any) for the right-rail detail panel.
+  const selectedReservation = useMemo(() => {
+    if (!selectedResId) return null;
+    const list = snapshot?.payload?.reservations || [];
+    return list.find(r => r.id === selectedResId) || null;
+  }, [selectedResId, snapshot]);
+
   const tableEl = useMemo(() => {
     if (!snapshot?.payload) return null;
     if (view === 'details') {
@@ -898,6 +1039,8 @@ const Forecasting = () => {
           onSourceFilter={setResnSourceFilter}
           typeFilter={resnTypeFilter}
           onTypeFilter={setResnTypeFilter}
+          selectedId={selectedResId}
+          onSelect={setSelectedResId}
         />
       );
     }
@@ -905,7 +1048,7 @@ const Forecasting = () => {
     if (view === 'room')     return <ByRoomTypeTable rows={snapshot.payload.byRoomType    || []} />;
     if (view === 'floor')    return <ByFloorTable    rows={snapshot.payload.byFloor       || []} />;
     return null;
-  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes]);
+  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes, selectedResId]);
 
   return (
     <div className="fc-page">
@@ -1072,14 +1215,21 @@ const Forecasting = () => {
             </main>
 
             <aside className="fc-rail">
-              <ServiceProgress
+              {/* Sprint 18.2 — rail now hosts "Today at a glance"
+                  (compact KPI list mirroring the top cards) and
+                  the "Selected reservation" detail panel. The old
+                  forecast-y cards (ServiceProgress, Scraper
+                  Output, Dispatch Summary) moved off this page —
+                  they belong on the Forecast page. */}
+              <TodayAtAGlance
                 kpis={kpis}
-                metricsSnapshot={snapshot.payload.metricsSnapshot}
+                reservations={snapshot.payload.reservations}
+                onSelectAll={() => { setResnFilter('all'); setSelectedResId(null); }}
               />
-              <ScraperOutputCard snapshot={snapshot} />
-              <DispatchSummaryCard data={snapshot.payload.dispatchSummary} />
-              {/* Sprint 17.12: SendoutCard removed — Generate
-                  Forecast lives on the Forecast page now. */}
+              <SelectedReservation
+                reservation={selectedReservation}
+                onClose={() => setSelectedResId(null)}
+              />
             </aside>
           </div>
 
