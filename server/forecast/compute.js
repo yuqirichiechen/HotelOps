@@ -96,18 +96,32 @@ function isoDate(reservation, field) {
 // Returns null if the reservation should not appear in any count
 // (cancelled, no-show, moved, or doesn't actually intersect the
 // forecast date).
-function classifyForDate(reservation, forecastDate) {
+// Sprint 18.5 — cap the "future" window so the payload doesn't
+// balloon. The user wants the chip visible (decision §4.2.4) but
+// rGuest returns 1600+ RES rows going years out — most of them
+// useless to the FD looking at tonight's pipeline. 30 days
+// matches the typical booking-window the FD actually plans
+// against; rest live in `reservation_history` for occasional
+// long-range lookups.
+const FUTURE_WINDOW_DAYS_DEFAULT = 30;
+
+function addDaysISO(ymd, days) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function classifyForDate(reservation, forecastDate, futureWindowDays = FUTURE_WINDOW_DAYS_DEFAULT) {
   if (EXCLUDED_STATUSES.has(reservation.status)) return null;
   const arr = isoDate(reservation, 'arrivalDate');
   const dep = isoDate(reservation, 'departureDate');
   if (!arr || !dep) return null;
   const status = reservation.status;
   // Sprint 18.1 — `isFuture` includes RES (not-yet-arrived) bookings
-  // beyond today. The new Reservations page's "Future" filter chip
-  // surfaces them; the existing today-relevant KPIs ignore the flag
-  // (arrivesToday/etc. are mutually exclusive with isFuture by date
-  // comparison).
-  const isFuture = arr > forecastDate && status === 'RES';
+  // beyond today. Sprint 18.5 caps it to the next N days so the
+  // snapshot payload doesn't carry the firehose of year-out bookings.
+  const futureCutoff = addDaysISO(forecastDate, futureWindowDays);
+  const isFuture = arr > forecastDate && arr <= futureCutoff && status === 'RES';
   const meta = {
     arrivesToday:  arr === forecastDate,
     departsToday:  dep === forecastDate,
@@ -255,8 +269,11 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses,
   //    AND in-house, or both an arrival AND a departure (day-use).
   //    `_meta = null` means filtered out (CXL / NS / NSG / MOV, or
   //    the reservation doesn't actually intersect today).
+  //    Sprint 18.5 — `future_window_days` config option caps the
+  //    future RES window so the payload doesn't balloon.
+  const futureWindowDays = Number(config.future_window_days) || FUTURE_WINDOW_DAYS_DEFAULT;
   const classifiedResn = reservations
-    .map(r => ({ ...r, _meta: classifyForDate(r, forecastDate) }))
+    .map(r => ({ ...r, _meta: classifyForDate(r, forecastDate, futureWindowDays) }))
     .filter(r => r._meta !== null);
 
   // 3. Auto-onboard new typeCodes — anything in roomTypes the admin
@@ -537,6 +554,10 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses,
     return {
       id:                r.id,
       confirmationId:    r.confirmationId || null,
+      // Sprint 18.5 — surfaced so reservation_history can store
+      // it. Stable handle to rGuest's profile record; lets us
+      // join across visits if we ever build a guest history view.
+      primaryGuestProfileId: r.primaryGuestProfileId || null,
       guestName:         fullGuestName(r),
       arrivalDate:       arr,
       departureDate:     dep,

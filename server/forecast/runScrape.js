@@ -103,6 +103,119 @@ async function findDedupSnapshot(pool, hash, windowMinutes) {
   return rows[0] || null;
 }
 
+// Sprint 18.5 — upsert the snapshot's reservation list into
+// `reservation_history` so past guest data survives snapshot
+// pruning. Batched in chunks of 50 to keep the query parameter
+// count well under pg's 65k limit (29 cols × 50 = 1450 params).
+// Best-effort: if this fails the snapshot still counts as a
+// success — we log the error inline and move on.
+const HISTORY_BATCH = 50;
+async function upsertReservationHistory(pool, reservations, snapshotId, logs) {
+  if (!Array.isArray(reservations) || reservations.length === 0) return 0;
+  const rows = reservations.filter(r => r && r.id);
+  if (rows.length === 0) return 0;
+  const COLS = 29;
+  let upserted = 0;
+  for (let i = 0; i < rows.length; i += HISTORY_BATCH) {
+    const chunk = rows.slice(i, i + HISTORY_BATCH);
+    const placeholders = [];
+    const values = [];
+    chunk.forEach((r, idx) => {
+      const base = idx * COLS;
+      placeholders.push(
+        `(${Array.from({ length: COLS }, (_, j) => `$${base + j + 1}`).join(',')})`,
+      );
+      values.push(
+        r.id,
+        r.confirmationId         || null,
+        r.guestName              || null,
+        r.primaryGuestProfileId  || null,
+        r.arrivalDate            || null,
+        r.departureDate          || null,
+        Number.isFinite(r.nights) ? r.nights : null,
+        r.roomId                 || null,
+        r.roomNumber             || null,
+        r.floorId                || null,
+        r.typeCode               || null,
+        r.baseCode               || null,
+        r.baseLabel              || null,
+        r.subLabel               || null,
+        r.source                 || null,
+        r.status                 || null,
+        r.statusLabel            || null,
+        r.kind                   || null,
+        r.vipUuid                || null,
+        r.vipLabel               || null,
+        !!r.isPreAssigned,
+        !!r.isPetFriendly,
+        !!r.isGroupBooking,
+        !!r.isEarlyArrival,
+        !!r.isRedEye,
+        !!r.isDayUse,
+        !!r.isHighFloor,
+        !!r.scheduledForRoomMove,
+        snapshotId,
+      );
+    });
+    const q = `
+      INSERT INTO reservation_history (
+        reservation_id, confirmation_id, guest_name, primary_guest_profile_id,
+        arrival_date, departure_date, nights,
+        room_id, room_number, floor_id,
+        type_code, base_code, base_label, sub_label,
+        source, status, status_label, kind,
+        vip_uuid, vip_label,
+        is_pre_assigned, is_pet_friendly, is_group_booking,
+        is_early_arrival, is_red_eye, is_day_use, is_high_floor,
+        scheduled_for_room_move,
+        last_snapshot_id
+      ) VALUES ${placeholders.join(',')}
+      ON CONFLICT (reservation_id) DO UPDATE SET
+        confirmation_id          = EXCLUDED.confirmation_id,
+        guest_name               = EXCLUDED.guest_name,
+        primary_guest_profile_id = EXCLUDED.primary_guest_profile_id,
+        arrival_date             = EXCLUDED.arrival_date,
+        departure_date           = EXCLUDED.departure_date,
+        nights                   = EXCLUDED.nights,
+        room_id                  = EXCLUDED.room_id,
+        room_number              = EXCLUDED.room_number,
+        floor_id                 = EXCLUDED.floor_id,
+        type_code                = EXCLUDED.type_code,
+        base_code                = EXCLUDED.base_code,
+        base_label               = EXCLUDED.base_label,
+        sub_label                = EXCLUDED.sub_label,
+        source                   = EXCLUDED.source,
+        status                   = EXCLUDED.status,
+        status_label             = EXCLUDED.status_label,
+        kind                     = EXCLUDED.kind,
+        vip_uuid                 = EXCLUDED.vip_uuid,
+        vip_label                = EXCLUDED.vip_label,
+        is_pre_assigned          = EXCLUDED.is_pre_assigned,
+        is_pet_friendly          = EXCLUDED.is_pet_friendly,
+        is_group_booking         = EXCLUDED.is_group_booking,
+        is_early_arrival         = EXCLUDED.is_early_arrival,
+        is_red_eye               = EXCLUDED.is_red_eye,
+        is_day_use               = EXCLUDED.is_day_use,
+        is_high_floor            = EXCLUDED.is_high_floor,
+        scheduled_for_room_move  = EXCLUDED.scheduled_for_room_move,
+        last_seen_at             = NOW(),
+        last_snapshot_id         = EXCLUDED.last_snapshot_id
+    `;
+    try {
+      const res = await pool.query(q, values);
+      upserted += res.rowCount;
+    } catch (err) {
+      logs && logs.push({
+        at:      new Date().toISOString(),
+        level:   'warn',
+        message: 'reservation_history.batch_failed',
+        context: { batchStart: i, batchSize: chunk.length, error: err.message },
+      });
+    }
+  }
+  return upserted;
+}
+
 async function insertSnapshot(pool, row) {
   const q = `
     INSERT INTO forecast_snapshot
@@ -197,7 +310,31 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       error_message:     null,
     });
 
-    return { ...snapshot, deduped: false, newMappingsInserted: inserted };
+    // Sprint 18.5 — upsert per-reservation rows into the new
+    // long-lived `reservation_history` table. Best-effort: if it
+    // fails the snapshot still counts as a success (the bulk
+    // payload survives in forecast_snapshot.payload as fallback).
+    const historyLogs = [];
+    const upserted = await upsertReservationHistory(
+      pool, payload.reservations, snapshot.snapshot_id, historyLogs,
+    );
+    if (historyLogs.length) {
+      // Surface batch failures in the snapshot's logs so the admin
+      // history view shows them.
+      await pool.query(
+        `UPDATE forecast_snapshot
+            SET logs = logs || $1::jsonb
+          WHERE snapshot_id = $2`,
+        [JSON.stringify(historyLogs), snapshot.snapshot_id],
+      ).catch(() => { /* if even the log-merge fails, just drop */ });
+    }
+
+    return {
+      ...snapshot,
+      deduped: false,
+      newMappingsInserted: inserted,
+      historyUpserted: upserted,
+    };
   } catch (err) {
     // Log the failure as a snapshot row so it surfaces in the admin
     // history. The original error is re-thrown so the route handler

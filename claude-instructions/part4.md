@@ -280,6 +280,141 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-09 — Sprint 18.5: reservation_history table + scrape caching + future-date cap
+
+Closes the Sprint 18 arc. Four infra changes; all backend, no UI
+work. Run migration 025 before the next scrape.
+
+**1. Migration 025 — `reservation_history` table.**
+
+29-column table keyed by `reservation_id` (UUID from rGuest).
+Mirrors the shape of `payload.reservations[i]` from compute.js so
+the upsert is a straight column mapping. `first_seen_at` set on
+insert, `last_seen_at = NOW()` bumped on every conflict update.
+`last_snapshot_id` FK references `forecast_snapshot.snapshot_id`
+with `ON DELETE SET NULL` so deleting a snapshot doesn't orphan
+the row.
+
+Four indexes for the FD's daily lookups:
+- `arrival_date DESC` — "today's arrivals"
+- `status, arrival_date` — "everything not yet checked in"
+- `last_seen_at DESC` — "what scraped most recently"
+- `LOWER(guest_name)` — case-insensitive name search
+
+Schema.sql synced in tandem so fresh DB installs get the new
+table without needing to apply 025 on top.
+
+**Run on Koyeb:**
+```bash
+psql "$DATABASE_URL?sslmode=require" -f database/migrations/025_sprint18_reservation_history.sql
+```
+
+**2. Upsert in runScrape.js.**
+
+After `insertSnapshot` succeeds, `upsertReservationHistory(pool,
+payload.reservations, snapshot.snapshot_id, logs)` batches into
+chunks of 50 (29 cols × 50 = 1450 params; well under pg's 65 535
+limit). Single `INSERT … ON CONFLICT (reservation_id) DO UPDATE
+SET …` per batch — full upsert with `last_seen_at = NOW()` +
+`last_snapshot_id = EXCLUDED.last_snapshot_id`.
+
+Best-effort: per-batch failures are caught and pushed as
+`{level: 'warn', message: 'reservation_history.batch_failed', context: {...}}`
+log entries that get merged into `forecast_snapshot.logs` via a
+follow-up UPDATE. The snapshot itself still counts as a success;
+admin sees the partial failure in the Snapshot History →
+Diagnostics panel.
+
+Return value adds `historyUpserted` for visibility.
+
+**3. Future-date cap (compute.js).**
+
+`classifyForDate` gains a `futureWindowDays` parameter (default
+**30**, configurable via `forecast_config.future_window_days` in
+the DB — column doesn't exist yet; falls back to default).
+
+```js
+const futureCutoff = addDaysISO(forecastDate, futureWindowDays);
+const isFuture = arr > forecastDate && arr <= futureCutoff && status === 'RES';
+```
+
+Drops the snapshot payload's `reservations[]` array from ~1700 →
+~200 (today's pipeline + 30 days of future RES). The full
+firehose still lives in `reservation_history` for occasional
+long-range lookups; the day-to-day FD view doesn't carry the
+weight.
+
+Helper `addDaysISO(ymd, days)` does the date math in UTC to
+avoid timezone shifts when crossing DST boundaries.
+
+**4. Module-level cache for `rooms` / `roomTypes` / `vipStatuses`
+(client.js).**
+
+`_refCache` at module scope (outside the `createAgilysysClient`
+factory so it persists across scrape calls). 24 h TTL on each
+slot, keyed by `tenantId/propertyId`.
+
+Each `listRooms` / `listRoomTypes` / `getVipStatuses` checks its
+slot first; on hit, logs `agilysys.{name}.cache_hit` with TTL
+remaining and returns immediately. On miss, fetches as before
+and stores. **Cuts ~3 HTTP round-trips off every scrape after
+the first one** — Snoqualmie's typical scrape now overlaps
+roughly: login + propertyDate + (search/date pagination +
+metrics). Rooms/roomTypes/vip catalog won't hit the wire again
+for 24h.
+
+Cache lives in-process; restarting the Node server clears it.
+Acceptable for now since Koyeb cold-starts are infrequent.
+
+**Files touched:**
+- `database/migrations/025_sprint18_reservation_history.sql`
+  (new).
+- `database/schema.sql` — `reservation_history` table + indexes
+  added after `forecast_snapshot`.
+- `server/forecast/compute.js` — `FUTURE_WINDOW_DAYS_DEFAULT`,
+  `addDaysISO` helper, `classifyForDate(... , futureWindowDays)`
+  signature, `futureWindowDays` resolved from config in
+  computeForecast, `primaryGuestProfileId` surfaced on each
+  reservation.
+- `server/forecast/runScrape.js` — `upsertReservationHistory`
+  batching helper; called after `insertSnapshot`; per-batch
+  failure logs merged back into the snapshot.
+- `server/agilysys/client.js` — module-level `_refCache` +
+  `REF_TTL_MS` + `_cacheKey(tenantId, propertyId)`; cache checks
+  + writes wired into `listRooms`, `listRoomTypes`,
+  `getVipStatuses`.
+
+**Verified.** Brace + paren balance OK across all 3 server files
+(client 117/117, compute 105/105, runScrape 55/55). Module load
+test confirms the client surface and `runScrape` is still
+exported cleanly.
+
+**Sprint 18 arc closed.** Live test + bug-fix pass is the next
+step per the user's plan ("debug and sanity check after all
+sprints are done").
+
+**Outstanding follow-ups** for the inevitable 18.6+ debug pass:
+
+- Per-reservation recon still pending — will unlock the real
+  channel/source field (Direct/Booking.com/Expedia) + Rollaway
+  notes endpoint.
+- "View details" + "Guest folio" buttons still stubbed on both
+  the desktop rail panel and the mobile card.
+- "Filters" collapse button + search bar on mobile (mockup has
+  them; we punted in 18.4).
+- Admin UI for `future_window_days` config (column not in
+  `forecast_config` yet; defaults to 30).
+- Old `ScraperOutputCard` / `DispatchSummaryCard` /
+  `ServiceProgress` / `ByCleaningTable` / `ByRoomTypeTable` /
+  `ByFloorTable` component definitions in
+  `Forecasting/index.js` are now dead code. Safe sweep.
+- `forecast_snapshot.payload`'s reservations array now caps at
+  ~200, but we could go further — once `reservation_history`
+  proves itself, drop the array from payload entirely and have
+  the page query the new table directly.
+
+---
+
 ### 2026-06-09 — Sprint 18.4: mobile redesign — expandable reservation cards
 
 Mobile Reservations now matches the mockup. Same data + selection

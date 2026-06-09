@@ -30,6 +30,22 @@ const BASE_URL    = 'https://stay.rguest.com';
 const TENANT_ID   = '1566'; // Snoqualmie Inn
 const PROPERTY_ID = '481';  // Snoqualmie Inn
 
+// Sprint 18.5 — module-level cache for the reference catalogs
+// (`config/rooms` + `config/roomTypes` + `vipStatuses`). Lives
+// outside the client factory so it persists across scrape calls.
+// Room inventory + type catalog change rarely; refetching them on
+// every sync wastes ~3 round-trips per scrape. 24h TTL keeps us
+// close enough to live data without thrashing the API.
+const REF_TTL_MS = 24 * 60 * 60 * 1000;
+const _refCache = {
+  rooms:       { data: null, expiresAt: 0, key: null },
+  roomTypes:   { data: null, expiresAt: 0, key: null },
+  vipStatuses: { data: null, expiresAt: 0, key: null },
+};
+function _cacheKey(tenantId, propertyId) {
+  return `${tenantId}/${propertyId}`;
+}
+
 function createAgilysysClient(overrides = {}) {
   const baseUrl    = overrides.baseUrl    || BASE_URL;
   const tenantId   = overrides.tenantId   || TENANT_ID;
@@ -136,9 +152,21 @@ function createAgilysysClient(overrides = {}) {
   // housekeepingRoomStatus (D/PU/VI/IP), housekeepingSectionId,
   // reservation (UUID pointer to the active reservation if any).
   async function listRooms() {
+    // Sprint 18.5 — module-level 24h cache (see _refCache at top).
+    const key = _cacheKey(tenantId, propertyId);
+    const slot = _refCache.rooms;
+    if (slot.data && slot.key === key && Date.now() < slot.expiresAt) {
+      log('info', 'agilysys.rooms.cache_hit', { count: slot.data.length, ttlRemainingMs: slot.expiresAt - Date.now() });
+      return slot.data;
+    }
     const path = `/property-service/tenants/${tenantId}/properties/${propertyId}/config/rooms`;
     const rooms = await call('GET', path);
     log('info', 'agilysys.rooms.fetched', { count: Array.isArray(rooms) ? rooms.length : 0 });
+    if (Array.isArray(rooms)) {
+      slot.data = rooms;
+      slot.key = key;
+      slot.expiresAt = Date.now() + REF_TTL_MS;
+    }
     return rooms;
   }
 
@@ -147,9 +175,21 @@ function createAgilysysClient(overrides = {}) {
   // isADA, suite, maxGuests, … }. Used to render typeCode → display
   // name on the forecast.
   async function listRoomTypes() {
+    // Sprint 18.5 — module-level 24h cache.
+    const key = _cacheKey(tenantId, propertyId);
+    const slot = _refCache.roomTypes;
+    if (slot.data && slot.key === key && Date.now() < slot.expiresAt) {
+      log('info', 'agilysys.roomTypes.cache_hit', { count: slot.data.length });
+      return slot.data;
+    }
     const path = `/property-service/tenants/${tenantId}/properties/${propertyId}/config/roomTypes`;
     const types = await call('GET', path);
     log('info', 'agilysys.roomTypes.fetched', { count: Array.isArray(types) ? types.length : 0 });
+    if (Array.isArray(types)) {
+      slot.data = types;
+      slot.key = key;
+      slot.expiresAt = Date.now() + REF_TTL_MS;
+    }
     return types;
   }
 
@@ -254,16 +294,25 @@ function createAgilysysClient(overrides = {}) {
   // scoped one 404s (both URLs appear in the recon — different
   // rGuest UIs use different scopes).
   async function getVipStatuses() {
+    // Sprint 18.5 — module-level 24h cache.
+    const key = _cacheKey(tenantId, propertyId);
+    const slot = _refCache.vipStatuses;
+    if (slot.data && slot.key === key && Date.now() < slot.expiresAt) {
+      log('info', 'agilysys.vipStatuses.cache_hit', { count: slot.data.length });
+      return slot.data;
+    }
     const propScoped = `/property-service/tenants/${tenantId}/properties/${propertyId}/vipStatuses`;
     try {
       const result = await call('GET', propScoped);
       log('info', 'agilysys.vipStatuses.fetched', { count: Array.isArray(result) ? result.length : 0, scope: 'property' });
+      if (Array.isArray(result)) { slot.data = result; slot.key = key; slot.expiresAt = Date.now() + REF_TTL_MS; }
       return result;
     } catch (err) {
       log('warn', 'agilysys.vipStatuses.property_failed', { error: String(err.message || err) });
       const tenScoped = `/property-service/tenants/${tenantId}/vipStatuses`;
       const result = await call('GET', tenScoped);
       log('info', 'agilysys.vipStatuses.fetched', { count: Array.isArray(result) ? result.length : 0, scope: 'tenant' });
+      if (Array.isArray(result)) { slot.data = result; slot.key = key; slot.expiresAt = Date.now() + REF_TTL_MS; }
       return result;
     }
   }
