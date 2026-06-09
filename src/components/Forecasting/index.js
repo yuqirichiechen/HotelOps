@@ -274,6 +274,77 @@ const STATUS_PILL_CLASS = {
   'Cancelled': 'cancelled',
 };
 
+// Sprint 18.4 — mobile reservation card. Collapsed shows guest +
+// conf + room/type + status pills. Tap (or click) expands into a
+// detail block with Arrive/Depart/Nights/Source + Reservation
+// Status + Room Status + Notes/Flags + "Open in rGuest Stay"
+// button. Selection state is shared with the desktop table — the
+// same `selectedId` drives both, so the right-rail panel still
+// works when a row is selected on a tablet-sized viewport.
+const ReservationCard = ({ r, isSelected, onSelect }) => {
+  const flags = buildResnFlags(r);
+  const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
+  const roomStatusLabel = r.roomNumber
+    ? (r.hkStatusLabel || r.occupancyStatus || '—')
+    : 'No Room Assigned';
+  return (
+    <li className={`fc-resn-card${isSelected ? ' selected' : ''}`}>
+      <button
+        type="button"
+        className="fc-resn-card-toggle"
+        onClick={() => onSelect && onSelect(isSelected ? null : r.id)}
+        aria-expanded={isSelected}
+      >
+        <div className="fc-resn-card-head">
+          <div className="fc-resn-card-headtxt">
+            <div className="fc-resn-card-name">{r.guestName || '(no name)'}</div>
+            <div className="fc-resn-card-meta">
+              {r.confirmationId && <>Conf. {r.confirmationId} · </>}
+              {r.roomNumber || '—'}{r.baseLabel ? ` · ${r.baseLabel}` : ''}
+            </div>
+          </div>
+          <div className="fc-resn-card-status">
+            <span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span>
+            {r.roomNumber
+              ? <span className="fc-pill fc-pill-action-none">{roomStatusLabel}</span>
+              : <span className="fc-pill fc-pill-status-pending">No Room Assigned</span>}
+          </div>
+          <span className="fc-resn-card-caret" aria-hidden>{isSelected ? '▾' : '▸'}</span>
+        </div>
+      </button>
+      {isSelected && (
+        <div className="fc-resn-card-detail">
+          <dl className="fc-resn-card-grid">
+            <div><dt>Arrive</dt><dd>{fmtDate(r.arrivalDate)}</dd></div>
+            <div><dt>Depart</dt><dd>{fmtDate(r.departureDate)}</dd></div>
+            <div><dt>Nights</dt><dd>{r.nights}</dd></div>
+            <div><dt>Source</dt><dd>{r.source || '—'}</dd></div>
+          </dl>
+          {flags.length > 0 && (
+            <div className="fc-resn-card-flagsrow">
+              <span className="fc-resn-card-label">Notes / Flags</span>
+              <div>{flags.map(f => (
+                <span key={f.label} className={`fc-pill fc-flag-${f.cls}`}>{f.label}</span>
+              ))}</div>
+            </div>
+          )}
+          <div className="fc-resn-card-actions">
+            <button type="button" className="fc-btn fc-btn-secondary" disabled title="Detail view ships in 18.5+">View details</button>
+            <a
+              className="fc-btn fc-btn-primary"
+              href={RGUEST_RESERVATION_URL(r.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open in rGuest Stay <span aria-hidden>↗</span>
+            </a>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+};
+
 // Sprint 18.3 — derive the Notes/Flags pill row for a reservation.
 // Order matters: VIP first (highest signal), then arrival timing,
 // then logistics. Returns an array of `{label, cls}` ready to map
@@ -356,7 +427,23 @@ const ReservationDetailsTable = ({
         </div>
       </div>
 
-      <div className="fc-detail-tablewrap">
+      {/* Sprint 18.4 — mobile card list. CSS hides whichever
+          layout (table or cards) is wrong for the current viewport. */}
+      <ul className="fc-resn-cards fc-mobile-only">
+        {filtered.length === 0 && (
+          <li className="fc-resn-empty">No reservations match the current filters.</li>
+        )}
+        {filtered.map(r => (
+          <ReservationCard
+            key={r.id}
+            r={r}
+            isSelected={selectedId === r.id}
+            onSelect={onSelect}
+          />
+        ))}
+      </ul>
+
+      <div className="fc-detail-tablewrap fc-desktop-only">
         {/* Sprint 18.1 — column layout per Reservations mockup:
             Guest / Room / Room Type / Arrival / Departure / Nights
             / Source / Status / Room Status / Notes-Flags. Notes-

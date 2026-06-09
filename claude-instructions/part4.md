@@ -280,6 +280,105 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-09 — Sprint 18.4: mobile redesign — expandable reservation cards
+
+Mobile Reservations now matches the mockup. Same data + selection
+state as the desktop view; just a different rendered surface at
+≤700 px.
+
+**1. New `ReservationCard` component.**
+
+Mobile-only collapsed/expanded card. Collapsed: guest name (big),
+Conf. + Room + Room Type (small sub-line), Reservation Status +
+Room Status pills stacked on the right, caret on the far right.
+Tapping anywhere on the card toggles expand.
+
+Expanded body:
+- 2-col metadata grid: Arrive · Depart · Nights · Source.
+- Notes / Flags row (uses 17.x's `buildResnFlags`).
+- Two action buttons side-by-side: **View details** (stub) +
+  **Open in rGuest Stay ↗** (live deep link from 18.2).
+
+Selection state shared with the desktop table — same
+`selectedId` prop / `onSelect` callback. If a row was already
+selected on desktop and you resize to mobile, that card opens
+automatically.
+
+**2. `ReservationDetailsTable` renders both layouts.**
+
+The card list (`<ul class="fc-resn-cards fc-mobile-only">`)
+sits just before the existing
+(`<div class="fc-detail-tablewrap fc-desktop-only">`) table.
+CSS hides whichever's wrong for the viewport. Filter chips +
+Room Type / Source dropdowns + footer count stay shared above /
+below.
+
+**3. CSS overhaul for ≤700 px.**
+
+```css
+.fc-mobile-only  { display: none; }
+.fc-desktop-only { display: block; }
+@media (max-width: 700px) {
+  .fc-mobile-only  { display: block; }
+  .fc-desktop-only { display: none; }
+}
+```
+
+Plus, inside `@media (max-width: 700px)`:
+
+- **KPI grid** `.fc-kpis-5` → `1fr 1fr` (2 across). The 5th
+  card (`No Room Assigned`) gets `grid-column: 1 / -1` so it
+  spans the full row by itself — matches the mockup's "2x2 +
+  1 wide" layout.
+- **Right rail hidden** — cards expand inline, and "Today at
+  a glance" is redundant with the top KPI cards anyway. Frees
+  up the full width for the reservation list.
+- **Filter controls stacked** — chips on top, dropdowns
+  underneath, each select takes ~45% width so they pair up.
+- **Bottom HK message preview hidden** — that's a forecast-y
+  card that doesn't belong on mobile Reservations.
+
+Mobile bottom nav stays unchanged — 4+More from 17.4 (Home /
+Calendar / Reservations / More), per the locked decision in
+§4.2.7.
+
+**4. Card styling.**
+
+`.fc-resn-card` block: white surface, 10px radius, thin border.
+Selected state: accent border + 2px accent-bg ring (mirrors the
+desktop row's selection look so the visual language is
+consistent). Heading uses `TiemposHeadline` to match the page's
+typography; metadata sub-line stays in `TiemposText`. Card grid
+inside expanded body is `1fr 1fr` for the 4 detail rows; full-
+width Notes/Flags + Actions rows underneath.
+
+**Files touched:**
+- `src/components/Forecasting/index.js` — new
+  `ReservationCard` component; `ReservationDetailsTable`'s
+  return block now emits both the mobile `<ul>` and the desktop
+  `<div class="fc-detail-tablewrap">`.
+- `src/components/Forecasting/Forecasting.css` — `.fc-mobile-
+  only` / `.fc-desktop-only` visibility helpers; full
+  `.fc-resn-card*` block (~110 lines); new ≤700 px media query
+  block for the mobile-specific layout overrides.
+
+**Verified.** Brace + paren balance OK (index.js 477/477,
+397/397; css 261/261).
+
+**Acknowledged limitations:**
+
+- No "Filters" collapse button (mockup shows one) — the
+  Room Type / Source dropdowns stay visible on mobile,
+  stacked. Easy to add a toggle in 18.5 if it feels crowded.
+- No search bar on mobile yet — same story (mockup shows one
+  next to Filters). Hooks up via a new state + filter
+  predicate.
+- "View details" still stubbed; "Guest folio" was already
+  stubbed on desktop, removed entirely on mobile so the action
+  row stays a clean 2-up.
+
+---
+
 ### 2026-06-09 — Sprint 18.3: VIP lookup + new derived flags + legacy toggle cleanup
 
 Three deliverables; channel/source + Rollaway notes deferred
