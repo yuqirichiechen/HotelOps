@@ -102,20 +102,27 @@ function classifyForDate(reservation, forecastDate) {
   const dep = isoDate(reservation, 'departureDate');
   if (!arr || !dep) return null;
   const status = reservation.status;
+  // Sprint 18.1 — `isFuture` includes RES (not-yet-arrived) bookings
+  // beyond today. The new Reservations page's "Future" filter chip
+  // surfaces them; the existing today-relevant KPIs ignore the flag
+  // (arrivesToday/etc. are mutually exclusive with isFuture by date
+  // comparison).
+  const isFuture = arr > forecastDate && status === 'RES';
   const meta = {
     arrivesToday:  arr === forecastDate,
     departsToday:  dep === forecastDate,
     isStayover:    arr < forecastDate && dep > forecastDate && status === 'INH',
     isInHouse:     status === 'INH',
+    isFuture,
     hasRoom:       !!(reservation.roomId || reservation.roomNumber),
   };
   // A reservation that touches the date in no way (e.g. an INH from
   // earlier this week that's already past departure but somehow
   // surfaced in the search) gets dropped so it doesn't pollute the
-  // in-house count.
+  // in-house count. `isFuture` is its own pass-through path.
   const touchesDay = meta.arrivesToday || meta.departsToday || meta.isStayover ||
     (status === 'INH' && arr <= forecastDate && dep >= forecastDate);
-  if (!touchesDay) return null;
+  if (!touchesDay && !isFuture) return null;
   return meta;
 }
 
@@ -488,6 +495,9 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapp
     else if (r._meta.arrivesToday) kind = 'arrival';
     else if (r._meta.isStayover)   kind = 'stayover';
     else if (r._meta.isInHouse)    kind = 'inhouse';
+    // Sprint 18.1 — future RES surface as kind='future' so the
+    // Reservations page's "Future" filter chip can match them.
+    else if (r._meta.isFuture)     kind = 'future';
     return {
       id:                r.id,
       confirmationId:    r.confirmationId || null,

@@ -134,6 +134,24 @@ const IconUsers = ({ size = 18 }) => (
   </svg>
 );
 
+// Sprint 18.1 — moon for "Staying Tonight" KPI; alert triangle for
+// "No Room Assigned" KPI (needs admin review).
+const IconMoon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+);
+
+const IconAlertTriangle = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9"  x2="12"   y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
 // SVG progress ring. `pct` 0–100; while indeterminate (no real
 // signal from the server), the parent fakes it from elapsed time.
 // Sprint 17.10 — default size 16 so it swaps cleanly with the
@@ -223,12 +241,18 @@ const KpiCard = ({ label, primary, secondary, sublabel, accent, icon }) => {
 // Sprint 17.8 — flattened reservation list w/ filter chips. Reads
 // from `payload.reservations` (added in 17.7). Rendered when the
 // view toggle is on "details".
+// Sprint 18.1 — filter chips match the new mockup: All / Arrivals
+// Today / In-house / Departures Today / Future / No Room Assigned.
+// "Stayovers" chip dropped (overlap with In-house — staying-tonight
+// surfaces as its own KPI card instead). "Future" + "No Room
+// Assigned" are new.
 const RESN_FILTER_LABELS = [
-  ['all',       'All'],
-  ['arrival',   'Arrivals'],
-  ['departure', 'Departures'],
-  ['inhouse',   'In-house'],
-  ['stayover',  'Stayovers'],
+  ['all',         'All'],
+  ['arrival',     'Arrivals Today'],
+  ['inhouse',     'In-house'],
+  ['departure',   'Departures Today'],
+  ['future',      'Future'],
+  ['noRoom',      'No Room Assigned'],
 ];
 
 // HK action implied by the reservation's kind. Mirrors what the
@@ -239,6 +263,7 @@ const HK_ACTION_FOR_KIND = {
   departure: { label: 'Full Clean', cls: 'full' },
   stayover:  { label: 'Touch-up',   cls: 'touch' },
   inhouse:   { label: 'None',       cls: 'none' },
+  future:    { label: 'None',       cls: 'none' },
 };
 
 const STATUS_PILL_CLASS = {
@@ -249,9 +274,21 @@ const STATUS_PILL_CLASS = {
   'Cancelled': 'cancelled',
 };
 
+// Sprint 18.1 — predicate per filter chip. Composes with the
+// Room Type + Source dropdowns inside the table.
+const FILTER_PREDICATES = {
+  all:       () => true,
+  arrival:   r => r.kind === 'arrival',
+  inhouse:   r => r.kind === 'inhouse'  || r.kind === 'stayover',
+  departure: r => r.kind === 'departure',
+  future:    r => r.kind === 'future',
+  noRoom:    r => r.kind === 'arrival' && !r.isPreAssigned,
+};
+
 const ReservationDetailsTable = ({ rows, filter, onFilter, sources = [], roomTypes = [], sourceFilter, onSourceFilter, typeFilter, onTypeFilter }) => {
   const filtered = rows.filter(r => {
-    if (filter !== 'all' && r.kind !== filter) return false;
+    const pred = FILTER_PREDICATES[filter] || FILTER_PREDICATES.all;
+    if (!pred(r)) return false;
     if (sourceFilter && r.source !== sourceFilter) return false;
     if (typeFilter   && r.baseLabel !== typeFilter) return false;
     return true;
@@ -291,47 +328,74 @@ const ReservationDetailsTable = ({ rows, filter, onFilter, sources = [], roomTyp
       </div>
 
       <div className="fc-detail-tablewrap">
-        <table className="fc-detail-table">
+        {/* Sprint 18.1 — column layout per Reservations mockup:
+            Guest / Room / Room Type / Arrival / Departure / Nights
+            / Source / Status / Room Status / Notes-Flags. Notes-
+            Flags column shows derived flags only for v1 (VIP, late
+            arrival, etc. land in 18.3 after recon). */}
+        <table className="fc-detail-table fc-detail-table-v18">
           <thead>
             <tr>
               <th>Guest</th>
-              <th>Room / Type</th>
-              <th>Check-in</th>
-              <th>Check-out</th>
+              <th>Room</th>
+              <th>Room Type</th>
+              <th>Arrival</th>
+              <th>Departure</th>
               <th>Nights</th>
               <th>Source</th>
               <th>Status</th>
-              <th>HK Action</th>
+              <th>Room Status</th>
+              <th>Notes / Flags</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="fc-detail-empty">No reservations match the current filters.</td></tr>
+              <tr><td colSpan={10} className="fc-detail-empty">No reservations match the current filters.</td></tr>
             )}
             {filtered.map(r => {
-              const action = HK_ACTION_FOR_KIND[r.kind] || HK_ACTION_FOR_KIND.inhouse;
               const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
+              // Sprint 18.1 — Room Status pulls from per-room data
+              // when the reservation is assigned; otherwise shows
+              // "No Room Assigned" inline.
+              const roomStatusLabel = r.roomNumber
+                ? (r.hkStatusLabel || r.occupancyStatus || '—')
+                : 'No Room Assigned';
+              const flags = [];
+              if (r.isEarlyArrival)        flags.push({ label: 'Early arrival', cls: 'early' });
+              if (r.isRedEye)              flags.push({ label: 'Late arrival',  cls: 'late' });
+              if (r.scheduledForRoomMove)  flags.push({ label: 'Room move',     cls: 'move' });
+              if (r.isDayUse)              flags.push({ label: 'Day use',       cls: 'day' });
               return (
                 <tr key={r.id}>
                   <td>
                     <div className="fc-detail-guest">{r.guestName || '(no name)'}</div>
-                    {r.isPreAssigned && <div className="fc-detail-sub">Pre-assigned</div>}
-                    {!r.isPreAssigned && r.kind === 'arrival' && (
-                      <div className="fc-detail-sub fc-detail-sub-warn">No room assigned</div>
+                    {r.confirmationId && (
+                      <div className="fc-detail-sub">Conf. {r.confirmationId}</div>
                     )}
                   </td>
+                  <td className="fc-detail-room">{r.roomNumber || '—'}</td>
                   <td>
-                    <div>{r.roomNumber || '—'} {r.baseLabel ? <span className="fc-detail-sub-inline">/ {r.baseLabel}</span> : null}</div>
+                    <div>{r.baseLabel || '—'}</div>
                     {r.subLabel && r.subLabel !== 'Standard' && (
                       <div className="fc-detail-sub">{r.subLabel}</div>
                     )}
                   </td>
                   <td>{fmtDate(r.arrivalDate)}</td>
                   <td>{fmtDate(r.departureDate)}</td>
-                  <td>{r.nights}</td>
+                  <td className="fc-detail-nights">{r.nights}</td>
                   <td>{r.source || '—'}</td>
                   <td><span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span></td>
-                  <td><span className={`fc-pill fc-pill-action-${action.cls}`}>{action.label}</span></td>
+                  <td>
+                    {r.roomNumber
+                      ? <span className="fc-pill fc-pill-action-none">{roomStatusLabel}</span>
+                      : <span className="fc-pill fc-pill-status-pending">No Room Assigned</span>}
+                  </td>
+                  <td>
+                    {flags.length === 0 && <span className="fc-detail-sub-inline">—</span>}
+                    {flags.map(f => (
+                      <span key={f.label} className={`fc-pill fc-flag-${f.cls}`}>{f.label}</span>
+                    ))}
+                  </td>
                 </tr>
               );
             })}
@@ -929,62 +993,54 @@ const Forecasting = () => {
 
       {snapshot && (
         <>
-          <section className="fc-kpis" aria-label="Daily KPIs">
+          <section className="fc-kpis fc-kpis-5" aria-label="Reservations KPIs">
             {(() => {
-              // Sprint 17.10 — KPI math.
+              // Sprint 18.1 — 5 cards per the new Reservations
+              // mockup. Drops "Rooms to service / Stayover service /
+              // Housekeepers needed" (forecast concerns, moved to
+              // the Forecast page) and adds "No Room Assigned".
               const remDep         = kpis.remainingDepartures ?? kpis.departures ?? 0;
-              const stay           = kpis.stayovers ?? 0;
-              const remToService   = remDep + stay;
-              // "In-house" per user spec: currently in the property
-              // AND not leaving today. INH total minus INH-who-leave-
-              // today (= remainingDepartures) gives "staying tonight".
               const inHouseTonight = Math.max(0, (kpis.inHouse ?? 0) - remDep);
+              const reservations   = snapshot.payload.reservations || [];
+              const noRoomCount    = reservations.filter(r =>
+                r.kind === 'arrival' && !r.isPreAssigned
+              ).length;
               return (
                 <>
                   <KpiCard
-                    accent="clean"
-                    icon={<IconBroom />}
-                    label="Rooms to service today"
-                    primary={remToService}
-                    secondary={`of ${kpis.roomsToCleanToday ?? 0}`}
-                    sublabel="full cleans + touch-ups"
-                  />
-                  <KpiCard
                     accent="arrivals"
                     icon={<IconBriefcase />}
-                    label="Arrivals"
-                    primary={kpis.remainingArrivals ?? 0}
-                    secondary={`of ${kpis.arrivals ?? 0}`}
-                    sublabel="not yet arrived"
-                  />
-                  <KpiCard
-                    accent="departures"
-                    icon={<IconExit />}
-                    label="Departures"
-                    primary={kpis.remainingDepartures ?? 0}
-                    secondary={`of ${kpis.departures ?? 0}`}
-                    sublabel="not yet checked out"
+                    label="Arrivals Today"
+                    primary={kpis.arrivals ?? 0}
+                    sublabel={`${kpis.remainingArrivals ?? 0} not arrived`}
                   />
                   <KpiCard
                     accent="inhouse"
                     icon={<IconBed />}
                     label="In-house"
+                    primary={kpis.inHouse ?? 0}
+                    sublabel="guests currently staying"
+                  />
+                  <KpiCard
+                    accent="departures"
+                    icon={<IconExit />}
+                    label="Departures Today"
+                    primary={kpis.departures ?? 0}
+                    sublabel={`${kpis.remainingDepartures ?? 0} not checked out`}
+                  />
+                  <KpiCard
+                    accent="staying"
+                    icon={<IconMoon />}
+                    label="Staying Tonight"
                     primary={inHouseTonight}
-                    sublabel="staying tonight"
+                    sublabel="in-house, not departing today"
                   />
                   <KpiCard
-                    accent="stayover"
-                    icon={<IconSparkle />}
-                    label="Stayover service"
-                    primary={stay}
-                    sublabel="touch-ups needed"
-                  />
-                  <KpiCard
-                    accent="staff"
-                    icon={<IconUsers />}
-                    label="Housekeepers needed"
-                    primary={kpis.housekeepersNeeded ?? 0}
-                    sublabel="attendants recommended"
+                    accent="noroom"
+                    icon={<IconAlertTriangle />}
+                    label="No Room Assigned"
+                    primary={noRoomCount}
+                    sublabel="needs review"
                   />
                 </>
               );

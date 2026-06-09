@@ -177,7 +177,276 @@ already in the DB.
 
 ---
 
+## 4. Sprint 18.x roadmap — Reservations page redesign + scrape expansion
+
+### 4.0 Why this sprint exists
+
+User testing through 17.13–17.16 surfaced that the original
+"Reservations" page (renamed from "Forecast" in 17.11) is
+functionally weak — it shows the same RES/INH/DPT data we already
+scrape but doesn't surface enough of it for the FD to actually
+work day-to-day from. The mockup shared 2026-06-09 reorients it
+as a *true reservations workbench*: searchable, filterable
+table of every active reservation, click-to-drill into a side
+panel, deep-link out to rGuest, with notes / flags / channel
+information that isn't in our current scrape pool.
+
+This sprint also tackles two infrastructure problems the user
+flagged:
+1. Each scrape stores ~MB of JSONB. After enough scrapes the
+   `forecast_snapshot.payload` column eats real disk.
+2. Sync takes 10–18s because we re-fetch everything (incl. ~22
+   pages of mostly-future RES reservations) every time.
+
+### 4.1 Recon needed before any code (18.0)
+
+We're missing three data shapes that the mockup wants:
+
+1. **Reservation detail URL** — for the "Open in rGuest Stay"
+   button. The existing recons never clicked into a single
+   reservation, so we don't have the URL pattern.
+2. **Source / channel field** (Direct / Booking.com / Expedia
+   / etc.) — visible in rGuest's UI as "Confirmation Details —
+   Booking.com" but NOT in the `/reservations/search/date`
+   payload. Lives on a per-reservation detail call we haven't
+   identified.
+3. **Notes / special requests** (for the Rollaway / pet / late
+   arrival flag column) — same story; not in `search/date`.
+
+**Action:** user opens one reservation in rGuest, runs
+`scraper/agilysys_recon.py` (extended to target a reservation
+detail URL) so we can capture the full set of API calls that
+fire for that single reservation. We need: the URL itself,
+plus every XHR the page makes — channel info + notes endpoint
+will both show up.
+
+### 4.2 Design decisions (locked 2026-06-09)
+
+1. **Page split stays.** "Reservations" = booking workbench (this
+   sprint). "Forecast" = room-type availability (no change).
+2. **5 KPI cards on the Reservations page**, matching mockup:
+   - Arrivals Today (with "N not arrived" sub-line)
+   - In-house (currently staying)
+   - Departures Today (with "N not checked out")
+   - Staying Tonight (= in-house, not departing today)
+   - **No Room Assigned** (= RES + arr=today + !roomId) — new
+3. **Filter chips:** All / Arrivals Today / In-house / Departures
+   Today / Future / No Room Assigned.
+4. **"Future" chip shows all future reservations** — capped to
+   prevent runaway display, but no operational date limit. UI
+   needs to scale.
+5. **Click row → right-rail "Selected reservation" panel.**
+   "Today at a glance" stays above; both visible (mockup).
+6. **"Open in rGuest Stay" deep-link** opens the reservation
+   in rGuest's own UI in a new tab.
+7. **Mobile keeps the 4 + More bottom nav** from 17.4 — ignore
+   the mockup's 8-item bar.
+8. **Storage strategy — two-track model.**
+   - New table `reservation_history` — normalized per-reservation
+     rows that grow over time. Survives `forecast_snapshot` purges.
+   - `forecast_snapshot.payload` keeps the computed summary
+     (KPIs, derived counts, per-room sheet) but its bulky raw
+     `reservations[]` array can be pruned after 30 days
+     (admin-configurable). Snapshots become metadata-only over
+     time; reservation history persists.
+9. **Sync optimization — three levers.**
+   - **Cache `config/rooms` and `config/roomTypes`** for 24h.
+     They almost never change between scrapes; refetching every
+     time burns time. Cache lives in the `agilysys` client
+     module (in-process).
+   - **Hash metrics first.** If the metrics endpoint returns the
+     same hash as last scrape, skip the heavy reservations
+     pagination — return cached snapshot with updated timestamp.
+   - **Cap future-date pagination.** Today rGuest returns 1600+
+     future RES rows; we filter most out. Investigate whether
+     `/search/date` accepts a date range so we can ask only for
+     today + N days (probably 14–30) and slash the fetch by 90%.
+
+### 4.3 Sub-sprint split
+
+| Sprint | Scope                                                            |
+| ------ | ---------------------------------------------------------------- |
+| 18.0   | Recon + Sprint 18 prelog (this entry) — gather URL/channel/notes |
+| 18.1   | 5 KPI cards + filter chips + restructured Reservations table     |
+| 18.2   | "Selected reservation" right-rail panel + click-to-select        |
+| 18.3   | Notes/Flags column + Open-in-rGuest deep link + VIP lookup       |
+| 18.4   | Mobile redesign — expandable cards (4+More nav unchanged)        |
+| 18.5   | `reservation_history` table + scrape caching + future-date cap   |
+
+Sprint 18.5 is the infrastructure pass — once 18.1–18.4 prove
+the UX, optimize the plumbing.
+
+---
+
 ## 3. Sprint logs (17.1 → present)
+
+### 2026-06-09 — Sprint 18.1: 5 new KPI cards + filter chips + restructured Reservations table
+
+First UX delivery of Sprint 18. Server-side gains a `kind='future'`
+classification so the new "Future" filter chip has something to
+filter. Client-side delivers the mockup's 5-card row + new chips
++ 10-col table layout.
+
+**1. Server: `_meta.isFuture` + `kind='future'` on payload.reservations.**
+
+`classifyForDate` in `server/forecast/compute.js` now flags any
+RES reservation with `arrivalDate > forecastDate` as `isFuture`.
+The `touchesDay` filter widens to `touchesDay || isFuture` so
+those records survive into `classifiedResn`. The kind cascade
+gets a `future` branch at the end. Today's counts (arrivals /
+departures / stayovers / inHouse / KPIs) are unaffected — they
+key off `arrivesToday/departsToday/isStayover/isInHouse` which
+remain false for future records.
+
+Side effect: `payload.reservations` grows from ~92 entries to
+~1700 (Snoqualmie has lots of future bookings). Storage bloat
+is acknowledged; 18.5 tackles it with the
+`reservation_history` two-table split.
+
+**2. Client: 5 KPI cards** (replacing the 17.10 6-card row).
+
+```
+Arrivals Today     32  "19 not arrived"           briefcase  purple
+In-house           39  "guests currently staying"  bed        blue
+Departures Today   21  "3 not checked out"         exit       orange
+Staying Tonight    23  "in-house, not departing"   moon       green
+No Room Assigned   17  "needs review"              alert tri  yellow
+```
+
+The mockup's icons translate to two new inline SVG icons
+(`IconMoon`, `IconAlertTriangle`); the other three already
+existed from 17.10. Dropped from this view: "Rooms to service /
+Stayover service / Housekeepers needed" — those are forecast
+concerns and live on the Forecast page now.
+
+`No Room Assigned` derives client-side from
+`reservations.filter(r => r.kind === 'arrival' && !r.isPreAssigned)`.
+That count maps to the FD's "needs review" workflow — every
+arrival without a roomId needs a desk decision.
+
+**3. New filter chips per mockup.**
+
+```
+All  Arrivals Today  In-house  Departures Today  Future  No Room Assigned
+```
+
+`RESN_FILTER_LABELS` constant rewritten; `FILTER_PREDICATES`
+helper map added. "Stayovers" chip dropped (overlap with In-
+house — staying-tonight is its own KPI). "Future" matches
+`kind === 'future'`. "No Room Assigned" composes `kind ===
+'arrival' && !isPreAssigned`. In-house chip now matches BOTH
+`inhouse` and `stayover` kinds (cleaner UX — they're the same
+operational bucket: "currently in the property").
+
+**4. Table column rewrite** to match mockup's 10-col layout.
+
+```
+Guest | Room | Room Type | Arrival | Departure | Nights | Source | Status | Room Status | Notes/Flags
+```
+
+Was 8 cols (combined Room/Type, HK Action). Now:
+- `Room` separated out; tabular-nums for alignment.
+- `Room Type` shows base label with sub-label as a faint sub-
+  line (e.g. "King Standard" + "Accessible").
+- `Room Status` pulls `hkStatusLabel` for assigned reservations,
+  shows "No Room Assigned" pill (pending color) for unassigned
+  arrivals.
+- `Notes / Flags` derives Early arrival, Late arrival (red-eye),
+  Room move, Day use from existing reservation fields. **VIP /
+  Rollaway / channel labels** wait for 18.3 (after recon).
+
+Sub-line under Guest shows Conf. ID (the `confirmationId`
+string).
+
+**Files touched:**
+- `server/forecast/compute.js` — `isFuture` flag, `kind='future'`
+  in the kind cascade.
+- `src/components/Forecasting/index.js` — `IconMoon`,
+  `IconAlertTriangle` added; KPI block rewritten to 5 cards;
+  `RESN_FILTER_LABELS` + `FILTER_PREDICATES` redone;
+  `ReservationDetailsTable` body restructured to 10 cols.
+- `src/components/Forecasting/Forecasting.css` — `.fc-kpis-5`
+  variant + new `.fc-kpi-staying` / `.fc-kpi-noroom` accents;
+  `.fc-flag-*` pill colors; `.fc-detail-table-v18` denser
+  spacing for the 10-col layout.
+
+**Verified.** Brace + paren balance OK (382/382, 334/334; server
+compute 96/96, 283/283).
+
+**Follow-ups (live in 18.2+):**
+
+- **18.2** — "Selected reservation" right-rail panel with
+  click-to-select. Today the rows are static.
+- **18.3** — Real VIP / channel / notes columns after recon.
+- **18.4** — Mobile redesign (expandable cards).
+- **18.5** — `reservation_history` split + caching + future-date
+  cap; without this the snapshot payload now carries ~1700
+  reservations per scrape (was ~92).
+
+---
+
+### 2026-06-09 — Sprint 18.0: prelog + recon prep for Reservations redesign
+
+User signed off on the Reservations-page redesign as Sprint 18.
+Full roadmap + sub-sprint split logged in §4 of this file. This
+entry just captures what was already confirmed via recon
+analysis of existing files (so the next iteration doesn't redo
+the work) and what's still blocking 18.1.
+
+**Already in the scrape payload (no extra work needed):**
+- VIP — `primaryGuestInfo.vipStatus` UUID exists; need to add a
+  one-shot lookup of `/property-service/.../vipStatuses` to map
+  UUID → label (already in the endpoint list from earlier
+  recons; trivial add to the client).
+- `earlyArrival`, `redEyeArrival` booleans on each reservation.
+- `floorId` per room (for "High floor" derivation).
+- `typeCode` suffix `P` for pet-friendly.
+
+**Not yet in scope — needs a fresh recon:**
+- Source / channel field (Direct / Booking.com / Expedia /
+  Agoda). NOT in the `/reservations/search/date` payload. The
+  rGuest UI shows it as "Confirmation Details — Booking.com |
+  <number>" on each reservation card; lives on a per-reservation
+  detail call we haven't captured.
+- Reservation detail URL pattern, for the "Open in rGuest Stay"
+  button.
+- Notes / special requests (Rollaway, etc.) — same situation.
+
+**What 18.0 needs from the user before 18.1 can start.**
+
+Open *one* reservation in rGuest (any row in the Reservations
+Search results), copy the URL from the address bar, paste it in
+chat. From there I'll either (a) update
+`scraper/agilysys_recon.py` to navigate to that URL as a third
+page-capture and have the user run it, or (b) just look at the
+URL pattern + ask them to scroll through the Network panel for
+the reservation-detail XHR (whichever is faster).
+
+The captured recon will give us: deep-link URL pattern, channel
+field location, notes endpoint. After that 18.1 (KPI cards +
+table + filter chips) is fully unblocked.
+
+**Update 2026-06-09 — URL pattern confirmed.** User shared:
+
+```
+https://stay.rguest.com/v2/reservation/{reservationId}?tenantId=1566&propertyId=481
+```
+
+`{reservationId}` is the UUID from `reservation.id`. The
+"Open in rGuest Stay" deep-link is fully unblocked — it's a
+plain string template; no recon needed for it.
+
+Source / channel field + notes endpoint are still TBD but
+**don't block 18.1**. The new Reservations table can ship with
+`ratePlanCode` (BAR/LOCAL/WACHA/etc.) as the Source column for
+now; the real "Booking.com/Expedia/Direct" channel slots in at
+18.3 after we run the per-reservation recon. Same for Notes/
+Flags — derive what we can from existing data (VIP from
+`primaryGuestInfo.vipStatus`, late/early from
+`redEyeArrival`/`earlyArrival`, high floor from `floorId`, pet
+from typeCode suffix); Rollaway-style notes come in 18.3.
+
+---
 
 ### 2026-06-05 — Sprint 17.16: dedupe reservations, drop the mismatch banner, click-to-expand variant rows
 

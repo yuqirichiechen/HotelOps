@@ -162,6 +162,12 @@
   gap: 12px;
   margin-bottom: 24px;
 }
+/* Sprint 18.1 — the Reservations page renders 5 cards now. Use a
+   5-col grid for that view; the legacy 6-card layout stays on
+   .fc-kpis untouched in case it's referenced elsewhere. */
+.fc-kpis-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
 .fc-kpi-card {
   display: flex;
   align-items: flex-start;
@@ -190,6 +196,9 @@
 .fc-kpi-stayover   .fc-kpi-icon { background: #e2e8f0; color: #4a5568; }
 .fc-kpi-clean      .fc-kpi-icon { background: #c6f6d5; color: #276749; }
 .fc-kpi-staff      .fc-kpi-icon { background: #fefcbf; color: #744210; }
+/* Sprint 18.1 — new accents for the Reservations-page KPI row. */
+.fc-kpi-staying    .fc-kpi-icon { background: #c6f6d5; color: #2f855a; }
+.fc-kpi-noroom     .fc-kpi-icon { background: #fefcbf; color: #b7791f; }
 .fc-kpi-default    .fc-kpi-icon { background: var(--bg-raised); color: var(--text-secondary); }
 
 .fc-kpi-body { flex: 1; min-width: 0; }
@@ -623,6 +632,21 @@
 .fc-pill-action-full  { background: #feebc8; color: #7c2d12; }
 .fc-pill-action-touch { background: #bee3f8; color: #2c5282; }
 .fc-pill-action-none  { background: var(--bg-raised); color: var(--text-muted); }
+
+/* Sprint 18.1 — Notes/Flags pills (derived from reservation
+   metadata; the richer VIP / Rollaway / etc. land in 18.3 after
+   the per-reservation recon). */
+.fc-flag-early { background: #c6f6d5; color: #276749; margin-right: 4px; }
+.fc-flag-late  { background: #fefcbf; color: #744210; margin-right: 4px; }
+.fc-flag-move  { background: #e9d8fd; color: #5b21b6; margin-right: 4px; }
+.fc-flag-day   { background: #bee3f8; color: #2c5282; margin-right: 4px; }
+
+/* Tighter table layout for the new 10-col Reservations table.
+   Without this the row gets too tall; some cells crowd. */
+.fc-detail-table-v18 td { padding: 10px 8px; font-size: 12.5px; }
+.fc-detail-table-v18 th { padding: 8px 8px 6px; }
+.fc-detail-room   { font-variant-numeric: tabular-nums; }
+.fc-detail-nights { font-variant-numeric: tabular-nums; text-align: right; }
 
 /* ── Sprint 17.8: Service Progress card (right rail) ──────── */
 .fc-progress-row {
