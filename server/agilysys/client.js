@@ -242,6 +242,32 @@ function createAgilysysClient(overrides = {}) {
     return null;
   }
 
+  // GET /property-service/tenants/{tid}/properties/{pid}/vipStatuses
+  // Returns the catalog of VIP labels (e.g. "Corporate VIP",
+  // "Loyalty Platinum") keyed by UUID. Reservations reference these
+  // via `primaryGuestInfo.vipStatus`. Sprint 18.3 adds this so the
+  // Reservations page can render the actual label instead of an
+  // opaque UUID.
+  //
+  // Falls back to the tenant-scoped variant
+  // /property-service/tenants/{tid}/vipStatuses if the property-
+  // scoped one 404s (both URLs appear in the recon — different
+  // rGuest UIs use different scopes).
+  async function getVipStatuses() {
+    const propScoped = `/property-service/tenants/${tenantId}/properties/${propertyId}/vipStatuses`;
+    try {
+      const result = await call('GET', propScoped);
+      log('info', 'agilysys.vipStatuses.fetched', { count: Array.isArray(result) ? result.length : 0, scope: 'property' });
+      return result;
+    } catch (err) {
+      log('warn', 'agilysys.vipStatuses.property_failed', { error: String(err.message || err) });
+      const tenScoped = `/property-service/tenants/${tenantId}/vipStatuses`;
+      const result = await call('GET', tenScoped);
+      log('info', 'agilysys.vipStatuses.fetched', { count: Array.isArray(result) ? result.length : 0, scope: 'tenant' });
+      return result;
+    }
+  }
+
   // GET /reservation-service/v1/.../reservations/reservationMetrics?endDate=DATE
   // The authoritative source for rGuest's dashboard widget numbers
   // (REMAINING ARRIVALS x/y, REMAINING DEPARTURES x/y, TOTAL
@@ -292,6 +318,16 @@ function createAgilysysClient(overrides = {}) {
       requestedDate, propertyDate, effectiveDate,
     });
 
+    // Sprint 18.3 — also fetch VIP statuses for label resolution.
+    // Soft failure: if the endpoint 404s for either scope, return
+    // null and the rest of the scrape still succeeds.
+    let vipStatuses = null;
+    try {
+      vipStatuses = await getVipStatuses();
+    } catch (err) {
+      log('warn', 'agilysys.vipStatuses.skipped', { error: String(err.message || err) });
+    }
+
     const [rooms, roomTypes, reservations, metrics] = await Promise.all([
       listRooms(),
       listRoomTypes(),
@@ -303,11 +339,12 @@ function createAgilysysClient(overrides = {}) {
       rooms: rooms.length,
       roomTypes: roomTypes.length,
       reservations: reservations.length,
+      vipStatuses: Array.isArray(vipStatuses) ? vipStatuses.length : null,
       metricsArrivals:   metrics?.remainingArrivalsSummary?.total,
       metricsDepartures: metrics?.remainingDeparturesSummary?.total,
     });
     return {
-      rooms, roomTypes, reservations, metrics,
+      rooms, roomTypes, reservations, metrics, vipStatuses,
       propertyDate,
       effectiveDate,
     };
@@ -321,6 +358,7 @@ function createAgilysysClient(overrides = {}) {
     searchAllReservationsByDate,
     getReservationMetrics,
     getPropertyDate,
+    getVipStatuses,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
     // Exposed for testing / introspection — don't rely on these in

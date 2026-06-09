@@ -274,6 +274,23 @@ const STATUS_PILL_CLASS = {
   'Cancelled': 'cancelled',
 };
 
+// Sprint 18.3 — derive the Notes/Flags pill row for a reservation.
+// Order matters: VIP first (highest signal), then arrival timing,
+// then logistics. Returns an array of `{label, cls}` ready to map
+// into the existing `.fc-flag-*` pill classes.
+function buildResnFlags(r) {
+  const flags = [];
+  if (r.vipLabel)              flags.push({ label: r.vipLabel,      cls: 'vip' });
+  if (r.isEarlyArrival)        flags.push({ label: 'Early arrival', cls: 'early' });
+  if (r.isRedEye)              flags.push({ label: 'Late arrival',  cls: 'late' });
+  if (r.scheduledForRoomMove)  flags.push({ label: 'Room move',     cls: 'move' });
+  if (r.isDayUse)              flags.push({ label: 'Day use',       cls: 'day' });
+  if (r.isHighFloor)           flags.push({ label: 'High floor',    cls: 'high' });
+  if (r.isPetFriendly)         flags.push({ label: 'Pet friendly',  cls: 'pet' });
+  if (r.isGroupBooking)        flags.push({ label: 'Group',         cls: 'group' });
+  return flags;
+}
+
 // Sprint 18.2 — deep-link URL pattern for an individual reservation
 // in rGuest Stay. Confirmed via user-supplied URL on 2026-06-09;
 // tenantId / propertyId are Snoqualmie's. If/when we add a second
@@ -372,11 +389,7 @@ const ReservationDetailsTable = ({
               const roomStatusLabel = r.roomNumber
                 ? (r.hkStatusLabel || r.occupancyStatus || '—')
                 : 'No Room Assigned';
-              const flags = [];
-              if (r.isEarlyArrival)        flags.push({ label: 'Early arrival', cls: 'early' });
-              if (r.isRedEye)              flags.push({ label: 'Late arrival',  cls: 'late' });
-              if (r.scheduledForRoomMove)  flags.push({ label: 'Room move',     cls: 'move' });
-              if (r.isDayUse)              flags.push({ label: 'Day use',       cls: 'day' });
+              const flags = buildResnFlags(r);
               const isSelected = selectedId === r.id;
               return (
                 <tr
@@ -522,11 +535,7 @@ const SelectedReservation = ({ reservation, onClose }) => {
   }
   const r = reservation;
   const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
-  const flags = [];
-  if (r.isEarlyArrival)       flags.push({ label: 'Early arrival', cls: 'early' });
-  if (r.isRedEye)             flags.push({ label: 'Late arrival',  cls: 'late' });
-  if (r.scheduledForRoomMove) flags.push({ label: 'Room move',     cls: 'move' });
-  if (r.isDayUse)             flags.push({ label: 'Day use',       cls: 'day' });
+  const flags = buildResnFlags(r);
   const roomStatusLabel = r.roomNumber
     ? (r.hkStatusLabel || r.occupancyStatus || '—')
     : 'No Room Assigned';
@@ -1192,26 +1201,17 @@ const Forecasting = () => {
 
           <div className="fc-body">
             <main className="fc-main">
+              {/* Sprint 18.3 — legacy view toggle removed. The
+                  Cleaning Type / Room Type / Floor tabs were
+                  forecast-y analytics views from when this page
+                  was the Forecast; they don't belong on
+                  Reservations. The page now always renders the
+                  Reservation Details table (view stays 'details'
+                  by default). */}
               <div className="fc-table-header">
-                <h2>
-                  Forecast {
-                    view === 'details'  ? 'Breakdown'
-                  : view === 'cleaning' ? 'by Cleaning Type'
-                  : view === 'room'     ? 'by Room Type'
-                                        : 'by Floor'
-                  }
-                </h2>
-                <div className="fc-toggle" role="tablist">
-                  <button role="tab" aria-selected={view === 'details'}  className={view === 'details'  ? 'active' : ''} onClick={() => setView('details')} >Reservation Details</button>
-                  <button role="tab" aria-selected={view === 'cleaning'} className={view === 'cleaning' ? 'active' : ''} onClick={() => setView('cleaning')}>Cleaning Type</button>
-                  <button role="tab" aria-selected={view === 'room'}     className={view === 'room'     ? 'active' : ''} onClick={() => setView('room')}    >Room Type</button>
-                  <button role="tab" aria-selected={view === 'floor'}    className={view === 'floor'    ? 'active' : ''} onClick={() => setView('floor')}   >Floor</button>
-                </div>
+                <h2>Guest Reservations</h2>
               </div>
               {tableEl}
-              <p className="fc-table-footnote">
-                Rooms to clean today includes full cleans (check-outs) and stayover touch-ups.
-              </p>
             </main>
 
             <aside className="fc-rail">

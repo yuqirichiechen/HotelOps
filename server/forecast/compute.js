@@ -243,7 +243,7 @@ function floorLabel(floorId) {
  * @param {string} input.forecastDate      — YYYY-MM-DD
  * @returns {Object} snapshot payload
  */
-function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapping, config, forecastDate }) {
+function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses, roomTypeMapping, config, forecastDate }) {
   if (!forecastDate) throw new Error('computeForecast: forecastDate required');
 
   // 1. Build lookups.
@@ -476,10 +476,36 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapp
     housekeepersNeeded:  kpis.housekeepersNeeded,
   };
 
+  // Sprint 18.3 — index rooms by id so we can resolve floor (for
+  // "high floor" flag derivation), and build a VIP-statuses lookup
+  // for label resolution. `vipStatuses` is the catalog from rGuest;
+  // each entry typically has { id, name, … }.
+  const roomById = new Map();
+  for (const room of rooms || []) {
+    if (room.id) roomById.set(room.id, room);
+  }
+  const vipById = new Map();
+  if (Array.isArray(vipStatuses)) {
+    for (const v of vipStatuses) {
+      if (v && v.id) vipById.set(v.id, v);
+    }
+  }
+  // Snoqualmie tops out at floor 4. "High floor" = 3 and above
+  // matches the FD's working definition (upper floors with the
+  // better views). Configurable later if needed.
+  const HIGH_FLOOR_THRESHOLD = 3;
+  function isHighFloor(floorId) {
+    if (!floorId) return false;
+    const n = parseInt(floorId, 10);
+    return Number.isFinite(n) && n >= HIGH_FLOOR_THRESHOLD;
+  }
+
   // 10. Per-reservation array (Sprint 17.7) — the 17.8 UI renders
   //     guest-by-guest cards from this. Includes pre-assignment
   //     flag (`isPreAssigned`), normalized status label, kind tag
   //     for tab filtering, and a guessed source from ratePlanCode.
+  //     Sprint 18.3 — adds VIP label, high-floor + pet-friendly +
+  //     group flags, and the resolved floorId for display.
   const reservationsOut = classifiedResn.map(r => {
     const arr = isoDate(r, 'arrivalDate');
     const dep = isoDate(r, 'departureDate');
@@ -498,6 +524,16 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapp
     // Sprint 18.1 — future RES surface as kind='future' so the
     // Reservations page's "Future" filter chip can match them.
     else if (r._meta.isFuture)     kind = 'future';
+
+    // Sprint 18.3 — derived flags.
+    const room = r.roomId ? roomById.get(r.roomId) : null;
+    const floorId = room ? (room.floorId || null) : null;
+    const vipUuid = r.primaryGuestInfo && r.primaryGuestInfo.vipStatus;
+    const vipRow  = vipUuid ? vipById.get(vipUuid) : null;
+    const vipLabel = vipRow ? (vipRow.name || vipRow.displayName || vipRow.label || 'VIP') : null;
+    const isPetFriendly = typeof rtCode === 'string' && rtCode.endsWith('P');
+    const isGroupBooking = !!r.group;
+
     return {
       id:                r.id,
       confirmationId:    r.confirmationId || null,
@@ -507,6 +543,7 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapp
       nights:            nightsBetween(arr, dep),
       roomId:            r.roomId    || null,
       roomNumber:        r.roomNumber || null,
+      floorId,
       isPreAssigned,
       typeCode:          rtCode || null,
       baseCode:          mapping ? mapping.base_code  : null,
@@ -521,6 +558,12 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, roomTypeMapp
       isRedEye:          r.redEyeArrival && typeof r.redEyeArrival === 'object'
                            && Object.keys(r.redEyeArrival).length > 0,
       scheduledForRoomMove: !!r.scheduledForRoomMove,
+      // Sprint 18.3 derived flags.
+      isHighFloor:       isHighFloor(floorId),
+      isPetFriendly,
+      isGroupBooking,
+      vipUuid:           vipUuid || null,
+      vipLabel,
     };
   });
 

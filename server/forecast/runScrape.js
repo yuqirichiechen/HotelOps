@@ -163,6 +163,7 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       roomTypes:       inputs.roomTypes,
       reservations:    inputs.reservations,
       metrics:         inputs.metrics,
+      vipStatuses:     inputs.vipStatuses,  // 18.3 — label resolution
       roomTypeMapping: mapping,
       config,
       forecastDate:    effectiveDate,

@@ -633,13 +633,18 @@
 .fc-pill-action-touch { background: #bee3f8; color: #2c5282; }
 .fc-pill-action-none  { background: var(--bg-raised); color: var(--text-muted); }
 
-/* Sprint 18.1 — Notes/Flags pills (derived from reservation
-   metadata; the richer VIP / Rollaway / etc. land in 18.3 after
-   the per-reservation recon). */
+/* Sprint 18.1 / 18.3 — Notes/Flags pills derived from reservation
+   metadata. Order in the cell reflects priority (set by
+   buildResnFlags): VIP / Early / Late / Room move / Day use /
+   High floor / Pet / Group. */
 .fc-flag-early { background: #c6f6d5; color: #276749; margin-right: 4px; }
 .fc-flag-late  { background: #fefcbf; color: #744210; margin-right: 4px; }
 .fc-flag-move  { background: #e9d8fd; color: #5b21b6; margin-right: 4px; }
 .fc-flag-day   { background: #bee3f8; color: #2c5282; margin-right: 4px; }
+.fc-flag-vip   { background: #fefcbf; color: #744210; margin-right: 4px; font-weight: 600; }
+.fc-flag-high  { background: #bee3f8; color: #2c5282; margin-right: 4px; }
+.fc-flag-pet   { background: #fed7d7; color: #9b2c2c; margin-right: 4px; }
+.fc-flag-group { background: #e2e8f0; color: #4a5568; margin-right: 4px; }
 
 /* Tighter table layout for the new 10-col Reservations table.
    Without this the row gets too tall; some cells crowd. */

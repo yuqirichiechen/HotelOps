@@ -280,6 +280,110 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-09 — Sprint 18.3: VIP lookup + new derived flags + legacy toggle cleanup
+
+Three deliverables; channel/source + Rollaway notes deferred
+until we have the per-reservation recon (still pending).
+
+**1. VIP lookup — new client endpoint + label resolution.**
+
+Added `getVipStatuses()` to `server/agilysys/client.js`. Tries
+the property-scoped catalog
+(`/property-service/.../properties/.../vipStatuses`); on failure
+falls back to the tenant-scoped variant
+(`/property-service/.../vipStatuses`). Both exist in the recon
+URL list — different rGuest UI screens use different scopes.
+
+`fetchForecastInputs` now fetches the VIP catalog before the
+data parallel pull (soft failure — if it 404s the rest of the
+scrape continues, vipStatuses just comes back null).
+`runScrape` threads `inputs.vipStatuses` into `computeForecast`.
+
+`compute.js` builds a `vipById` Map and resolves each
+reservation's `primaryGuestInfo.vipStatus` UUID to the catalog
+entry's `name` (with `displayName` / `label` / "VIP" fallbacks).
+The resolved string ships on `payload.reservations[i].vipLabel`;
+raw UUID stays on `vipUuid` for traceability.
+
+**2. New derived flags on each reservation.**
+
+`compute.js` builds a `roomById` Map and surfaces:
+- `floorId` — pulled from the assigned room (null if unassigned).
+- `isHighFloor` — `parseInt(floorId, 10) >= 3` (Snoqualmie tops
+  out at floor 4; "high floor" = 3+ matches the FD's working
+  definition).
+- `isPetFriendly` — typeCode ends with `P`.
+- `isGroupBooking` — `reservation.group` is non-null.
+
+Pre-existing flags (`isEarlyArrival`, `isRedEye`,
+`scheduledForRoomMove`, `isDayUse`) keep working unchanged.
+
+**3. Notes/Flags pill column — fully populated.**
+
+Both `ReservationDetailsTable` rows and the `SelectedReservation`
+panel now read flags from a shared `buildResnFlags(r)` helper
+(defined in `Forecasting/index.js`). Order of pills:
+
+```
+VIP · Early arrival · Late arrival · Room move · Day use ·
+High floor · Pet friendly · Group
+```
+
+Pill colors live in `Forecasting.css` under `.fc-flag-*`:
+- `.fc-flag-vip` — yellow (#fefcbf), bold weight; the strongest
+  signal.
+- `.fc-flag-high` — blue (#bee3f8).
+- `.fc-flag-pet` — red-pink (#fed7d7).
+- `.fc-flag-group` — gray (#e2e8f0).
+
+**4. Legacy view toggle removed from Reservations page.**
+
+The 4-tab toggle (Reservation Details / Cleaning Type / Room
+Type / Floor) was a vestige from when this page was the
+Forecast. Replaced with a plain `<h2>Guest Reservations</h2>`
+header per the mockup. The `view` state still exists in the
+component because the analytic table components are still
+imported (and might be reused on the Forecast page later); only
+the rendered tab strip is gone.
+
+**Files touched:**
+- `server/agilysys/client.js` — `getVipStatuses` + property/
+  tenant fallback; `fetchForecastInputs` fetches it; exported
+  on the public surface.
+- `server/forecast/runScrape.js` — threads `vipStatuses` into
+  `computeForecast`.
+- `server/forecast/compute.js` — new `vipStatuses` param;
+  `roomById` + `vipById` maps; `isHighFloor` helper; per-
+  reservation derived fields (`floorId`, `isHighFloor`,
+  `isPetFriendly`, `isGroupBooking`, `vipUuid`, `vipLabel`).
+- `src/components/Forecasting/index.js` — `buildResnFlags`
+  helper; table row + selected-panel both consume it; legacy
+  view toggle removed; header now reads "Guest Reservations".
+- `src/components/Forecasting/Forecasting.css` — new
+  `.fc-flag-vip` / `.fc-flag-high` / `.fc-flag-pet` /
+  `.fc-flag-group` pill colors.
+
+**Verified.** Brace + paren balance OK (440/440, 378/378;
+compute 101/101, 305/305; client 100/100, 131/131). Module
+load test confirms `getVipStatuses` is on the client's exported
+surface.
+
+**Acknowledged limitations (still deferred to 18.4 / 18.5+):**
+
+- Source/channel column still shows `ratePlanCode` (BAR / LOCAL
+  / WACHA) instead of Booking.com / Expedia / Direct — needs
+  the per-reservation recon.
+- Notes / Special Requests endpoint not yet hit; Rollaway-style
+  flags blocked.
+- "View details" / "Guest folio" buttons still stubbed.
+- The analytic-table component definitions (`ByCleaningTable`,
+  `ByRoomTypeTable`, `ByFloorTable`) are now unused on this
+  page — safe to delete in a follow-up sweep along with the
+  rail's old `ServiceProgress` / `ScraperOutputCard` /
+  `DispatchSummaryCard` dead code.
+
+---
+
 ### 2026-06-09 — Sprint 18.2: right-rail "Today at a glance" + "Selected reservation" + Open-in-rGuest deep link
 
 Two-phase rail. Builds on 18.1's table; adds row-click selection,
