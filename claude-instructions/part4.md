@@ -280,6 +280,114 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-11 — Sprint 18.8: finishing the rich detail panel
+
+Closes the loop on Sprint 18.7 by shipping the items that were
+explicitly deferred (card on file) plus the fields the recon
+caught but 18.7 didn't surface (occupancy, rate rollup, loyalty,
+additional guests, comment text, expanded stay history).
+
+**Backend.** `server/agilysys/client.js` gains two more methods
+and a second-stage parallel batch in the orchestrator.
+
+- `getAccountDetails(accountId)` — pulls the full folio account.
+  We only need `paymentSettings.paymentInstruments[]` for now,
+  but returning the whole object means later sub-sprints can
+  surface charges / authorizations / split-pay rules without
+  another round trip.
+- `getPaymentInstrument(accountId, instrumentId)` — masked card
+  metadata: `accountNumberLast4`, `cardIssuer` (UUID),
+  `cardIssuerName`, `cardType`, `cardHolderName`,
+  `expirationYearMonth`.
+- `fetchReservationFullDetail` now runs two parallel batches:
+  batch 1 (existing fan-out) gains `accountDetails`; batch 2
+  dereferences each instrument ID in parallel. Total wall-time
+  stays ~2 round trips because batch 1 carries the long pole.
+  Null vs empty-array semantics for `paymentInstruments`: null
+  = no account or fetch failed (UI shows nothing), empty array
+  = account but no card (UI confidently shows "No card on file").
+
+**Frontend helpers** (`src/components/Forecasting/index.js`):
+
+- `fmtDetail_occupancy` — `"2 adults, 1 child"` from
+  `reservation.occupancy.{totalAdults, totalChildren, totalInfants}`.
+- `fmtDetail_loyalty` — `"Stash Hotel Rewards · Gold"` from
+  `profile.loyaltyDetails.loyaltyProfiles[0]`. Prefers `isDefault`.
+- `fmtDetail_additionalGuests` — array of names from
+  `reservation.additionalGuests[]`. Tolerates both flat and
+  `personalDetails`-nested shapes since rGuest returns either.
+- `fmtDetail_comments` — flattens the comments dict
+  (`{general: [...], housekeeping: [...]}`) into a flat
+  `{type, text}` array, dropping blank entries.
+- `fmtDetail_paymentInstruments` — `{last4, issuer, exp, holder}`
+  tuples. Tolerates `expirationYearMonth` in both `"2027-12"`
+  and `"202712"` forms; falls back through
+  `cardIssuerName → cardType → "Card"`.
+- `fmtDetail_rateRollup` — total + nights + avg from
+  `reservation.rateSnapshots[]`. Null for groups/comps.
+- `fmtDetail_stayHistoryBreakdown` — `"3 past · 1 future · 2 no-shows"`.
+
+**Desktop rail panel** (`SelectedReservation`):
+
+- **Guest details** section gains a Loyalty row (only renders
+  when present so quiet guests don't get an empty field).
+- **Booking** section gains Occupancy + Room charges (rate
+  rollup with `(N × avg)` subtitle), and a Walk-in pill next to
+  Channel when `sourceInfo.walkIn === true`.
+- **Folio** section gets a card-chip row below the balance grid:
+  dark-gradient pill with brand / `•••• 4242` / `exp 12/27`,
+  monospaced. Empty-array case renders a muted "No card on file"
+  chip in the same slot.
+- **Additional guests** section — bulleted list, only when
+  populated.
+- **Notes** section replaces the old `{N} notes` badge with
+  actual cards (warm-amber, type label uppercased, `white-space:
+  pre-wrap` so multi-line FD notes don't collapse).
+- Stay history badge now shows the breakdown when `pastCount=0`
+  but other counters are non-zero (no-shows etc).
+
+**Mobile expanded card** (`ReservationCard`):
+
+- Adds Occupancy to the rich grid.
+- Adds a card-chip row below the grid (same component as
+  desktop, just stacked) so FD on phone can still see the card
+  on file at a glance.
+- Skips the long-form sections (notes / additional guests /
+  loyalty) — those are best read on the rail panel.
+
+**CSS** (`Forecasting.css`):
+
+- `.fc-card-chip` — dark-gradient pill (`#1f2937 → #374151`)
+  with monospaced number; `.fc-card-chip-empty` swaps to a soft
+  italic look so the absence of a card reads as informational
+  rather than alarming.
+- `.fc-note-card` — warm-amber panel (`#fffbeb` bg, `#fde68a`
+  border) so notes visually anchor as "advisory" against the
+  cooler factual grid above.
+- `.fc-addl-guests` — plain bulleted list, no heavy styling.
+
+**What's left** (probably 18.9+):
+
+- Channel column on the bulk table still shows `ratePlanCode`.
+  Switching to `sourceInfo.bookingSources[]` requires the bulk
+  scrape to fetch reservation detail for every row — too
+  expensive at 200 rows × 5 calls. Compromise option for later:
+  add a single `sourceInfo` field to the bulk-search shape if
+  rGuest's search response carries it (recon didn't capture
+  the search-response shape carefully enough to confirm).
+- Card-issuer UUID → brand mapping. We trust
+  `cardIssuerName` from the response for now; if rGuest stops
+  populating that, populate `_CARD_ISSUER_NAMES` from the
+  `/cardIssuers` catalog.
+
+**Verified.** `npm run build` compiles clean (+1.3 kB JS,
++237 B CSS — well within budget for what we shipped). Module
+load on `server/agilysys/client.js` exports
+`getAccountDetails`, `getPaymentInstrument`, and
+`fetchReservationFullDetail` as functions.
+
+---
+
 ### 2026-06-04 — Sprint 18.7: per-reservation detail on demand
 
 Ships the rich rail-panel content the 18.6.1 recon unlocked.

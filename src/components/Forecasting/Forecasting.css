@@ -928,6 +928,90 @@
   margin-top: 8px;
 }
 
+/* ── Sprint 18.8: card-on-file chips + note cards + addl guests ── */
+.fc-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.fc-card-chips-mobile {
+  margin-top: 10px;
+}
+.fc-card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+  color: #f9fafb;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.fc-card-chip-empty {
+  background: #f3f4f6;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-style: italic;
+  box-shadow: none;
+}
+.fc-card-chip-brand {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.fc-card-chip-num {
+  opacity: 0.95;
+}
+.fc-card-chip-exp {
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+.fc-addl-guests {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.fc-addl-guests li {
+  padding: 2px 0;
+}
+
+.fc-note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fc-note-card {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.fc-note-type {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #92400e;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.fc-note-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── Sprint 17.8: Service Progress card (right rail) ──────── */
 .fc-progress-row {
   display: grid;

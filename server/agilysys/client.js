@@ -429,6 +429,38 @@ function createAgilysysClient(overrides = {}) {
     return result;
   }
 
+  // Sprint 18.8 — account details. The folio account holds
+  // `paymentSettings.paymentInstruments[]` which is the list of
+  // tokens we need to dereference into masked card metadata.
+  // Returns the full account object so future sprints can also
+  // surface charges / authorizations / split-pay rules.
+  async function getAccountDetails(accountId) {
+    const path = `/account-service/v1/tenants/${tenantId}/properties/${propertyId}/accounts/${accountId}/details`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.accountDetails.fetched', {
+      accountId,
+      instruments: Array.isArray(result?.paymentSettings?.paymentInstruments)
+        ? result.paymentSettings.paymentInstruments.length : 0,
+    });
+    return result;
+  }
+
+  // Sprint 18.8 — masked card metadata for the rail-panel chip.
+  // Returns accountNumberLast4, cardIssuer, cardType, cardHolderName,
+  // expirationYearMonth. Issuer is a UUID we map to a friendly
+  // brand name client-side (the catalog at
+  // `/payment-service/.../cardIssuers` is cacheable but tiny
+  // enough to fold into the frontend until we need a 2nd lookup).
+  async function getPaymentInstrument(accountId, instrumentId) {
+    const path = `/payment-service/tenants/${tenantId}/properties/${propertyId}/accounts/${accountId}/paymentInstruments/${instrumentId}`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.paymentInstrument.fetched', {
+      accountId, instrumentId,
+      last4: result?.accountNumberLast4,
+    });
+    return result;
+  }
+
   // High-level orchestration for the Reservations rail panel.
   // Fetches the reservation first (since accountId + profileId are
   // hidden in its body), then fans out in parallel for the rest.
@@ -440,7 +472,12 @@ function createAgilysysClient(overrides = {}) {
     const profileId = reservation?.primaryGuestInfo?.profileId;
     const accountId = reservation?.accountId;
 
-    const [profile, comments, balances, stayHistory] = await Promise.all([
+    // Sprint 18.8 — accountDetails joins the first fan-out so
+    // payment instruments can fire in a second batch as soon as
+    // the instrument IDs are known. Total wall-time is still
+    // ~2 round trips (first batch + instrument batch) instead of
+    // sequential ~6.
+    const [profile, comments, balances, stayHistory, accountDetails] = await Promise.all([
       profileId ? getGuestProfile(profileId).catch(e => {
         log('warn', 'agilysys.guestProfile.failed', { error: e.message });
         return null;
@@ -457,7 +494,33 @@ function createAgilysysClient(overrides = {}) {
         log('warn', 'agilysys.stayHistory.failed', { error: e.message });
         return null;
       }) : null,
+      accountId ? getAccountDetails(accountId).catch(e => {
+        log('warn', 'agilysys.accountDetails.failed', { error: e.message });
+        return null;
+      }) : null,
     ]);
+
+    // Sprint 18.8 — second batch: dereference each payment-instrument
+    // token into masked card metadata. Empty array (rather than null)
+    // when there's an account but no cards on file, so the UI can
+    // confidently render "No card on file" instead of "Loading…".
+    let paymentInstruments = null;
+    const instrumentRefs = Array.isArray(accountDetails?.paymentSettings?.paymentInstruments)
+      ? accountDetails.paymentSettings.paymentInstruments : [];
+    const instrumentIds = instrumentRefs
+      .map(p => p?.paymentInstrumentId || p?.id)
+      .filter(Boolean);
+    if (accountId && instrumentIds.length > 0) {
+      const resolved = await Promise.all(
+        instrumentIds.map(id => getPaymentInstrument(accountId, id).catch(e => {
+          log('warn', 'agilysys.paymentInstrument.failed', { instrumentId: id, error: e.message });
+          return null;
+        }))
+      );
+      paymentInstruments = resolved.filter(Boolean);
+    } else if (accountId) {
+      paymentInstruments = [];
+    }
 
     return {
       reservation,
@@ -465,6 +528,8 @@ function createAgilysysClient(overrides = {}) {
       comments,
       balances,
       stayHistory,
+      accountDetails,
+      paymentInstruments,
     };
   }
 
@@ -528,6 +593,8 @@ function createAgilysysClient(overrides = {}) {
     getReservationComments,
     getAccountBalances,
     getStayHistory,
+    getAccountDetails,
+    getPaymentInstrument,
     fetchReservationFullDetail,
     fetchForecastInputs,
     getLogs: () => logs.slice(),

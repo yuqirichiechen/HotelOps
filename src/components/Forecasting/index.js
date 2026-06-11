@@ -296,6 +296,9 @@ const ReservationCard = ({ r, isSelected, onSelect }) => {
   const channel   = detail ? fmtDetail_channel(detail.reservation) : null;
   const balance   = detail ? fmtDetail_balance(detail.balances, detail.reservation?.accountId) : null;
   const stayCount = detail?.stayHistory?.pastCount;
+  // Sprint 18.8 — mobile mirrors the highest-value rich fields.
+  const occupancy = detail ? fmtDetail_occupancy(detail.reservation)              : null;
+  const cards     = detail ? fmtDetail_paymentInstruments(detail.paymentInstruments) : [];
   return (
     <li className={`fc-resn-card${isSelected ? ' selected' : ''}`}>
       <button
@@ -349,19 +352,39 @@ const ReservationCard = ({ r, isSelected, onSelect }) => {
             <div className="fc-resn-card-error" role="alert">{detailError}</div>
           )}
           {detail && (
-            <dl className="fc-resn-card-grid fc-resn-card-grid-rich">
-              {email   && <div><dt>Email</dt><dd>{email}</dd></div>}
-              {phone   && <div><dt>Phone</dt><dd>{phone}</dd></div>}
-              {channel && <div><dt>Channel</dt><dd>{channel}</dd></div>}
-              {balance && (
-                <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
-                  <strong>{fmtMoney(balance.total)}</strong>
-                </dd></div>
+            <>
+              <dl className="fc-resn-card-grid fc-resn-card-grid-rich">
+                {email     && <div><dt>Email</dt><dd>{email}</dd></div>}
+                {phone     && <div><dt>Phone</dt><dd>{phone}</dd></div>}
+                {channel   && <div><dt>Channel</dt><dd>{channel}</dd></div>}
+                {occupancy && <div><dt>Occupancy</dt><dd>{occupancy}</dd></div>}
+                {balance && (
+                  <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
+                    <strong>{fmtMoney(balance.total)}</strong>
+                  </dd></div>
+                )}
+                {stayCount != null && stayCount > 0 && (
+                  <div><dt>History</dt><dd>{stayCount} prior stay{stayCount === 1 ? '' : 's'}</dd></div>
+                )}
+              </dl>
+              {/* Sprint 18.8 — card chip on mobile too. Distinguish
+                  empty array (no card on file) from null (failed)
+                  so the user sees the truth either way. */}
+              {detail.paymentInstruments != null && (
+                <div className="fc-card-chips fc-card-chips-mobile">
+                  {cards.length === 0 && (
+                    <div className="fc-card-chip fc-card-chip-empty">No card on file</div>
+                  )}
+                  {cards.map((c, i) => (
+                    <div key={i} className="fc-card-chip">
+                      <span className="fc-card-chip-brand">{c.issuer}</span>
+                      <span className="fc-card-chip-num">•••• {c.last4}</span>
+                      {c.exp && <span className="fc-card-chip-exp">exp {c.exp}</span>}
+                    </div>
+                  ))}
+                </div>
               )}
-              {stayCount != null && stayCount > 0 && (
-                <div><dt>History</dt><dd>{stayCount} prior stay{stayCount === 1 ? '' : 's'}</dd></div>
-              )}
-            </dl>
+            </>
           )}
 
           <div className="fc-resn-card-actions">
@@ -489,6 +512,117 @@ function fmtDetail_balance(balances, accountId) {
 function fmtMoney(n) {
   if (n == null) return '—';
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
+// Sprint 18.8 — additional rich-detail helpers.
+
+// Adults / children / infants summary. Returns a friendly string
+// or null when occupancy isn't populated.
+function fmtDetail_occupancy(reservation) {
+  const occ = reservation?.occupancy;
+  if (!occ) return null;
+  const parts = [];
+  if (occ.totalAdults > 0)   parts.push(`${occ.totalAdults} adult${occ.totalAdults === 1 ? '' : 's'}`);
+  if (occ.totalChildren > 0) parts.push(`${occ.totalChildren} child${occ.totalChildren === 1 ? '' : 'ren'}`);
+  if (occ.totalInfants > 0)  parts.push(`${occ.totalInfants} infant${occ.totalInfants === 1 ? '' : 's'}`);
+  return parts.length ? parts.join(', ') : null;
+}
+
+// Loyalty tier + program name from the guest profile. The shape
+// is nested — `loyaltyDetails.loyaltyProfiles[]` each have a
+// `loyaltyProgram` reference and a `tier`. Rosa was empty in
+// recon; real-guest paths surface "Stash Hotel Rewards · Gold".
+function fmtDetail_loyalty(profile) {
+  const list = profile?.loyaltyDetails?.loyaltyProfiles;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const primary = list.find(p => p?.isDefault) || list[0];
+  const program = primary?.loyaltyProgram?.name || primary?.programName || null;
+  const tier    = primary?.tier?.name || primary?.tierName || null;
+  if (program && tier) return `${program} · ${tier}`;
+  return program || tier || null;
+}
+
+// Additional-guests list. The recon shape is an array of objects
+// with `firstName/lastName` (sometimes nested under `personalDetails`).
+function fmtDetail_additionalGuests(reservation) {
+  const list = reservation?.additionalGuests;
+  if (!Array.isArray(list) || list.length === 0) return [];
+  return list.map(g => {
+    const pd = g.personalDetails || g;
+    const name = [pd?.firstName, pd?.lastName].filter(Boolean).join(' ').trim();
+    return name || '(unnamed guest)';
+  });
+}
+
+// Comments arrive as a dict keyed by type (general / housekeeping /
+// frontDesk / billing / ...). Flatten into an array of {type, text}
+// items so the UI can render note cards. Empty array = no notes.
+function fmtDetail_comments(comments) {
+  if (!comments || typeof comments !== 'object') return [];
+  const items = [];
+  for (const [type, list] of Object.entries(comments)) {
+    if (!Array.isArray(list)) continue;
+    for (const c of list) {
+      const text = c?.comment || c?.text || c?.note || '';
+      if (text.trim()) items.push({ type, text: text.trim() });
+    }
+  }
+  return items;
+}
+
+// Map an rGuest cardIssuer UUID to a brand label. The catalog is
+// at `/payment-service/.../cardIssuers` but the common values are
+// stable enough to inline here; unmapped UUIDs fall back to
+// `cardIssuerName` or "Card" so the chip still renders.
+const _CARD_ISSUER_NAMES = {
+  // (Populate as we discover them in production scrapes — for now
+  // we trust the response's own cardIssuerName field.)
+};
+function fmtDetail_paymentInstruments(paymentInstruments) {
+  if (!Array.isArray(paymentInstruments) || paymentInstruments.length === 0) return [];
+  return paymentInstruments.map(pi => {
+    const last4   = pi?.accountNumberLast4 || pi?.last4 || '••••';
+    const issuer  = pi?.cardIssuerName
+                 || _CARD_ISSUER_NAMES[pi?.cardIssuer]
+                 || pi?.cardType
+                 || 'Card';
+    // expirationYearMonth observed as "2027-12" or "202712" in
+    // various recons; tolerate both forms.
+    let exp = null;
+    const raw = pi?.expirationYearMonth || '';
+    const m = /^(\d{4})-?(\d{2})$/.exec(raw);
+    if (m) exp = `${m[2]}/${m[1].slice(2)}`;
+    return { last4, issuer, exp, holder: pi?.cardHolderName || null };
+  });
+}
+
+// Per-night rate snapshots → total rollup. Some reservations don't
+// expose this (groups, comps); returns null in that case.
+function fmtDetail_rateRollup(reservation) {
+  const snaps = reservation?.rateSnapshots;
+  if (!Array.isArray(snaps) || snaps.length === 0) return null;
+  let total = 0;
+  let nights = 0;
+  for (const s of snaps) {
+    const r = s?.rate ?? s?.amount;
+    if (typeof r === 'number') { total += r; nights++; }
+  }
+  if (nights === 0) return null;
+  return { total, nights, avg: total / nights };
+}
+
+// Stay history detail beyond pastCount: returns the breakdown
+// pieces if any are > 0. Used for the expandable stay history
+// callout ("3 past · 1 future · 2 no-shows").
+function fmtDetail_stayHistoryBreakdown(stayHistory) {
+  if (!stayHistory) return null;
+  const parts = [];
+  if (stayHistory.pastCount > 0)      parts.push(`${stayHistory.pastCount} past`);
+  if (stayHistory.futureCount > 0)    parts.push(`${stayHistory.futureCount} future`);
+  if (stayHistory.currentCount > 0)   parts.push(`${stayHistory.currentCount} current`);
+  if (stayHistory.totalNoShows > 0)   parts.push(`${stayHistory.totalNoShows} no-show${stayHistory.totalNoShows === 1 ? '' : 's'}`);
+  if (stayHistory.totalCancelled > 0) parts.push(`${stayHistory.totalCancelled} cancelled`);
+  return parts.length ? parts.join(' · ') : null;
 }
 
 // Sprint 18.2 — deep-link URL pattern for an individual reservation
@@ -853,9 +987,15 @@ const SelectedReservation = ({ reservation, onClose }) => {
   const bookedBy  = detail?.reservation?.sourceInfo?.bookedBy   || null;
   const balance   = detail ? fmtDetail_balance(detail.balances, detail.reservation?.accountId) : null;
   const stayCount = detail?.stayHistory?.pastCount;
-  const commentCount = detail?.comments
-    ? Object.values(detail.comments).filter(v => Array.isArray(v) && v.length).reduce((s, arr) => s + arr.length, 0)
-    : 0;
+  // Sprint 18.8 — additional surfaced fields.
+  const occupancy        = detail ? fmtDetail_occupancy(detail.reservation)              : null;
+  const loyalty          = detail ? fmtDetail_loyalty(detail.profile)                    : null;
+  const addlGuests       = detail ? fmtDetail_additionalGuests(detail.reservation)       : [];
+  const comments         = detail ? fmtDetail_comments(detail.comments)                  : [];
+  const cards            = detail ? fmtDetail_paymentInstruments(detail.paymentInstruments) : [];
+  const rateRollup       = detail ? fmtDetail_rateRollup(detail.reservation)             : null;
+  const stayBreakdown    = detail ? fmtDetail_stayHistoryBreakdown(detail.stayHistory)   : null;
+  const walkIn           = detail?.reservation?.sourceInfo?.walkIn === true;
   const roomStatusLabel = r.roomNumber
     ? (r.hkStatusLabel || r.occupancyStatus || '—')
     : 'No Room Assigned';
@@ -909,35 +1049,93 @@ const SelectedReservation = ({ reservation, onClose }) => {
               <div className="fc-selected-flags"><dt>Address</dt><dd>
                 {address || <span className="fc-detail-sub-inline">—</span>}
               </dd></div>
+              {loyalty && (
+                <div className="fc-selected-flags"><dt>Loyalty</dt><dd>{loyalty}</dd></div>
+              )}
             </dl>
 
             <h4 className="fc-selected-rich-head">Booking</h4>
             <dl className="fc-selected-grid fc-selected-grid-rich">
-              <div><dt>Channel</dt><dd>{channel || <span className="fc-detail-sub-inline">Direct</span>}</dd></div>
+              <div><dt>Channel</dt><dd>
+                {channel || <span className="fc-detail-sub-inline">Direct</span>}
+                {walkIn && <span className="fc-pill fc-flag-move" style={{ marginLeft: 6 }}>Walk-in</span>}
+              </dd></div>
               <div><dt>Booked by</dt><dd>{bookedBy || <span className="fc-detail-sub-inline">—</span>}</dd></div>
+              {occupancy && (
+                <div><dt>Occupancy</dt><dd>{occupancy}</dd></div>
+              )}
+              {rateRollup && (
+                <div><dt>Room charges</dt><dd>
+                  {fmtMoney(rateRollup.total)}
+                  <span className="fc-detail-sub-inline"> ({rateRollup.nights} × {fmtMoney(rateRollup.avg)})</span>
+                </dd></div>
+              )}
             </dl>
 
-            {balance && (
+            {(balance || cards.length > 0) && (
               <>
                 <h4 className="fc-selected-rich-head">Folio</h4>
-                <dl className="fc-selected-grid fc-selected-grid-rich">
-                  <div><dt>Subtotal</dt><dd>{fmtMoney(balance.subtotal)}</dd></div>
-                  <div><dt>Tax</dt><dd>{fmtMoney(balance.tax)}</dd></div>
-                  <div><dt>Paid</dt><dd className="fc-balance-good">{fmtMoney(balance.paid)}</dd></div>
-                  <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
-                    <strong>{fmtMoney(balance.total)}</strong>
-                  </dd></div>
-                </dl>
+                {balance && (
+                  <dl className="fc-selected-grid fc-selected-grid-rich">
+                    <div><dt>Subtotal</dt><dd>{fmtMoney(balance.subtotal)}</dd></div>
+                    <div><dt>Tax</dt><dd>{fmtMoney(balance.tax)}</dd></div>
+                    <div><dt>Paid</dt><dd className="fc-balance-good">{fmtMoney(balance.paid)}</dd></div>
+                    <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
+                      <strong>{fmtMoney(balance.total)}</strong>
+                    </dd></div>
+                  </dl>
+                )}
+                {/* Sprint 18.8 — card chips. Render each instrument as
+                    its own visual card; usually one but groups/corporate
+                    can have multiple. Backend distinguishes empty array
+                    (no card on file) from null (failed to fetch). */}
+                {detail.paymentInstruments != null && (
+                  <div className="fc-card-chips">
+                    {cards.length === 0 && (
+                      <div className="fc-card-chip fc-card-chip-empty">No card on file</div>
+                    )}
+                    {cards.map((c, i) => (
+                      <div key={i} className="fc-card-chip">
+                        <span className="fc-card-chip-brand">{c.issuer}</span>
+                        <span className="fc-card-chip-num">•••• {c.last4}</span>
+                        {c.exp && <span className="fc-card-chip-exp">exp {c.exp}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
-            {(stayCount != null || commentCount > 0) && (
+            {addlGuests.length > 0 && (
+              <>
+                <h4 className="fc-selected-rich-head">Additional guests</h4>
+                <ul className="fc-addl-guests">
+                  {addlGuests.map((name, i) => <li key={i}>{name}</li>)}
+                </ul>
+              </>
+            )}
+
+            {comments.length > 0 && (
+              <>
+                <h4 className="fc-selected-rich-head">Notes</h4>
+                <ul className="fc-note-list">
+                  {comments.map((c, i) => (
+                    <li key={i} className="fc-note-card">
+                      <span className="fc-note-type">{c.type}</span>
+                      <p className="fc-note-text">{c.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {(stayCount != null || stayBreakdown) && (
               <div className="fc-selected-badges">
                 {stayCount != null && stayCount > 0 && (
                   <span className="fc-pill fc-flag-group">Returning guest · {stayCount} prior stay{stayCount === 1 ? '' : 's'}</span>
                 )}
-                {commentCount > 0 && (
-                  <span className="fc-pill fc-flag-move">{commentCount} note{commentCount === 1 ? '' : 's'}</span>
+                {stayBreakdown && stayCount === 0 && (
+                  <span className="fc-pill fc-flag-move">{stayBreakdown}</span>
                 )}
               </div>
             )}
