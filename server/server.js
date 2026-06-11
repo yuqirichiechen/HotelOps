@@ -11,6 +11,10 @@ const {
 
 // Sprint 17 — Front Desk forecast (Agilysys rGuest Stay).
 const { runScrape: runForecastScrape } = require('./forecast/runScrape');
+// Sprint 18.7 — per-reservation detail (on-demand). Used by the
+// Reservations rail panel to surface email / phone / address /
+// folio balance / stay history that bulk scrape doesn't carry.
+const { createAgilysysClient } = require('./agilysys/client');
 
 const app = express();
 
@@ -4200,6 +4204,31 @@ app.put('/api/admin/forecast/mapping/:code', requireAuth, requireRole('admin'), 
   } catch (err) {
     console.error('[forecast:mapping:put]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ── Sprint 18.7: per-reservation detail (on-demand) ───────────────────────────
+// Fans out to ~5 rGuest endpoints (reservation, guest profile,
+// comments, account balances, stay history) in parallel after the
+// first reservation fetch resolves accountId + profileId. ~3s
+// round-trip; called from the Reservations rail panel.
+
+// GET /api/admin/reservations/:id/detail
+app.get('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ success: false, message: 'bad reservation id' });
+  }
+  try {
+    const client = createAgilysysClient();
+    const detail = await client.fetchReservationFullDetail(id);
+    return res.json({ success: true, detail, logs: client.getLogs() });
+  } catch (err) {
+    console.error('[reservation:detail]', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Could not load reservation detail',
+    });
   }
 });
 

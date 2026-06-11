@@ -619,7 +619,77 @@
 .fc-detail-footer {
   font-size: 12px;
   color: var(--text-muted);
-  padding: 6px 4px 0;
+  padding: 12px 4px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-light);
+  margin-top: 10px;
+}
+.fc-detail-footer-text strong { color: var(--text-primary); font-weight: 600; }
+
+/* Sprint 18.6 — pagination control. Buttons styled close to the
+   filter chips so the visual language is consistent. */
+.fc-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.fc-pager-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.fc-pager-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: 6px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.fc-pager-btn:hover:not(:disabled) {
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+}
+.fc-pager-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fc-pager-btn.active {
+  background: var(--brand-bg);
+  color: white;
+  border-color: var(--brand-bg);
+}
+.fc-pager-gap {
+  color: var(--text-muted);
+  padding: 0 4px;
+  user-select: none;
+}
+.fc-pager-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.fc-pager-size select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12.5px;
 }
 
 /* Status pills */
@@ -791,6 +861,71 @@
 }
 .fc-selected-close {
   align-self: center;
+}
+
+/* ── Sprint 18.7: On-demand guest detail (rail + mobile) ──── */
+.fc-selected-rich {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color, #e5e7eb);
+}
+.fc-selected-rich-head {
+  margin: 4px 0 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.fc-selected-grid-rich {
+  margin: 0;
+}
+.fc-selected-grid-rich dd {
+  word-break: break-word;
+}
+.fc-selected-loading {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 6px 0;
+}
+.fc-selected-error {
+  font-size: 12px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.fc-selected-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fc-balance-due  { color: #b45309; }
+.fc-balance-good { color: #047857; }
+
+/* Mobile expanded-card mirror */
+.fc-resn-card-grid-rich {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color, #e5e7eb);
+}
+.fc-resn-card-loading {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 6px 0;
+}
+.fc-resn-card-error {
+  font-size: 12px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 8px;
 }
 
 /* ── Sprint 17.8: Service Progress card (right rail) ──────── */

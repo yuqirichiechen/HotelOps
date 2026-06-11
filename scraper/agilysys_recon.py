@@ -15,6 +15,14 @@ Pages we walk (in order):
                     Inspected, IP-In Progress) + inventory status
                     (OCC/VAC). Supply side: which rooms still need
                     cleaning.
+  03-reservation-detail  /v2/reservation/{id}  — a *single* booking
+                    with everything: guest profile (name / address /
+                    phone / email), folio + charges, payment cards on
+                    file, special-request notes, channel/source. The
+                    URL pattern was confirmed by user on 2026-06-09;
+                    Sprint 18.6 added this page so we can identify
+                    each detail endpoint and surface that data in the
+                    Reservations page's right-rail panel.
 
 Pairing arrivals with HK conditions per floor is the whole forecast
 logic.
@@ -43,6 +51,10 @@ OUTPUT (under scraper/recon/<timestamp>/):
       page.txt          # innerText — what a human reads
       screenshot.png    # full-page screenshot
     02-hk-condition/
+      page.html
+      page.txt
+      screenshot.png
+    03-reservation-detail/
       page.html
       page.txt
       screenshot.png
@@ -116,6 +128,22 @@ TARGET_URL = (
 # click HK Condition) that needed manual intervention in 20260604-124629.
 HK_CONDITION_URL = (
     "https://stay.rguest.com/v2/housekeeping/condition"
+    "?tenantId=1566&propertyId=481"
+)
+
+# Sprint 18.6 — single-reservation detail page. URL pattern was
+# confirmed by user on 2026-06-09:
+#   https://stay.rguest.com/v2/reservation/{reservationId}?tenantId=1566&propertyId=481
+#
+# Pick *any* reservation from the search list and paste its UUID
+# below. The sample below is Rosa Santiago (from the original
+# user-shared URL). If she's checked out by the time you run this,
+# swap in any in-house reservation's UUID so we see the full
+# detail-page XHR set — especially the guest profile, address,
+# folio/charges, payment cards, and any notes endpoints.
+RESERVATION_DETAIL_ID = "a0b3ac38-afeb-45f4-a227-478ed92d2b3a"
+RESERVATION_DETAIL_URL = (
+    f"https://stay.rguest.com/v2/reservation/{RESERVATION_DETAIL_ID}"
     "?tenantId=1566&propertyId=481"
 )
 
@@ -358,6 +386,49 @@ def navigate_to_hk_condition(page) -> bool:
         return False
 
 
+def navigate_to_reservation_detail(page) -> bool:
+    """Open a single reservation's detail page. Sprint 18.6.
+
+    Direct goto using RESERVATION_DETAIL_URL — the URL pattern was
+    confirmed by the user 2026-06-09. No click fallback needed; if
+    the deep link 404s the reservation probably no longer exists
+    (cancelled / archived), so we just prompt the human to swap in
+    a different UUID at the top of the file.
+
+    The whole point of this page capture: see *all* the API calls
+    that fire when the FD opens a single reservation. We expect at
+    minimum:
+      - guest profile (name, address, phone, email)
+      - folio / charges
+      - payment methods on file
+      - linked notes / special requests
+      - confirmation details (channel / booking.com / etc.)
+    Each one of these is a distinct XHR; once captured here we can
+    add the matching endpoint to `server/agilysys/client.js`.
+    """
+    print(f"[i] Navigating → {RESERVATION_DETAIL_URL}")
+    try:
+        page.goto(RESERVATION_DETAIL_URL, wait_until="domcontentloaded", timeout=20_000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except PWTimeoutError:
+            # Detail pages often keep a websocket open; not fatal.
+            pass
+        if "/reservation/" in page.url:
+            print(f"[✓] On reservation detail page. URL: {page.url}")
+            return True
+        print(f"[!] Unexpected URL after goto: {page.url}")
+    except PWTimeoutError as e:
+        print(f"[!] Direct goto failed: {e}")
+    print(
+        "    The reservation UUID at the top of this file may be stale\n"
+        "    (cancelled / archived). Swap RESERVATION_DETAIL_ID and re-run.\n"
+        "    OR navigate to any reservation manually, then press Enter."
+    )
+    input(">>> press Enter once you're on a reservation detail page: ")
+    return False
+
+
 def write_summary(out_dir: Path, network_log: Path):
     """Quick eyeball of the network log so you know where to look.
 
@@ -531,6 +602,18 @@ def main():
             page.wait_for_timeout(SETTLE_SECONDS * 1000)
 
             dump_page(page, out_dir, "02-hk-condition")
+
+            # === Page 3: single reservation detail (Sprint 18.6) ===
+            page_label_ref["current"] = "03-reservation-detail"
+            navigate_to_reservation_detail(page)
+
+            print(
+                f"[i] Letting reservation detail settle for {SETTLE_SECONDS}s "
+                "(profile + folio + notes + cards load via several XHRs…)"
+            )
+            page.wait_for_timeout(SETTLE_SECONDS * 1000)
+
+            dump_page(page, out_dir, "03-reservation-detail")
         finally:
             fh.close()
             # Leave the browser open for a beat so you can manually

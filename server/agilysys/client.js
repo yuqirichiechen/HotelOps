@@ -353,6 +353,121 @@ function createAgilysysClient(overrides = {}) {
   // Sprint 17.7.2: also fetches reservationMetrics. Adds one round
   // trip but lets the compute fn produce KPIs that match rGuest's
   // UI exactly.
+  // ───────────────────────────────────────────────────────────
+  // Sprint 18.7 — per-reservation detail (on-demand, not bulk).
+  // Five endpoints surface the rich data the row doesn't have:
+  // full reservation, full guest profile, comments/notes, folio
+  // balances, and stay-history. Orchestrated by
+  // `fetchReservationFullDetail` which fans out in parallel after
+  // the initial reservation fetch resolves accountId + profileId.
+
+  // GET /reservation-service/v1/.../reservations/{id}?travelAndTransportInfo=false&updateCasinoDetails=true
+  // Returns the FULL reservation (~30 top-level keys), including
+  // `accountId` + `sourceInfo` (channel / booked-by / walk-in).
+  async function getReservationDetail(reservationId) {
+    const qs = `?travelAndTransportInfo=false&updateCasinoDetails=true`;
+    const path = `/reservation-service/v1/tenants/${tenantId}/properties/${propertyId}/reservations/${reservationId}${qs}`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.reservationDetail.fetched', { id: reservationId, accountId: result?.accountId });
+    return result;
+  }
+
+  // GET /profile-service/v1/.../guests/{profileId}?updateCasinoDetails=true
+  // Returns the full guest profile with addressDetails /
+  // phoneDetails / emailDetails / loyaltyDetails / preferences.
+  async function getGuestProfile(profileId) {
+    const path = `/profile-service/v1/tenants/${tenantId}/properties/${propertyId}/guests/${profileId}?updateCasinoDetails=true`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.guestProfile.fetched', { profileId });
+    return result;
+  }
+
+  // GET /comment-service/tenants/{tid}/reservation/{reservationId}
+  // Returns reservation comments / notes / special requests.
+  // Empty {} when there are none. Tenant-scoped (no propertyId).
+  async function getReservationComments(reservationId) {
+    const path = `/comment-service/tenants/${tenantId}/reservation/${reservationId}`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.comments.fetched', { reservationId });
+    return result;
+  }
+
+  // POST /account-service/v1/.../accounts/balances
+  // Returns the folio balance breakdown {subtotal, tax, paid,
+  // total, badDebt} per account. Body shape inferred from the
+  // response: `accountStatementMap` keyed by account id with an
+  // empty placeholder object. Falls back to a simpler array body
+  // if the structured one 4xx's.
+  async function getAccountBalances(accountIds) {
+    if (!Array.isArray(accountIds) || accountIds.length === 0) return null;
+    const path = `/account-service/v1/tenants/${tenantId}/properties/${propertyId}/accounts/balances`;
+    const structuredBody = {
+      accountStatementMap: Object.fromEntries(accountIds.map(id => [id, {}])),
+    };
+    try {
+      const result = await call('POST', path, structuredBody);
+      log('info', 'agilysys.accountBalances.fetched', { accounts: accountIds.length, shape: 'structured' });
+      return result;
+    } catch (err) {
+      log('warn', 'agilysys.accountBalances.structured_failed', { error: String(err.message || err) });
+      // Try simple array body as a fallback.
+      const arrayBody = { accountIds };
+      const result = await call('POST', path, arrayBody);
+      log('info', 'agilysys.accountBalances.fetched', { accounts: accountIds.length, shape: 'array' });
+      return result;
+    }
+  }
+
+  // GET /reservation-service/v1/.../reservations/guest/{profileId}/stayHistory
+  // Returns counts: totalNoPrevStays, totalNoShows, totalCancelled,
+  // currentCount, futureCount, pastCount. Lets the UI show
+  // "returning guest" badges.
+  async function getStayHistory(profileId) {
+    const path = `/reservation-service/v1/tenants/${tenantId}/properties/${propertyId}/reservations/guest/${profileId}/stayHistory`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.stayHistory.fetched', { profileId, pastCount: result?.pastCount });
+    return result;
+  }
+
+  // High-level orchestration for the Reservations rail panel.
+  // Fetches the reservation first (since accountId + profileId are
+  // hidden in its body), then fans out in parallel for the rest.
+  // Each sub-call is wrapped in catch() so partial failure returns
+  // partial data rather than blowing up the whole aggregate.
+  async function fetchReservationFullDetail(reservationId) {
+    if (!token) await login();
+    const reservation = await getReservationDetail(reservationId);
+    const profileId = reservation?.primaryGuestInfo?.profileId;
+    const accountId = reservation?.accountId;
+
+    const [profile, comments, balances, stayHistory] = await Promise.all([
+      profileId ? getGuestProfile(profileId).catch(e => {
+        log('warn', 'agilysys.guestProfile.failed', { error: e.message });
+        return null;
+      }) : null,
+      getReservationComments(reservationId).catch(e => {
+        log('warn', 'agilysys.comments.failed', { error: e.message });
+        return null;
+      }),
+      accountId ? getAccountBalances([accountId]).catch(e => {
+        log('warn', 'agilysys.accountBalances.failed', { error: e.message });
+        return null;
+      }) : null,
+      profileId ? getStayHistory(profileId).catch(e => {
+        log('warn', 'agilysys.stayHistory.failed', { error: e.message });
+        return null;
+      }) : null,
+    ]);
+
+    return {
+      reservation,
+      profile,
+      comments,
+      balances,
+      stayHistory,
+    };
+  }
+
   async function fetchForecastInputs(requestedDate) {
     log('info', 'agilysys.scrape.start', { requestedDate });
     if (!token) await login();
@@ -408,6 +523,12 @@ function createAgilysysClient(overrides = {}) {
     getReservationMetrics,
     getPropertyDate,
     getVipStatuses,
+    getReservationDetail,
+    getGuestProfile,
+    getReservationComments,
+    getAccountBalances,
+    getStayHistory,
+    fetchReservationFullDetail,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
     // Exposed for testing / introspection — don't rely on these in

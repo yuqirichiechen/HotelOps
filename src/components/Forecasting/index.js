@@ -287,6 +287,15 @@ const ReservationCard = ({ r, isSelected, onSelect }) => {
   const roomStatusLabel = r.roomNumber
     ? (r.hkStatusLabel || r.occupancyStatus || '—')
     : 'No Room Assigned';
+  // Sprint 18.7 — fetch on expand only. Passing `null` when
+  // collapsed prevents an unwanted preflight when scrolling
+  // through 30 cards.
+  const { data: detail, loading: detailLoading, error: detailError } = useReservationDetail(isSelected ? r.id : null);
+  const email     = detail ? fmtDetail_email(detail.profile)     : null;
+  const phone     = detail ? fmtDetail_phone(detail.profile)     : null;
+  const channel   = detail ? fmtDetail_channel(detail.reservation) : null;
+  const balance   = detail ? fmtDetail_balance(detail.balances, detail.reservation?.accountId) : null;
+  const stayCount = detail?.stayHistory?.pastCount;
   return (
     <li className={`fc-resn-card${isSelected ? ' selected' : ''}`}>
       <button
@@ -328,8 +337,34 @@ const ReservationCard = ({ r, isSelected, onSelect }) => {
               ))}</div>
             </div>
           )}
+
+          {/* Sprint 18.7 — on-demand guest detail. Loading state
+              is inline so the user sees something immediately
+              after tapping the card; the row-level fields above
+              already give context while the detail call resolves. */}
+          {detailLoading && (
+            <div className="fc-resn-card-loading">Loading guest detail…</div>
+          )}
+          {detailError && (
+            <div className="fc-resn-card-error" role="alert">{detailError}</div>
+          )}
+          {detail && (
+            <dl className="fc-resn-card-grid fc-resn-card-grid-rich">
+              {email   && <div><dt>Email</dt><dd>{email}</dd></div>}
+              {phone   && <div><dt>Phone</dt><dd>{phone}</dd></div>}
+              {channel && <div><dt>Channel</dt><dd>{channel}</dd></div>}
+              {balance && (
+                <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
+                  <strong>{fmtMoney(balance.total)}</strong>
+                </dd></div>
+              )}
+              {stayCount != null && stayCount > 0 && (
+                <div><dt>History</dt><dd>{stayCount} prior stay{stayCount === 1 ? '' : 's'}</dd></div>
+              )}
+            </dl>
+          )}
+
           <div className="fc-resn-card-actions">
-            <button type="button" className="fc-btn fc-btn-secondary" disabled title="Detail view ships in 18.5+">View details</button>
             <a
               className="fc-btn fc-btn-primary"
               href={RGUEST_RESERVATION_URL(r.id)}
@@ -362,6 +397,100 @@ function buildResnFlags(r) {
   return flags;
 }
 
+// Sprint 18.7 — in-memory cache for per-reservation detail. Keyed
+// by reservation id; entries expire after 5 min so progress
+// (folio updates, comment additions) refreshes without forcing
+// the user to reload. Lives at module scope so the cache survives
+// component remounts (e.g. switching tabs).
+const _detailCache = new Map();
+const DETAIL_CACHE_MS = 5 * 60 * 1000;
+
+// On-demand fetcher. Returns { data, loading, error }; data is
+// `{ reservation, profile, comments, balances, stayHistory }` —
+// each field individually nullable since the backend wraps every
+// sub-call in catch() and returns partial data on failure.
+function useReservationDetail(id) {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError]     = React.useState(null);
+
+  React.useEffect(() => {
+    if (!id) { setData(null); setLoading(false); setError(null); return; }
+    const cached = _detailCache.get(id);
+    if (cached && Date.now() - cached.fetchedAt < DETAIL_CACHE_MS) {
+      setData(cached.data);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    apiFetch(`/admin/reservations/${id}/detail`).then(({ ok, data: result }) => {
+      if (cancelled) return;
+      setLoading(false);
+      if (!ok || !result?.success) {
+        setError(result?.message || 'Could not load reservation detail.');
+        return;
+      }
+      _detailCache.set(id, { data: result.detail, fetchedAt: Date.now() });
+      setData(result.detail);
+    });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  return { data, loading, error };
+}
+
+// Sprint 18.7 — extracted helpers to format the rich detail
+// fields into the small bits the rail panel displays.
+
+function pickPrimary(arr, fields) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  // Prefer the default-flagged one; otherwise first.
+  return arr.find(x => x?.isDefault) || arr[0];
+}
+
+function fmtDetail_email(profile) {
+  const e = pickPrimary(profile?.emailDetails?.emailAddresses);
+  return e?.emailAddress || null;
+}
+function fmtDetail_phone(profile) {
+  const p = pickPrimary(profile?.phoneDetails?.phones);
+  if (!p) return null;
+  const num = p.phoneNumber || p.formattedNumber || p.number;
+  return num || null;
+}
+function fmtDetail_address(profile) {
+  const a = pickPrimary(profile?.addressDetails?.addresses);
+  if (!a) return null;
+  const parts = [
+    a.address1, a.address2, a.city,
+    a.stateProvince || a.state,
+    a.postalCode, a.country,
+  ].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+function fmtDetail_channel(reservation) {
+  const src = reservation?.sourceInfo;
+  if (!src) return null;
+  const bs = Array.isArray(src.bookingSources) && src.bookingSources.length
+    ? src.bookingSources.join(' / ') : null;
+  if (bs) return bs;
+  if (src.walkIn) return 'Walk-in';
+  if (src.groupId) return 'Group booking';
+  return src.bookedBy ? 'Direct' : null;
+}
+function fmtDetail_balance(balances, accountId) {
+  if (!balances?.accountStatementMap || !accountId) return null;
+  const stmt = balances.accountStatementMap[accountId];
+  return stmt?.balance || null;
+}
+function fmtMoney(n) {
+  if (n == null) return '—';
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
 // Sprint 18.2 — deep-link URL pattern for an individual reservation
 // in rGuest Stay. Confirmed via user-supplied URL on 2026-06-09;
 // tenantId / propertyId are Snoqualmie's. If/when we add a second
@@ -380,6 +509,70 @@ const FILTER_PREDICATES = {
   noRoom:    r => r.kind === 'arrival' && !r.isPreAssigned,
 };
 
+// Sprint 18.6 — page-size options + pagination control.
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+const Pagination = ({ page, totalPages, onPage, pageSize, onPageSize }) => {
+  if (totalPages <= 1) {
+    return (
+      <div className="fc-pager">
+        <label className="fc-pager-size">
+          <span>Per page</span>
+          <select value={pageSize} onChange={e => onPageSize(Number(e.target.value))}>
+            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
+    );
+  }
+  // Build a windowed page-number list: always show 1, current ± 1,
+  // and totalPages, with ellipses bridging gaps.
+  const set = new Set([1, totalPages, page, page - 1, page + 1]);
+  if (page <= 3) [2, 3, 4].forEach(n => set.add(n));
+  if (page >= totalPages - 2) [totalPages - 1, totalPages - 2, totalPages - 3].forEach(n => set.add(n));
+  const pages = [...set].filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  const withGaps = [];
+  pages.forEach((n, i) => {
+    if (i > 0 && n - pages[i - 1] > 1) withGaps.push('…');
+    withGaps.push(n);
+  });
+  return (
+    <div className="fc-pager">
+      <div className="fc-pager-nav">
+        <button
+          type="button" className="fc-pager-btn"
+          onClick={() => onPage(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          aria-label="Previous page"
+        >‹</button>
+        {withGaps.map((n, i) => n === '…' ? (
+          <span key={`gap-${i}`} className="fc-pager-gap">…</span>
+        ) : (
+          <button
+            key={n}
+            type="button"
+            className={`fc-pager-btn${n === page ? ' active' : ''}`}
+            onClick={() => onPage(n)}
+            aria-current={n === page ? 'page' : undefined}
+          >{n}</button>
+        ))}
+        <button
+          type="button" className="fc-pager-btn"
+          onClick={() => onPage(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+          aria-label="Next page"
+        >›</button>
+      </div>
+      <label className="fc-pager-size">
+        <span>Per page</span>
+        <select value={pageSize} onChange={e => onPageSize(Number(e.target.value))}>
+          {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+};
+
 const ReservationDetailsTable = ({
   rows, filter, onFilter, sources = [], roomTypes = [],
   sourceFilter, onSourceFilter, typeFilter, onTypeFilter,
@@ -393,6 +586,17 @@ const ReservationDetailsTable = ({
     if (typeFilter   && r.baseLabel !== typeFilter) return false;
     return true;
   });
+
+  // Sprint 18.6 — pagination. State local to the component so the
+  // page resets cleanly when filters change (via the effect below).
+  const [page, setPage]         = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+  React.useEffect(() => { setPage(1); }, [filter, sourceFilter, typeFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const pageStart = (effectivePage - 1) * pageSize;
+  const pageEnd   = Math.min(pageStart + pageSize, filtered.length);
+  const paged     = filtered.slice(pageStart, pageEnd);
 
   return (
     <div className="fc-detail-wrap">
@@ -433,7 +637,7 @@ const ReservationDetailsTable = ({
         {filtered.length === 0 && (
           <li className="fc-resn-empty">No reservations match the current filters.</li>
         )}
-        {filtered.map(r => (
+        {paged.map(r => (
           <ReservationCard
             key={r.id}
             r={r}
@@ -468,7 +672,7 @@ const ReservationDetailsTable = ({
             {filtered.length === 0 && (
               <tr><td colSpan={10} className="fc-detail-empty">No reservations match the current filters.</td></tr>
             )}
-            {filtered.map(r => {
+            {paged.map(r => {
               const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
               // Sprint 18.1 — Room Status pulls from per-room data
               // when the reservation is assigned; otherwise shows
@@ -520,7 +724,19 @@ const ReservationDetailsTable = ({
         </table>
       </div>
       <div className="fc-detail-footer">
-        Showing <strong>{filtered.length}</strong> of <strong>{rows.length}</strong> reservations
+        <div className="fc-detail-footer-text">
+          {filtered.length === 0
+            ? 'No reservations match the current filters.'
+            : <>Showing <strong>{pageStart + 1}–{pageEnd}</strong> of <strong>{filtered.length}</strong>{filtered.length !== rows.length && <> (filtered from {rows.length})</>}</>
+          }
+        </div>
+        <Pagination
+          page={effectivePage}
+          totalPages={totalPages}
+          onPage={setPage}
+          pageSize={pageSize}
+          onPageSize={(n) => { setPageSize(n); setPage(1); }}
+        />
       </div>
     </div>
   );
@@ -612,6 +828,11 @@ const TodayAtAGlance = ({ kpis, reservations, onSelectAll }) => {
 // Shows a compact metadata grid plus three actions: View details
 // (stub), Guest folio (stub — 18.3), and the rGuest deep link.
 const SelectedReservation = ({ reservation, onClose }) => {
+  // Sprint 18.7 — on-demand detail fetch. Loading + error states
+  // render inline so the panel stays useful even when the API call
+  // is in flight or partially failed.
+  const { data: detail, loading: detailLoading, error: detailError } = useReservationDetail(reservation?.id);
+
   if (!reservation) {
     return (
       <div className="fc-rail-card fc-selected-empty">
@@ -623,6 +844,18 @@ const SelectedReservation = ({ reservation, onClose }) => {
   const r = reservation;
   const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
   const flags = buildResnFlags(r);
+  // Sprint 18.7 — rich fields surface only once the detail fetch
+  // resolves (loading state is rendered inline below).
+  const email     = detail ? fmtDetail_email(detail.profile)     : null;
+  const phone     = detail ? fmtDetail_phone(detail.profile)     : null;
+  const address   = detail ? fmtDetail_address(detail.profile)   : null;
+  const channel   = detail ? fmtDetail_channel(detail.reservation) : null;
+  const bookedBy  = detail?.reservation?.sourceInfo?.bookedBy   || null;
+  const balance   = detail ? fmtDetail_balance(detail.balances, detail.reservation?.accountId) : null;
+  const stayCount = detail?.stayHistory?.pastCount;
+  const commentCount = detail?.comments
+    ? Object.values(detail.comments).filter(v => Array.isArray(v) && v.length).reduce((s, arr) => s + arr.length, 0)
+    : 0;
   const roomStatusLabel = r.roomNumber
     ? (r.hkStatusLabel || r.occupancyStatus || '—')
     : 'No Room Assigned';
@@ -656,10 +889,64 @@ const SelectedReservation = ({ reservation, onClose }) => {
           ))}
         </dd></div>
       </dl>
-      <div className="fc-selected-actions">
-        <button type="button" className="fc-btn fc-btn-secondary" disabled title="Detail view ships in 18.3+">View details</button>
-        <button type="button" className="fc-btn fc-btn-secondary" disabled title="Guest folio integration ships in 18.3+">Guest folio</button>
+
+      {/* Sprint 18.7 — rich detail block. Renders below the row-level
+          metadata; loads on demand the first time the row is
+          selected (5-min in-memory cache prevents thrash). */}
+      <div className="fc-selected-rich">
+        {detailLoading && (
+          <div className="fc-selected-loading">Loading guest detail…</div>
+        )}
+        {detailError && (
+          <div className="fc-selected-error" role="alert">{detailError}</div>
+        )}
+        {detail && (
+          <>
+            <h4 className="fc-selected-rich-head">Guest details</h4>
+            <dl className="fc-selected-grid fc-selected-grid-rich">
+              <div><dt>Email</dt><dd>{email || <span className="fc-detail-sub-inline">—</span>}</dd></div>
+              <div><dt>Phone</dt><dd>{phone || <span className="fc-detail-sub-inline">—</span>}</dd></div>
+              <div className="fc-selected-flags"><dt>Address</dt><dd>
+                {address || <span className="fc-detail-sub-inline">—</span>}
+              </dd></div>
+            </dl>
+
+            <h4 className="fc-selected-rich-head">Booking</h4>
+            <dl className="fc-selected-grid fc-selected-grid-rich">
+              <div><dt>Channel</dt><dd>{channel || <span className="fc-detail-sub-inline">Direct</span>}</dd></div>
+              <div><dt>Booked by</dt><dd>{bookedBy || <span className="fc-detail-sub-inline">—</span>}</dd></div>
+            </dl>
+
+            {balance && (
+              <>
+                <h4 className="fc-selected-rich-head">Folio</h4>
+                <dl className="fc-selected-grid fc-selected-grid-rich">
+                  <div><dt>Subtotal</dt><dd>{fmtMoney(balance.subtotal)}</dd></div>
+                  <div><dt>Tax</dt><dd>{fmtMoney(balance.tax)}</dd></div>
+                  <div><dt>Paid</dt><dd className="fc-balance-good">{fmtMoney(balance.paid)}</dd></div>
+                  <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
+                    <strong>{fmtMoney(balance.total)}</strong>
+                  </dd></div>
+                </dl>
+              </>
+            )}
+
+            {(stayCount != null || commentCount > 0) && (
+              <div className="fc-selected-badges">
+                {stayCount != null && stayCount > 0 && (
+                  <span className="fc-pill fc-flag-group">Returning guest · {stayCount} prior stay{stayCount === 1 ? '' : 's'}</span>
+                )}
+                {commentCount > 0 && (
+                  <span className="fc-pill fc-flag-move">{commentCount} note{commentCount === 1 ? '' : 's'}</span>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Sprint 18.7 — old "View details" / "Guest folio" placeholders
+          retired; the rich detail (folio incl.) now renders inline above. */}
       <a
         className="fc-btn fc-btn-primary fc-selected-deep"
         href={RGUEST_RESERVATION_URL(r.id)}

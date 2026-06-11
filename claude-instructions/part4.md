@@ -280,6 +280,351 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-04 — Sprint 18.7: per-reservation detail on demand
+
+Ships the rich rail-panel content the 18.6.1 recon unlocked.
+On-demand only — no bulk scrape. When the user clicks a row (or
+expands a mobile card) the frontend calls a new backend
+aggregator that fans out to 5 rGuest endpoints in parallel and
+returns a single envelope.
+
+**Backend.** `server/agilysys/client.js` gains 6 methods:
+
+- `getReservationDetail(id)` — the full reservation incl.
+  `accountId`, `sourceInfo.bookingSources`, occupancy, rate
+  snapshots, primary guest profileId.
+- `getGuestProfile(profileId)` — email/phone/address/loyalty.
+- `getReservationComments(id)` — long-text notes.
+- `getAccountBalances([accountId])` — folio totals. POST body
+  shape unknown from recon (response-only logging) so we send the
+  structured `{accountStatementMap: {id: {}}}` form first and
+  fall back to `{accountIds: [...]}` on 4xx. Whichever shape the
+  endpoint accepts will get cached by the request-success
+  pathway — second & subsequent calls skip the fallback.
+- `getStayHistory(profileId)` — `pastCount` powers the
+  "5th visit" badge.
+- `fetchReservationFullDetail(id)` — orchestrator. Sequentially
+  awaits the reservation (need `accountId` + `profileId`), then
+  `Promise.all`s the other four. Each branch is independently
+  `.catch()`-wrapped so a single 403 doesn't blank the panel —
+  partial results render whatever did succeed.
+
+`server/server.js` exposes
+`GET /api/admin/reservations/:id/detail` — admin-only, UUID-
+guarded, returns `{success, detail, logs}`.
+
+**Frontend.** `src/components/Forecasting/index.js`:
+
+- `useReservationDetail(id)` hook — null id skips the fetch
+  entirely (matters for mobile, where collapsed cards mustn't
+  preflight). In-memory cache at module scope: `Map<id, {data,
+  fetchedAt}>` with a 5-min TTL. The cache survives component
+  remounts (tab-switching) so the panel re-opens instantly.
+- `SelectedReservation` (desktop right rail) renders a new
+  "Guest details" + "Booking" + "Folio" section below the
+  existing row-level grid. Loading state is inline italic copy;
+  errors render in a soft-red callout. The old "View details"
+  and "Guest folio" placeholder buttons retire — folio now
+  ships inline.
+- `ReservationCard` (mobile) mirrors the same fields in a
+  compact 1-column grid, fetched only when the card is expanded.
+- Helpers `fmtDetail_email/_phone/_address/_channel/_balance` and
+  `fmtMoney` keep the rendering logic shallow; each prefers the
+  `isDefault`-flagged entry and falls back to the first.
+
+**CSS.** `Forecasting.css` adds `.fc-selected-rich`,
+`.fc-selected-rich-head`, `.fc-selected-grid-rich`,
+`.fc-selected-loading`, `.fc-selected-error`,
+`.fc-selected-badges`, `.fc-balance-due` (amber),
+`.fc-balance-good` (green), plus mirror selectors for the
+mobile card. Dashed top-border separates the on-demand block
+from the static row metadata so the user can tell at a glance
+which fields just loaded.
+
+**What's deferred to 18.8+.**
+
+- Card-on-file (•••• 4242 12/27) — needs the account-details →
+  instrument-id flow that the recon caught at `accountDetails`
+  but didn't decode the masking format.
+- Channel column upgrade — table currently shows `ratePlanCode`;
+  swapping to `sourceInfo.bookingSources[]` belongs in a
+  separate sub-sprint because it touches the bulk scrape too.
+
+`npm run build` compiles clean (warnings are all pre-existing
+unused-imports). Server `require()` loads without syntax errors.
+
+### 2026-06-11 — Sprint 18.6.1: per-reservation recon analysis
+
+User ran the 3-page recon at
+`scraper/recon/20260611-143158`. Opening a single reservation
+fires **249 distinct JSON XHRs** — rGuest is *very* chatty.
+~80% of those are config/feature-flag/catalog calls we already
+fetch elsewhere; the rest fall into 6 buckets that map cleanly
+to "rich detail panel" use cases.
+
+**1. The reservation, in full.**
+
+```
+GET /reservation-service/v1/tenants/{tid}/properties/{pid}/reservations/{id}
+    ?travelAndTransportInfo=false&updateCasinoDetails=true
+```
+
+Returns the same shape as the search/date item PLUS:
+- `accountId` — the folio account UUID. Critical: lots of other
+  calls key off this.
+- `sourceInfo` — `{bookedBy, walkIn, groupId, bookingSources[],
+  agentProfileIds[], associatedTravelAgents}`. **Channel /
+  source for the table column lives in `bookingSources[]`**
+  (empty for Rosa = Direct/group; would contain `Booking.com` /
+  `Expedia` / `Agoda` for OTAs).
+- `trackingInfo` — `{segmentCode, guestType}` (both UUIDs).
+- `occupancy` — adults / children / age categories with totals.
+- `rateSnapshots[]` — per-night rate + cancellation/deposit
+  policy references. Useful for "total to be paid" rollups.
+- `emailDetails`, `loyaltyProgramsInfo`, `additionalGuests`,
+  `verifiedGuestIdentityIds`.
+
+**2. Full guest profile.**
+
+```
+GET /profile-service/v1/tenants/{tid}/properties/{pid}/guests/{guestProfileId}
+    ?updateCasinoDetails=true
+```
+
+`{guestProfileId}` we already have on each reservation via
+`primaryGuestProfileId` (surfaced in 18.5). Returns:
+- `personalDetails: {firstName, lastName, ...}`
+- `addressDetails: {addresses[]}`
+- `phoneDetails: {phones[]}`
+- `emailDetails: {emailAddresses[{emailAddress, isDefault, isPrivate, ...}]}`
+- `loyaltyDetails: {loyaltyProfiles[]}`
+- `customFieldDetails`, `preferenceDetails`, `compCertificateDetails`,
+  `smsPreferences`, `emailPreferences`, ...
+
+Rosa's profile had `personalDetails + emailDetails` populated;
+`addresses` / `phones` / `loyaltyProfiles` were empty. Real
+guests will have more.
+
+**3. Reservation comments / notes.**
+
+```
+GET /comment-service/tenants/{tid}/reservation/{reservationId}
+```
+
+Returns a dict (empty `{}` for Rosa). Rollaway-style notes /
+special requests live here. Tied also to:
+
+```
+GET /comment-service/tenants/{tid}/config/commentTypes
+```
+
+(catalog — cacheable).
+
+**4. Folio / charges / balance.**
+
+```
+GET  /account-service/v1/tenants/{tid}/properties/{pid}/accounts/{accountId}/details
+GET  /account-service/v1/tenants/{tid}/properties/{pid}/accounts/{accountId}/foliosDetail
+POST /account-service/v1/tenants/{tid}/properties/{pid}/accounts/balances
+```
+
+The balances endpoint is the cleanest for "what does the FD see
+on Rosa's folio right now?". Sample for Rosa:
+
+```json
+{
+  "subtotal": 468.0,
+  "tax": 56.62,
+  "paid": -262.31,
+  "total": 262.31,
+  "badDebt": 0
+}
+```
+
+So: $468 + $56.62 tax = $524.62 charged, $262.31 paid (deposit),
+$262.31 still owed at checkout. Real-money numbers we can render
+in the rail panel.
+
+**5. Payment card on file.**
+
+```
+GET /payment-service/tenants/{tid}/properties/{pid}/accounts/{accountId}/paymentInstruments/{instrumentId}
+```
+
+Returns `accountNumberLast4`, `cardIssuer`, `cardType`,
+`cardHolderName`, `expirationYearMonth`. Instrument IDs come
+from the account `/details` response (`paymentSettings`).
+
+**6. Stay history.**
+
+```
+GET /reservation-service/v1/.../reservations/guest/{guestProfileId}/stayHistory
+```
+
+Returns counts: `totalNoPrevStays, totalNoShows, totalCancelled,
+currentCount, futureCount, pastCount`. Lets the FD see
+"returning guest" at a glance.
+
+Plus housekeeping/maintenance service requests by reservation
+ID (`/servicerequest-service/.../servicerequests/{type}/byReservation?reservationId={id}`),
+which are real but probably outside our v1 scope.
+
+**Plan for 18.7 (Reservations rail: rich detail panel).**
+
+This is where the "Selected reservation" panel earns its space.
+Architecture: detail is fetched **on demand** when a row is
+clicked, not bulk-scraped. Keeps the regular scrape lean (no
+per-reservation fan-out × 200 rows) and the data stays fresh.
+
+Sub-tasks:
+
+- **Server**: Add 6 client methods to `server/agilysys/client.js`:
+  `getReservationDetail(id)`, `getGuestProfile(profileId)`,
+  `getReservationComments(id)`, `getAccountDetails(accountId)`,
+  `getAccountBalances(accountIds)`,
+  `getPaymentInstrument(accountId, instrumentId)`,
+  `getStayHistory(profileId)`.
+- **New backend endpoint**:
+  `GET /api/admin/reservations/:id/detail` — orchestrates the
+  6 calls in parallel (fetches reservation → uses accountId +
+  profileId for the other 5 in parallel), returns one shaped
+  response. ~6s round-trip total since they're parallel.
+- **Frontend**: `useReservationDetail(id)` hook fetches on
+  selection change; loading state while in flight; renders into
+  the right-rail `SelectedReservation` panel (desktop) AND the
+  expanded mobile card.
+- **Rail panel additions**: Channel / Booked by / Booked walk-in
+  / Email / Phone / Address (if present) / Folio balance (the
+  $262.31) / Card on file (•••• 4242 expires 12/27) / Stay
+  history badge ("5th visit").
+- **Caching**: cache detail responses in-memory on the frontend
+  by reservation ID; expire after 5 min so progress updates
+  reflect changes.
+
+**Files touched (this 18.6.1 turn — analysis only, no code):**
+- `claude-instructions/part4.md` — this entry.
+
+**Verified.** Recon analysis only; no code shipped. Endpoint
+shapes confirmed against the live recon at
+`scraper/recon/20260611-143158/requests.jsonl`.
+
+---
+
+### 2026-06-11 — Sprint 18.6: Reservations pagination + recon prep for per-reservation deep-dive
+
+Two fixes flagged after live testing of the Sprint 18 arc:
+(1) Reservations page scrolls forever at high record counts, and
+(2) the right-rail "Selected reservation" panel duplicates what
+the row already shows. (1) gets a real fix; (2) gets a recon
+prep so the next sprint can fill the panel with actually-unique
+data (guest profile / address / folio / cards / notes).
+
+**1. Pagination on the Reservations table.**
+
+New `Pagination` component + local `page` / `pageSize` state on
+`ReservationDetailsTable`. Defaults: 10 per page, options
+10/25/50/100 (matches rGuest's own UI). Filter or sort changes
+reset to page 1 via `useEffect`.
+
+Page-number windowing: always show 1, current ± 1, and last;
+ellipses bridge gaps. Disabled prev/next at boundaries.
+Active page styled with the brand accent.
+
+Footer block becomes a flex row:
+- Left: "Showing X–Y of Z" (with "(filtered from N)" suffix
+  when the filter chip is anything but All).
+- Right: pager nav + per-page selector.
+
+Both the desktop `<table>` AND the mobile card list (`<ul>`)
+now consume `paged` instead of `filtered`, so a 200-reservation
+load with 10/page renders 20 short pages — no more infinite
+vertical scroll.
+
+**2. Recon prep — per-reservation deep-dive (3rd page).**
+
+The Selected-reservation rail panel currently shows exactly
+what the row shows. For it to actually earn its space we need
+the *richer* per-reservation data rGuest holds: guest profile
+(name / address / phone / email), folio + charges, payment cards
+on file, special-request notes, channel/source. None of that is
+in `/reservations/search/date`'s payload — it lives behind a
+per-reservation detail call we've never recon'd.
+
+`scraper/agilysys_recon.py` updated to add a **third page-capture
+step** after HK Condition:
+
+```python
+RESERVATION_DETAIL_ID = "a0b3ac38-afeb-45f4-a227-478ed92d2b3a"  # Rosa Santiago
+RESERVATION_DETAIL_URL = f"https://stay.rguest.com/v2/reservation/{RESERVATION_DETAIL_ID}?tenantId=1566&propertyId=481"
+```
+
+New `navigate_to_reservation_detail(page)` helper does a direct
+goto (URL pattern was confirmed by user 2026-06-09); falls
+through to manual prompt if the chosen UUID has been archived /
+cancelled. Wired into the main loop after the existing
+HK-Condition step:
+
+```
+…
+dump_page(page, out_dir, "02-hk-condition")
+
+page_label_ref["current"] = "03-reservation-detail"
+navigate_to_reservation_detail(page)
+page.wait_for_timeout(SETTLE_SECONDS * 1000)
+dump_page(page, out_dir, "03-reservation-detail")
+```
+
+Page label tag flows through the network logger as expected,
+so the post-run summary groups every XHR / fetch fired while
+on the detail page under `03-reservation-detail` — easy to
+spot the new endpoints we haven't yet touched.
+
+Header doc comments updated to describe the 3-page flow.
+
+**Files touched:**
+- `src/components/Forecasting/index.js` — new `Pagination`
+  component + `PAGE_SIZE_OPTIONS`; `ReservationDetailsTable`
+  gains `page` / `pageSize` state + windowed page-number math;
+  both row maps changed to `paged.map`; footer rewritten to
+  show range + pager + size selector.
+- `src/components/Forecasting/Forecasting.css` — `.fc-pager*`
+  block with button / active / disabled / gap styles; footer
+  flex layout + size selector.
+- `scraper/agilysys_recon.py` — `RESERVATION_DETAIL_ID` +
+  `RESERVATION_DETAIL_URL` constants; new
+  `navigate_to_reservation_detail()` helper; third page-capture
+  step in `main()`; header docstring + OUTPUT block updated.
+
+**Verified.** Brace + paren balance OK (Forecasting/index.js
+517/517, 450/450); Python AST parse clean on the recon script.
+
+**What user needs to do before 18.7:**
+
+1. Run `python3 scraper/agilysys_recon.py` (one of the existing
+   credentials still works — use the same env vars).
+2. If Rosa Santiago's UUID has been archived since 06-09, edit
+   `RESERVATION_DETAIL_ID` at the top of the file to a current
+   in-house reservation's UUID first.
+3. Share the new `recon/<timestamp>/` folder. I'll grep the
+   network log for `03-reservation-detail` entries, identify
+   the per-reservation detail endpoints, and wire them into
+   `server/agilysys/client.js` + `compute.js` for the rail
+   panel to render properly in 18.7.
+
+**Acknowledged limitations:**
+
+- Pagination state is local to the table component — switching
+  views resets to page 1. That's intentional (filter changes
+  should reset too); add per-filter persistence later if anyone
+  asks.
+- No URL hash sync — `?page=3` in the address bar would be nice
+  but isn't worth wiring up before 18.7.
+- The right-rail "Selected reservation" panel still shows the
+  same data as the row. That gets unblocked in 18.7 once the
+  detail endpoints are recon'd.
+
+---
+
 ### 2026-06-09 — Sprint 18.5: reservation_history table + scrape caching + future-date cap
 
 Closes the Sprint 18 arc. Four infra changes; all backend, no UI
