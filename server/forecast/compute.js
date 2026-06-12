@@ -257,12 +257,21 @@ function floorLabel(floorId) {
  * @param {string} input.forecastDate      — YYYY-MM-DD
  * @returns {Object} snapshot payload
  */
-function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses, roomTypeMapping, config, forecastDate }) {
+function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses, ratePlans, roomTypeMapping, config, forecastDate }) {
   if (!forecastDate) throw new Error('computeForecast: forecastDate required');
 
   // 1. Build lookups.
   const roomTypeById  = new Map(roomTypes.map(rt => [rt.id, rt]));
   const mappingByCode = new Map((roomTypeMapping || []).map(m => [m.type_code, m]));
+  // Sprint 18.9 — rate plan catalog → code-to-name lookup. The
+  // catalog is ~830 entries at Snoqualmie but the Map keeps the
+  // per-reservation join O(1). Falls back to the raw code when
+  // a reservation references an unknown rate plan (legacy/expired).
+  const ratePlanByCode = new Map(
+    (ratePlans || [])
+      .filter(p => p && p.code)
+      .map(p => [p.code, p])
+  );
 
   // 2. Classify reservations for the forecast date. Multi-flag
   //    model (Sprint 17.7) — a reservation can be both an arrival
@@ -570,7 +579,13 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses,
       baseCode:          mapping ? mapping.base_code  : null,
       baseLabel:         mapping ? mapping.base_label : null,
       subLabel:          mapping ? mapping.sub_label  : null,
-      source:            r.ratePlanCode || null,
+      // Sprint 18.9 — `source` now carries the friendly rate plan
+      // name (e.g. "Best Available Rate") when the catalog
+      // resolves the code, falling back to the raw code so legacy
+      // / expired plans still surface something. `ratePlanCode`
+      // keeps the raw value for debugging + future channel logic.
+      ratePlanCode:      r.ratePlanCode || null,
+      source:            (r.ratePlanCode && ratePlanByCode.get(r.ratePlanCode)?.name) || r.ratePlanCode || null,
       status:            r.status || null,
       statusLabel:       statusLabel(r.status, isPreAssigned),
       kind,

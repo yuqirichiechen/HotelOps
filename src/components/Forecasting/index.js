@@ -299,6 +299,8 @@ const ReservationCard = ({ r, isSelected, onSelect }) => {
   // Sprint 18.8 — mobile mirrors the highest-value rich fields.
   const occupancy = detail ? fmtDetail_occupancy(detail.reservation)              : null;
   const cards     = detail ? fmtDetail_paymentInstruments(detail.paymentInstruments) : [];
+  // Sprint 18.9 — open service request count on mobile.
+  const svcReq    = detail ? fmtDetail_serviceRequests(detail.serviceRequests)    : null;
   return (
     <li className={`fc-resn-card${isSelected ? ' selected' : ''}`}>
       <button
@@ -365,6 +367,11 @@ const ReservationCard = ({ r, isSelected, onSelect }) => {
                 )}
                 {stayCount != null && stayCount > 0 && (
                   <div><dt>History</dt><dd>{stayCount} prior stay{stayCount === 1 ? '' : 's'}</dd></div>
+                )}
+                {svcReq && svcReq.totalOpen > 0 && (
+                  <div><dt>Open requests</dt><dd>
+                    <span className="fc-pill fc-flag-move">{svcReq.totalOpen} open</span>
+                  </dd></div>
                 )}
               </dl>
               {/* Sprint 18.8 — card chip on mobile too. Distinguish
@@ -609,6 +616,35 @@ function fmtDetail_rateRollup(reservation) {
   }
   if (nights === 0) return null;
   return { total, nights, avg: total / nights };
+}
+
+// Sprint 18.9 — service requests linked to a reservation. The
+// backend returns a flat array with each item tagged `_kind:
+// guest|housekeeping|maintenance`. We bucket by kind for the
+// section count, then expose the raw items so the UI can render
+// individual chips. Open vs closed is inferred from `statusId`:
+// rGuest's "C-" prefix means "Completed/closed" while "P-"/"S-"
+// mean "Pending/Started". Unknowns are treated as open since
+// the FD cares more about false-positive surfacing than false
+// negatives here.
+function fmtDetail_serviceRequests(serviceRequests) {
+  if (!Array.isArray(serviceRequests) || serviceRequests.length === 0) return null;
+  const isClosed = (sr) => {
+    const s = String(sr?.statusId || '').toUpperCase();
+    return s.startsWith('C-') || s === 'CLOSED' || s === 'COMPLETED';
+  };
+  const items = serviceRequests.map(sr => ({
+    kind:      sr._kind || 'guest',
+    status:    sr.statusId || null,
+    severity:  sr.severity || null,
+    requestId: sr.requestId || null,
+    startDate: sr.startDate || null,
+    closed:    isClosed(sr),
+    raw:       sr,
+  }));
+  const open   = items.filter(x => !x.closed);
+  const closed = items.filter(x =>  x.closed);
+  return { items, open, closed, totalOpen: open.length, totalClosed: closed.length };
 }
 
 // Stay history detail beyond pastCount: returns the breakdown
@@ -996,6 +1032,8 @@ const SelectedReservation = ({ reservation, onClose }) => {
   const rateRollup       = detail ? fmtDetail_rateRollup(detail.reservation)             : null;
   const stayBreakdown    = detail ? fmtDetail_stayHistoryBreakdown(detail.stayHistory)   : null;
   const walkIn           = detail?.reservation?.sourceInfo?.walkIn === true;
+  // Sprint 18.9 — open service requests for this reservation.
+  const svcRequests      = detail ? fmtDetail_serviceRequests(detail.serviceRequests)    : null;
   const roomStatusLabel = r.roomNumber
     ? (r.hkStatusLabel || r.occupancyStatus || '—')
     : 'No Room Assigned';
@@ -1123,6 +1161,32 @@ const SelectedReservation = ({ reservation, onClose }) => {
                     <li key={i} className="fc-note-card">
                       <span className="fc-note-type">{c.type}</span>
                       <p className="fc-note-text">{c.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {svcRequests && svcRequests.items.length > 0 && (
+              <>
+                <h4 className="fc-selected-rich-head">
+                  Service requests
+                  {svcRequests.totalOpen > 0 && (
+                    <span className="fc-svc-open-count"> · {svcRequests.totalOpen} open</span>
+                  )}
+                </h4>
+                <ul className="fc-svc-list">
+                  {svcRequests.items.map((sr, i) => (
+                    <li key={i} className={`fc-svc-row fc-svc-kind-${sr.kind}${sr.closed ? ' fc-svc-closed' : ''}`}>
+                      <span className={`fc-svc-dot fc-svc-dot-${sr.kind}`} aria-hidden></span>
+                      <span className="fc-svc-kind">{sr.kind}</span>
+                      <span className="fc-svc-status">{sr.status || '—'}</span>
+                      {sr.severity && sr.severity !== 'NORMAL' && (
+                        <span className={`fc-pill fc-flag-${sr.severity === 'HIGH' || sr.severity === 'URGENT' ? 'vip' : 'move'}`}>{sr.severity}</span>
+                      )}
+                      {sr.requestId && (
+                        <span className="fc-svc-ticket">#{sr.requestId}</span>
+                      )}
                     </li>
                   ))}
                 </ul>

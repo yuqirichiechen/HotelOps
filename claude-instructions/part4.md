@@ -280,6 +280,108 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-11 — Sprint 18.9: rate plan catalog + service requests
+
+Two final pieces from the recon backlog: the bulk Reservations
+table's Channel column finally shows friendly names instead of
+opaque codes ("Best Available Rate" instead of "BAR"), and the
+detail panel surfaces open service requests so the FD knows
+when HK or maintenance is mid-task on a room before the guest
+asks.
+
+**The channel-column rabbit hole.** The recon proved
+`sourceInfo.bookingSources[]` (the real channel field) lives
+only on the per-reservation detail endpoint — too expensive to
+fan out 200×/scrape. But the bulk search response already
+carries `ratePlanCode`, and `/rate-service/.../ratePlans` is a
+single 836-entry catalog with clean `{code, name}` pairs that's
+cacheable for 24h. So: cache the catalog, join in compute.js,
+swap `source = ratePlanCode` → `source = catalog.name || code`.
+One extra request on cache miss, zero on cache hit. The raw
+code stays around as a new `ratePlanCode` field for future
+channel logic (`bookingChannelIds[]` on each rate plan could
+later resolve to "Expedia"/"Booking.com" if we want).
+
+**Service requests.** Three sibling endpoints
+(`servicerequests/{guest|housekeeping|maintenance}/byReservation`)
+each return an array. The recon hit the no-query variant
+(returned 10 property-wide items); we pass `?reservationId={id}`
+to filter server-side and stamp `_kind` on each item before
+returning. Each branch is independently catch-wrapped so a
+single 4xx collapses to `[]` rather than blowing up the
+aggregate. Open vs closed is inferred from `statusId` — rGuest
+prefixes closed states with `C-`; unknowns default to "open"
+since the FD would rather see one ghost ticket than miss a real
+one.
+
+**Backend.** `server/agilysys/client.js`:
+
+- `getRatePlans()` — 24h module-cache slot
+  (`_refCache.ratePlans`), same pattern as rooms / roomTypes /
+  vipStatuses. Single GET; logs the count on fetch + cache_hit.
+- `getServiceRequestsByReservation(reservationId)` — parallel
+  fan-out over the three kinds, returns flat array with `_kind`
+  injected. Per-kind catch + log so partial failure is
+  graceful.
+- `fetchReservationFullDetail` — `serviceRequests` joins the
+  parallel batch (independent of accountId/profileId so it
+  fires immediately).
+- `fetchForecastInputs` — `ratePlans` joins the existing
+  4-way parallel batch (`rooms, roomTypes, reservations,
+  metrics, ratePlans`). Soft-fail to `null` if the rate-service
+  is down — the rest of the scrape still ships.
+
+**compute.js.**
+
+- New optional input `ratePlans` (defaults gracefully to `[]`).
+- `ratePlanByCode = new Map(ratePlans.filter(p=>p.code).map(p=>[p.code,p]))`.
+- Per-reservation: `source = ratePlanByCode.get(code)?.name || code`.
+  Raw code preserved as a sibling `ratePlanCode` field.
+
+**runScrape.js.** Wires `inputs.ratePlans → computeForecast`.
+
+**Frontend.** `src/components/Forecasting/index.js`:
+
+- `fmtDetail_serviceRequests(arr)` — buckets into `{items, open,
+  closed, totalOpen, totalClosed}`. The `closed` check accepts
+  `C-…` / `CLOSED` / `COMPLETED` so future status renames don't
+  silently mis-bucket.
+- `SelectedReservation` desktop rail — a new Service Requests
+  section above the stay-history badges. Header includes a
+  bold-amber "· N open" callout when totalOpen > 0. Each row
+  is a kind-color-dotted line: HK = blue, maint = orange,
+  guest = purple. Closed rows render with strike-through +
+  reduced opacity so history stays visible without dominating.
+- `ReservationCard` mobile — gains an "Open requests" row with
+  a count pill. Doesn't try to list individual requests on
+  mobile; if FD needs the detail they tap into the desktop view.
+
+**CSS.** `.fc-svc-list / -row / -dot / -kind / -status /
+-ticket / -closed / -open-count`. Kind dots use the same hue
+family as the existing flag pills (HK adjacent to the
+turquoise/sky range, maintenance with the orange-construction
+hue, guest as a soft purple to read as "guest-originated").
+
+**What this leaves on the table.**
+
+- `bookingChannelIds[]` on each rate plan → OTA brand name
+  (Expedia / Booking.com). The catalog
+  `/booking-service/bookingChannels` exists but wasn't in this
+  recon; would need one more 24h-cached fetch + a per-rate-plan
+  channel attribution before showing it in the column.
+- Guest preference catalog — the `/preferences/GUEST` +
+  `/preferenceCategories` endpoints both returned empty arrays
+  at Snoqualmie. Wiring stays simple to add later (24h cache
+  pattern); skipped here since there's nothing to render.
+
+**Verified.** `npm run build` compiles clean (+464 B JS / +187
+B CSS). Module load on `server/agilysys/client.js` exports
+`getRatePlans`, `getServiceRequestsByReservation`,
+`fetchForecastInputs`, `fetchReservationFullDetail` as
+functions.
+
+---
+
 ### 2026-06-11 — Sprint 18.8: finishing the rich detail panel
 
 Closes the loop on Sprint 18.7 by shipping the items that were

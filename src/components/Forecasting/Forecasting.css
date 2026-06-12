@@ -1012,6 +1012,67 @@
   word-break: break-word;
 }
 
+/* ── Sprint 18.9: service requests in the rail panel ──────── */
+.fc-svc-open-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.fc-svc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fc-svc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.fc-svc-closed {
+  opacity: 0.55;
+}
+.fc-svc-closed .fc-svc-status {
+  text-decoration: line-through;
+}
+.fc-svc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.fc-svc-dot-housekeeping { background: #0ea5e9; }
+.fc-svc-dot-maintenance  { background: #f97316; }
+.fc-svc-dot-guest        { background: #8b5cf6; }
+.fc-svc-kind {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.fc-svc-status {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.fc-svc-ticket {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 /* ── Sprint 17.8: Service Progress card (right rail) ──────── */
 .fc-progress-row {
   display: grid;

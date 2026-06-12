@@ -277,6 +277,7 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       reservations:    inputs.reservations,
       metrics:         inputs.metrics,
       vipStatuses:     inputs.vipStatuses,  // 18.3 — label resolution
+      ratePlans:       inputs.ratePlans,    // 18.9 — channel/rate name resolution
       roomTypeMapping: mapping,
       config,
       forecastDate:    effectiveDate,

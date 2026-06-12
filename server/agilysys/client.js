@@ -41,6 +41,11 @@ const _refCache = {
   rooms:       { data: null, expiresAt: 0, key: null },
   roomTypes:   { data: null, expiresAt: 0, key: null },
   vipStatuses: { data: null, expiresAt: 0, key: null },
+  // Sprint 18.9 — rate plan catalog (~830 entries at Snoqualmie).
+  // Used to resolve `ratePlanCode` (e.g. "BAR") to a friendly name
+  // (e.g. "Best Available Rate") in the bulk Reservations table.
+  // Same 24h TTL as the other reference catalogs.
+  ratePlans:   { data: null, expiresAt: 0, key: null },
 };
 function _cacheKey(tenantId, propertyId) {
   return `${tenantId}/${propertyId}`;
@@ -317,6 +322,32 @@ function createAgilysysClient(overrides = {}) {
     }
   }
 
+  // Sprint 18.9 — GET /rate-service/tenants/{tid}/properties/{pid}/ratePlans
+  // The full rate plan catalog. Each entry has at least `code`,
+  // `name`, plus rate-category / channel / commission / yieldable
+  // metadata we don't currently use. 24h cache (entries change
+  // rarely — new rate plans get added but existing ones don't
+  // rename mid-day).
+  async function getRatePlans() {
+    const key = _cacheKey(tenantId, propertyId);
+    const slot = _refCache.ratePlans;
+    if (slot.data && slot.key === key && Date.now() < slot.expiresAt) {
+      log('info', 'agilysys.ratePlans.cache_hit', { count: slot.data.length });
+      return slot.data;
+    }
+    const path = `/rate-service/tenants/${tenantId}/properties/${propertyId}/ratePlans`;
+    const result = await call('GET', path);
+    log('info', 'agilysys.ratePlans.fetched', {
+      count: Array.isArray(result) ? result.length : 0,
+    });
+    if (Array.isArray(result)) {
+      slot.data = result;
+      slot.key = key;
+      slot.expiresAt = Date.now() + REF_TTL_MS;
+    }
+    return result;
+  }
+
   // GET /reservation-service/v1/.../reservations/reservationMetrics?endDate=DATE
   // The authoritative source for rGuest's dashboard widget numbers
   // (REMAINING ARRIVALS x/y, REMAINING DEPARTURES x/y, TOTAL
@@ -429,6 +460,36 @@ function createAgilysysClient(overrides = {}) {
     return result;
   }
 
+  // Sprint 18.9 — open service requests linked to a reservation.
+  // Three sibling endpoints (guest / housekeeping / maintenance);
+  // each returns an array of request objects. The recon-captured
+  // URL had no query string but UI suggests the endpoint accepts
+  // `?reservationId={id}` — we pass it so the server filters
+  // server-side. We also stamp each item with a `kind` tag so the
+  // frontend can group/badge by type without re-inspecting the URL.
+  async function getServiceRequestsByReservation(reservationId) {
+    const base = `/servicerequest-service/tenants/${tenantId}/properties/${propertyId}/servicerequests`;
+    const qs = `?reservationId=${encodeURIComponent(reservationId)}`;
+    const kinds = ['guest', 'housekeeping', 'maintenance'];
+    const results = await Promise.all(kinds.map(async (kind) => {
+      try {
+        const arr = await call('GET', `${base}/${kind}/byReservation${qs}`);
+        if (!Array.isArray(arr)) return [];
+        return arr.map(item => ({ ...item, _kind: kind }));
+      } catch (err) {
+        log('warn', 'agilysys.serviceRequests.failed', { kind, error: String(err.message || err) });
+        return [];
+      }
+    }));
+    const combined = results.flat();
+    log('info', 'agilysys.serviceRequests.fetched', {
+      reservationId,
+      counts: Object.fromEntries(kinds.map((k, i) => [k, results[i].length])),
+      total: combined.length,
+    });
+    return combined;
+  }
+
   // Sprint 18.8 — account details. The folio account holds
   // `paymentSettings.paymentInstruments[]` which is the list of
   // tokens we need to dereference into masked card metadata.
@@ -477,7 +538,11 @@ function createAgilysysClient(overrides = {}) {
     // the instrument IDs are known. Total wall-time is still
     // ~2 round trips (first batch + instrument batch) instead of
     // sequential ~6.
-    const [profile, comments, balances, stayHistory, accountDetails] = await Promise.all([
+    // Sprint 18.9 — serviceRequests joins the parallel fan-out.
+    // Independent of accountId/profileId since it's keyed off the
+    // reservation directly. Internal Promise.all over the 3 kinds
+    // already collapses any individual 4xx to an empty array.
+    const [profile, comments, balances, stayHistory, accountDetails, serviceRequests] = await Promise.all([
       profileId ? getGuestProfile(profileId).catch(e => {
         log('warn', 'agilysys.guestProfile.failed', { error: e.message });
         return null;
@@ -498,6 +563,10 @@ function createAgilysysClient(overrides = {}) {
         log('warn', 'agilysys.accountDetails.failed', { error: e.message });
         return null;
       }) : null,
+      getServiceRequestsByReservation(reservationId).catch(e => {
+        log('warn', 'agilysys.serviceRequests.aggregate_failed', { error: e.message });
+        return null;
+      }),
     ]);
 
     // Sprint 18.8 — second batch: dereference each payment-instrument
@@ -530,6 +599,7 @@ function createAgilysysClient(overrides = {}) {
       stayHistory,
       accountDetails,
       paymentInstruments,
+      serviceRequests,
     };
   }
 
@@ -557,11 +627,19 @@ function createAgilysysClient(overrides = {}) {
       log('warn', 'agilysys.vipStatuses.skipped', { error: String(err.message || err) });
     }
 
-    const [rooms, roomTypes, reservations, metrics] = await Promise.all([
+    // Sprint 18.9 — ratePlans joins the parallel fan-out. 24h
+    // cache so this is free on cache hit. Soft failure: if the
+    // rate-service is down the rest of the scrape still ships,
+    // we just fall back to showing raw rate plan codes.
+    const [rooms, roomTypes, reservations, metrics, ratePlans] = await Promise.all([
       listRooms(),
       listRoomTypes(),
       searchAllReservationsByDate(effectiveDate),
       getReservationMetrics(effectiveDate),
+      getRatePlans().catch(err => {
+        log('warn', 'agilysys.ratePlans.skipped', { error: String(err.message || err) });
+        return null;
+      }),
     ]);
     log('info', 'agilysys.scrape.done', {
       effectiveDate,
@@ -569,11 +647,12 @@ function createAgilysysClient(overrides = {}) {
       roomTypes: roomTypes.length,
       reservations: reservations.length,
       vipStatuses: Array.isArray(vipStatuses) ? vipStatuses.length : null,
+      ratePlans: Array.isArray(ratePlans) ? ratePlans.length : null,
       metricsArrivals:   metrics?.remainingArrivalsSummary?.total,
       metricsDepartures: metrics?.remainingDeparturesSummary?.total,
     });
     return {
-      rooms, roomTypes, reservations, metrics, vipStatuses,
+      rooms, roomTypes, reservations, metrics, vipStatuses, ratePlans,
       propertyDate,
       effectiveDate,
     };
@@ -595,6 +674,8 @@ function createAgilysysClient(overrides = {}) {
     getStayHistory,
     getAccountDetails,
     getPaymentInstrument,
+    getRatePlans,
+    getServiceRequestsByReservation,
     fetchReservationFullDetail,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
