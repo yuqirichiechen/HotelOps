@@ -280,6 +280,106 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-17 — Sprint 18.10: payroll export format + staff page layout polish
+
+Quick turn after the GM signed off on the workbook structure.
+Two parts: the Excel sheets get restructured to match the GM's
+mock (Total Hours at top, per-row layout below), and the Staff
+page reshuffles its action controls so the page header and the
+controls row each carry one primary action.
+
+**Excel export.** Previous structure put per-row data first
+(Name / Department / Date / Day / Clock In / Clock Out / Hours)
+then a summary block at the bottom. The GM wants the summary on
+top and the table to feel like a timecard. Each sheet is named
+for the staff member, so Name + Department columns are dead
+weight (just repeated across every row of that tab) — dropped.
+
+New per-sheet layout:
+
+```
+Row 1 : "Total Hours Worked"
+Row 2 : <value>
+(if hourly rate set on the staff record:)
+Row 4 : "Hourly Rate"   Row 5 : <rate>
+Row 7 : "Total Pay"     Row 8 : <pay>
+(blank row)
+Header: Date(s) | Time In | Time Out | Hours Worked | Overtime
+        [| Hourly Rate | Pay] when rate set
+Data rows
+```
+
+- **Overtime column** is always present. Cell is blank when
+  the row doesn't push the week over threshold; cell contains
+  the OT hours (e.g. `1.25`) when it does. Computed with a new
+  `computePerRowSplit()` helper that walks rows chronologically
+  and tracks running weekly totals — the portion of each row
+  that crosses the threshold gets attributed to that row.
+- **Pay columns are conditional**. `base_hourly_rate == null` =
+  the staff record doesn't track pay, so we skip both Hourly
+  Rate and Pay columns entirely (column-existence reflects
+  whether the GM has chosen to use the pay feature for that
+  staffer). When rate IS set, per-row Pay uses the FLSA-standard
+  formula: `regular × rate + overtime × rate × 1.5`. Top-of-
+  sheet Total Pay sums those across all rows.
+- Column widths adjusted (no Name/Dept means more breathing
+  room for the timestamp columns).
+- Date formatting changed to `M/D/YY` to match the GM mock
+  (`4/6/26` not `2026-04-06`).
+
+**What we dropped from the old summary block.** The bottom
+block had a "Regular Hours" + "Overtime Hours" row pair that's
+now redundant — the Overtime column shows per-row OT and the
+top block shows the total. We also dropped the literal "TBD"
+OT pay placeholder since OT pay is now folded into the per-row
+Pay value at 1.5×.
+
+**Staff page layout.** Before: 4 KPI cards → filter row (search +
+chips + divider + toggle + sort + Export) → full-width "Add new
+staff member" tile → list. The full-width Add tile burned 70+
+px of vertical space for a single action; Export sat shoulder-
+to-shoulder with the filter controls even though it isn't a
+filter.
+
+After:
+
+- **Topbar**: `‹ Home · Staff · … · ↓ Export`. Export gets the
+  conventional "page action" slot, right-aligned via
+  `margin-left: auto` on a new `.staff-mgr-export-topbar`
+  modifier class.
+- **Actions row**: `Include inactive · Sort · Add new staff`.
+  The toggle keeps its existing `margin-right: auto`; the new
+  `.staff-mgr-add-inline` button mirrors with `margin-left:
+  auto` so the two `auto` margins split the row, leaving Sort
+  floating between them.
+- The full-width `.staff-mgr-add-tile` JSX is gone (and so is
+  the redundant collapsed-tile branch — the inline button IS
+  the trigger now). The expanded form still renders below
+  the actions row when `showAdd === true`, so the layout just
+  pushes the list down when the admin starts a new entry.
+  Saves ~70 px of resting height.
+
+**CSS** (`AdminPanel.css`):
+
+- `.staff-mgr-export-topbar { margin-left: auto; }` — pins
+  Export to the title row's right edge without touching the
+  popover positioning (the popover is still anchored under the
+  trigger via the existing `.staff-mgr-export-menu` rules).
+- `.staff-mgr-add-inline` + `.staff-mgr-add-inline-icon` — pill
+  button using the accent color, with a small circular
+  semi-transparent `＋` glyph on the left. Disabled state at
+  0.55 opacity when the form is already open (prevents stray
+  clicks while the form is showing).
+
+**Verified.** `npm run build` compiles clean (+157 B JS / +114
+B CSS — the JSX move was nearly zero-cost; most of the budget
+went to the new per-row OT split + conditional pay columns).
+Per-row OT logic verified by manually walking the math: a row
+that starts at 38h-into-week, working 4 hours → 2h regular + 2h
+OT. The helper returns `{ regular: 2, overtime: 2 }`. ✓
+
+---
+
 ### 2026-06-11 — Sprint 18.9: rate plan catalog + service requests
 
 Two final pieces from the recon backlog: the bulk Reservations

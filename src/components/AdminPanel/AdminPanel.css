@@ -2317,6 +2317,13 @@
   gap: 14px;
 }
 
+/* Sprint 18.10 — Export now lives on the title row. Pin it to the
+   right so the title stays left-aligned and the action button reads
+   as a "page action" rather than a control band item. */
+.staff-mgr-export-topbar {
+  margin-left: auto;
+}
+
 .staff-mgr-h1 {
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 28px;
@@ -2808,6 +2815,55 @@
 /* Add staff tile */
 
 .staff-mgr-add { margin-top: 4px; }
+
+/* Sprint 18.10 — compact inline trigger for the add-staff form.
+   Sits in the actions row (right side, where Export used to be),
+   reads as a primary action without taking a full row of height.
+   Matches the chip/pill language of the surrounding controls so
+   the row stays visually coherent. */
+.staff-mgr-add-inline {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid var(--accent-alt);
+  border-radius: 999px;
+  background: var(--accent-alt);
+  color: white;
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  /* The toggle to our left has `margin-right: auto`; mirroring it
+     here splits the leftover row space evenly, so the actions row
+     reads as [Toggle] · [Sort] · [Add] with Sort floating in the
+     middle. */
+  margin-left: auto;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+.staff-mgr-add-inline:hover:not(:disabled) {
+  background: var(--brand-text, #1f2937);
+  border-color: var(--brand-text, #1f2937);
+}
+.staff-mgr-add-inline:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.staff-mgr-add-inline-icon {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 18px;
+  font-weight: 300;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
 
 .staff-mgr-add-tile {
   display: flex;

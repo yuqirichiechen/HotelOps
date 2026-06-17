@@ -114,6 +114,31 @@ const computeWorkweekTotals = (entries, payStartDay, threshold) => {
   return { totalHours, regularHours, overtimeHours };
 };
 
+// Sprint 18.10 — per-row regular vs overtime split. Walks the entries
+// chronologically, tracking running total per workweek key. The portion
+// of each row that pushes the weekly total past the threshold is OT;
+// the rest is regular. Returns an array parallel to `entries` with
+// `{ regular, overtime }` per row. Pre-condition: `entries` is already
+// sorted by clock_in_time (the server returns them that way).
+const computePerRowSplit = (entries, payStartDay, threshold) => {
+  const weekRunning = new Map();
+  return entries.map(e => {
+    if (!e.clock_out_time || !e.hours) return { regular: 0, overtime: 0 };
+    const date = new Date(e.clock_in_time);
+    const dow = date.getDay();
+    const daysBack = (dow - payStartDay + 7) % 7;
+    const weekStart = new Date(date);
+    weekStart.setDate(date.getDate() - daysBack);
+    const key = isoDay(weekStart);
+    const prev = weekRunning.get(key) || 0;
+    const next = prev + e.hours;
+    const overTime = Math.max(0, next - threshold) - Math.max(0, prev - threshold);
+    const regular  = e.hours - overTime;
+    weekRunning.set(key, next);
+    return { regular, overtime: overTime };
+  });
+};
+
 // Sprint 9.4: Excel sheet names: max 31 chars, no []:*?/\, must be
 // unique within the workbook. Caller passes a Set to track names
 // already used and we suffix duplicates as "Name (2)", "Name (3)".
@@ -493,57 +518,81 @@ const StaffManager = () => {
     const payStartDayNum = parseInt(payStartDay, 10) || 0;
 
     for (const group of groups.values()) {
-      const sheetData = [
-        ['Name', 'Department', 'Date', 'Day', 'Clock In', 'Clock Out', 'Hours'],
-      ];
-
-      group.rows.forEach(e => {
-        const start = new Date(e.clock_in_time);
-        sheetData.push([
-          e.name,
-          e.department || 'Unassigned',
-          isoDay(start),
-          start.toLocaleDateString([], { weekday: 'short' }),
-          start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-          e.clock_out_time
-            ? new Date(e.clock_out_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-            : 'In progress',
-          e.clock_out_time ? Number(e.hours.toFixed(2)) : '',
-        ]);
-      });
-
-      // Summary block — calculated against the workweek boundary
-      // defined by pay_period_start_day so the OT splits match what
-      // payroll would actually owe.
+      // Sprint 18.10 — sheet layout per GM spec: Total Hours Worked
+      // at top, then date-by-date table. Each sheet tab is named for
+      // the staff member, so Name + Department columns get dropped
+      // (redundant). Pay columns are added only when the staff has
+      // a configured `base_hourly_rate`; absent rate = absent pay
+      // columns.
       const { totalHours, regularHours, overtimeHours } =
         computeWorkweekTotals(group.rows, payStartDayNum, otThreshold);
-      const rate     = group.rate;
-      const totalPay = rate != null ? Number((regularHours * rate).toFixed(2)) : null;
-      // OT pay intentionally left as "TBD" — implementation deferred
-      // (typical FLSA: overtimeHours × rate × 1.5, but the user wants
-      // this revisited as its own decision).
+      const perRowSplit = computePerRowSplit(group.rows, payStartDayNum, otThreshold);
+      const rate        = group.rate;
+      const hasRate     = rate != null;
+      // FLSA-standard pay calc: regular × rate + OT × rate × 1.5.
+      const totalPay    = hasRate
+        ? Number((regularHours * rate + overtimeHours * rate * 1.5).toFixed(2))
+        : null;
 
+      const sheetData = [];
+
+      // Top metadata block — Total Hours Worked first, then (when
+      // applicable) Hourly Rate and Total Pay, each as a 2-row
+      // label/value stack matching the GM's mock-up.
+      sheetData.push(['Total Hours Worked']);
+      sheetData.push([Number(totalHours.toFixed(2))]);
+      if (hasRate) {
+        sheetData.push([]);
+        sheetData.push(['Hourly Rate']);
+        sheetData.push([rate]);
+        sheetData.push([]);
+        sheetData.push(['Total Pay']);
+        sheetData.push([totalPay]);
+      }
       sheetData.push([]);
-      sheetData.push(['Summary', `${from} → ${to}`]);
-      sheetData.push(['Total Hours',    Number(totalHours.toFixed(2))]);
-      sheetData.push(['Regular Hours',  Number(regularHours.toFixed(2))]);
-      sheetData.push(['Overtime Hours', Number(overtimeHours.toFixed(2))]);
-      sheetData.push(['Hourly Rate',    rate != null ? rate : '—']);
-      sheetData.push(['Total Pay',      totalPay != null ? totalPay : '—']);
-      sheetData.push(['OT Pay',         'TBD']);
+
+      // Column headers — Overtime is always present (blank when the
+      // row contributes none, so the column doubles as a quick
+      // visual signal for OT days). Hourly Rate + Pay only when
+      // the staff has a configured rate.
+      const headerRow = ['Date(s)', 'Time In', 'Time Out', 'Hours Worked', 'Overtime'];
+      if (hasRate) headerRow.push('Hourly Rate', 'Pay');
+      sheetData.push(headerRow);
+
+      group.rows.forEach((e, i) => {
+        const start    = new Date(e.clock_in_time);
+        const dateStr  = start.toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' });
+        const timeIn   = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const timeOut  = e.clock_out_time
+          ? new Date(e.clock_out_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+          : 'In progress';
+        const hoursVal = e.clock_out_time ? Number(e.hours.toFixed(2)) : 0;
+        const { regular, overtime } = perRowSplit[i];
+        const otCell   = overtime > 0 ? Number(overtime.toFixed(2)) : '';
+        const row = [dateStr, timeIn, timeOut, hoursVal, otCell];
+        if (hasRate) {
+          const rowPay = Number((regular * rate + overtime * rate * 1.5).toFixed(2));
+          row.push(rate, rowPay);
+        }
+        sheetData.push(row);
+      });
 
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-      // Column widths — let the timestamps + names breathe.
-      ws['!cols'] = [
-        { wch: 22 }, // Name
-        { wch: 16 }, // Department
-        { wch: 12 }, // Date
-        { wch:  6 }, // Day
-        { wch: 10 }, // Clock In
-        { wch: 12 }, // Clock Out
-        { wch:  8 }, // Hours
+      // Column widths — drop Name/Dept widths since those columns
+      // are gone, scale remaining to match the GM's screenshot.
+      const cols = [
+        { wch: 14 }, // Date(s)
+        { wch: 10 }, // Time In
+        { wch: 10 }, // Time Out
+        { wch: 12 }, // Hours Worked
+        { wch: 10 }, // Overtime
       ];
+      if (hasRate) {
+        cols.push({ wch: 12 }); // Hourly Rate
+        cols.push({ wch: 10 }); // Pay
+      }
+      ws['!cols'] = cols;
 
       const sheetName = sanitizeSheetName(group.name, usedSheetNames);
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -567,6 +616,150 @@ const StaffManager = () => {
       <div className="staff-mgr-topbar">
         <button className="btn-back" onClick={() => goTo('home')}>‹ Home</button>
         <h2 className="staff-mgr-h1">Staff</h2>
+        {/* Sprint 18.10 — Export was previously down in the filters
+            row. Pinning it to the title line frees a row of vertical
+            space and matches the conventional "page actions" pattern
+            (right-aligned alongside the title). */}
+        <div className={`staff-mgr-export staff-mgr-export-topbar ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
+          <button
+            type="button"
+            className="staff-mgr-export-btn"
+            onClick={() => setCsvOpen(o => !o)}
+          >
+            ↓ Export <span className="staff-mgr-export-caret">▾</span>
+          </button>
+          {csvOpen && (
+            <div className="staff-mgr-export-menu" role="menu">
+              <div className="staff-mgr-export-title">Export payroll (XLSX)</div>
+
+              <div className="staff-mgr-export-section">
+                <div className="staff-mgr-export-label">Period</div>
+                <div className="staff-mgr-export-period">
+                  {[
+                    { v: 'today',    label: 'Today'    },
+                    { v: 'biweekly', label: 'Biweekly' },
+                    { v: 'month',    label: 'Month'    },
+                    { v: 'custom',   label: 'Custom'   },
+                  ].map(p => (
+                    <button
+                      key={p.v}
+                      type="button"
+                      className={`staff-mgr-export-period-btn ${csvPeriod === p.v ? 'is-active' : ''}`}
+                      onClick={() => setCsvPeriod(p.v)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {csvPeriod === 'custom' && (
+                  <div className="staff-mgr-export-custom">
+                    <label className="staff-mgr-export-custom-field">
+                      <span>From</span>
+                      <input
+                        type="date"
+                        value={customFrom}
+                        max={customTo || undefined}
+                        onChange={e => setCustomFrom(e.target.value)}
+                      />
+                    </label>
+                    <label className="staff-mgr-export-custom-field">
+                      <span>To</span>
+                      <input
+                        type="date"
+                        value={customTo}
+                        min={customFrom || undefined}
+                        max={today()}
+                        onChange={e => setCustomTo(e.target.value)}
+                      />
+                    </label>
+                    <div className="staff-mgr-export-custom-help">
+                      Max range: 365 days.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="staff-mgr-export-section">
+                <div className="staff-mgr-export-label">Scope</div>
+                <div className="staff-mgr-export-scope">
+                  <label className="staff-mgr-export-radio">
+                    <input
+                      type="radio"
+                      className="hop-radio"
+                      name="csv-scope"
+                      checked={csvScope === 'all'}
+                      onChange={() => setCsvScope('all')}
+                    />
+                    <span>All staff <span className="staff-mgr-export-meta">{stats.total}</span></span>
+                  </label>
+                  <label className={`staff-mgr-export-radio ${!deptScopeAvailable ? 'is-disabled' : ''}`}>
+                    <input
+                      type="radio"
+                      className="hop-radio"
+                      name="csv-scope"
+                      disabled={!deptScopeAvailable}
+                      checked={csvScope === 'department'}
+                      onChange={() => setCsvScope('department')}
+                    />
+                    <span>
+                      {deptScopeAvailable
+                        ? <>Department: <strong>{deptScopeName}</strong></>
+                        : <>Department <span className="staff-mgr-export-meta">pick a chip first</span></>}
+                    </span>
+                  </label>
+                  <label className="staff-mgr-export-radio">
+                    <input
+                      type="radio"
+                      className="hop-radio"
+                      name="csv-scope"
+                      checked={csvScope === 'filtered'}
+                      onChange={() => setCsvScope('filtered')}
+                    />
+                    <span>Filtered list <span className="staff-mgr-export-meta">{filtered.length}</span></span>
+                  </label>
+                  <label className={`staff-mgr-export-radio ${selectedIds.size === 0 ? 'is-disabled' : ''}`}>
+                    <input
+                      type="radio"
+                      className="hop-radio"
+                      name="csv-scope"
+                      disabled={selectedIds.size === 0}
+                      checked={csvScope === 'selected'}
+                      onChange={() => setCsvScope('selected')}
+                    />
+                    <span>
+                      {selectedIds.size > 0
+                        ? <>Selected staff <span className="staff-mgr-export-meta">{selectedIds.size}</span></>
+                        : <>Selected staff <span className="staff-mgr-export-meta">tick rows first</span></>}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <label className="staff-mgr-export-checkbox">
+                <input
+                  type="checkbox"
+                  className="hop-check"
+                  checked={csvIncludeInactive}
+                  onChange={e => setCsvIncludeInactive(e.target.checked)}
+                />
+                <span>Include inactive staff</span>
+              </label>
+
+              <button
+                type="button"
+                className="staff-mgr-export-go"
+                onClick={runExport}
+                disabled={
+                  csvBusy ||
+                  (csvScope === 'department' && !deptScopeAvailable) ||
+                  (csvScope === 'selected' && selectedIds.size === 0)
+                }
+              >
+                {csvBusy ? 'Exporting…' : 'Download XLSX'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stats banner (clickable cards drive the filter below) */}
@@ -721,170 +914,28 @@ const StaffManager = () => {
           </button>
         )}
 
-        <div className={`staff-mgr-export ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
-          <button
-            type="button"
-            className="staff-mgr-export-btn"
-            onClick={() => setCsvOpen(o => !o)}
-          >
-            ↓ Export <span className="staff-mgr-export-caret">▾</span>
-          </button>
-          {csvOpen && (
-            <div className="staff-mgr-export-menu" role="menu">
-              <div className="staff-mgr-export-title">Export payroll (XLSX)</div>
-
-              <div className="staff-mgr-export-section">
-                <div className="staff-mgr-export-label">Period</div>
-                <div className="staff-mgr-export-period">
-                  {[
-                    { v: 'today',    label: 'Today'    },
-                    { v: 'biweekly', label: 'Biweekly' },
-                    { v: 'month',    label: 'Month'    },
-                    { v: 'custom',   label: 'Custom'   },
-                  ].map(p => (
-                    <button
-                      key={p.v}
-                      type="button"
-                      className={`staff-mgr-export-period-btn ${csvPeriod === p.v ? 'is-active' : ''}`}
-                      onClick={() => setCsvPeriod(p.v)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                {csvPeriod === 'custom' && (
-                  <div className="staff-mgr-export-custom">
-                    <label className="staff-mgr-export-custom-field">
-                      <span>From</span>
-                      <input
-                        type="date"
-                        value={customFrom}
-                        max={customTo || undefined}
-                        onChange={e => setCustomFrom(e.target.value)}
-                      />
-                    </label>
-                    <label className="staff-mgr-export-custom-field">
-                      <span>To</span>
-                      <input
-                        type="date"
-                        value={customTo}
-                        min={customFrom || undefined}
-                        max={today()}
-                        onChange={e => setCustomTo(e.target.value)}
-                      />
-                    </label>
-                    <div className="staff-mgr-export-custom-help">
-                      Max range: 365 days.
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="staff-mgr-export-section">
-                <div className="staff-mgr-export-label">Scope</div>
-                <div className="staff-mgr-export-scope">
-                  <label className="staff-mgr-export-radio">
-                    <input
-                      type="radio"
-                      className="hop-radio"
-                      name="csv-scope"
-                      checked={csvScope === 'all'}
-                      onChange={() => setCsvScope('all')}
-                    />
-                    <span>All staff <span className="staff-mgr-export-meta">{stats.total}</span></span>
-                  </label>
-                  <label className={`staff-mgr-export-radio ${!deptScopeAvailable ? 'is-disabled' : ''}`}>
-                    <input
-                      type="radio"
-                      className="hop-radio"
-                      name="csv-scope"
-                      disabled={!deptScopeAvailable}
-                      checked={csvScope === 'department'}
-                      onChange={() => setCsvScope('department')}
-                    />
-                    <span>
-                      {deptScopeAvailable
-                        ? <>Department: <strong>{deptScopeName}</strong></>
-                        : <>Department <span className="staff-mgr-export-meta">pick a chip first</span></>}
-                    </span>
-                  </label>
-                  <label className="staff-mgr-export-radio">
-                    <input
-                      type="radio"
-                      className="hop-radio"
-                      name="csv-scope"
-                      checked={csvScope === 'filtered'}
-                      onChange={() => setCsvScope('filtered')}
-                    />
-                    <span>Filtered list <span className="staff-mgr-export-meta">{filtered.length}</span></span>
-                  </label>
-                  {/* Sprint 11.4: only show the Selected option when at
-                      least one row is ticked. Keeps the popover tidy
-                      when the admin isn't using the selection feature. */}
-                  <label className={`staff-mgr-export-radio ${selectedIds.size === 0 ? 'is-disabled' : ''}`}>
-                    <input
-                      type="radio"
-                      className="hop-radio"
-                      name="csv-scope"
-                      disabled={selectedIds.size === 0}
-                      checked={csvScope === 'selected'}
-                      onChange={() => setCsvScope('selected')}
-                    />
-                    <span>
-                      {selectedIds.size > 0
-                        ? <>Selected staff <span className="staff-mgr-export-meta">{selectedIds.size}</span></>
-                        : <>Selected staff <span className="staff-mgr-export-meta">tick rows first</span></>}
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Sprint 9.4.1: opt-in to include former / inactive staff.
-                  Off by default — payroll typically only covers active
-                  employees, and the unfiltered behavior surprised the
-                  GM (departed staff showing in the workbook). */}
-              <label className="staff-mgr-export-checkbox">
-                <input
-                  type="checkbox"
-                  className="hop-check"
-                  checked={csvIncludeInactive}
-                  onChange={e => setCsvIncludeInactive(e.target.checked)}
-                />
-                <span>Include inactive staff</span>
-              </label>
-
-              <button
-                type="button"
-                className="staff-mgr-export-go"
-                onClick={runExport}
-                disabled={
-                  csvBusy ||
-                  (csvScope === 'department' && !deptScopeAvailable) ||
-                  (csvScope === 'selected' && selectedIds.size === 0)
-                }
-              >
-                {csvBusy ? 'Exporting…' : 'Download XLSX'}
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Sprint 18.10 — Export moved to the topbar; the Add staff
+            button slides in here, on the right of the actions row,
+            so the page no longer needs a separate full-width Add
+            tile below the filters. */}
+        <button
+          type="button"
+          className="staff-mgr-add-inline"
+          onClick={() => { setShowAdd(true); setFormError(''); }}
+          disabled={showAdd}
+        >
+          <span className="staff-mgr-add-inline-icon" aria-hidden>＋</span>
+          Add new staff member
+        </button>
       </div>
 
-      {/* Add staff tile — sits between filters and the list (Sprint 6.4 tweak) */}
-      <div className={`staff-mgr-add ${showAdd ? 'is-open' : ''}`}>
-        {!showAdd ? (
-          <button
-            type="button"
-            className="staff-mgr-add-tile"
-            onClick={() => { setShowAdd(true); setFormError(''); }}
-          >
-            <span className="staff-mgr-add-icon">＋</span>
-            <span>
-              <span className="staff-mgr-add-label">Add new staff member</span>
-              <span className="staff-mgr-add-sub">Name, phone, role, department</span>
-            </span>
-          </button>
-        ) : (
+      {/* Sprint 18.10 — the full-width "Add new staff" tile is gone;
+          its trigger now lives inline in the actions row above.
+          The expanded form still drops in here so the layout below
+          (staff list) shifts down cleanly when the admin starts a
+          new staff entry. */}
+      {showAdd && (
+        <div className="staff-mgr-add is-open">
           <form className="add-form staff-mgr-add-form" onSubmit={handleAdd}>
             <div className="staff-mgr-add-form-head">
               <h3>New staff member</h3>
@@ -991,8 +1042,8 @@ const StaffManager = () => {
               </button>
             </div>
           </form>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* List */}
       {loading ? (
