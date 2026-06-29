@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
+import HopDateTimePicker from '../shared/HopDateTimePicker';
 
 const ROLES = ['employee', 'front_desk', 'admin'];
 
@@ -774,19 +775,24 @@ const StaffDetail = ({ userId }) => {
             <div className="entry-edit-fields">
               <label>
                 <span>Clock In</span>
-                <input
-                  type="datetime-local"
+                {/* Sprint 18.12 — swapped native datetime-local for
+                    the themed HopDateTimePicker. Same string shape
+                    on the wire, just a custom UI. */}
+                <HopDateTimePicker
                   value={entryForm.in}
-                  onChange={e => setEntryForm(f => ({ ...f, in: e.target.value }))}
+                  onChange={(v) => setEntryForm(f => ({ ...f, in: v }))}
                   required
+                  allowEmpty={false}
+                  placeholder="Pick clock-in"
                 />
               </label>
               <label>
                 <span>Clock Out</span>
-                <input
-                  type="datetime-local"
+                <HopDateTimePicker
                   value={entryForm.out}
-                  onChange={e => setEntryForm(f => ({ ...f, out: e.target.value }))}
+                  onChange={(v) => setEntryForm(f => ({ ...f, out: v }))}
+                  allowEmpty
+                  placeholder="Pick clock-out"
                 />
                 <small>Leave blank to keep "in progress"</small>
               </label>

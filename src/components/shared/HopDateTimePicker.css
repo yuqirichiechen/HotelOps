@@ -1,0 +1,293 @@
+/* Sprint 18.12 — HopDateTimePicker styles. Lives next to the
+   DropdownSelect rules so the two shared popover controls share
+   visual language (chip-shaped trigger, soft-shadow popover,
+   accent-colored active state). */
+
+.hop-dtp {
+  position: relative;
+  display: inline-block;
+  font-family: 'TiemposText', Georgia, serif;
+}
+
+/* ── Trigger ───────────────────────────────────────────────────────────── */
+
+.hop-dtp-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  min-width: 220px;
+}
+.hop-dtp-trigger:hover {
+  border-color: var(--text-muted);
+}
+.hop-dtp.is-open .hop-dtp-trigger {
+  border-color: var(--accent-alt);
+  background: var(--accent-bg, var(--bg-surface));
+}
+.hop-dtp-trigger.is-empty-required {
+  border-color: #fecaca;
+}
+
+.hop-dtp-trigger-icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.hop-dtp-trigger-label {
+  flex: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hop-dtp-placeholder {
+  color: var(--text-muted);
+}
+.hop-dtp-trigger-caret {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+.hop-dtp.is-open .hop-dtp-trigger-caret {
+  transform: rotate(180deg);
+}
+
+/* ── Popover ──────────────────────────────────────────────────────────── */
+
+.hop-dtp-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: 280px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  padding: 12px;
+  animation: hop-dtp-in 0.12s ease both;
+}
+.hop-dtp.is-right .hop-dtp-pop {
+  left: auto;
+  right: 0;
+}
+@keyframes hop-dtp-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Calendar header ──────────────────────────────────────────────────── */
+
+.hop-dtp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.hop-dtp-title {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.hop-dtp-nav {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.hop-dtp-nav:hover {
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+  border-color: var(--accent);
+}
+
+/* ── Calendar grid ────────────────────────────────────────────────────── */
+
+.hop-dtp-weekhead,
+.hop-dtp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.hop-dtp-weekhead {
+  margin-bottom: 4px;
+}
+.hop-dtp-weekday {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+}
+.hop-dtp-cell {
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.hop-dtp-cell:hover {
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+}
+.hop-dtp-cell.is-out {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+.hop-dtp-cell.is-today {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.hop-dtp-cell.is-selected {
+  background: var(--accent-alt);
+  color: white;
+  font-weight: 700;
+}
+.hop-dtp-cell.is-selected:hover {
+  background: var(--brand-text, #1f2937);
+  color: white;
+}
+
+/* ── Time row ─────────────────────────────────────────────────────────── */
+
+.hop-dtp-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.hop-dtp-time-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+.hop-dtp-time-input {
+  width: 44px;
+  padding: 5px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+.hop-dtp-time-input::-webkit-outer-spin-button,
+.hop-dtp-time-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.hop-dtp-time-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+.hop-dtp-time-sep {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.hop-dtp-ampm {
+  display: inline-flex;
+  margin-left: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.hop-dtp-ampm-btn {
+  padding: 5px 10px;
+  border: none;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.hop-dtp-ampm-btn + .hop-dtp-ampm-btn {
+  border-left: 1px solid var(--border);
+}
+.hop-dtp-ampm-btn:hover { color: var(--text-primary); }
+.hop-dtp-ampm-btn.is-active {
+  background: var(--accent-alt);
+  color: white;
+}
+
+/* ── Footer actions ──────────────────────────────────────────────────── */
+
+.hop-dtp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.hop-dtp-action {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.hop-dtp-action:hover {
+  background: var(--accent-bg);
+  color: var(--accent-alt);
+  border-color: var(--accent);
+}
+.hop-dtp-action.is-primary {
+  background: var(--accent-alt);
+  color: white;
+  border-color: var(--accent-alt);
+}
+.hop-dtp-action.is-primary:hover {
+  background: var(--brand-text, #1f2937);
+  border-color: var(--brand-text, #1f2937);
+  color: white;
+}
+.hop-dtp-clear {
+  margin-right: auto;
+  color: #b91c1c;
+}
+.hop-dtp-clear:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}

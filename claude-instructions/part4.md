@@ -280,6 +280,133 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-29 — Sprint 18.12: Staff page layout polish + themed datetime picker
+
+Two follow-ups on 18.11. First fix is layout — the new "Add new
+staff member" pill from 18.10 was burning its own row at the
+end of the controls; the GM wanted it on the same line as Sort,
+and Include inactive moved up into the chips row (separated
+from the dept chips by a small vertical rule). Second is the
+datetime picker in the entry-add modal — the native
+`datetime-local` input renders the OS picker, which looks
+foreign next to our chip-pill control language. Built our own.
+
+**Staff page layout** (`StaffManager.js` + `AdminPanel.css`):
+
+Before this sprint the rows were:
+1. KPI cards
+2. Search + dept chips
+3. *(divider)*
+4. Include inactive · Sort · Add new staff
+
+After:
+1. KPI cards
+2. Search + dept chips · *|* · Include inactive
+3. *(divider)*
+4. Sort · Add new staff
+
+- New `.staff-mgr-chip-sep` — a 1px × 18px vertical rule
+  rendered inline inside `.staff-mgr-chips`. Reads as "still
+  in the same row, but conceptually a different control" —
+  the dept chips are filter values, Include inactive is a
+  filter scope modifier. The rule says "these are siblings but
+  not peers."
+- Dropped the toggle's old `margin-right: auto` (which was a
+  Sprint 11.4 compromise for the old post-divider row).
+  Now it sits inline alongside the dept chips at the natural
+  flex flow position.
+- Add staff button keeps its `margin-left: auto` so it still
+  pins to the right of the post-divider row. With Include
+  inactive gone from that row, Sort floats to the left,
+  Add staff to the right — the row reads cleanly as
+  [Sort] · *(slack)* · [Add staff].
+
+**HopDateTimePicker** (new shared component):
+
+File: `src/components/shared/HopDateTimePicker.js` +
+`HopDateTimePicker.css`. Drop-in replacement for `<input
+type="datetime-local">` — same string shape on the wire
+(`YYYY-MM-DDTHH:MM`), so the existing form state in StaffDetail
+didn't need a single change beyond swapping the JSX.
+
+Anatomy:
+
+- **Trigger** — chip-pill button, calendar emoji + formatted
+  value + ▾ caret. Matches the visual language of
+  `DropdownSelect` (the existing shared popover control from
+  Sprint 13.3). Open state highlights the trigger with the
+  accent-bg + accent-alt border.
+- **Calendar grid** — 6 rows × 7 columns (fixed height so the
+  popover doesn't jump when navigating months). Lead/trail days
+  from the prev/next month render at 50% opacity so the
+  current month is the visual anchor. Today gets an inset ring,
+  the selected day gets a solid accent fill.
+- **Time row** — separated from the calendar by a soft top
+  border. Two numeric inputs (HH, MM) with the browser's
+  spinner stripped (`-webkit-appearance: none` + `-moz-
+  appearance: textfield`), separated by a monospaced `:`.
+  AM/PM is a two-button segmented toggle to the right (chip-
+  shape, accent-fill when active).
+- **Footer** — Clear (left-pinned, soft-red), Now (jumps to
+  the current wall-clock moment), Done (accent-primary,
+  closes the popover). Clear only renders when `allowEmpty`
+  AND a value is already set — keeps the UI tidy.
+
+Props (mirror DropdownSelect where they overlap):
+- `value`, `onChange` — datetime-local string shape
+- `required` — empty trigger draws a red border in this state
+- `allowEmpty` — toggles whether Clear is offered (off for
+  Clock In since payroll can't have a punch without a start;
+  on for Clock Out since "in progress" is valid)
+- `minuteStep` — passed to the minute input's `step` (default 1)
+- `align` — `'left' | 'right'` for the popover anchor edge
+- `placeholder` — shown in the trigger when no value
+
+Implementation choices:
+
+- **Why not the native picker?** Same reasoning as Sprint 6.7's
+  `.hop-radio` / `.hop-check`: the native widget is correct
+  behaviorally but visually foreign. For datetime the gap is
+  bigger because every OS renders a different picker (iOS spins,
+  macOS pops a small calendar, Windows is a third thing). Our
+  custom one is consistent across every device the GM uses.
+- **Why keep the time-side native `<input type="number">` for
+  HH/MM?** Behavioral cost of a fully-custom number scroller
+  isn't worth it — `<input type="number">` carries keyboard
+  arrows, hold-to-repeat on mobile, IME compatibility, etc.
+  Just stripped the spinner chrome and bounded the values in
+  the `onChange` handler.
+- **Local-vs-UTC handling.** Same trick the native input uses:
+  the value is a wall-clock string, not an instant. Callers
+  convert to ISO via `new Date(value).toISOString()` when
+  posting to the server (which is exactly what StaffDetail
+  already did with the native input — no changes needed).
+
+**Wiring** (`StaffDetail.js`):
+
+- One new import line.
+- Two `<input type="datetime-local">` → two `<HopDateTimePicker>`
+  in the entry-edit/add modal. Clock In gets
+  `required allowEmpty={false}`; Clock Out gets `allowEmpty`
+  (so the FD can leave it open for an in-progress shift).
+
+**What 18.12 didn't touch.**
+
+- Other native `<input type="date">` / `<input
+  type="datetime-local">` sites in the admin app (calendar
+  page's for_date picker, settings forms). The
+  HopDateTimePicker is now available; swapping the rest is a
+  separate cleanup pass.
+- The picker's mobile layout — at 280px wide it fits on
+  every phone we've tested, but if/when we want it to render
+  full-screen on small viewports we'd add a media-query branch.
+
+**Verified.** `npm run build` compiles clean (+1.46 kB JS /
++858 B CSS — most of that is the new picker component, which
+is expected since it's a from-scratch addition).
+
+---
+
 ### 2026-06-29 — Sprint 18.11: manual time-entry creation + mobile nav swap
 
 Two unrelated quick fixes after the GM tested 18.10 in production

@@ -2564,15 +2564,28 @@
   color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
-  /* Sprint 11.4: was `margin-left: auto` (pushed the toggle to the
-     middle of the row — Export's own auto-margin then ate the rest
-     of the slack). Now it sits at the *start* of the post-divider
-     row; Export keeps its own `margin-left: auto` and lands on the
-     right. */
-  margin-left: 0;
-  margin-right: auto;
+  /* Sprint 18.12 — now lives *inside* the chips row (above the
+     divider). Sits alongside the dept chips with no auto margins;
+     the visual separation comes from .staff-mgr-chip-sep, not
+     layout. Previous auto-margin behavior was for the old
+     post-divider row layout. */
+  margin: 0;
   white-space: nowrap;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+/* Sprint 18.12 — short vertical rule inside the chips row, marks
+   the boundary between dept-filter chips (left) and the Include
+   inactive toggle (right). Reads as "still in the same row, but
+   conceptually a different control." */
+.staff-mgr-chip-sep {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 /* Sprint 13.4: `.staff-mgr-sort*` rules removed — Sprint 13.3

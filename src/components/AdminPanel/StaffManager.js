@@ -865,21 +865,26 @@ const StaffManager = () => {
           >
             Unassigned
           </button>
+
+          {/* Sprint 18.12 — Include inactive moves up here, separated
+              from the dept chips by a short vertical rule. Reads as
+              "still a filter" but distinct from the dept choices. */}
+          <span className="staff-mgr-chip-sep" aria-hidden />
+          <button
+            type="button"
+            className={`staff-mgr-toggle ${includeInactive ? 'is-active' : ''}`}
+            onClick={() => setIncludeInactive(v => !v)}
+            aria-pressed={includeInactive}
+          >
+            Include inactive
+          </button>
         </div>
 
-        {/* Separates the *filter* row (search + dept chips) from the
-            *display + action* row (include-inactive toggle + export).
-            Different concerns shouldn't read as one continuous control band. */}
+        {/* Separates the *filter* row (search + dept chips + include-
+            inactive) from the *display + action* row (sort + add staff).
+            Different concerns shouldn't read as one continuous control
+            band. */}
         <div className="staff-mgr-filter-divider" aria-hidden />
-
-        <button
-          type="button"
-          className={`staff-mgr-toggle ${includeInactive ? 'is-active' : ''}`}
-          onClick={() => setIncludeInactive(v => !v)}
-          aria-pressed={includeInactive}
-        >
-          Include inactive
-        </button>
 
         {/* Sprint 11.5: sort dropdown — Sprint 13.3 swapped the native
             <select> for the shared `DropdownSelect` so it matches the
