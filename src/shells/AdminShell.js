@@ -31,14 +31,18 @@ import Forecast    from '../components/Forecast';    // Sprint 17.11 — room-ty
 // shows everything — the flag is mobile-only.
 const NAV = [
   { view: 'home',      label: 'Home',      icon: 'home',       live: true, mobilePrimary: true },
-  { view: 'staff',     label: 'Staff',     icon: 'stafficon',  live: true },
+  // Sprint 18.11: Staff promoted into the mobile primary tabs (it's
+  // the most-used admin page on phones — manual time-entry adds,
+  // OT approval, recent-hires lookups). Forecast moves into the More
+  // sheet since the GM rarely opens it from a phone.
+  { view: 'staff',     label: 'Staff',     icon: 'stafficon',  live: true, mobilePrimary: true },
   { view: 'calendar',  label: 'Calendar',  icon: 'calendar',   live: true, mobilePrimary: true },
   // Sprint 17.11: split the prior "Forecast" nav item in two.
   // "Reservations" = booking-list / arrivals-detail view (the page
   // previously labelled Forecast). "Forecast" = room-type
   // availability projection (new page). Both share the same scrape.
   { view: 'reservations', label: 'Reservations', icon: 'calendar', live: true, mobilePrimary: true },
-  { view: 'forecast',     label: 'Forecast',     icon: 'calendar', live: true, mobilePrimary: true },
+  { view: 'forecast',     label: 'Forecast',     icon: 'calendar', live: true },
   { view: 'reports',   label: 'Logbook',   icon: 'logbook' },
   { view: 'assistant', label: 'Assistant', icon: 'assistant' },
   { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },

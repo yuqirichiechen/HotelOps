@@ -1596,6 +1596,59 @@
   border-color: var(--accent);
 }
 
+/* ── Sprint 18.11: Add-entry trigger + section head row ─────────────────── */
+
+.emp-entries-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.emp-entries-head .emp-pin-title {
+  margin: 0;
+}
+.emp-entry-add {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 1px solid var(--accent-alt);
+  border-radius: 999px;
+  background: var(--accent-alt);
+  color: white;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.emp-entry-add:hover {
+  background: var(--brand-text, #1f2937);
+  border-color: var(--brand-text, #1f2937);
+}
+
+/* Sprint 18.11 — overlap-conflict callout inside the modal. Soft-red
+   panel so it reads as "blocking warning" rather than a system error;
+   the meta line shows which existing punch is in the way. */
+.entry-edit-conflict {
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.entry-edit-conflict strong {
+  font-weight: 700;
+}
+.entry-edit-conflict-meta {
+  font-size: 12px;
+  color: #7f1d1d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* ── Entry edit modal ─────────────────────────────────────────────────────── */
 
 .entry-edit-overlay {

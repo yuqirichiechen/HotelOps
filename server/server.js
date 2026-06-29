@@ -2191,6 +2191,90 @@ app.get('/api/admin/employees/:id/time-entries', async (req, res) => {
   }
 });
 
+// Sprint 18.11 — admin manually creates a time entry for a staff
+// member who completely missed clocking in/out. Mirrors the PATCH
+// override flow (manual_entry=true, audit-logged) but inserts a new
+// row. Guards against overlaps with existing entries for the same
+// user — payroll integrity depends on never double-counting hours
+// for the same wall-clock window. We use Postgres's OVERLAPS
+// operator which handles the open-ended (in-progress) case via
+// COALESCE → 'infinity'.
+app.post('/api/admin/employees/:id/time-entries', requireAuth, requireRole('admin'), async (req, res) => {
+  const userId = req.params.id;
+  const { clock_in_time, clock_out_time } = req.body || {};
+  if (!clock_in_time) {
+    return res.status(400).json({ success: false, message: 'clock_in_time required' });
+  }
+  if (isNaN(new Date(clock_in_time).getTime())) {
+    return res.status(400).json({ success: false, message: 'Invalid clock_in_time' });
+  }
+  const cleanOut = (clock_out_time === '' || clock_out_time == null) ? null : clock_out_time;
+  if (cleanOut && isNaN(new Date(cleanOut).getTime())) {
+    return res.status(400).json({ success: false, message: 'Invalid clock_out_time' });
+  }
+  if (cleanOut && new Date(cleanOut) <= new Date(clock_in_time)) {
+    return res.status(400).json({ success: false, message: 'clock_out_time must be after clock_in_time' });
+  }
+
+  try {
+    // Confirm the staff exists before touching time_entries — clearer
+    // 404 message than a foreign-key violation.
+    const { rows: u } = await pool.query('SELECT user_id FROM users WHERE user_id = $1', [userId]);
+    if (!u.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+
+    // Overlap check. Open-ended entries (clock_out_time IS NULL) are
+    // treated as ending at 'infinity' for the purpose of the test;
+    // a new entry that starts before such an in-progress shift ends
+    // will be flagged. Same for the new entry: when cleanOut is null
+    // we test it as ending at 'infinity'.
+    const newOutSql = cleanOut ? '$3::timestamptz' : "'infinity'::timestamptz";
+    const params = cleanOut
+      ? [userId, clock_in_time, cleanOut]
+      : [userId, clock_in_time];
+    const { rows: overlaps } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time
+       FROM time_entries
+       WHERE user_id = $1
+         AND (clock_in_time, COALESCE(clock_out_time, 'infinity'::timestamptz))
+             OVERLAPS ($2::timestamptz, ${newOutSql})
+       ORDER BY clock_in_time
+       LIMIT 1`,
+      params
+    );
+    if (overlaps.length) {
+      const c = overlaps[0];
+      return res.status(409).json({
+        success: false,
+        code: 'overlap',
+        message: 'This entry overlaps with an existing punch on the same shift window.',
+        conflict: {
+          entry_id:       c.entry_id,
+          clock_in_time:  c.clock_in_time,
+          clock_out_time: c.clock_out_time,
+        },
+      });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO time_entries (user_id, clock_in_time, clock_out_time, manual_entry)
+       VALUES ($1, $2, $3, true)
+       RETURNING *`,
+      [userId, clock_in_time, cleanOut]
+    );
+
+    await pool.query(
+      `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data)
+       VALUES (NULL, 'admin_time_entry_create', 'time_entries', $1, NULL, $2)`,
+      [rows[0].entry_id, JSON.stringify({ ...rows[0], admin_username: req.auth.sub })]
+    );
+
+    return res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ── Admin: scheduling ─────────────────────────────────────────────────────────
 
 app.get('/api/admin/shift-templates', async (req, res) => {

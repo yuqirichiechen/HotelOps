@@ -83,6 +83,12 @@ const StaffDetail = ({ userId }) => {
   const [entryForm,  setEntryForm]  = useState({ in: '', out: '' });
   const [entrySave,  setEntrySave]  = useState(false);
   const [entryErr,   setEntryErr]   = useState('');
+  // Sprint 18.11 — separate create flow from edit flow. `entryMode`
+  // drives the modal title + submit handler; conflict carries the
+  // overlapping row returned by the server's 409 so we can show the
+  // admin *which* punch conflicts (not just "an overlap exists").
+  const [entryMode,     setEntryMode]     = useState('edit'); // 'edit' | 'create'
+  const [entryConflict, setEntryConflict] = useState(null);
 
   // Performance dashboard (Sprint 6D)
   const [perf,       setPerf]       = useState(null);
@@ -268,23 +274,39 @@ const StaffDetail = ({ userId }) => {
 
   // ── Hour override ─────────────────────────────────────────────────────────
   const openEntryEdit = (entry) => {
+    setEntryMode('edit');
     setEditEntry(entry);
     setEntryForm({
       in:  toLocalInput(entry.clock_in_time),
       out: toLocalInput(entry.clock_out_time),
     });
     setEntryErr('');
+    setEntryConflict(null);
+  };
+
+  // Sprint 18.11 — open the same modal in "create" mode. The form
+  // starts blank; submit POSTs to the new create endpoint. Using a
+  // sentinel object (rather than `null`) so the modal's render
+  // guard `{editEntry && ...}` still fires.
+  const openEntryCreate = () => {
+    setEntryMode('create');
+    setEditEntry({ entry_id: null });
+    setEntryForm({ in: '', out: '' });
+    setEntryErr('');
+    setEntryConflict(null);
   };
 
   const closeEntryEdit = () => {
     setEditEntry(null);
     setEntryErr('');
+    setEntryConflict(null);
   };
 
   const saveEntryEdit = async (e) => {
     e.preventDefault();
     setEntrySave(true);
     setEntryErr('');
+    setEntryConflict(null);
     // datetime-local gives a string like "2026-04-29T08:30" interpreted as
     // local time. Build a Date from it and send ISO (UTC) to the server.
     const inDate  = entryForm.in ? new Date(entryForm.in) : null;
@@ -300,18 +322,24 @@ const StaffDetail = ({ userId }) => {
       return;
     }
 
-    const { ok, data } = await apiFetch(`/admin/time-entries/${editEntry.entry_id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        clock_in_time:  inDate.toISOString(),
-        clock_out_time: outDate ? outDate.toISOString() : null,
-      }),
+    const body = JSON.stringify({
+      clock_in_time:  inDate.toISOString(),
+      clock_out_time: outDate ? outDate.toISOString() : null,
     });
+    const { ok, data } = entryMode === 'create'
+      ? await apiFetch(`/admin/employees/${userId}/time-entries`, { method: 'POST',  body })
+      : await apiFetch(`/admin/time-entries/${editEntry.entry_id}`,  { method: 'PATCH', body });
     setEntrySave(false);
     if (ok && data?.success) {
       closeEntryEdit();
       reloadEntries();
     } else {
+      // 409 carries `conflict` (the colliding entry). Render the
+      // overlapping window so the admin can see what's in the way
+      // and either edit that one instead or pick a different time.
+      if (data?.code === 'overlap' && data?.conflict) {
+        setEntryConflict(data.conflict);
+      }
       setEntryErr(data?.message || 'Could not save');
     }
   };
@@ -637,7 +665,20 @@ const StaffDetail = ({ userId }) => {
       {/* Time entries — Sprint 5D */}
       {!editing && (
         <div className="emp-pin-section">
-          <h3 className="emp-pin-title">Time Entries</h3>
+          <div className="emp-entries-head">
+            <h3 className="emp-pin-title">Time Entries</h3>
+            {/* Sprint 18.11 — manual-add affordance for missed
+                shifts. Opens the same modal as Edit, but in create
+                mode (blank fields, POSTs a new row). */}
+            <button
+              type="button"
+              className="emp-entry-add"
+              onClick={openEntryCreate}
+              title="Add a manual time entry"
+            >
+              + Add entry
+            </button>
+          </div>
 
           {entryLoad && <div className="emp-pin-meta">Loading…</div>}
           {!entryLoad && recentEntries.length === 0 && (
@@ -717,16 +758,18 @@ const StaffDetail = ({ userId }) => {
         </div>
       )}
 
-      {/* Entry edit modal */}
+      {/* Entry edit/create modal — Sprint 18.11 added create mode */}
       {editEntry && (
         <div className="entry-edit-overlay" onClick={closeEntryEdit}>
           <form className="entry-edit-modal" onClick={e => e.stopPropagation()} onSubmit={saveEntryEdit}>
             <div className="entry-edit-header">
-              <h3>Override Hours</h3>
+              <h3>{entryMode === 'create' ? 'Add Time Entry' : 'Override Hours'}</h3>
               <button type="button" className="entry-edit-close" onClick={closeEntryEdit}>✕</button>
             </div>
             <p className="entry-edit-sub">
-              Edit clock-in / clock-out for this shift. The change is logged to the audit trail.
+              {entryMode === 'create'
+                ? 'Manually record a shift the staff missed clocking in or out for. The new entry is checked against existing punches to prevent overlaps.'
+                : 'Edit clock-in / clock-out for this shift. The change is logged to the audit trail.'}
             </p>
             <div className="entry-edit-fields">
               <label>
@@ -748,11 +791,25 @@ const StaffDetail = ({ userId }) => {
                 <small>Leave blank to keep "in progress"</small>
               </label>
             </div>
-            {entryErr && <div className="admin-error">{entryErr}</div>}
+            {entryConflict && (
+              <div className="entry-edit-conflict" role="alert">
+                <strong>Overlaps an existing entry</strong>
+                <div className="entry-edit-conflict-meta">
+                  {fmtEntryDateRange(entryConflict.clock_in_time, entryConflict.clock_out_time)}
+                  {' · '}
+                  {fmtTime(entryConflict.clock_in_time)} → {entryConflict.clock_out_time
+                    ? fmtTime(entryConflict.clock_out_time)
+                    : 'in progress'}
+                </div>
+              </div>
+            )}
+            {entryErr && !entryConflict && <div className="admin-error">{entryErr}</div>}
             <div className="entry-edit-actions">
               <button type="button" className="btn-logout" onClick={closeEntryEdit}>Cancel</button>
               <button type="submit" className="btn-save" disabled={entrySave}>
-                {entrySave ? 'Saving…' : 'Save'}
+                {entrySave
+                  ? 'Saving…'
+                  : entryMode === 'create' ? 'Add entry' : 'Save'}
               </button>
             </div>
           </form>

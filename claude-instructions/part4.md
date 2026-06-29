@@ -280,6 +280,104 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-06-29 — Sprint 18.11: manual time-entry creation + mobile nav swap
+
+Two unrelated quick fixes after the GM tested 18.10 in production
+for a week.
+
+**Problem 1 — no way to backfill a missed shift.** A staff member
+forgot to clock in *and* clock out for an entire 8-hour shift.
+The admin could open StaffDetail, see all their existing punches,
+edit any one of them, but had no path to insert a new row.
+Payroll cycle was the next morning and the GM had to skip that
+staff's pay for the week (or fudge an unrelated entry up by 8h,
+which would also have skewed the OT split).
+
+**Problem 2 — Forecast lives on the mobile bottom nav, Staff
+doesn't.** The mobile bottom tabs were [Home / Calendar /
+Reservations / Forecast / More]. But the GM uses Staff far more
+on mobile than Forecast — manual time-entry adds (Problem 1
+above!), recent-hire lookups, OT approvals. Forecast is mostly
+desk-bound (10-day occupancy projection). Swap them: Staff
+becomes a primary tab; Forecast falls into the More sheet.
+
+**Backend.** New endpoint
+`POST /api/admin/employees/:id/time-entries` (admin-only,
+requireAuth + requireRole('admin')):
+
+- Validates `clock_in_time` required + valid; `clock_out_time`
+  optional but if present must parse and be after clock_in.
+- **Overlap check** before insert. Uses Postgres's native
+  `OVERLAPS` operator with `COALESCE(clock_out_time,
+  'infinity'::timestamptz)` so open-ended (in-progress) entries
+  are treated as ending at infinity — both for the new entry
+  being added AND for existing rows in the table. A new entry
+  proposed inside another shift's window returns 409 with
+  `{code: 'overlap', conflict: { entry_id, clock_in_time,
+  clock_out_time }}`. Frontend uses `conflict` to show the
+  admin *which* punch is in the way, not just "an overlap
+  exists somewhere".
+- Inserts with `manual_entry = true` so the existing payroll
+  pipeline knows it wasn't from the clock kiosk; audit-logs as
+  `admin_time_entry_create` with the admin's username folded
+  into `new_data` (mirrors the PATCH audit pattern).
+- 404 explicit if the user_id doesn't exist (clearer than the
+  raw FK violation Postgres would otherwise return).
+
+**Frontend** (`StaffDetail.js`):
+
+- New `entryMode` state ('create' | 'edit') drives the modal's
+  title, copy, submit handler, and primary button label. Same
+  modal markup; the create path POSTs to the new endpoint, the
+  edit path keeps PATCHing the existing one.
+- New `entryConflict` state holds the colliding row returned
+  by a 409 so the modal can render a soft-red callout showing
+  the date range + time window of the overlapping punch. When a
+  conflict is present, the plain `<admin-error>` is suppressed
+  to avoid duplicating the same message twice.
+- `openEntryCreate()` initializes the modal in create mode with
+  blank fields (sentinel `{entry_id: null}` so the render guard
+  `{editEntry && …}` still fires). `openEntryEdit(row)` keeps
+  the old edit behavior; both call `setEntryConflict(null)` to
+  clear stale conflicts when reopening.
+- New `.emp-entries-head` row wraps the section title + the
+  new "+ Add entry" pill on the right (accent-colored, matches
+  the language of the inline add-staff button from 18.10).
+
+**Mobile nav** (`AdminShell.js`):
+
+- Single-line change to the NAV array: dropped `mobilePrimary`
+  from `forecast`, added it to `staff`. The existing Sidebar
+  logic auto-collapses non-primary items into the More sheet,
+  so Forecast moves there with no other code changes. Desktop
+  sidebar still shows everything (the flag is mobile-only).
+
+**CSS** (`AdminPanel.css`):
+
+- `.emp-entries-head` (flex row, space-between for the title +
+  add button).
+- `.emp-entry-add` (accent-pill, mirrors the inline Add Staff
+  button visual language).
+- `.entry-edit-conflict` + `.entry-edit-conflict-meta` (soft-red
+  panel inside the modal; monospaced meta line for the
+  conflicting time range so it reads as data, not prose).
+
+**What 18.11 didn't touch.** The PATCH override endpoint
+(existing edit flow) still doesn't check overlaps when the admin
+*moves* an entry — if an admin edits row A's window to land on
+row B's window the database accepts it. Scoping discipline: the
+user asked for the manual-add overlap guard, and the edit-side
+overlap is a separate (and rarer) case. If we want to add it
+later it's a copy-paste of the same OVERLAPS query with
+`AND entry_id != $X` to exclude the row being edited.
+
+**Verified.** `npm run build` compiles clean (+315 B JS / +117
+B CSS). Server `require()` parses without errors (EADDRINUSE
+when probed = dev server already bound to 3001, which means
+the module loaded successfully).
+
+---
+
 ### 2026-06-17 — Sprint 18.10: payroll export format + staff page layout polish
 
 Quick turn after the GM signed off on the workbook structure.
