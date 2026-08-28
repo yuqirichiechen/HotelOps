@@ -842,6 +842,14 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
   const tzOffset = Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes : 0;
 
   try {
+    // Sprint 18.13: run the 12h hard cap before reading entries so
+    // this user's own forgotten-clockout gets closed *before* we
+    // compute their hours + previous-shift-auto-closed flag. Fast:
+    // single UPDATE, no-op when nothing is over the cap.
+    await enforceHardShiftCap().catch(err => {
+      console.error('[hard-shift-cap:me/hours]', err.message);
+    });
+
     // Entries that INTERSECT the week. An entry counts if any portion of it
     // falls inside [weekStart, weekStart + 7 days). This catches shifts that
     // started before this week but extend into it, and shifts that start in
@@ -951,6 +959,31 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       ? parseInt(cfgMap.staff_idle_logout_seconds, 10)
       : 15;
 
+    // Sprint 18.13: surface the staff's most recent auto-closed
+    // shift (within 48h) so the Home page can show a one-time
+    // warning banner. Dismissal is tracked client-side via
+    // localStorage keyed on entry_id — no DB writes needed.
+    const { rows: autoClosed } = await pool.query(
+      `SELECT entry_id, clock_in_time, clock_out_time,
+              EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 3600.0 AS hours
+         FROM time_entries
+        WHERE user_id = $1
+          AND system_generated = TRUE
+          AND clock_out_time IS NOT NULL
+          AND clock_out_time > NOW() - INTERVAL '48 hours'
+        ORDER BY clock_out_time DESC
+        LIMIT 1`,
+      [userId]
+    );
+    const previousShiftAutoClosed = autoClosed.length
+      ? {
+          entry_id:       autoClosed[0].entry_id,
+          clock_in_time:  autoClosed[0].clock_in_time,
+          clock_out_time: autoClosed[0].clock_out_time,
+          hours:          Math.round(parseFloat(autoClosed[0].hours) * 10) / 10,
+        }
+      : null;
+
     return res.json({
       success:             true,
       weekStart,
@@ -963,6 +996,7 @@ app.get('/api/me/hours', requireAuth, async (req, res) => {
       openClockInTime:     open ? open.clock_in_time : null,
       autoSignoutSeconds,
       idleLogoutSeconds,
+      previousShiftAutoClosed,
     });
   } catch (err) {
     console.error(err);
@@ -1509,6 +1543,37 @@ const runAutoClockOut = async () => {
   return { closed, enabled: true, grace_hours: graceHours, regular_shift_hours: shiftHours };
 };
 
+// ── Sprint 18.13: hard shift-duration cap ────────────────────────────────────
+//
+// Fixed-ceiling companion to runAutoClockOut. Any open time_entries whose
+// clock_in is > 12h ago get closed at clock_in + 12h exactly, with
+// system_generated=true so the row surfaces in the admin dashboard as
+// "review this". This is the policy safety net — even if the shift+grace
+// mechanism above is disabled or misconfigured, no shift is ever left
+// open beyond 12h.
+//
+// Root cause of Sprint 18.13: runAutoClockOut is lazy — it only fires
+// when an admin visits /admin/still-clocked-in. If nobody opens the
+// dashboard for 12+ hours, entries accumulate. In production a staff
+// member ended up at ~13h on the clock and had to be manually closed.
+// This function's callers include a background setInterval (see server
+// boot) so closes fire automatically regardless of admin traffic.
+//
+// Single round-trip UPDATE: avoids the per-row loop pattern in
+// runAutoClockOut. Returns closed rows for logging + follow-up UX.
+const enforceHardShiftCap = async (maxHours = 12) => {
+  const { rows } = await pool.query(
+    `UPDATE time_entries
+        SET clock_out_time   = clock_in_time + ($1 * INTERVAL '1 hour'),
+            system_generated = TRUE
+      WHERE clock_out_time IS NULL
+        AND clock_in_time + ($1 * INTERVAL '1 hour') < NOW()
+      RETURNING entry_id, user_id, clock_in_time, clock_out_time`,
+    [maxHours]
+  );
+  return { closed: rows.length, rows, max_hours: maxHours };
+};
+
 // ── Sprint 16.3 / 16.5: "still clocked in past scheduled end" alert ──────────
 //
 // Surfaces staff who are currently on the clock past
@@ -1537,6 +1602,12 @@ app.get('/api/admin/still-clocked-in', requireAuth, requireRole('admin'), async 
     const autoCloseResult = await runAutoClockOut().catch(err => {
       console.error('[auto-clock-out]', err);
       return { closed: 0, enabled: false };
+    });
+    // Sprint 18.13: also run the hard 12h cap. Belt-and-suspenders
+    // against the background scheduler — if an admin opens the panel
+    // between ticks, we want the freshest view.
+    await enforceHardShiftCap().catch(err => {
+      console.error('[hard-shift-cap:lazy]', err.message);
     });
 
     const { rows: cfg } = await pool.query(
@@ -1588,11 +1659,44 @@ app.get('/api/admin/still-clocked-in', requireAuth, requireRole('admin'), async 
       });
     }
     overdue.sort((a, b) => b.minutes_over - a.minutes_over);
+
+    // Sprint 18.13: also surface recently auto-closed shifts (last
+    // 24h) so admin sees the full "needs attention" set — both
+    // still-on-the-clock AND already-closed-by-cap. Hours computed
+    // in SQL so the panel can show "12.0h" per row without extra math.
+    const { rows: closedRecent } = await pool.query(
+      `SELECT te.entry_id, te.user_id, te.clock_in_time, te.clock_out_time,
+              u.name, u.phone_number, u.preferred_language,
+              d.name AS department, d.department_id,
+              EXTRACT(EPOCH FROM (te.clock_out_time - te.clock_in_time)) / 3600.0 AS hours
+         FROM time_entries te
+         JOIN users u ON te.user_id = u.user_id
+         LEFT JOIN departments d ON u.department_id = d.department_id
+        WHERE te.system_generated = TRUE
+          AND te.clock_out_time IS NOT NULL
+          AND te.clock_out_time > NOW() - INTERVAL '24 hours'
+          AND u.active = true
+          AND u.deleted_at IS NULL
+        ORDER BY te.clock_out_time DESC`
+    );
+    const recentlyAutoClosed = closedRecent.map(r => ({
+      entry_id:       r.entry_id,
+      user_id:        r.user_id,
+      name:           r.name,
+      phone_number:   r.phone_number,
+      department:     r.department,
+      department_id:  r.department_id,
+      clock_in_time:  r.clock_in_time,
+      clock_out_time: r.clock_out_time,
+      hours:          Math.round(parseFloat(r.hours) * 10) / 10,
+    }));
+
     return res.json({
       success: true,
       threshold_minutes:    thresholdMin,
       regular_shift_hours:  shiftHours,
       overdue,
+      recentlyAutoClosed,
       // Sprint 16.4: feedback when the lazy auto-close pass
       // closed any rows on this call. UI flashes a toast so the
       // admin sees the system handled them.
@@ -4326,3 +4430,32 @@ app.get('*', (req, res) => res.sendFile(path.join(buildPath, 'index.html')));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`HotelOps API running on port ${PORT}`));
+
+// Sprint 18.13: background hard-shift-cap scheduler. Fires every 5
+// minutes so no open shift lingers past 12h even if no admin visits
+// the dashboard. isRunning guard prevents a slow DB tick from
+// overlapping the next scheduled fire.
+{
+  let isRunning = false;
+  const tick = async () => {
+    if (isRunning) return;
+    isRunning = true;
+    try {
+      const result = await enforceHardShiftCap();
+      if (result.closed > 0) {
+        console.info('[hard-shift-cap] auto-closed', result.closed, 'entries at 12h ceiling');
+      }
+    } catch (err) {
+      // Never throw from the timer — a transient DB blip shouldn't
+      // kill the scheduler.
+      console.error('[hard-shift-cap] tick failed:', err.message);
+    } finally {
+      isRunning = false;
+    }
+  };
+  const FIVE_MIN = 5 * 60 * 1000;
+  setInterval(tick, FIVE_MIN);
+  // Fire once at boot too, so a fresh deploy doesn't leave the first
+  // 5 minutes uncovered.
+  tick();
+}

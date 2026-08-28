@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import HopDateTimePicker from '../shared/HopDateTimePicker';
@@ -61,7 +61,12 @@ const toLocalInput = (iso) => {
 // Sprint 11.2.1: `userId` comes from view params (set by StaffManager
 // when an admin clicks a row), not from the URL. Back goes through
 // the AdminShell's `goTo('staff')` instead of a URL navigation.
-const StaffDetail = ({ userId }) => {
+// Sprint 18.13: `editEntryId` is passed by AdminHome when the admin
+// clicks "Edit hours" on the Past-scheduled-end panel. We open the
+// entry-edit modal for that specific entry as soon as `entries` is
+// loaded, once per mount (a hasAutoOpenedRef gate prevents the
+// modal from re-opening after the user dismisses it).
+const StaffDetail = ({ userId, editEntryId }) => {
   const { goTo } = useView();
 
   const [emp,           setEmp]           = useState(null);
@@ -284,6 +289,22 @@ const StaffDetail = ({ userId }) => {
     setEntryErr('');
     setEntryConflict(null);
   };
+
+  // Sprint 18.13 — auto-open modal on the entry AdminHome sent us to.
+  // Guard with a ref so dismissing the modal doesn't re-trigger the
+  // effect on the next render. `editEntryId` comes from view.params
+  // via the AdminShell prop spread; entries load async so we wait
+  // for the load to finish + the entry to be present.
+  const hasAutoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoOpenedRef.current) return;
+    if (!editEntryId) return;
+    if (entryLoad) return;
+    const entry = entries.find(e => e.entry_id === editEntryId);
+    if (!entry) return;
+    hasAutoOpenedRef.current = true;
+    openEntryEdit(entry);
+  }, [editEntryId, entryLoad, entries]);
 
   // Sprint 18.11 — open the same modal in "create" mode. The form
   // starts blank; submit POSTs to the new create endpoint. Using a

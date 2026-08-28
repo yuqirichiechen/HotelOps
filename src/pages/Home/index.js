@@ -76,6 +76,24 @@ const Home = () => {
   // `seconds` is the auto-signout countdown if enabled; if 0/disabled,
   // we keep the cards flipped for a short ack window then clear.
   const [clockEvent, setClockEvent] = useState(null);
+  // Sprint 18.13: dismissed set for the "forgot to clock out"
+  // warning banner. LocalStorage-backed keyed by entry_id so an ack
+  // survives refreshes. Session-lived state seeds from localStorage.
+  const [ackedAutoCloseIds, setAckedAutoCloseIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('hop-acked-auto-close-ids');
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch { return new Set(); }
+  });
+  const ackAutoClose = (entryId) => {
+    setAckedAutoCloseIds(prev => {
+      const next = new Set(prev);
+      next.add(entryId);
+      try { localStorage.setItem('hop-acked-auto-close-ids', JSON.stringify([...next])); }
+      catch { /* private mode / quota — banner just shows next refresh */ }
+      return next;
+    });
+  };
 
   // Sprint 16.1: focused-action overlay state. Mounts on first
   // landing post-login; tapping the big button OR "Just checking,
@@ -278,6 +296,38 @@ const Home = () => {
         <div className={`home-notif ${notif.type}`}>
           <div className="home-notif-icon">{notif.type === 'success' ? '✓' : '✕'}</div>
           <div className="home-notif-text">{notif.text}</div>
+        </div>
+      )}
+
+      {/* Sprint 18.13 — "forgot to clock out" warning. Shows once
+          per (user, entry_id) pair; ack persists in localStorage so
+          it doesn't nag across refreshes. Root cause of the sprint:
+          the previous shift went past 12h and the system auto-closed
+          it at the cap. We tell the staff so they know to clock out
+          on time today. */}
+      {data?.previousShiftAutoClosed && !ackedAutoCloseIds.has(data.previousShiftAutoClosed.entry_id) && (
+        <div className="home-auto-close-warning" role="alert">
+          <div className="home-auto-close-warning-body">
+            <div className="home-auto-close-warning-title">
+              You didn't clock out last shift
+            </div>
+            <div className="home-auto-close-warning-text">
+              Your shift on{' '}
+              <strong>
+                {new Date(data.previousShiftAutoClosed.clock_in_time)
+                  .toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+              </strong>{' '}
+              was auto-closed after 12 hours. Please remember to clock out at the end of your shift today.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="home-auto-close-warning-dismiss"
+            onClick={() => ackAutoClose(data.previousShiftAutoClosed.entry_id)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 

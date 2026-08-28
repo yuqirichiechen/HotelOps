@@ -280,6 +280,164 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-08-27 — Sprint 18.13: 12h hard shift cap + missed-clockout notif + AdminHome Edit hours
+
+Bug fix + policy addition. The GM had to manually clock out a
+staff member who forgot to clock out at ~13 hours on the clock.
+Sprint 16.4 was *supposed* to auto-close after a while (shift +
+grace, defaults to 12h). It didn't. Root cause: `runAutoClockOut`
+is lazy-evaluated, only firing when an admin hits
+`GET /api/admin/still-clocked-in`. No admin visit = no close. If
+the GM checks the dashboard once in the morning and the next open
+admin request is the following day, an overnight forgotten
+clock-in can accumulate 12-24h of ghost hours before anyone
+notices.
+
+This sprint is threefold:
+
+1. A **true background auto-close** (setInterval every 5 min) that
+   enforces a **hard 12h cap** — every open entry beyond 12h gets
+   closed at exactly `clock_in + 12h` and flagged
+   `system_generated=true`.
+2. A **one-time warning banner** on staff Home when their previous
+   shift was auto-closed — copy reminds them to clock out today.
+3. AdminHome's **"Past scheduled end"** card now covers both
+   still-on-the-clock overdue *and* recently-auto-closed (12h cap)
+   entries. Per-row action swaps from destructive "Clock out" to
+   corrective **"Edit hours"** — navigates to StaffDetail and
+   auto-opens the entry-edit modal (reusing Sprint 18.11 +
+   18.12's plumbing).
+
+**Backend** (`server/server.js`):
+
+- **New `enforceHardShiftCap(maxHours=12)`** next to the existing
+  `runAutoClockOut` (line ~1447). Single-round-trip UPDATE with
+  `RETURNING` — no per-row loop. Sets `clock_out_time =
+  clock_in_time + 12h` (backdated, so payroll sees the capped
+  duration, not "however long it took the system to notice") +
+  `system_generated = TRUE`. Named for the guarantee it provides,
+  not the action (contrast the vaguer `runAutoClockOut` from 16.4).
+- **Background scheduler** at server boot: `setInterval` every
+  5 minutes, `isRunning` guard so a slow DB tick can't overlap the
+  next fire, try/catch that logs (never throws) so transient DB
+  blips don't kill the timer. Also fires once at boot so a fresh
+  deploy doesn't leave the first 5 minutes uncovered. Non-zero
+  close batches log to `console.info` for ops visibility.
+- **Lazy triggers** for freshest possible view: `enforceHardShiftCap`
+  now also runs at the top of `/api/me/hours` (staff-side: catches
+  the caller's own forgotten clock-in before we compute their
+  hours + notif flag) and `/api/admin/still-clocked-in` (admin-side:
+  runs alongside the existing `runAutoClockOut` call).
+- **`/api/me/hours` extension.** Now returns
+  `previousShiftAutoClosed: { entry_id, clock_in_time,
+  clock_out_time, hours } | null`. Query: most recent
+  `system_generated=true` closed entry within the last 48h.
+  Client-side dismissal via localStorage (no DB writes).
+- **`/api/admin/still-clocked-in` extension.** Now returns
+  `recentlyAutoClosed[]` alongside `overdue[]`. Query: all
+  `system_generated=true` closed entries within the last 24h for
+  active/non-deleted users. Each row carries the same shape as
+  `overdue` plus a computed `hours` field for display.
+
+**Frontend — Staff Home** (`src/pages/Home/index.js` +
+`Home.css`):
+
+- Reads `previousShiftAutoClosed` from `/me/hours`.
+- Renders `.home-auto-close-warning` (soft-amber panel matching
+  the note-card palette from Sprint 18.8, in-flow above the
+  greeting — not fixed like `.home-notif` because it's persistent
+  until dismissed and shouldn't obscure the clock button).
+- Copy: "You didn't clock out last shift. Your shift on **{date}**
+  was auto-closed after 12 hours. Please remember to clock out at
+  the end of your shift today."
+- Dismiss button writes the entry_id into
+  `localStorage['hop-acked-auto-close-ids']` (an array of ids so
+  historical acks accumulate). `ackedAutoCloseIds` Set is seeded
+  from localStorage at mount so refreshes don't re-show.
+
+**Frontend — AdminHome** (`src/pages/AdminHome/index.js` +
+`AdminHome.css`):
+
+- New `recentlyAutoClosed` state, populated from the extended
+  `/still-clocked-in` response.
+- **Card metric** = `overdue.length + recentlyAutoClosed.length`.
+  Meta line adapts:
+  - Both empty → "everyone is on schedule"
+  - Both present → "N on the clock · M auto-closed"
+  - Only overdue → "still on the clock"
+  - Only auto-closed → "N auto-closed at 12h"
+- **Panel** splits into two `.adm-overdue-subhead` sections when
+  both lists have entries: **"Still on the clock"** (existing
+  rows) + **"Recently auto-closed (12h cap)"** (new rows). Empty
+  state copy updated to mention both categories + the Edit hours
+  affordance.
+- **Per-row button** is now **"Edit hours"** for both sections.
+  Click → `goTo('staffDetail', { userId: row.user_id,
+  editEntryId: row.entry_id })`. The old "Clock out" button on
+  the overdue panel is retired; the `clockOutStaff` handler stays
+  because the *on-clock* panel (a separate, active-shift view)
+  still uses it for direct force-out.
+- **Auto-closed row styling**: `.adm-overdue-row-closed` uses
+  the same amber palette as the staff-side warning (`#fffbeb` bg,
+  `#fde68a` border) so the two surfaces read as related. Reserves
+  the red hover state for still-on-clock rows (those are
+  actively ticking upward).
+
+**Frontend — StaffDetail** (`src/components/AdminPanel/StaffDetail.js`):
+
+- Accepts new prop `editEntryId` — spread automatically from
+  `view.params` via `AdminShell.js:87`, no shell changes needed.
+- New `hasAutoOpenedRef` + `useEffect([editEntryId, entryLoad,
+  entries])`: once entries load and the target entry is found,
+  fires `openEntryEdit(entry)` exactly once per mount. The ref
+  gate prevents the modal from re-opening after the admin
+  dismisses it (which would otherwise happen because
+  `openEntryEdit` sets state that re-renders and re-runs the
+  effect).
+
+**No schema changes.** `time_entries.system_generated` already
+exists (migration 023, Sprint 16.4). Both the shift+grace close
+and the new 12h hard cap set the same flag — UI doesn't need to
+differentiate. If a report ever needs to attribute closes to a
+mechanism, it can infer from `(clock_out - clock_in)`: exactly
+12h → hard cap; other durations → shift+grace.
+
+**What this sprint didn't touch.**
+
+- The existing `runAutoClockOut` (shift+grace) mechanism stays
+  in place as-is. It's still lazy-triggered from
+  `/still-clocked-in`, and only activates when
+  `auto_clock_out_enabled='true'`. For hotels that opt in, it
+  fires *earlier* than 12h (e.g. 8h shift + 4h grace = 12h — same
+  as our cap; but 4h shift + 2h grace = 6h — closes earlier).
+  The 12h hard cap is a universal safety net; the shift+grace
+  mechanism is an optional earlier close policy.
+- Per-shift/per-role custom max durations. If different roles
+  eventually need different caps (e.g. HK 10h, FD 12h), we'd
+  need a per-role/per-shift-template setting. Deferred.
+
+**Verified.** `npm run build` compiles clean (+564 B JS / +230 B
+CSS). Server `require()` parses without error (EADDRINUSE when
+probed = live dev server bound to 3001, which means the module
+loaded successfully).
+
+**End-to-end test plan for the GM:**
+
+1. Force a stuck entry: manually update DB so a test staff has
+   `clock_in_time = NOW() - INTERVAL '13 hours'`, `clock_out_time
+   = NULL`. Wait ≤5 minutes or refresh the admin dashboard —
+   should show as auto-closed at exactly 12h with
+   `system_generated = TRUE`.
+2. Log in as that staff → amber banner appears on Home with the
+   correct date. Dismiss → refresh → stays gone.
+3. As admin, click "Past scheduled end" — see the auto-closed
+   entry in the "Recently auto-closed" section. Click "Edit
+   hours" → lands on StaffDetail with the entry-edit modal open,
+   clock-in / clock-out pre-filled. Adjust clock_out, save,
+   confirm DB update + audit_logs entry.
+
+---
+
 ### 2026-06-29 — Sprint 18.12: Staff page layout polish + themed datetime picker
 
 Two follow-ups on 18.11. First fix is layout — the new "Add new

@@ -772,6 +772,20 @@
   flex-direction: column;
   gap: 8px;
 }
+/* Sprint 18.13: subhead when the panel shows both still-on-clock
+   AND recently-auto-closed sections. Small uppercase eyebrow lets
+   the admin scan the two groups without re-reading the entries. */
+.adm-overdue-subhead {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 10px 0 6px;
+}
+.adm-overdue-subhead:first-child {
+  margin-top: 0;
+}
 
 .adm-overdue-row {
   display: flex;
@@ -786,6 +800,21 @@
 .adm-overdue-row:hover {
   background: var(--bg-raised);
   border-color: rgba(197, 48, 48, 0.25);
+}
+/* Sprint 18.13: auto-closed rows read as "handled" (not "active
+   danger") — muted amber accent instead of the red hover of the
+   still-on-clock rows. The admin still needs to review them, but
+   they're not currently ticking upward. */
+.adm-overdue-row.adm-overdue-row-closed {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.adm-overdue-row.adm-overdue-row-closed:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+.adm-overdue-row.adm-overdue-row-closed .adm-overdue-over {
+  color: #92400e;
 }
 
 .adm-overdue-info {

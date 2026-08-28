@@ -74,6 +74,10 @@ const AdminHome = () => {
   const [overdue,        setOverdue]        = useState([]);
   const [overdueLoading, setOverdueLoading] = useState(true);
   const [overdueBusy,    setOverdueBusy]    = useState(null); // user_id being clocked out
+  // Sprint 18.13: recently-auto-closed entries (last 24h, system_generated=true)
+  // share the "Past scheduled end" panel with still-on-the-clock overdue rows.
+  // The panel now surfaces both categories so admin can Edit hours on either.
+  const [recentlyAutoClosed, setRecentlyAutoClosed] = useState([]);
   // Sprint 16.7: replaces window.confirm + window.alert for the
   // clock-out flow. Shape:
   //   null | { kind: 'confirm', row, ... } | { kind: 'alert', message }
@@ -140,8 +144,13 @@ const AdminHome = () => {
     setOverdueLoading(true);
     const tz = new Date().getTimezoneOffset();
     const { ok, data } = await apiFetch(`/admin/still-clocked-in?tz_offset_minutes=${tz}`);
-    if (ok && data?.success) setOverdue(data.overdue || []);
-    else                     setOverdue([]);
+    if (ok && data?.success) {
+      setOverdue(data.overdue || []);
+      setRecentlyAutoClosed(data.recentlyAutoClosed || []);
+    } else {
+      setOverdue([]);
+      setRecentlyAutoClosed([]);
+    }
     setOverdueLoading(false);
   }, []);
   useEffect(() => {
@@ -300,14 +309,23 @@ const AdminHome = () => {
       clickable: true,
     },
     {
-      // Sprint 16.3: Past-scheduled-end alert.
+      // Sprint 16.3 / 18.13: past-scheduled-end alert. The count
+      // now covers BOTH still-on-the-clock and recently-auto-closed
+      // (12h cap) entries — both are things the admin should look
+      // at and either adjust hours on or follow up with the staff.
       key:       'overdue',
       eyebrow:   'Past scheduled end',
-      value:     overdueLoading ? '—' : overdue.length,
-      meta:      overdue.length
-        ? 'still on the clock'
-        : 'everyone is on schedule',
-      tone:      overdue.length > 0 ? 'warn' : null,
+      value:     overdueLoading ? '—' : (overdue.length + recentlyAutoClosed.length),
+      meta:      overdueLoading
+        ? '…'
+        : overdue.length + recentlyAutoClosed.length === 0
+          ? 'everyone is on schedule'
+          : overdue.length > 0 && recentlyAutoClosed.length > 0
+            ? `${overdue.length} on the clock · ${recentlyAutoClosed.length} auto-closed`
+            : overdue.length > 0
+              ? 'still on the clock'
+              : `${recentlyAutoClosed.length} auto-closed at 12h`,
+      tone:      overdue.length + recentlyAutoClosed.length > 0 ? 'warn' : null,
       clickable: true,
     },
   ];
@@ -493,55 +511,103 @@ const AdminHome = () => {
     if (view === 'overdue') {
       // Sprint 16.3: list staff currently clocked in past their
       // scheduled end (by ≥ admin-set threshold minutes).
+      // Sprint 18.13: also render the recently-auto-closed (12h cap)
+      // list below. Both sections use "Edit hours" (opens the
+      // StaffDetail entry-edit modal from Sprint 18.11) instead of
+      // the old force-clock-out — admin adjusts hours to reflect
+      // what the staff actually worked.
+      const totalCount = overdue.length + recentlyAutoClosed.length;
+      const openEditHours = (row) =>
+        goTo('staffDetail', { userId: row.user_id, editEntryId: row.entry_id });
+
       return (
         <>
           <div className="adm-card-head">
             <h2 className="adm-card-title">Past scheduled end</h2>
-            {overdue.length > 0 && (
+            {totalCount > 0 && (
               <span className="adm-card-count adm-card-count-warn">
-                {overdue.length} {overdue.length === 1 ? 'person' : 'people'}
+                {totalCount} {totalCount === 1 ? 'person' : 'people'}
               </span>
             )}
           </div>
           {overdueLoading ? (
             <div className="adm-empty">Checking…</div>
-          ) : overdue.length === 0 ? (
+          ) : totalCount === 0 ? (
             <div className="adm-empty">
               Everyone is on schedule.
               <div className="adm-empty-sub">
-                Staff currently clocked in past their scheduled end appear here so you can call them or clock them out manually.
+                Staff currently clocked in past their scheduled end appear here, along with any shifts the system auto-closed at the 12-hour cap. Tap Edit hours to adjust their recorded time.
               </div>
             </div>
           ) : (
-            <ul className="adm-overdue-list">
-              {overdue.map(row => (
-                <li key={row.entry_id} className="adm-overdue-row">
-                  <div
-                    className="adm-overdue-info"
-                    onClick={() => goTo('staffDetail', { userId: row.user_id })}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="adm-overdue-name">{row.name}</div>
-                    <div className="adm-overdue-meta">
-                      {row.department || 'Unassigned'}
-                      {' · '}
-                      Scheduled to end {fmtClock(row.scheduled_end)}
-                      {' · '}
-                      <span className="adm-overdue-over">{fmtOver(row.minutes_over)}</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="adm-overdue-btn"
-                    onClick={(e) => { e.stopPropagation(); clockOutStaff(row); }}
-                    disabled={overdueBusy === row.user_id}
-                  >
-                    {overdueBusy === row.user_id ? '…' : 'Clock out'}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {overdue.length > 0 && (
+                <>
+                  <div className="adm-overdue-subhead">Still on the clock</div>
+                  <ul className="adm-overdue-list">
+                    {overdue.map(row => (
+                      <li key={row.entry_id} className="adm-overdue-row">
+                        <div
+                          className="adm-overdue-info"
+                          onClick={() => goTo('staffDetail', { userId: row.user_id })}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="adm-overdue-name">{row.name}</div>
+                          <div className="adm-overdue-meta">
+                            {row.department || 'Unassigned'}
+                            {' · '}
+                            Scheduled to end {fmtClock(row.scheduled_end)}
+                            {' · '}
+                            <span className="adm-overdue-over">{fmtOver(row.minutes_over)}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="adm-overdue-btn"
+                          onClick={(e) => { e.stopPropagation(); openEditHours(row); }}
+                        >
+                          Edit hours
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {recentlyAutoClosed.length > 0 && (
+                <>
+                  <div className="adm-overdue-subhead">Recently auto-closed (12h cap)</div>
+                  <ul className="adm-overdue-list">
+                    {recentlyAutoClosed.map(row => (
+                      <li key={row.entry_id} className="adm-overdue-row adm-overdue-row-closed">
+                        <div
+                          className="adm-overdue-info"
+                          onClick={() => goTo('staffDetail', { userId: row.user_id })}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="adm-overdue-name">{row.name}</div>
+                          <div className="adm-overdue-meta">
+                            {row.department || 'Unassigned'}
+                            {' · '}
+                            Closed {fmtClock(row.clock_out_time)}
+                            {' · '}
+                            <span className="adm-overdue-over">{row.hours}h logged</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="adm-overdue-btn"
+                          onClick={(e) => { e.stopPropagation(); openEditHours(row); }}
+                        >
+                          Edit hours
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
           )}
         </>
       );
