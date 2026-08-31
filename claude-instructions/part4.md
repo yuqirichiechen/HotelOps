@@ -280,6 +280,90 @@ the UX, optimize the plumbing.
 
 ## 3. Sprint logs (17.1 → present)
 
+### 2026-08-30 — Sprint 18.14: forgot-to-clockout banner — i18n + Acknowledge button
+
+Small polish on 18.13's warning banner. Two changes:
+
+1. **Multilingual copy** (en/es/zh) driven by the staff's
+   `preferred_language`. Same i18n system Sprint 16.2 built —
+   just three new keys wired through `useT()`.
+2. **"Acknowledge" button** replaces the discreet ✕ dismiss
+   affordance. The interaction now reads as an intentional "I
+   saw this and I'll do better" rather than "get this out of my
+   way." Also gives the button real weight so mid-language readers
+   who can't parse the text still know how to advance.
+
+**Copy rewrite.** The 18.13 body was one long English sentence.
+18.14 reworks it into three tight beats so any of the three
+languages can render cleanly in the same panel width:
+
+- **What happened**: shift on {date} auto-closed after 12h.
+- **Who to talk to**: ask your manager to fix your time.
+- **What to do next time**: remember to clock out.
+
+Title becomes a standalone heading ("You forgot to clock out")
+so the eye picks up the situation before parsing the body.
+
+**Translations added** (`src/i18n/index.js`):
+
+| key                       | en                                                                                                                       | es                                                                                                                                                          | zh                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `forgot_clockout.title`   | You forgot to clock out                                                                                                  | Olvidaste marcar salida                                                                                                                                     | 您忘记下班打卡                                                                |
+| `forgot_clockout.body`    | Your shift on {date} was auto-closed after 12 hours. Ask your manager to fix your time, and remember to clock out next time. | Tu turno del {date} se cerró automáticamente a las 12 horas. Pide a tu gerente que corrija tu tiempo y recuerda marcar salida la próxima vez.               | 您 {date} 的班次在 12 小时后自动结束。请联系经理修改工时，并记得下次下班打卡。 |
+| `forgot_clockout.ack`     | Acknowledge                                                                                                              | Entendido                                                                                                                                                   | 我知道了                                                                       |
+
+**Frontend** (`src/pages/Home/index.js`):
+
+- Import extended: `useLang` alongside `useT` — we need the
+  active language code (not just the `t` function) to pick a
+  date locale.
+- `LOCALE_FOR_LANG = { en: 'en-US', es: 'es-ES', zh: 'zh-CN' }`
+  drives `toLocaleDateString`. Undefined mapping falls back to
+  the browser default (defensive; only en/es/zh are supported).
+- Banner interpolates the localized date string into the body,
+  then splits on the resolved date to re-inject a `<strong>`
+  wrap. This works regardless of where the translation places
+  the `{date}` token in its sentence (Spanish keeps it after
+  "del", Chinese keeps it before "的班次" — both fine).
+- Renamed dismiss handler visually: `.home-auto-close-warning-ack`
+  is now a solid-amber button in a right-aligned actions row
+  below the body (was: `.home-auto-close-warning-dismiss` ✕ on
+  the right side of the row). The dismissal logic is unchanged —
+  same `ackedAutoCloseIds` set + `localStorage['hop-acked-auto-
+  close-ids']` key from 18.13. Ack persists across refreshes;
+  a NEW auto-close event (different `entry_id`) renders a fresh
+  banner automatically because the check is keyed on entry_id.
+
+**CSS** (`src/pages/Home/Home.css`):
+
+- `.home-auto-close-warning` — flipped from row layout (title/body
+  left, ✕ right) to column layout (title / body / actions row).
+- `.home-auto-close-warning-body` wrapper removed (the flex-column
+  parent handles spacing now).
+- New `.home-auto-close-warning-actions` (right-aligned action
+  row) + `.home-auto-close-warning-ack` (solid amber button on
+  the panel's amber field — `#92400e` on `#fffbeb`). Hover
+  darkens to `#78350f`. Focus-visible outline in the same tone.
+
+**What this didn't touch.** Everything from 18.13 stays:
+
+- Server `enforceHardShiftCap` background scheduler + lazy
+  triggers.
+- `/api/me/hours` `previousShiftAutoClosed` response field.
+- `/api/admin/still-clocked-in` `recentlyAutoClosed` list.
+- localStorage-based dismissal keyed on `entry_id` (this is
+  what already gives the user the "re-shows on the next new
+  auto-close" behavior they wanted — a fresh entry_id has never
+  been ack'd, so the banner appears).
+- Admin-side Edit hours flow.
+
+**Verified.** `npm run build` compiles clean (+406 B JS / +26 B
+CSS). No server changes this sprint. The i18n system was
+already in place from Sprint 16.2 — adding three new keys per
+language costs almost nothing.
+
+---
+
 ### 2026-08-27 — Sprint 18.13: 12h hard shift cap + missed-clockout notif + AdminHome Edit hours
 
 Bug fix + policy addition. The GM had to manually clock out a

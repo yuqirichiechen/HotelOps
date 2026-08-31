@@ -69,6 +69,15 @@ const dict = {
     'notif.clock_in_failed':  'Clock in failed',
     'notif.clock_out_failed': 'Clock out failed',
 
+    // Sprint 18.14: forgot-to-clockout warning banner. Fires on
+    // Home when the staff's previous shift was auto-closed at the
+    // 12h cap. Copy trimmed for scan-ability — three beats
+    // (what happened / who to talk to / what to do next time)
+    // instead of one long sentence.
+    'forgot_clockout.title': 'You forgot to clock out',
+    'forgot_clockout.body':  'Your shift on {date} was auto-closed after 12 hours. Ask your manager to fix your time, and remember to clock out next time.',
+    'forgot_clockout.ack':   'Acknowledge',
+
     // Login screen (staff-facing only — admin login stays English)
     'login.title':            'Sign in',
     'login.subtitle':         'Enter your number or PIN',
@@ -118,6 +127,10 @@ const dict = {
     'notif.clock_in_failed':  'Error al marcar entrada',
     'notif.clock_out_failed': 'Error al marcar salida',
 
+    'forgot_clockout.title': 'Olvidaste marcar salida',
+    'forgot_clockout.body':  'Tu turno del {date} se cerró automáticamente a las 12 horas. Pide a tu gerente que corrija tu tiempo y recuerda marcar salida la próxima vez.',
+    'forgot_clockout.ack':   'Entendido',
+
     'login.title':            'Iniciar sesión',
     'login.subtitle':         'Ingresa tu número o PIN',
     'login.enter_pin':        'Ingresa tu PIN',
@@ -165,6 +178,10 @@ const dict = {
     'notif.clocked_out':      '下班打卡成功！',
     'notif.clock_in_failed':  '上班打卡失败',
     'notif.clock_out_failed': '下班打卡失败',
+
+    'forgot_clockout.title': '您忘记下班打卡',
+    'forgot_clockout.body':  '您 {date} 的班次在 12 小时后自动结束。请联系经理修改工时，并记得下次下班打卡。',
+    'forgot_clockout.ack':   '我知道了',
 
     'login.title':            '登录',
     'login.subtitle':         '请输入您的号码或密码',

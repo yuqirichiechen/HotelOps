@@ -5,7 +5,7 @@ import { useAuth, apiFetch } from '../../auth';
 import ClockWidget from '../../components/TimeClock/ClockWidget';
 import AutoSignoutBanner from '../../components/shared/AutoSignoutBanner';
 import FocusedAction from '../../components/TimeClock/FocusedAction';
-import { useT } from '../../i18n';
+import { useT, useLang } from '../../i18n';
 import '../../components/TimeClock/TimeClock.css'; // for .clock-widget styles
 import './Home.css';
 
@@ -58,6 +58,7 @@ const Home = () => {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const t = useT();
+  const { lang } = useLang();
 
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -299,35 +300,49 @@ const Home = () => {
         </div>
       )}
 
-      {/* Sprint 18.13 — "forgot to clock out" warning. Shows once
-          per (user, entry_id) pair; ack persists in localStorage so
-          it doesn't nag across refreshes. Root cause of the sprint:
-          the previous shift went past 12h and the system auto-closed
-          it at the cap. We tell the staff so they know to clock out
-          on time today. */}
+      {/* Sprint 18.13 / 18.14 — "forgot to clock out" warning. Shows
+          once per (user, entry_id) pair; ack persists in localStorage
+          so it doesn't nag across refreshes. Root cause of 18.13: the
+          previous shift went past 12h and the system auto-closed it
+          at the cap. 18.14: copy is now translated (en/es/zh) using
+          the staff's preferred_language, and dismissal is via a
+          proper "Acknowledge" button instead of an ✕ affordance —
+          the interaction reads as "I saw this and I'll do better"
+          rather than "get this out of my way". */}
       {data?.previousShiftAutoClosed && !ackedAutoCloseIds.has(data.previousShiftAutoClosed.entry_id) && (
         <div className="home-auto-close-warning" role="alert">
-          <div className="home-auto-close-warning-body">
-            <div className="home-auto-close-warning-title">
-              You didn't clock out last shift
-            </div>
-            <div className="home-auto-close-warning-text">
-              Your shift on{' '}
-              <strong>
-                {new Date(data.previousShiftAutoClosed.clock_in_time)
-                  .toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
-              </strong>{' '}
-              was auto-closed after 12 hours. Please remember to clock out at the end of your shift today.
-            </div>
+          <div className="home-auto-close-warning-title">
+            {t('forgot_clockout.title')}
           </div>
-          <button
-            type="button"
-            className="home-auto-close-warning-dismiss"
-            onClick={() => ackAutoClose(data.previousShiftAutoClosed.entry_id)}
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
+          <div className="home-auto-close-warning-text">
+            {(() => {
+              // Map i18n lang → date locale. Falls back to the browser's
+              // default when a lang isn't in the table (defensive; only
+              // en/es/zh are supported today).
+              const LOCALE_FOR_LANG = { en: 'en-US', es: 'es-ES', zh: 'zh-CN' };
+              const locale = LOCALE_FOR_LANG[lang];
+              const dateStr = new Date(data.previousShiftAutoClosed.clock_in_time)
+                .toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+              const body = t('forgot_clockout.body', { date: dateStr });
+              // Bold the interpolated date so scanning the panel
+              // surfaces the "when" first. Split on the resolved
+              // date substring so we don't lose the emphasis when
+              // translations reorder the sentence.
+              const parts = body.split(dateStr);
+              return parts.length === 2
+                ? <>{parts[0]}<strong>{dateStr}</strong>{parts[1]}</>
+                : body;
+            })()}
+          </div>
+          <div className="home-auto-close-warning-actions">
+            <button
+              type="button"
+              className="home-auto-close-warning-ack"
+              onClick={() => ackAutoClose(data.previousShiftAutoClosed.entry_id)}
+            >
+              {t('forgot_clockout.ack')}
+            </button>
+          </div>
         </div>
       )}
 
