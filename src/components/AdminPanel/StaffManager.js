@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { apiFetch } from '../../auth';
+import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../shared/DropdownSelect';
 
@@ -219,8 +219,8 @@ const StaffManager = () => {
   const reload = async () => {
     setLoading(true);
     const [emp, dept] = await Promise.all([
-      fetch('/api/admin/employees').then(r => r.json()),
-      fetch('/api/admin/departments').then(r => r.json()),
+      authFetch('/api/admin/employees').then(r => r.json()),
+      authFetch('/api/admin/departments').then(r => r.json()),
     ]);
     if (emp.success)  setEmployees(emp.employees);
     if (dept.success) setDepartments(dept.departments);
@@ -247,7 +247,7 @@ const StaffManager = () => {
   // user exports after changing the setting.
   useEffect(() => {
     if (!csvOpen) return;
-    fetch('/api/admin/settings')
+    authFetch('/api/admin/settings')
       .then(r => r.json())
       .then(data => {
         if (!data?.success) return;
@@ -270,7 +270,7 @@ const StaffManager = () => {
     }
     setFormLoading(true);
     setFormError('');
-    const res  = await fetch('/api/admin/employees', {
+    const res  = await authFetch('/api/admin/employees', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

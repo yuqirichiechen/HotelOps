@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authFetch } from '../../auth';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ const ShiftsCalendar = ({ employee, onBack }) => {
     const dateStr = fmtDate(selectedDate);
     setLoading(true);
     setPopup(null);
-    fetch(`/api/shifts/daily?date=${dateStr}&userId=${employee.user_id}`)
+    authFetch(`/api/shifts/daily?date=${dateStr}`)
       .then(r => r.json())
       .then(data => {
         if (data.success) { setSchedules(data.schedules); setVisibility(data.visibility); }

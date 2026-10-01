@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../../auth';
+import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import HopDateTimePicker from '../shared/HopDateTimePicker';
 
@@ -142,7 +142,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
 
   const reloadEntries = useCallback(async () => {
     setEntryLoad(true);
-    const res  = await fetch(`/api/admin/employees/${userId}/time-entries`);
+    const res  = await authFetch(`/api/admin/employees/${userId}/time-entries`);
     const data = await res.json();
     if (data.success) setEntries(data.timeEntries);
     setEntryLoad(false);
@@ -151,7 +151,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
   useEffect(() => {
     reloadEmployee();
     reloadEntries();
-    fetch('/api/admin/departments').then(r => r.json()).then(d => {
+    authFetch('/api/admin/departments').then(r => r.json()).then(d => {
       if (d.success) setDepartments(d.departments);
     });
   }, [reloadEmployee, reloadEntries]);
@@ -226,7 +226,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
     }
     setSaving(true);
     setError('');
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}`, {
+    const res  = await authFetch(`/api/admin/employees/${emp.user_id}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -255,7 +255,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
   const handleToggle = async () => {
     setToggling(true);
     setError('');
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}/status`, {
+    const res  = await authFetch(`/api/admin/employees/${emp.user_id}/status`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !emp.active }),
@@ -273,7 +273,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
   const handleDelete = async () => {
     setDeleting(true);
     setError('');
-    const res  = await fetch(`/api/admin/employees/${emp.user_id}`, { method: 'DELETE' });
+    const res  = await authFetch(`/api/admin/employees/${emp.user_id}`, { method: 'DELETE' });
     const data = await res.json();
     setDeleting(false);
     if (data.success) goTo('staff');

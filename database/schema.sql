@@ -147,7 +147,7 @@ CREATE INDEX idx_time_entries_open     ON time_entries(user_id)
 
 CREATE TABLE approval_requests (
   request_id    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  entry_id      UUID         NOT NULL REFERENCES time_entries(entry_id),
+  entry_id      UUID         NOT NULL REFERENCES time_entries(entry_id) ON DELETE CASCADE,  -- Sprint 19.3 (migration 026)
   requested_by  UUID         NOT NULL REFERENCES users(user_id),
   approved_by   UUID         REFERENCES users(user_id),
   original_data JSONB,

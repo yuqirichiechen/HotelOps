@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { apiFetch, useAuth } from '../../../auth';
+import { apiFetch, useAuth, authFetch } from '../../../auth';
 import { useView } from '../../../shells/ViewContext';
 import YearView from './YearView';
 import MonthView from './MonthView';
@@ -251,9 +251,9 @@ const SchedulingManager = () => {
   // Load base data once
   useEffect(() => {
     Promise.all([
-      fetch('/api/admin/employees').then(r => r.json()),
-      fetch('/api/admin/departments').then(r => r.json()),
-      fetch('/api/admin/shift-templates').then(r => r.json()),
+      authFetch('/api/admin/employees').then(r => r.json()),
+      authFetch('/api/admin/departments').then(r => r.json()),
+      authFetch('/api/admin/shift-templates').then(r => r.json()),
     ]).then(([emp, dept, tmpl]) => {
       if (emp.success)  setEmployees(emp.employees.filter(e => e.active));
       if (dept.success) setDepartments(dept.departments);
@@ -265,7 +265,7 @@ const SchedulingManager = () => {
   // GET, no auth header needed (the route is already behind admin
   // session middleware).
   useEffect(() => {
-    fetch('/api/admin/settings')
+    authFetch('/api/admin/settings')
       .then(r => r.json())
       .then(data => {
         if (data && data.success && data.settings) {
@@ -487,7 +487,7 @@ const SchedulingManager = () => {
   useEffect(() => {
     if (view !== 'day' && view !== 'week') return;
     let cancelled = false;
-    fetch(`/api/admin/schedule?start=${fetchRange.start}&end=${fetchRange.end}`)
+    authFetch(`/api/admin/schedule?start=${fetchRange.start}&end=${fetchRange.end}`)
       .then(r => r.json())
       .then(d => {
         if (cancelled) return;
@@ -526,7 +526,7 @@ const SchedulingManager = () => {
   // ── Save / delete / move (unchanged from prior sprint) ──────────────────
   const handleSave = async ({ startTime, endTime, shiftId, notes }) => {
     if (modal?.type === 'assign') {
-      const res = await fetch('/api/admin/schedule', {
+      const res = await authFetch('/api/admin/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -542,7 +542,7 @@ const SchedulingManager = () => {
       if (!result.success) return result.message;
     } else if (modal?.type === 'edit') {
       const s   = modal.schedule;
-      const res = await fetch(`/api/admin/schedule/${s.schedule_id}`, {
+      const res = await authFetch(`/api/admin/schedule/${s.schedule_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -563,7 +563,7 @@ const SchedulingManager = () => {
   };
 
   const handleDelete = async (scheduleId) => {
-    await fetch(`/api/admin/schedule/${scheduleId}`, { method: 'DELETE' });
+    await authFetch(`/api/admin/schedule/${scheduleId}`, { method: 'DELETE' });
     setModal(null);
     loadSchedules();
   };
@@ -577,7 +577,7 @@ const SchedulingManager = () => {
     let ok = 0, fail = 0, lastErr = '';
     for (const d of dates) {
       try {
-        const res = await fetch('/api/admin/schedule', {
+        const res = await authFetch('/api/admin/schedule', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -604,7 +604,7 @@ const SchedulingManager = () => {
   const handleMove = async (scheduleId, newUserId, newDate) => {
     const s = schedules.find(sc => sc.schedule_id === scheduleId);
     if (!s) return;
-    await fetch(`/api/admin/schedule/${scheduleId}`, {
+    await authFetch(`/api/admin/schedule/${scheduleId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

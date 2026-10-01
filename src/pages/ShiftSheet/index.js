@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
-import { apiFetch } from '../../auth';
+import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../../components/shared/DropdownSelect';
 import StaffAvatar from '../../components/shared/StaffAvatar';
@@ -144,8 +144,8 @@ const ShiftSheet = () => {
     setLoading(true);
     const [sheet, emp, dept] = await Promise.all([
       apiFetch(`/admin/sheet/week?week_start=${weekStart}`),
-      fetch('/api/admin/employees').then(r => r.json()),
-      fetch('/api/admin/departments').then(r => r.json()),
+      authFetch('/api/admin/employees').then(r => r.json()),
+      authFetch('/api/admin/departments').then(r => r.json()),
     ]);
     if (sheet.ok && sheet.data?.success) setCells(sheet.data.cells || []);
     if (emp?.success)  setEmployees(emp.employees.filter(e => e.active) || []);
@@ -335,7 +335,7 @@ const ShiftSheet = () => {
       if (cancelled) return;
       if (ok && data?.success) setStatusCodes(data.codes || []);
     });
-    fetch('/api/admin/shift-templates').then(r => r.json()).then(d => {
+    authFetch('/api/admin/shift-templates').then(r => r.json()).then(d => {
       if (cancelled) return;
       if (d?.success) setTemplates(d.templates || []);
     }).catch(() => {});
@@ -1347,7 +1347,7 @@ const ShiftSheet = () => {
           departments={departments}
           onClose={() => setShowTemplates(false)}
           onRefresh={async () => {
-            const d = await fetch('/api/admin/shift-templates').then(r => r.json()).catch(() => null);
+            const d = await authFetch('/api/admin/shift-templates').then(r => r.json()).catch(() => null);
             if (d?.success) setTemplates(d.templates || []);
           }}
         />

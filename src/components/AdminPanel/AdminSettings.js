@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch, useAuth } from '../../auth';
+import { apiFetch, useAuth, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 
 // Sprint 16.7: collapsible main-category wrapper. The h3 header
@@ -386,7 +386,7 @@ const AdminSettings = () => {
   const [editingDeptDraft, setEditingDeptDraft] = useState({ name: '', color: '' });
 
   const refreshDepts = async () => {
-    const res = await fetch('/api/admin/departments').then(r => r.json()).catch(() => null);
+    const res = await authFetch('/api/admin/departments').then(r => r.json()).catch(() => null);
     if (res?.success) setDepts(res.departments || []);
   };
   useEffect(() => { refreshDepts(); }, []);
@@ -456,7 +456,7 @@ const AdminSettings = () => {
   };
 
   useEffect(() => {
-    fetch('/api/admin/settings')
+    authFetch('/api/admin/settings')
       .then(r => r.json())
       .then(data => {
         if (data.success) {
@@ -508,7 +508,7 @@ const AdminSettings = () => {
     setSaving(true);
     setSaved(false);
     setError('');
-    const res  = await fetch('/api/admin/settings', {
+    const res  = await authFetch('/api/admin/settings', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({

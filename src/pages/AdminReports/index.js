@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../../auth';
+import { useAuth, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import NotesCenter from '../../components/Calendar/atoms/NotesCenter';
 import NotesDrawer from '../../components/Calendar/atoms/NotesDrawer';
@@ -43,7 +43,7 @@ const AdminReports = () => {
   const drawerRef                     = useRef(null);
 
   useEffect(() => {
-    fetch('/api/admin/departments')
+    authFetch('/api/admin/departments')
       .then(r => r.json())
       .then(d => { if (d?.success) setDepartments(d.departments || []); })
       .catch(() => {});

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { apiFetch, useAuth } from '../../auth';
+import { apiFetch, useAuth, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import CalendarWeekView from '../../components/Calendar/views/CalendarWeekView';
 import NotesDrawer from '../../components/Calendar/atoms/NotesDrawer';
@@ -103,11 +103,11 @@ const StaffCalendar = () => {
     if (user?.user_id) params.set('userId', user.user_id);
     const [schedResp, empResp, deptResp] = await Promise.all([
       apiFetch(`/shifts/range?${params.toString()}`),
-      // Sprint 10.1 caveat: reusing the admin endpoints because they
-      // happen to be unauthed today. A proper staff-scoped variant
-      // would be cleaner; tracked in the iteration log.
-      fetch('/api/admin/employees').then(r => r.json()).catch(() => ({ success: false })),
-      fetch('/api/admin/departments').then(r => r.json()).catch(() => ({ success: false })),
+      // Sprint 19.4: staff-safe directory (id / name / role / department
+      // only — no phone, pay rate or birthday). The admin employees
+      // endpoint is admin-only now.
+      authFetch('/api/directory').then(r => r.json()).catch(() => ({ success: false })),
+      authFetch('/api/admin/departments').then(r => r.json()).catch(() => ({ success: false })),
     ]);
     if (schedResp.data?.success) setSchedules(schedResp.data.schedules || []);
     if (empResp?.success)        setEmployees(empResp.employees || []);

@@ -4,6 +4,7 @@ import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
 import { isDevAuthed, clearDevAuth } from '../Login/DevLogin';
 import '../Login/Login.css';
 import '../../components/shared/HotelOpsLogo.css';
+import { authFetch } from '../../auth';
 
 // Sprint 9.2: minimal dev panel. Just one knob for now —
 // tenant_logo_dark_strategy. Future sprints add more platform-wide
@@ -52,11 +53,17 @@ const DevPanel = () => {
     setSaved(false);
     setErr('');
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await authFetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_logo_dark_strategy: strategy }),
       });
+      // Sprint 19.4: /api/admin/settings is admin-only now; the /dev gate
+      // is client-side only (dev/dev), so a dev with no admin session
+      // lands here with a 401/403 — say so instead of "Missing token".
+      if (res.status === 401 || res.status === 403) {
+        throw new Error('Saving needs an admin session. Sign in as an admin, then try again.');
+      }
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Save failed');
       setSaved(true);

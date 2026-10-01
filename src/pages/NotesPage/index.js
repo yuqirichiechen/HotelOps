@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../../auth';
+import { useAuth, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import NotesDrawer from '../../components/Calendar/atoms/NotesDrawer';
 import '../../components/Calendar/Calendar.css';
@@ -39,7 +39,7 @@ const NotesPage = ({ role = 'staff', date }) => {
 
   const [departments, setDepartments] = useState([]);
   useEffect(() => {
-    fetch('/api/admin/departments')
+    authFetch('/api/admin/departments')
       .then(r => r.json())
       .then(d => { if (d?.success) setDepartments(d.departments || []); })
       .catch(() => {});

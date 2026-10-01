@@ -16,6 +16,26 @@ const { runScrape: runForecastScrape } = require('./forecast/runScrape');
 // folio balance / stay history that bulk scrape doesn't carry.
 const { createAgilysysClient } = require('./agilysys/client');
 
+// Sprint 19.4: Express 4 does not catch rejected promises from async
+// handlers, so one DB error in a handler without its own try/catch
+// (dashboard, handoff-notes, …) became an unhandled rejection that
+// KILLED the whole Node process (found while testing with the DB down).
+// Same trick as the `express-async-errors` package: forward a rejected
+// handler promise to next(err); the error middleware below answers 500.
+{
+  const Layer = require('express/lib/router/layer');
+  Layer.prototype.handle_request = function (req, res, next) {
+    const fn = this.handle;
+    if (fn.length > 3) return next();
+    try {
+      const out = fn(req, res, next);
+      if (out && typeof out.catch === 'function') out.catch(next);
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
 const app = express();
 
 // CORS only needed for local dev (frontend and API are same-origin on Koyeb)
@@ -423,7 +443,7 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 
 // ── Departments ───────────────────────────────────────────────────────────────
 
-app.get('/api/admin/departments', async (req, res) => {
+app.get('/api/admin/departments', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM departments ORDER BY name');
     return res.json({ success: true, departments: rows });
@@ -654,103 +674,10 @@ app.delete('/api/admin/status-codes/:id', requireAuth, requireRole('admin'), asy
   }
 });
 
-// ── Employee clock-in / out ───────────────────────────────────────────────────
-
-app.post('/api/authenticate', async (req, res) => {
-  const { phoneNumber } = req.body;
-  if (!phoneNumber) return res.status(400).json({ success: false, message: 'Phone number required' });
-
-  try {
-    const { rows } = await pool.query(
-      `SELECT user_id, name, phone_number, role, hire_date
-       FROM users WHERE phone_number = $1 AND active = true`,
-      [phoneNumber]
-    );
-    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
-
-    const user = rows[0];
-    const { rows: open } = await pool.query(
-      `SELECT entry_id, clock_in_time FROM time_entries
-       WHERE user_id = $1 AND clock_out_time IS NULL
-       ORDER BY clock_in_time DESC LIMIT 1`,
-      [user.user_id]
-    );
-
-    return res.json({
-      success: true,
-      employee: {
-        ...user,
-        clocked_in:    open.length > 0,
-        clock_in_time: open.length > 0 ? open[0].clock_in_time : null,
-      }
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
-
-app.post('/api/clock-in', async (req, res) => {
-  const { phoneNumber } = req.body;
-  if (!phoneNumber) return res.status(400).json({ success: false, message: 'Phone number required' });
-
-  try {
-    const { rows: users } = await pool.query(
-      'SELECT user_id FROM users WHERE phone_number = $1 AND active = true',
-      [phoneNumber]
-    );
-    if (!users.length) return res.status(404).json({ success: false, message: 'Employee not found' });
-
-    const userId = users[0].user_id;
-
-    const { rows: open } = await pool.query(
-      'SELECT entry_id FROM time_entries WHERE user_id = $1 AND clock_out_time IS NULL',
-      [userId]
-    );
-    if (open.length) return res.status(400).json({ success: false, message: 'Already clocked in' });
-
-    const { rows } = await pool.query(
-      'INSERT INTO time_entries (user_id, clock_in_time) VALUES ($1, NOW()) RETURNING *',
-      [userId]
-    );
-    return res.json({ success: true, entry: rows[0] });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
-
-app.post('/api/clock-out', async (req, res) => {
-  const { phoneNumber } = req.body;
-  if (!phoneNumber) return res.status(400).json({ success: false, message: 'Phone number required' });
-
-  try {
-    const { rows: users } = await pool.query(
-      'SELECT user_id FROM users WHERE phone_number = $1 AND active = true',
-      [phoneNumber]
-    );
-    if (!users.length) return res.status(404).json({ success: false, message: 'Employee not found' });
-
-    const userId = users[0].user_id;
-
-    const { rows: open } = await pool.query(
-      `SELECT entry_id FROM time_entries
-       WHERE user_id = $1 AND clock_out_time IS NULL
-       ORDER BY clock_in_time DESC LIMIT 1`,
-      [userId]
-    );
-    if (!open.length) return res.status(400).json({ success: false, message: 'Not currently clocked in' });
-
-    const { rows } = await pool.query(
-      'UPDATE time_entries SET clock_out_time = NOW() WHERE entry_id = $1 RETURNING *',
-      [open[0].entry_id]
-    );
-    return res.json({ success: true, entry: rows[0] });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
+// Sprint 19.4: the legacy phone-number-only /clock-in, /clock-out,
+// /authenticate and /user/:phone/history routes were removed — they let
+// anyone with a phone number punch someone in/out or read their history.
+// Staff clock via /clock-in-self / /clock-out-self (token identity).
 
 // ── Me (auth-based clock + dashboard data) ──────────────────────────────────
 
@@ -1095,35 +1022,10 @@ app.get('/api/me/history', requireAuth, async (req, res) => {
 
 // ── User: shift history (legacy — phone-based, kept for old clients) ────────
 
-app.get('/api/user/:phone/history', async (req, res) => {
-  try {
-    const { rows: users } = await pool.query(
-      'SELECT user_id FROM users WHERE phone_number = $1 AND active = true',
-      [req.params.phone]
-    );
-    if (!users.length) return res.status(404).json({ success: false, message: 'Not found' });
-
-    const { rows } = await pool.query(
-      `SELECT entry_id, clock_in_time, clock_out_time, system_generated,
-         CASE WHEN clock_out_time IS NOT NULL
-           THEN ROUND(EXTRACT(EPOCH FROM (clock_out_time - clock_in_time)) / 60)
-           ELSE NULL
-         END AS total_minutes
-       FROM time_entries
-       WHERE user_id = $1 AND clock_in_time >= NOW() - INTERVAL '4 weeks'
-       ORDER BY clock_in_time DESC`,
-      [users[0].user_id]
-    );
-    return res.json({ success: true, entries: rows });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
 
 // ── Admin: employees ──────────────────────────────────────────────────────────
 
-app.get('/api/admin/employees', async (req, res) => {
+app.get('/api/admin/employees', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     // Read OT threshold so per-row pending_ot_hours stays consistent with the
     // performance dashboard's definition. Falls back to 40h if missing.
@@ -1181,7 +1083,7 @@ app.get('/api/admin/employees', async (req, res) => {
   }
 });
 
-app.get('/api/admin/employees/:id', async (req, res) => {
+app.get('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code, u.birthday,
@@ -1203,7 +1105,7 @@ app.get('/api/admin/employees/:id', async (req, res) => {
   }
 });
 
-app.post('/api/admin/employees', async (req, res) => {
+app.post('/api/admin/employees', requireAuth, requireRole('admin'), async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
           phoneNumber, username, employeeCode, birthday,
           preferredLanguage } = req.body;
@@ -1233,7 +1135,7 @@ app.post('/api/admin/employees', async (req, res) => {
   }
 });
 
-app.patch('/api/admin/employees/:id/status', async (req, res) => {
+app.patch('/api/admin/employees/:id/status', requireAuth, requireRole('admin'), async (req, res) => {
   const { active } = req.body;
   try {
     const { rows } = await pool.query(
@@ -1248,7 +1150,7 @@ app.patch('/api/admin/employees/:id/status', async (req, res) => {
   }
 });
 
-app.put('/api/admin/employees/:id', async (req, res) => {
+app.put('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
           phoneNumber, username, employeeCode, birthday,
           preferredLanguage } = req.body;
@@ -1280,7 +1182,7 @@ app.put('/api/admin/employees/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/admin/employees/:id', async (req, res) => {
+app.delete('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
   // Sprint 11.1.2: soft delete. Hard DELETE explodes on the
   // time_entries.user_id FK (payroll/audit history we can't drop).
   // Setting `deleted_at = NOW()` hides the user from every UI
@@ -2278,8 +2180,9 @@ app.delete('/api/admin/time-entries/:id', requireAuth, requireRole('admin'), asy
   if (!UUID_RE.test(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid entry id' });
   }
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
     const { rows } = await client.query(
       'SELECT * FROM time_entries WHERE entry_id = $1 FOR UPDATE',
@@ -2303,11 +2206,30 @@ app.delete('/api/admin/time-entries/:id', requireAuth, requireRole('admin'), asy
     await client.query('COMMIT');
     return res.json({ success: true, deleted: req.params.id });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (client) await client.query('ROLLBACK').catch(() => {});
     console.error('[time-entry:delete]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   } finally {
-    client.release();
+    if (client) client.release();
+  }
+});
+
+// Sprint 19.4: minimal staff directory for any logged-in user (the staff
+// Calendar needs names + departments to render the week matrix). Replaces
+// that page's use of GET /api/admin/employees, which is admin-only now and
+// carries phone / pay rate / birthday. Only non-sensitive columns here.
+app.get('/api/directory', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT user_id, name, role, department_id, active
+         FROM users
+        WHERE deleted_at IS NULL
+        ORDER BY name`
+    );
+    return res.json({ success: true, employees: rows });
+  } catch (err) {
+    console.error('[directory]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
@@ -2354,7 +2276,7 @@ app.post('/api/admin/employees/:id/pin/reset', requireAuth, requireRole('admin')
 
 // ── Admin: time entries ───────────────────────────────────────────────────────
 
-app.get('/api/admin/employees/:id/time-entries', async (req, res) => {
+app.get('/api/admin/employees/:id/time-entries', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT * FROM time_entries WHERE user_id = $1 ORDER BY clock_in_time DESC',
@@ -2453,7 +2375,7 @@ app.post('/api/admin/employees/:id/time-entries', requireAuth, requireRole('admi
 
 // ── Admin: scheduling ─────────────────────────────────────────────────────────
 
-app.get('/api/admin/shift-templates', async (req, res) => {
+app.get('/api/admin/shift-templates', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT s.*, d.name AS department_name
@@ -2550,7 +2472,7 @@ app.delete('/api/admin/shift-templates/:id', requireAuth, requireRole('admin'), 
   }
 });
 
-app.get('/api/admin/schedule', async (req, res) => {
+app.get('/api/admin/schedule', requireAuth, requireRole('admin'), async (req, res) => {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ success: false, message: 'start and end dates required' });
   try {
@@ -2583,7 +2505,7 @@ app.get('/api/admin/schedule', async (req, res) => {
   }
 });
 
-app.post('/api/admin/schedule', async (req, res) => {
+app.post('/api/admin/schedule', requireAuth, requireRole('admin'), async (req, res) => {
   const { user_id, scheduled_date, start_time, end_time, shift_id, notes } = req.body;
   if (!user_id || !scheduled_date) {
     return res.status(400).json({ success: false, message: 'user_id and scheduled_date required' });
@@ -2612,7 +2534,7 @@ app.post('/api/admin/schedule', async (req, res) => {
   }
 });
 
-app.put('/api/admin/schedule/:id', async (req, res) => {
+app.put('/api/admin/schedule/:id', requireAuth, requireRole('admin'), async (req, res) => {
   const { user_id, scheduled_date, start_time, end_time, shift_id, notes } = req.body;
   if (!user_id || !scheduled_date || (!shift_id && (!start_time || !end_time))) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -2638,7 +2560,7 @@ app.put('/api/admin/schedule/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/admin/schedule/:id', async (req, res) => {
+app.delete('/api/admin/schedule/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { rowCount } = await pool.query(
       'DELETE FROM schedules WHERE schedule_id = $1',
@@ -3493,13 +3415,21 @@ app.delete('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (re
 
 // ── Shifts board (employee-facing) ───────────────────────────────────────────
 
+// Sprint 19.4: whose department scopes the schedule visibility rules?
+// Staff are ALWAYS pinned to their own token identity — the old client-
+// supplied ?userId= let any caller pick (or omit) the identity, and
+// omitting it under 'department' visibility returned everyone's
+// schedule. Admins may still pass ?userId= to preview another user's view.
+const scopeUserId = (req) => (req.auth.role === 'admin' ? (req.query.userId || null) : req.auth.sub);
+
 // GET /api/shifts/range?from=YYYY-MM-DD&to=YYYY-MM-DD[&userId=UUID]
 // Sprint 10.1: range version of /api/shifts/daily for the staff
 // Calendar's week view. Same visibility model — `schedule_visibility`
 // = 'all' shows everyone's schedules, 'department' restricts to the
 // requester's dept (when userId provided), 'none' returns empty.
-app.get('/api/shifts/range', async (req, res) => {
-  const { from, to, userId } = req.query;
+app.get('/api/shifts/range', requireAuth, async (req, res) => {
+  const { from, to } = req.query;
+  const userId = scopeUserId(req);
   if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
     return res.status(400).json({ success: false, message: 'from and to required (YYYY-MM-DD)' });
   }
@@ -3549,8 +3479,9 @@ app.get('/api/shifts/range', async (req, res) => {
   }
 });
 
-app.get('/api/shifts/daily', async (req, res) => {
-  const { date, userId } = req.query;
+app.get('/api/shifts/daily', requireAuth, async (req, res) => {
+  const { date } = req.query;
+  const userId = scopeUserId(req);
   if (!date) return res.status(400).json({ success: false, message: 'date required' });
   try {
     const { rows: sv } = await pool.query(
@@ -3642,7 +3573,7 @@ app.get('/api/public-config', async (req, res) => {
   }
 });
 
-app.get('/api/admin/settings', async (req, res) => {
+app.get('/api/admin/settings', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT key, value FROM app_settings ORDER BY key');
     const settings = {};
@@ -3657,7 +3588,7 @@ app.get('/api/admin/settings', async (req, res) => {
 // Generic settings update — accepts any of the known keys with validation.
 // Body shape is { key1: value1, key2: value2, ... } — single-key or batch
 // updates both work.
-app.put('/api/admin/settings', async (req, res) => {
+app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, res) => {
   const ALLOWED = {
     schedule_visibility:        v => ['all', 'department', 'none'].includes(v),
     overtime_threshold_hours:   v => /^\d+(\.\d+)?$/.test(String(v)) && parseFloat(v) > 0 && parseFloat(v) <= 168,
@@ -4499,6 +4430,14 @@ app.use(express.static(buildPath));
 app.get('*', (req, res) => res.sendFile(path.join(buildPath, 'index.html')));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+
+// Sprint 19.4: last-resort error handler for anything forwarded by the
+// async-error shim above (or thrown synchronously). Log, never leak details.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  console.error('[unhandled route error]', req.method, req.path, err && err.message);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ success: false, message: 'Server error' });
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`HotelOps API running on port ${PORT}`));

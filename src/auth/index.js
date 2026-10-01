@@ -54,6 +54,33 @@ export const apiFetch = async (path, opts = {}) => {
   return { ok: res.ok, status: res.status, data };
 };
 
+// ── authFetch ───────────────────────────────────────────────────────────────
+// Sprint 19.4: drop-in replacement for the global `fetch` for the many call
+// sites that were written as `fetch('/api/…').then(r => r.json())`. Same
+// signature, returns the real Response — but attaches the Bearer token
+// (the /api/admin/* routes are admin-only now) and routes '/api/…' through
+// the configured API base so the GitHub-Pages build (REACT_APP_API_URL set)
+// reaches the server too. 401 handling matches apiFetch.
+export const authFetch = async (url, opts = {}) => {
+  const token   = localStorage.getItem(TOKEN_KEY);
+  const headers = {
+    ...(opts.headers || {}),
+    ...(opts.body && !(opts.headers || {})['Content-Type'] ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  const target = typeof url === 'string' && url.startsWith('/api/') ? `${API}${url.slice(4)}` : url;
+  const res = await fetch(target, { ...opts, headers });
+  if (res.status === 401) {
+    if (token) localStorage.removeItem(TOKEN_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:expired', {
+        detail: { path: url, hadToken: !!token },
+      }));
+    }
+  }
+  return res;
+};
+
 // ── Context ─────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext(null);

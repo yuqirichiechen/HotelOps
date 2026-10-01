@@ -17,11 +17,129 @@ sub-sprint list.
 | 19.1       | Koyeb/Neon DB compute hours ballooned (~140 h / ~$30)       | Deployed — user monitoring DB graph |
 | 19.2       | Staff detail UI: compact profile card + weekly time entries | Built; layout verified at 390 px + 1280 px (static render) |
 | 19.3       | Delete time entry, entries above PIN, mobile/PC polish, **endpoint auth audit** | Built, not yet run against live DB; audit done |
-| 19.4       | Fix auth gaps found in 19.3 audit (21 unprotected routes)    | **Next** — plan in 19.3 entry |
+| 19.4       | Fix auth gaps found in 19.3 audit (21 unprotected routes)    | Built + route-matrix tested locally (80/80); **deploy as one release, then click-through** |
 
 ---
 
 ## 2. Sprint logs (19.1 → present)
+
+### 2026-09-30 — Sprint 19.4: close the 21 unauthenticated routes + harden tokens
+
+Executes the plan from the 19.3 audit. Server + client change together —
+**deploy as ONE release** (new server + new frontend). Expected side
+effect: until the new frontend is live, old cached pages calling
+`/api/admin/*` without a token get 401.
+
+**Server (`server/server.js`, `server/auth.js`)**
+- **Admin-only (`requireAuth, requireRole('admin')`) added to:**
+  `GET/POST /admin/employees`, `GET/PUT/DELETE /admin/employees/:id`,
+  `PATCH /admin/employees/:id/status`, `GET /admin/employees/:id/time-entries`,
+  `GET /admin/shift-templates`, `GET/POST /admin/schedule`,
+  `PUT/DELETE /admin/schedule/:id`, `GET/PUT /admin/settings`.
+- **Any logged-in user (`requireAuth`):** `GET /admin/departments` (staff
+  Notes page needs department names; not sensitive), `GET /shifts/range`,
+  `GET /shifts/daily`.
+- **New `GET /api/directory`** (`requireAuth`): `user_id, name, role,
+  department_id, active` only. Replaces the staff Calendar's use of
+  `/admin/employees` (which carries phone / rate / birthday).
+- **`/shifts/*` identity fix:** staff are pinned to their own token
+  (`scopeUserId`); the client-supplied `?userId=` is honored for admins
+  only. Previously omitting `userId` under `department` visibility
+  returned everyone's schedule.
+- **Deleted dead/dangerous routes:** `POST /authenticate`,
+  `POST /clock-in`, `POST /clock-out`, `GET /user/:phone/history`
+  (phone-number-only; unused by the app except `/authenticate`, below).
+- **`JWT_SECRET` hardened (`auth.js`):** no more public fallback
+  `'dev-secret-do-not-ship'`. If unset → random per-boot secret (tokens
+  unforgeable, server doesn't crash, but every restart signs everyone
+  out) + loud `[auth] !!` log. Also logs if the secret is < 32 chars or
+  looks like a placeholder. `.env.example` documents it.
+  **ACTION: set a real `JWT_SECRET` on Koyeb** (user hadn't confirmed it
+  was set). Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+  Changing it signs everyone out once — expected.
+- **Crash fix (found by the test run):** Express 4 doesn't catch rejected
+  promises from `async` handlers, so a DB error in a handler without its
+  own try/catch killed the whole Node process. Found in my own 19.3
+  delete endpoint (`pool.connect()` outside `try` — fixed) and 4 older
+  handlers (`/admin/dashboard`, 3× `/handoff-notes`). Added the
+  `express-async-errors`-style shim (patches `Layer.prototype.handle_request`
+  to forward rejections to `next(err)`) + a last-resort error middleware
+  returning `500 {success:false}`. Net: a Neon blip now fails one request
+  instead of taking the server down.
+
+**Client**
+- **`authFetch(url, opts)`** added to `src/auth/index.js` — a drop-in for
+  `fetch` (returns the real `Response`) that attaches the Bearer token,
+  maps `/api/…` through `REACT_APP_API_URL`, and applies the same 401
+  handling as `apiFetch`. Chosen so ~32 call sites changed by a rename
+  rather than a rewrite. **Convention from now on: every non-public API
+  call uses `apiFetch` or `authFetch`; only `/api/public-config` and the
+  login endpoints are called without a token.**
+- Converted: StaffDetail, StaffManager, AdminSettings, Calendar,
+  ShiftSheet, AdminReports, NotesPage, StaffCalendar, ShiftsCalendar,
+  DevPanel. (Bonus: on the GitHub-Pages build these raw `/api/…` calls
+  previously hit the wrong origin.)
+- **StaffCalendar** → `/api/directory`.
+- **`/kiosk` (ShiftsView):** the phone-keypad lookup is gone; it now shows
+  the signed-in staff member's own schedule (token identity) via the
+  existing flip-card markup. `src/services/timeClock.js` deleted (all
+  exports unused).
+- **DevPanel (`/dev`):** its gate is client-side only (hardcoded
+  `dev`/`dev`, localStorage flag). Its settings save now needs a real
+  admin session; a 401/403 shows "Saving needs an admin session…".
+  Consider a server-backed dev role later (or delete the panel).
+
+**Testing done**
+- Local route matrix (`authmatrix.js` in the session scratchpad): spawned
+  the server against an **unreachable dummy DB** and hit all 80 routes
+  with (a) no token, (b) a forged admin token signed with the OLD public
+  fallback secret, (c) a valid staff token, (d) a valid admin token.
+  Expected: no token → 401; forged → 401; staff on admin routes → 403;
+  admin → passes the gate. **80 routes, 0 failures.** Legacy routes
+  now 404. Server stayed up with the DB down.
+- `npm run build` compiles; no new warnings in touched files.
+- **Not done:** no click-through in a browser against the real DB, so
+  expect to verify (below). Test-run side effect to know about: a few
+  matrix runs sent an admin token to `/admin/reservations/:id/detail`
+  (and possibly `/admin/forecast/scrape`), which attempted real Agilysys
+  logins using the creds in the local `server/.env` — they failed (401),
+  nothing was changed, but a handful of failed logins may appear in
+  rGuest's log. The matrix now skips those two routes for the admin
+  token.
+
+**Post-deploy checklist (user)**
+1. Apply migration 026 (see 19.3).
+2. Set `JWT_SECRET` on Koyeb (≥ 32 random chars) *before* deploying; check
+   the deploy log has no `[auth] !!` line.
+3. Deploy server + frontend together. Everyone must log in again once.
+4. Click through as **admin**: Staff list → a staff detail (entries, edit,
+   delete, PIN), Add staff, Calendar (create/edit/delete a shift), Shift
+   Sheet, Settings (change + save one), Reports, Forecast.
+5. Click through as **staff**: Home clock in/out, Calendar (week view
+   shows names), Notes, `/kiosk`.
+6. Anything that now shows "Missing token"/empty = a call site I missed
+   → tell me the page.
+
+**Known follow-ups (not done)**
+- Admin accounts in the DB with bcrypt hashes, add/change/remove admins,
+  token invalidation on password change (discussed; own sprint).
+- `server/config/admins.json` still plaintext (private repo).
+- No rate limiting on `/auth/*/login`.
+- `/dev` panel gate is client-side `dev`/`dev`.
+- `requireRole` has only `admin`; `front_desk` has no distinct permissions.
+- `GET /admin/employees` etc. return full rows to any admin — fine for the
+  single-admin case, revisit for per-department/multi-tenant admins.
+
+**Files touched:**
+- `server/server.js`, `server/auth.js`, `server/.env.example`
+- `src/auth/index.js` (+ `authFetch`), `src/components/AdminPanel/{StaffDetail,StaffManager,AdminSettings}.js`,
+  `src/components/AdminPanel/Calendar/index.js`, `src/components/ShiftsView/{index,ShiftsCalendar}.js`,
+  `src/pages/{NotesPage,StaffCalendar,ShiftSheet,AdminReports,Dev/DevPanel}`
+- deleted `src/services/timeClock.js`
+- `database/migrations/026_time_entries_delete_cascade.sql`, `database/schema.sql`
+- `claude-instructions/part5.md`
+
+---
 
 ### 2026-09-30 — Sprint 19.3: delete time entries, section reorder, responsive pass, endpoint auth audit
 
@@ -59,6 +177,16 @@ Verified both layouts; fixes made from what the render showed:
 - **Not tested against a live DB** (didn't run against the Koyeb DB).
   First real use: delete a throwaway test entry and confirm the
   `audit_logs` row exists.
+
+**2b. Migration 026 (added in 19.4 session) —
+`database/migrations/026_time_entries_delete_cascade.sql`.** The delete
+endpoint did not *need* a schema change (it removes `approval_requests`
+rows itself in the transaction), but the only FK into `time_entries`
+(`approval_requests.entry_id`) had no `ON DELETE` rule. 026 finds that FK
+by what it references and recreates it `ON DELETE CASCADE`, so the DB
+enforces the same rule. Idempotent; `schema.sql` updated to match.
+**Run it on Koyeb:** `psql "<conn>?sslmode=require" -f database/migrations/026_time_entries_delete_cascade.sql`
+(not yet applied by Claude — user applies, as with 024).
 
 **3. Time Entries now sits above PIN Access** (pure JSX reorder).
 
