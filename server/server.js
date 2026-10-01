@@ -55,6 +55,34 @@ pool.query('SELECT NOW()').then(() => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// ── Sprint 19.1: request-driven hard-shift-cap (replaces 18.13's timer) ──────
+// Runs enforceHardShiftCap() at most once per CAP_THROTTLE_MS, on the back
+// of real API traffic (the DB is already awake serving that request). Never
+// touches the DB when nobody is using the app, so Neon can suspend. Stale
+// open entries are closed backdated to clock_in + 12h, so payroll is the
+// same whether the close happens at hour 12 or hour 20. /api/health is
+// registered above and deliberately skips this (Koyeb probes it constantly).
+const CAP_THROTTLE_MS = 5 * 60 * 1000;
+let capLastRunAt = 0;
+let capInFlight  = null;
+app.use('/api', async (req, res, next) => {
+  const now = Date.now();
+  if (now - capLastRunAt < CAP_THROTTLE_MS) return next();
+  if (!capInFlight) {
+    capInFlight = enforceHardShiftCap()
+      .then(result => {
+        capLastRunAt = Date.now(); // only advance on success → retry after a failure
+        if (result.closed > 0) {
+          console.info('[hard-shift-cap] auto-closed', result.closed, 'entries at 12h ceiling');
+        }
+      })
+      .catch(err => console.error('[hard-shift-cap] failed:', err.message))
+      .finally(() => { capInFlight = null; });
+  }
+  await capInFlight; // share one in-flight run across concurrent requests
+  next();
+});
+
 // ── Login identifier helpers (Sprint 7 / Sprint 9) ───────────────────────────
 // Staff log in via any of {phone_number, username, employee_code, birthday}.
 // The login endpoint accepts a single `identifier` and auto-detects the type:
@@ -1556,8 +1584,9 @@ const runAutoClockOut = async () => {
 // when an admin visits /admin/still-clocked-in. If nobody opens the
 // dashboard for 12+ hours, entries accumulate. In production a staff
 // member ended up at ~13h on the clock and had to be manually closed.
-// This function's callers include a background setInterval (see server
-// boot) so closes fire automatically regardless of admin traffic.
+// Sprint 19.1: callers are the throttled request-driven middleware (after
+// /api/health), /api/me/hours and /api/admin/still-clocked-in — NOT a
+// background timer (that kept Neon awake 24/7; see part5.md §19.1).
 //
 // Single round-trip UPDATE: avoids the per-row loop pattern in
 // runAutoClockOut. Returns closed rows for logging + follow-up UX.
@@ -4431,31 +4460,10 @@ app.get('*', (req, res) => res.sendFile(path.join(buildPath, 'index.html')));
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`HotelOps API running on port ${PORT}`));
 
-// Sprint 18.13: background hard-shift-cap scheduler. Fires every 5
-// minutes so no open shift lingers past 12h even if no admin visits
-// the dashboard. isRunning guard prevents a slow DB tick from
-// overlapping the next scheduled fire.
-{
-  let isRunning = false;
-  const tick = async () => {
-    if (isRunning) return;
-    isRunning = true;
-    try {
-      const result = await enforceHardShiftCap();
-      if (result.closed > 0) {
-        console.info('[hard-shift-cap] auto-closed', result.closed, 'entries at 12h ceiling');
-      }
-    } catch (err) {
-      // Never throw from the timer — a transient DB blip shouldn't
-      // kill the scheduler.
-      console.error('[hard-shift-cap] tick failed:', err.message);
-    } finally {
-      isRunning = false;
-    }
-  };
-  const FIVE_MIN = 5 * 60 * 1000;
-  setInterval(tick, FIVE_MIN);
-  // Fire once at boot too, so a fresh deploy doesn't leave the first
-  // 5 minutes uncovered.
-  tick();
-}
+// Sprint 19.1: the Sprint 18.13 background setInterval that used to live
+// here was removed. It queried the DB every 5 min, 24/7 — Neon's idle
+// timer is ~5 min, so the DB never suspended (~140 compute-hours / $30
+// in Sept 2026 vs a few dollars before). The hard-shift cap is now
+// enforced by the throttled request-driven middleware registered right
+// after /api/health: it piggybacks on traffic that already has the DB
+// awake, so it adds zero wake-ups. DO NOT add timers that touch the DB.
