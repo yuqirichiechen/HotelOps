@@ -118,7 +118,7 @@ PASSWORD = (
 # a tenant-scoped login form from the deep URL, then bounces back
 # after we sign in.
 TARGET_URL = (
-    "https://stay.rguest.com/v2/search/reservations"
+    ""
     "?tenantId=1566&propertyId=481"
 )
 
