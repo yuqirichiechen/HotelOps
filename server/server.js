@@ -3650,6 +3650,13 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     // pre-Sprint-14 AssignPanel + AssignModal flow if the new
     // sheet doesn't fit their workflow.
     enable_legacy_assign_panel: v => v === 'true' || v === 'false',
+    // Sprint 20.5: days to keep stored guest detail (contact, folio, masked card)
+    // after the stay ends. 0 = keep forever; otherwise 7..3650. Default 90.
+    guest_detail_retention_days: v => {
+      if (!/^\d+$/.test(String(v))) return false;
+      const n = parseInt(v, 10);
+      return n === 0 || (n >= 7 && n <= 3650);
+    },
     // Sprint 15.0: weeks of historical data the coverage algorithm
     // (Sprint 15.4) considers when computing the per-(dept × DOW)
     // target hours. Stored as a string for app_settings compat;
@@ -4529,6 +4536,59 @@ app.get('/api/admin/reservations/summaries', requireAuth, requireRole('admin'), 
     return res.json({ success: true, summaries, total: ids.length, stored: rows.length });
   } catch (err) {
     console.error('[reservations:summaries]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/reservations/search?q= — ids of stored reservations whose guest
+// contact / confirmation / group / notes / preferences match (the page also
+// matches name / conf / room instantly on the list fields it already has).
+// Admin-only; only called once the user has typed ≥ 2 characters.
+app.get('/api/admin/reservations/search', requireAuth, requireRole('admin'), async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 64);
+  if (q.length < 2) return res.json({ success: true, ids: [] });
+  try {
+    const like = '%' + q.replace(/[\\%_]/g, m => '\\' + m) + '%';   // escape LIKE wildcards
+    const digits = q.replace(/\D/g, '');
+    const phoneLike = digits.length >= 4 ? '%' + digits + '%' : null;
+    const { rows } = await pool.query(
+      `SELECT reservation_id FROM reservation_detail
+        WHERE summary->'guest'->>'name'          ILIKE $1
+           OR summary->'guest'->>'email'         ILIKE $1
+           OR summary->'guest'->>'address'       ILIKE $1
+           OR summary->'booking'->>'confirmationCode' ILIKE $1
+           OR summary->'group'->>'name'          ILIKE $1
+           OR (summary->'comments')::text        ILIKE $1
+           OR (summary->'preferences')::text     ILIKE $1
+           OR ($2::text IS NOT NULL
+               AND regexp_replace(COALESCE(summary->'guest'->>'phone', ''), '\\D', '', 'g') LIKE $2::text)
+        LIMIT 300`,
+      [like, phoneLike],
+    );
+    return res.json({ success: true, ids: rows.map(r => r.reservation_id) });
+  } catch (err) {
+    console.error('[reservations:search]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/reservations/:id/detail — erase the stored guest detail for
+// one reservation (data-removal request / mistaken scrape). The list-level row
+// stays; the detail is re-saved at the next scrape only while the reservation
+// is still current. Audit-logged WITHOUT any guest data.
+app.delete('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) return res.status(400).json({ success: false, message: 'bad reservation id' });
+  try {
+    const del = await pool.query('DELETE FROM reservation_detail WHERE reservation_id = $1', [id]);
+    await pool.query(
+      `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data)
+       VALUES (NULL, 'admin_guest_detail_delete', 'reservation_detail', $1, NULL, $2)`,
+      [id, JSON.stringify({ admin_username: req.auth.sub, existed: (del.rowCount || 0) > 0 })],
+    );
+    return res.json({ success: true, deleted: (del.rowCount || 0) > 0 });
+  } catch (err) {
+    console.error('[reservation:detail:delete]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });

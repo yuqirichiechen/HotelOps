@@ -131,3 +131,93 @@
   .rl-actions .rl-btn-primary { flex-grow: 1.6; }
   .rl-detail { grid-template-columns: 1fr; }
 }
+
+/* ── Sprint 20.5 ─────────────────────────────────────────────────────────── */
+/* attention accent on the card's left edge + reasons line */
+.rl-attn-danger { box-shadow: inset 4px 0 0 var(--danger-hover, #b91c1c), var(--shadow-sm); }
+.rl-attn-warn   { box-shadow: inset 4px 0 0 var(--warn-text, #b45309), var(--shadow-sm); }
+.rl-reasons { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 10px; font-size: 12px; }
+.rl-reasons-label { color: var(--text-muted); font-weight: 600; margin-right: 2px; }
+.rl-reason { padding: 1px 8px; border-radius: 6px; font-weight: 600; }
+.rl-reason-danger { background: var(--danger-subtle, #fef2f2); color: var(--danger-hover, #b91c1c); }
+.rl-reason-warn   { background: var(--warn-bg, #fffbeb); color: var(--warn-text, #92400e); }
+.rl-reason-info   { background: var(--bg-surface-alt); color: var(--accent-alt); }
+.rl-reason-muted  { background: var(--bg-surface-alt); color: var(--text-secondary); }
+
+.rl-copy { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: copy; text-decoration: underline dotted; text-underline-offset: 3px; }
+.rl-copy:hover { color: var(--accent-alt); }
+
+/* delete-saved-details */
+.rl-forget { grid-column: 1 / -1; margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--border-light); }
+.rl-forget-btn { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 12px; color: var(--text-muted); cursor: pointer; text-decoration: underline; }
+.rl-forget-btn:hover { color: var(--danger-hover, #b91c1c); }
+.rl-forget-confirm { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 13px;
+  background: var(--danger-subtle, #fef2f2); border: 1px solid var(--danger-border, #fecaca); color: var(--danger-hover, #b91c1c); }
+.rl-forget-actions { display: inline-flex; gap: 8px; }
+.rl-btn-danger { background: var(--danger-hover, #b91c1c); border-color: var(--danger-hover, #b91c1c); color: #fff; }
+.rl-btn-danger:hover:not(:disabled) { background: var(--danger-dark, #991b1b); }
+
+/* toolbar: search / sort / print / export */
+.rl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 10px; }
+.rl-search { position: relative; flex: 1 1 260px; min-width: 0; }
+.rl-search input {
+  width: 100%; box-sizing: border-box; min-height: 42px; padding: 8px 36px 8px 36px; border: 1px solid var(--border);
+  border-radius: 999px; background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 14px;
+}
+.rl-search input:focus { outline: 2px solid var(--accent-alt); outline-offset: 1px; }
+.rl-search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.rl-search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
+.rl-search-clear:hover { background: var(--bg-surface-alt); }
+.rl-select { min-height: 42px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 13px; padding: 0 12px; }
+.rl-tool-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.rl-tool-btn:hover:not(:disabled) { background: var(--bg-surface-alt); }
+.rl-tool-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rl-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; font-size: 13px;
+  background: var(--bg-surface-alt); color: var(--text-secondary); border: 1px solid var(--border); }
+.rl-notice button { background: none; border: 0; color: var(--accent-alt); font: inherit; font-weight: 600; cursor: pointer; }
+
+/* attention filter chips */
+.rl-attn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.rl-attn-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin-right: 2px; }
+.rl-attn-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-surface); color: var(--text-secondary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rl-attn-chip b { font-variant-numeric: tabular-nums; }
+.rl-attn-chip.is-danger b { color: var(--danger-hover, #b91c1c); }
+.rl-attn-chip.is-warn b   { color: var(--warn-text, #92400e); }
+.rl-attn-chip.on { background: var(--brand-bg); border-color: var(--brand-bg); color: #fff; }
+.rl-attn-chip.on b { color: #fff; }
+.rl-attn-clear { background: none; border: 0; color: var(--accent-alt); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+@media (max-width: 480px) {
+  .rl-tools { gap: 6px; }
+  .rl-search { flex-basis: 100%; }
+  .rl-select, .rl-tool-btn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ── print sheet (portaled to <body>; only visible when printing) ───────── */
+.rl-printroot { display: none; }
+@media print {
+  body.is-printing-resn { background: #fff !important; }
+  body.is-printing-resn #root { display: none !important; }
+  body.is-printing-resn .rl-printroot { display: block !important; }
+  /* The forecast sheet (Sprint 17.4) prints with `body * { visibility: hidden !important }`;
+     without this the desk list printed as a BLANK page. Higher specificity wins. */
+  body.is-printing-resn .rl-printroot,
+  body.is-printing-resn .rl-printroot * { visibility: visible !important; }
+  @page { size: landscape; margin: 10mm; }
+}
+.rl-printsheet { font-family: 'TiemposText', Georgia, serif; color: #111; background: #fff; }
+.rl-printsheet h1 { font-size: 18px; margin: 0 0 2px; }
+.rl-printsheet .rl-print-meta { font-size: 11px; color: #444; margin-bottom: 8px; }
+.rl-printsheet table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rl-printsheet thead { display: table-header-group; }
+.rl-printsheet th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #111; padding: 4px 6px; }
+.rl-printsheet td { vertical-align: top; border-bottom: 1px solid #bbb; padding: 5px 6px; }
+.rl-printsheet tr { page-break-inside: avoid; }
+.rl-printsheet .rl-print-box { display: inline-block; width: 12px; height: 12px; border: 1.5px solid #111; border-radius: 2px; }
+.rl-printsheet .rl-print-flag { display: inline-block; margin: 0 3px 2px 0; padding: 0 5px; border: 1px solid #555; border-radius: 3px; font-size: 9px; font-weight: 700; }
+.rl-printsheet .rl-print-money { font-weight: 700; }
+.rl-printsheet .rl-print-note { margin: 0; padding-left: 12px; }
+.rl-printsheet .rl-print-foot { margin-top: 8px; font-size: 10px; color: #555; }

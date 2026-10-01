@@ -16,8 +16,8 @@ import { useView } from '../../shells/ViewContext';
 import ForecastSettings from './ForecastSettings';
 import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
-import ResnItem, { useResnSummaries } from './ResnItem';
-import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate, computeTabCounts, sortForTab, EMPTY_COPY } from './resnTabs';
+import ResnTable from './ResnTable';
+import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate } from './resnTabs';
 
 
 // ── Sprint 17.9 inline SVG icons ───────────────────────────
@@ -271,243 +271,7 @@ const HK_ACTION_FOR_KIND = {
   future:    { label: 'None',       cls: 'none' },
 };
 
-const STATUS_PILL_CLASS = {
-  'Confirmed': 'confirmed',
-  'Pending':   'pending',
-  'In house':  'inhouse',
-  'Departed':  'departed',
-  'Cancelled': 'cancelled',
-};
-
-// Sprint 18.3 — derive the Notes/Flags pill row for a reservation.
-// Order matters: VIP first (highest signal), then arrival timing,
-// then logistics. Returns an array of `{label, cls}` ready to map
-// into the existing `.fc-flag-*` pill classes.
-function buildResnFlags(r) {
-  const flags = [];
-  if (r.vipLabel)              flags.push({ label: r.vipLabel,      cls: 'vip' });
-  if (r.isEarlyArrival)        flags.push({ label: 'Early arrival', cls: 'early' });
-  if (r.isRedEye)              flags.push({ label: 'Late arrival',  cls: 'late' });
-  if (r.scheduledForRoomMove)  flags.push({ label: 'Room move',     cls: 'move' });
-  if (r.isDayUse)              flags.push({ label: 'Day use',       cls: 'day' });
-  if (r.isHighFloor)           flags.push({ label: 'High floor',    cls: 'high' });
-  if (r.isPetFriendly)         flags.push({ label: 'Pet friendly',  cls: 'pet' });
-  if (r.isGroupBooking)        flags.push({ label: 'Group',         cls: 'group' });
-  return flags;
-}
-
-// Sprint 18.2 — deep-link URL pattern for an individual reservation
-// in rGuest Stay. Confirmed via user-supplied URL on 2026-06-09;
-// tenantId / propertyId are Snoqualmie's. If/when we add a second
-// hotel these should move into a per-property config row.
-const RGUEST_RESERVATION_URL = (id) =>
-  `https://stay.rguest.com/v2/reservation/${encodeURIComponent(id)}?tenantId=1566&propertyId=481`;
-
-// Sprint 18.1 — predicate per filter chip. Composes with the
-// Room Type + Source dropdowns inside the table.
-// Sprint 20.3: predicates come from tabPredicate() in ./resnTabs.js.
-
-
-// Sprint 18.6 — page-size options + pagination control.
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
-
-const Pagination = ({ page, totalPages, onPage, pageSize, onPageSize }) => {
-  if (totalPages <= 1) {
-    return (
-      <div className="fc-pager">
-        <label className="fc-pager-size">
-          <span>Per page</span>
-          <select value={pageSize} onChange={e => onPageSize(Number(e.target.value))}>
-            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-      </div>
-    );
-  }
-  // Build a windowed page-number list: always show 1, current ± 1,
-  // and totalPages, with ellipses bridging gaps.
-  const set = new Set([1, totalPages, page, page - 1, page + 1]);
-  if (page <= 3) [2, 3, 4].forEach(n => set.add(n));
-  if (page >= totalPages - 2) [totalPages - 1, totalPages - 2, totalPages - 3].forEach(n => set.add(n));
-  const pages = [...set].filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
-  const withGaps = [];
-  pages.forEach((n, i) => {
-    if (i > 0 && n - pages[i - 1] > 1) withGaps.push('…');
-    withGaps.push(n);
-  });
-  return (
-    <div className="fc-pager">
-      <div className="fc-pager-nav">
-        <button
-          type="button" className="fc-pager-btn"
-          onClick={() => onPage(Math.max(1, page - 1))}
-          disabled={page <= 1}
-          aria-label="Previous page"
-        >‹</button>
-        {withGaps.map((n, i) => n === '…' ? (
-          <span key={`gap-${i}`} className="fc-pager-gap">…</span>
-        ) : (
-          <button
-            key={n}
-            type="button"
-            className={`fc-pager-btn${n === page ? ' active' : ''}`}
-            onClick={() => onPage(n)}
-            aria-current={n === page ? 'page' : undefined}
-          >{n}</button>
-        ))}
-        <button
-          type="button" className="fc-pager-btn"
-          onClick={() => onPage(Math.min(totalPages, page + 1))}
-          disabled={page >= totalPages}
-          aria-label="Next page"
-        >›</button>
-      </div>
-      <label className="fc-pager-size">
-        <span>Per page</span>
-        <select value={pageSize} onChange={e => onPageSize(Number(e.target.value))}>
-          {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-      </label>
-    </div>
-  );
-};
-
-const ReservationDetailsTable = ({
-  rows, filter, onFilter, sources = [], roomTypes = [],
-  sourceFilter, onSourceFilter, typeFilter, onTypeFilter,
-  // Sprint 20.4 — job progress (refetch stored summaries as the guest-detail job fills them in).
-  jobTick, jobRunning,
-}) => {
-  // Sprint 20.3 — counts always reflect ALL rows (like rGuest's tiles);
-  // the room-type / source dropdowns only narrow the list below.
-  const counts = React.useMemo(() => computeTabCounts(rows), [rows]);
-  const filtered = React.useMemo(() => {
-    const pred = tabPredicate(filter);
-    return sortForTab(filter, rows.filter(r => {
-      if (!pred(r)) return false;
-      if (sourceFilter && r.source !== sourceFilter) return false;
-      if (typeFilter   && r.baseLabel !== typeFilter) return false;
-      return true;
-    }));
-  }, [rows, filter, sourceFilter, typeFilter]);
-  const narrowed = !!(sourceFilter || typeFilter);
-  const emptyCopy = EMPTY_COPY[filter] || EMPTY_COPY.all;
-  const emptyEl = (
-    <div className="fc-resn-emptybox">
-      <div>{narrowed && counts[filter] > 0 ? 'No reservations match the current filters.' : emptyCopy.text}</div>
-      {narrowed && counts[filter] > 0 ? (
-        <button type="button" className="fc-chip" onClick={() => { onSourceFilter(null); onTypeFilter(null); }}>Clear filters</button>
-      ) : emptyCopy.goto ? (
-        <button type="button" className="fc-chip" onClick={() => onFilter(emptyCopy.goto)}>{emptyCopy.gotoLabel}</button>
-      ) : null}
-    </div>
-  );
-
-  // Sprint 18.6 — pagination. State local to the component so the
-  // page resets cleanly when filters change (via the effect below).
-  const [page, setPage]         = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(25); // Sprint 20.3: 10 → 25 (fewer taps to reach a guest)
-  React.useEffect(() => { setPage(1); }, [filter, sourceFilter, typeFilter]);
-  // Sprint 20.4 — in-place expand (several at once) + stored guest summaries for the rows on screen.
-  const [openIds, setOpenIds] = React.useState({});
-  const toggleOpen = (id) => setOpenIds(m => ({ ...m, [id]: !m[id] }));
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const effectivePage = Math.min(page, totalPages);
-  const pageStart = (effectivePage - 1) * pageSize;
-  const pageEnd   = Math.min(pageStart + pageSize, filtered.length);
-  const paged     = filtered.slice(pageStart, pageEnd);
-  const pagedIds  = paged.map(r => r.id);
-  const { get: getSummary, refresh: refreshOne, refreshing } = useResnSummaries(pagedIds, jobTick);
-  const allOpen   = paged.length > 0 && paged.every(r => openIds[r.id]);
-  const setAllOpen = (open) => setOpenIds(m => { const n = { ...m }; paged.forEach(r => { n[r.id] = open; }); return n; });
-
-  return (
-    <div className="fc-detail-wrap">
-      <div className="fc-detail-controls">
-        {/* Sprint 20.3 — status tabs with live counts (rGuest-style). One row;
-            scrolls sideways on a phone instead of wrapping into 3 rows. */}
-        <div className="fc-tabs" role="tablist" aria-label="Reservation status">
-          {RESN_TABS.map(t => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={filter === t.key}
-              className={`fc-tab${filter === t.key ? ' active' : ''}${counts[t.key] === 0 ? ' is-zero' : ''}`}
-              onClick={() => onFilter(t.key)}
-            >
-              <span className="fc-tab-label">{t.label}</span>
-              <span className="fc-tab-count">{counts[t.key]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="fc-detail-selects">
-          <label>
-            <span>Room type</span>
-            <select value={typeFilter || ''} onChange={e => onTypeFilter(e.target.value || null)}>
-              <option value="">All</option>
-              {roomTypes.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>Source</span>
-            <select value={sourceFilter || ''} onChange={e => onSourceFilter(e.target.value || null)}>
-              <option value="">All</option>
-              {sources.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      {/* Sprint 20.4 — one dense list for phone AND desktop (CSS lays each item
-          out as stacked blocks on a phone, a 4-column row on a wide screen).
-          Everything useful is visible without a click; "More details"
-          expands in place. Reads stored summaries only. */}
-      {filtered.length > 0 && (
-        <div className="rl-toolbar">
-          <span>{filtered.length} reservation{filtered.length === 1 ? '' : 's'}</span>
-          <button type="button" onClick={() => setAllOpen(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all on this page'}</button>
-        </div>
-      )}
-      <div className="rl-head" aria-hidden="true">
-        <span>Guest</span><span>Stay</span><span>Status &amp; room</span><span>Charges &amp; notes</span>
-      </div>
-      <ul className="rl-list">
-        {filtered.length === 0 && <li className="fc-resn-empty">{emptyEl}</li>}
-        {paged.map(r => (
-          <ResnItem
-            key={r.id}
-            r={r}
-            entry={getSummary(r.id)}
-            flags={buildResnFlags(r)}
-            statusCls={STATUS_PILL_CLASS[r.statusLabel] || 'inhouse'}
-            open={!!openIds[r.id]}
-            onToggle={() => toggleOpen(r.id)}
-            onRefresh={() => refreshOne(r.id)}
-            refreshing={!!refreshing[r.id]}
-            jobRunning={!!jobRunning}
-            rguestUrl={RGUEST_RESERVATION_URL(r.id)}
-          />
-        ))}
-      </ul>
-      <div className="fc-detail-footer">
-        <div className="fc-detail-footer-text">
-          {filtered.length === 0
-            ? 'No reservations match the current filters.'
-            : <>Showing <strong>{pageStart + 1}–{pageEnd}</strong> of <strong>{filtered.length}</strong>{filtered.length !== rows.length && <> (filtered from {rows.length})</>}</>
-          }
-        </div>
-        <Pagination
-          page={effectivePage}
-          totalPages={totalPages}
-          onPage={setPage}
-          pageSize={pageSize}
-          onPageSize={(n) => { setPageSize(n); setPage(1); }}
-        />
-      </div>
-    </div>
-  );
-};
+// Sprint 20.5: the reservations list (tabs, search, filters, cards, print/export) lives in ./ResnTable.js
 
 // Sprint 17.8 — progress per cleaning category. Departure progress
 // uses the metrics endpoint (remainingDepartures.remaining gives
@@ -889,7 +653,12 @@ const Forecasting = () => {
   const [scraping, setScraping] = useState(false);
   const [error, setError]       = useState(null);
   const [view, setView]         = useState('details'); // 'cleaning' | 'room' | 'floor' | 'details' (17.8 default)
-  const [resnFilter, setResnFilter]     = useState(DEFAULT_RESN_TAB);   // Sprint 20.3: opens on Remaining arrivals
+  // Sprint 20.3: opens on Remaining arrivals. Sprint 20.5: remembers the last tab for this browser session.
+  const [resnFilter, setResnFilter]     = useState(() => {
+    try { const t = sessionStorage.getItem('hotelops-resn-tab'); if (RESN_TABS.some(x => x.key === t)) return t; } catch { /* storage unavailable */ }
+    return DEFAULT_RESN_TAB;
+  });
+  useEffect(() => { try { sessionStorage.setItem('hotelops-resn-tab', resnFilter); } catch { /* ignore */ } }, [resnFilter]);
   const [resnSourceFilter, setResnSourceFilter] = useState(null);
   const [resnTypeFilter, setResnTypeFilter]     = useState(null);
   // sheetOpen state removed in 17.12 (Generate Forecast moved off this page).
@@ -1007,7 +776,7 @@ const Forecasting = () => {
     if (!snapshot?.payload) return null;
     if (view === 'details') {
       return (
-        <ReservationDetailsTable
+        <ResnTable
           rows={snapshot.payload.reservations || []}
           filter={resnFilter}
           onFilter={setResnFilter}
@@ -1017,7 +786,9 @@ const Forecasting = () => {
           onSourceFilter={setResnSourceFilter}
           typeFilter={resnTypeFilter}
           onTypeFilter={setResnTypeFilter}
-          jobTick={`${detailJob?.status || ''}:${detailJob?.done || 0}:${detailJob?.failed || 0}`}
+          // Coarse tick (every 10 reservations) so a big view doesn't re-download on every progress poll.
+          jobTick={`${detailJob?.status || ''}:${Math.floor(((detailJob?.done || 0) + (detailJob?.failed || 0)) / 10)}`}
+          todayYmd={snapshot.payload.forecastDate}
           jobRunning={detailJob?.status === 'running'}
         />
       );

@@ -16,6 +16,9 @@ import './ResnList.css';
 // the ids on screen (≤100), refetch when `tick` changes (job progress), and
 // expose a per-reservation live refresh.
 const _store = new Map(); // id → { summary, remoteState, fetchedAt, failedSections, lastError }
+export const getStoredEntry = (id) => _store.get(id) || null;
+
+const CHUNK = 100; // server cap per request
 
 export function useResnSummaries(ids, tick) {
   const [, bump] = useReducer(x => x + 1, 0);
@@ -24,14 +27,21 @@ export function useResnSummaries(ids, tick) {
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
+  // Fetch in chunks of 100 (sequential — one DB query each). A scan of a whole
+  // tab (≤200 rows) is therefore ≤2 requests; paging a huge tab stays 1.
   useEffect(() => {
     if (!key) return undefined;
     let cancelled = false;
+    const all = key.split(',');
     (async () => {
-      const { ok, data } = await apiFetch(`/admin/reservations/summaries?ids=${key}`);
-      if (cancelled || !ok || !data?.success) return;
-      Object.entries(data.summaries || {}).forEach(([id, v]) => _store.set(id, v));
-      bump();
+      for (let i = 0; i < all.length; i += CHUNK) {
+        const { ok, data } = await apiFetch(`/admin/reservations/summaries?ids=${all.slice(i, i + CHUNK).join(',')}`);
+        if (cancelled) return;
+        if (ok && data?.success) {
+          Object.entries(data.summaries || {}).forEach(([id, v]) => _store.set(id, v));
+          bump();
+        }
+      }
     })();
     return () => { cancelled = true; };
   }, [key, tick]);
@@ -58,7 +68,25 @@ export function useResnSummaries(ids, tick) {
     }
   }, []);
 
-  return { get, refresh, refreshing };
+  // Erase the stored guest detail for one reservation (admin data-removal request).
+  const forget = useCallback(async (id) => {
+    const { ok, data } = await apiFetch(`/admin/reservations/${id}/detail`, { method: 'DELETE' });
+    if (ok && data?.success) { _store.delete(id); if (alive.current) bump(); return true; }
+    return false;
+  }, []);
+
+  // Make sure the stored summaries for `ids` are loaded (print / export need every row,
+  // not just the visible page). Fetches only what's missing, in chunks of 100.
+  const ensure = useCallback(async (ids) => {
+    const missing = ids.filter(id => !_store.has(id));
+    for (let i = 0; i < missing.length; i += CHUNK) {
+      const { ok, data } = await apiFetch(`/admin/reservations/summaries?ids=${missing.slice(i, i + CHUNK).join(',')}`);
+      if (ok && data?.success) Object.entries(data.summaries || {}).forEach(([id, v]) => _store.set(id, v));
+    }
+    if (alive.current) bump();
+  }, []);
+
+  return { get, refresh, refreshing, forget, ensure };
 }
 
 // ── pieces ──────────────────────────────────────────────────────────────────
@@ -94,7 +122,7 @@ const Section = ({ sec }) => (
  * @param {boolean} p.open         in-place details expanded
  * @param {boolean} p.jobRunning   background job still loading details
  */
-const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, refreshing, jobRunning, rguestUrl }) => {
+const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onForget, refreshing, jobRunning, rguestUrl, attention }) => {
   const s = entry && entry.summary && Object.keys(entry.summary).length ? entry.summary : null;
   const g = (s && s.guest) || {};
   const gone = entry && entry.remoteState === 'gone';
@@ -109,9 +137,28 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, refre
   const roomLabel = r.roomNumber ? `Room ${r.roomNumber}` : null;
   const roomStatus = r.roomNumber ? (r.hkStatusLabel || r.occupancyStatus || null) : null;
   const detailId = `rl-detail-${r.id}`;
+  const reasons = attention || [];
+  const shownReasons = reasons.filter(x => x.key !== 'stale');   // staleness is already shown in the footer
+  const accent = reasons.some(x => x.tone === 'danger') ? 'danger' : reasons.some(x => x.tone === 'warn') ? 'warn' : null;
+
+  // Opening a card whose saved details are > 6 h old refreshes it once, so what
+  // the desk reads is current at the moment they actually look.
+  const autoTried = useRef(false);
+  const stale = !!(stamp && stamp.stale);
+  useEffect(() => {
+    if (open && stale && !autoTried.current && !refreshing && !gone) { autoTried.current = true; onRefresh(); }
+  }, [open, stale, refreshing, gone, onRefresh]);
+
+  // Click-to-copy confirmation number.
+  const [copied, setCopied] = React.useState(false);
+  const copyConf = async () => {
+    try { await navigator.clipboard.writeText(r.confirmationId); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  };
+  const [confirmForget, setConfirmForget] = React.useState(false);
+  const [forgetting, setForgetting] = React.useState(false);
 
   return (
-    <li className={`rl-item${open ? ' is-open' : ''}${gone ? ' is-gone' : ''}`}>
+    <li className={`rl-item${open ? ' is-open' : ''}${gone ? ' is-gone' : ''}${accent ? ` rl-attn-${accent}` : ''}`}>
       <div className="rl-main">
         {/* ── guest + contact ── */}
         <div className="rl-guest">
@@ -119,7 +166,13 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, refre
             {r.guestName || g.name || '(no name)'}
           </button>
           <div className="rl-sub">
-            {r.confirmationId && <>Conf. {r.confirmationId}</>}
+            {r.confirmationId && (
+              <>Conf.{' '}
+                <button type="button" className="rl-copy" onClick={copyConf} title="Copy confirmation number">
+                  {copied ? 'Copied ✓' : r.confirmationId}
+                </button>
+              </>
+            )}
             {r.baseLabel && <>{r.confirmationId ? ' · ' : ''}{r.baseLabel}{r.subLabel && r.subLabel !== 'Standard' ? ` · ${r.subLabel}` : ''}</>}
           </div>
           {(tel || mail || g.address) && (
@@ -158,6 +211,13 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, refre
         </div>
       </div>
 
+      {shownReasons.length > 0 && (
+        <div className="rl-reasons" aria-label="Needs attention">
+          <span className="rl-reasons-label">Needs attention:</span>
+          {shownReasons.map(x => <span key={x.key} className={`rl-reason rl-reason-${x.tone}`}>{x.label}</span>)}
+        </div>
+      )}
+
       {gone && (
         <div className="rl-banner rl-banner-warn" role="status">
           No longer in rGuest (cancelled, merged or moved) — showing the last details we saved.
@@ -189,6 +249,22 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, refre
           {sections.length === 0
             ? <p className="rl-sec-empty">No further details saved for this reservation yet.</p>
             : sections.map(sec => <Section key={sec.title} sec={sec} />)}
+          <div className="rl-forget">
+            {!confirmForget ? (
+              <button type="button" className="rl-forget-btn" onClick={() => setConfirmForget(true)}>Delete saved guest details…</button>
+            ) : (
+              <div className="rl-forget-confirm" role="alertdialog" aria-label="Confirm delete saved details">
+                <span>Remove this guest’s saved contact, folio and card info from HotelOps? It will be saved again at the next scrape while the reservation is still current. Logged in the audit trail.</span>
+                <span className="rl-forget-actions">
+                  <button type="button" className="rl-btn" onClick={() => setConfirmForget(false)} disabled={forgetting}>Keep</button>
+                  <button type="button" className="rl-btn rl-btn-danger" disabled={forgetting}
+                    onClick={async () => { setForgetting(true); const ok = await onForget(); setForgetting(false); if (ok) setConfirmForget(false); }}>
+                    {forgetting ? 'Deleting…' : 'Yes, delete'}
+                  </button>
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </li>

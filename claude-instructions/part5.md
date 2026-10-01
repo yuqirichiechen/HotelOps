@@ -23,7 +23,7 @@ sub-sprint list.
 | 20.2       | **Scraper v2:** deep per-reservation fetch (~25 sections), stored in DB by a background job; UI reads stored data | Built + tested (unit, fake-DB job runner, live rGuest e2e). **Apply migration 027 before deploy** |
 | 20.3       | **Status tabs** (Remaining arrivals default, clickable like rGuest) + job progress + **fix: scraper silently dropped ~19% of reservations** | Built; tab counts verified against rGuest's own numbers (5/5 match, stable across runs) |
 | 20.4       | **Dense inline cards** (phone + desktop) from stored `reservation_detail.summary`; expand in place; right rail removed | Built; real component rendered at 390/1280 px; 23 automated checks |
-| 20.5       | Search (name/conf/room), "needs attention" sort, print-friendly list, PII retention pruning | Planned |
+| 20.5       | **Search, needs-attention filters + sort, print desk list, CSV export, retention pruning**, + extras | Built; 72 automated tests incl. real Postgres + real-component UI tests; print verified to PDF |
 
 ---
 
@@ -53,7 +53,7 @@ sub-sprint list.
 | 20.3 | **(DONE) Status model + filters:** tabs with live counts — *Remaining arrivals* (default), Arrived, In-house, Remaining departures, Departed, Future, No room. Definitions mirror rGuest's top tiles so numbers match theirs. Filters become one sticky row (room type / source collapse into a "Filters" popover on mobile). |
 | 20.4 | **(DONE) Dense cards, no drill-down:** every card shows the essentials at a glance — name (+VIP), status, room/"Unassigned", type, dates + nights, ETA/early/red-eye, channel, rate plan, balance due, guests, flags, phone/email (tap-to-call/mail). Mobile: 3-line card. Desktop: table-style rows with the same fields as columns. Optional in-place expand (accordion, never a new page) for the long tail. |
 | 20.2 | **Scraper expansion — DONE, reordered first at the user's request** (see the 20.2 entry for the final design: all ~25 per-reservation sections, sensitive data kept admin-only, stored by a background job so cards never depend on a live call). |
-| 20.5 | **Search + sort + inline polish:** name/conf/room search, "needs attention" sorting (no room, VIP, early, unpaid), print-friendly list for the desk. |
+| 20.5 | **(DONE) Search + sort + inline polish:** name/conf/room search, "needs attention" sorting (no room, VIP, early, unpaid), print-friendly list for the desk. |
 
 **DECISIONS (user, 2026-09-30) — supersede the defaults below:** start with the
 scraper (cards need its data); default tab = Remaining arrivals but switchable
@@ -68,6 +68,111 @@ arrivals only); (3) PII scope = **no card/ID/document data stored**.
 Risk to manage: rGuest rate limits / account lockout (the scraper uses a
 real staff login) → concurrency ≤ 4, back off on 429/401, never retry a
 failed login.
+
+---
+
+### 2026-09-30 — Sprint 20.5: search, needs-attention, print + export, retention (and extras)
+
+Finishes the Reservations redesign. Server + client; migration 027 (from 20.2)
+is still the only schema change.
+
+**Search (top of the list, press `/` to focus, `Esc` clears).**
+- *Instant* client match on name / confirmation / room / room type / rate plan /
+  status — every word must match ("smith 214"), accent- and case-insensitive.
+- *Server* match (debounced 300 ms, ≥ 2 chars) on what the list rows don't carry:
+  **phone (digits only, so "425-377" finds "(425) 377-5167"), email, address,
+  notes, preferences, group name** — `GET /api/admin/reservations/search`.
+- A search looks across **all** tabs ("Showing matches across all reservations ·
+  Back to Remaining arrivals"); no tab is highlighted meanwhile.
+
+**Needs attention.** Context-aware reasons, ranked: no room (pending arrival) ·
+deposit overdue · balance owing (active stays) · no card on file (arriving / in
+house) · deposit due · prior no-show · early/late arrival · VIP · has notes ·
+service request (in house) · details stale. A future booking without a card is
+*not* flagged (not urgent). UI: **clickable chips with live counts** (OR
+semantics; "Clear"), a red/amber **left accent + "Needs attention: …" line on
+each card**, and **Sort: Default / Needs attention / Name / Balance owing /
+Arrival date**. Works on views of ≤ 200 reservations (it needs every row's
+summary); on bigger ones (Future/All) the chips are replaced by an explanatory
+note and the summary-based sorts are disabled — name/arrival sorts still work.
+
+**Print (desk list).** Prints the current view (tab / search / filters / sort,
+up to 500 rows): checkbox · guest + conf · room & type · stay · phone · charges
+(`Bal $…`, `Dep due $…`, **NO CARD**) · flags & notes; landscape, repeating header,
+rows never split across pages, "Confidential — shred after use" footer. Loads
+every row's stored details first. **Bug caught by printing to PDF:** the app's
+old forecast-sheet print rule (`body * { visibility: hidden !important }`, 17.4)
+made the desk list print a *blank page*; fixed with a higher-specificity
+visibility rule + white page background.
+
+**Export CSV.** Whole current view; UTF-8 **with BOM** (Excel reads accents);
+**spreadsheet-formula-injection guard** (cells starting `= + - @` get a leading
+`'`); filename like `reservations-remaining-arrivals-2026-09-30.csv`.
+
+**Extras beyond the brief.**
+- *Auto-refresh on open:* expanding a card whose saved details are > 6 h old
+  re-fetches it once, so what the desk reads is current when they look.
+- *Click-to-copy confirmation number* on every card.
+- *Delete saved guest details* (per reservation, two-step confirm, in the expanded
+  panel): `DELETE /api/admin/reservations/:id/detail`, **audit-logged with no guest
+  data**. Re-saved at the next scrape only while the reservation is still current.
+- *View remembered for the browser session:* last tab, sort, attention filters.
+- *Keyboard:* `/` focus search, `Esc` clear.
+- *Smarter list:* "Expand all on this page", per-tab empty states, dedicated
+  "No match → Clear search / Clear filters" states.
+
+**Retention (PII).** `reservation_detail` rows are deleted
+`guest_detail_retention_days` after check-out (**default 90; 0 = keep forever;
+7–3650**). Runs at the end of each detail job — i.e. only when an admin scrapes —
+never on a timer (19.1 compute rule); also trims finished job-log rows > 30 days.
+Configurable in **Forecast settings → Guest data retention** (stored in
+`app_settings`, validated server-side). Rows with no departure info fall back to
+`reservation_history`, then to "first fetched > 2×N days ago".
+
+**Fixed along the way.** A detail job where *every* reservation failed reported
+`partial`; it now reports `failed` (partial = some succeeded). Retention SQL first
+used `\d` inside a JS template literal, which silently drops the backslash and
+would never have matched — found by checking the emitted SQL, now `[0-9]`.
+
+**Refactor.** The list moved out of `index.js` into `ResnTable.js` (+
+`ResnItem.js`, `ResnPrint.js`, pure `resnSearch.js` / `resnFormat.js` /
+`resnTabs.js`); `index.js` 1,979 → ~1,020 lines.
+
+**Verification (72 automated tests + matrix; ALL green).**
+- **Real Postgres 14 (throwaway local DB):** migrations 025 + 027 apply and 027
+  re-runs idempotently; 12 tests of the job runner SQL (upsert, incremental,
+  gone/404 keeps data, error isolation, interrupted detection), retention
+  (summary / history / orphan rules, 0 = never), search SQL (name, formatted
+  phone, notes, group, wildcard safety), summaries `ids`, delete + audit,
+  settings. This is the first time the 20.2 SQL ran against a real database.
+- **UI interaction tests (jsdom, the REAL component tree, mocked API), 14:**
+  tabs/counts, ordering, search (instant + debounced server, Escape), attention
+  chips/OR/clear, sorts + session memory, expand all, stale auto-refresh (once;
+  fresh cards don't), delete-details flow, print (sheet + `window.print`, 2nd
+  click prints again), CSV (BOM, filename, rows), `/` shortcut, remount memory.
+- Pure logic 9 + 7; server route tests 9 + 5; exact-fetch 5; job/summary 11;
+  auth matrix **85 routes, 0 failures**. `npm run build` clean (only
+  pre-existing warnings).
+- **Visual:** real page captured at 390 / 1280 px (found + fixed an empty
+  "Needs attention:" label); print sheet printed to PDF and viewed.
+- **Not exercised:** the live page against the Koyeb DB (needs 027 applied + a
+  scrape + login).
+
+**Deploy.** 027 → deploy → scrape once (cards fill in; header bar shows
+progress). Then optionally set retention in Forecast settings (default 90 days
+applies automatically).
+
+**Follow-ups / ideas.** Print on very large views is capped at 500 rows. Search
+can't see reservations whose details haven't been stored yet (only list fields).
+Possible next: saved filter presets, a "tomorrow's arrivals" prep view with
+deposit/card chasers, SMS/email templates from the card, shift-handoff notes
+attached to reservations. Sprint 20 is otherwise complete.
+
+**Files touched:** `src/components/Forecasting/{index.js, ResnTable.js (new),
+ResnItem.js, ResnPrint.js (new), resnSearch.js (new), ResnList.css,
+ForecastSettings.js}`, `server/server.js` (search, delete-detail, retention
+setting), `server/forecast/detailJob.js` (prune, status semantics),
+`claude-instructions/part5.md`.
 
 ---
 

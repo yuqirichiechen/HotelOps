@@ -258,7 +258,10 @@ async function runJob({ pool, job, targets, concurrency, createClient, logger })
 
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
 
-  const status = abortError ? 'failed' : (stats.failed > 0 ? 'partial' : 'success');
+  // 'partial' only when SOME reservations succeeded; if none did it's a plain failure.
+  const status = abortError ? 'failed'
+    : stats.failed === 0 ? 'success'
+    : stats.done === 0 ? 'failed' : 'partial';
   await pool.query(
     `UPDATE scrape_job
         SET status = $2, done = $3, failed = $4, gone = $5, error = $6,
@@ -267,6 +270,45 @@ async function runJob({ pool, job, targets, concurrency, createClient, logger })
     [job.job_id, status, stats.done, stats.failed, stats.gone, abortError ? abortError.message : null],
   );
   logger.log(`[detailJob] ${status}: done=${stats.done} failed=${stats.failed} gone=${stats.gone} of ${targets.length}`);
+  // Retention pass (best-effort; never affects the job result).
+  try {
+    const pr = await pruneGuestDetails(pool, await getRetentionDays(pool));
+    if (pr.deleted) logger.log(`[detailJob] retention: pruned ${pr.deleted} old guest-detail rows`);
+  } catch (err) {
+    logger.error('[detailJob] retention prune failed:', err && err.message);
+  }
+}
+
+// ── retention (Sprint 20.5) ─────────────────────────────────────────────────
+// reservation_detail holds guest contact, folio and masked-card data. Keep it
+// only as long as it's useful: delete rows whose stay ended more than
+// `guest_detail_retention_days` ago (default 90; 0 = keep forever). Runs at
+// the end of a detail job — i.e. only when an admin scrapes — never on a
+// timer (19.1 compute rule). Also trims finished job rows older than 30 days.
+const DEFAULT_RETENTION_DAYS = 90;
+
+async function getRetentionDays(pool) {
+  const { rows } = await pool.query("SELECT value FROM app_settings WHERE key = 'guest_detail_retention_days'");
+  const n = parseInt(rows[0] && rows[0].value, 10);
+  return Number.isInteger(n) && n >= 0 ? n : DEFAULT_RETENTION_DAYS;
+}
+
+async function pruneGuestDetails(pool, days) {
+  if (!Number.isInteger(days) || days <= 0) return { deleted: 0, skipped: true };
+  const del = await pool.query(
+    `DELETE FROM reservation_detail d
+      WHERE COALESCE(
+              CASE WHEN d.summary->'stay'->>'departure' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                   THEN LEFT(d.summary->'stay'->>'departure', 10)::date END,
+              (SELECT h.departure_date FROM reservation_history h WHERE h.reservation_id = d.reservation_id)
+            ) < (CURRENT_DATE - $1::int)
+         OR (   d.summary->'stay'->>'departure' IS NULL
+            AND NOT EXISTS (SELECT 1 FROM reservation_history h WHERE h.reservation_id = d.reservation_id)
+            AND d.first_fetched_at < NOW() - make_interval(days => $1::int * 2))`,
+    [days],
+  );
+  await pool.query("DELETE FROM scrape_job WHERE status <> 'running' AND started_at < NOW() - INTERVAL '30 days'");
+  return { deleted: del.rowCount || 0, skipped: false };
 }
 
 // ── single-reservation live refresh (admin clicked "refresh") ────────────────
@@ -284,7 +326,7 @@ async function refreshOne({ pool, reservationId, listItem = null, createClient =
 }
 
 module.exports = {
-  startDetailJob, getLatestJob, refreshOne, loadPrior,
+  startDetailJob, getLatestJob, refreshOne, loadPrior, pruneGuestDetails, getRetentionDays,
   // exported for tests
   selectTargets, fingerprintOf, priorityOf,
   TTL_ACTIVE_MS, TTL_FUTURE_MS,

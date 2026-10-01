@@ -33,14 +33,22 @@ const ForecastSettings = ({ onClose }) => {
   const [laborDraft, setLaborDraft] = useState(null);
   const [savingLabor, setSavingLabor] = useState(false);
 
+  // Sprint 20.5 — how long stored guest detail (contact, folio, masked card) is kept after the
+  // stay ends. 0 = keep forever. Lives in app_settings (separate endpoint → its own Save).
+  const [retention, setRetention] = useState('90');
+  const [savingRetention, setSavingRetention] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [cfg, map] = await Promise.all([
+      const [cfg, map, appSettings] = await Promise.all([
         apiFetch('/admin/forecast/config'),
         apiFetch('/admin/forecast/mapping'),
+        apiFetch('/admin/settings'),
       ]);
       if (cancelled) return;
+      const rv = appSettings.data && appSettings.data.settings && appSettings.data.settings.guest_detail_retention_days;
+      if (rv != null && rv !== '') setRetention(String(rv));
       if (!cfg.ok || !cfg.data?.success) {
         setError(cfg.data?.message || 'Could not load config.');
       } else {
@@ -83,6 +91,26 @@ const ForecastSettings = ({ onClose }) => {
     setConfig(data.config);
     setBanner('Labor settings saved.');
     setTimeout(() => setBanner(null), 3000);
+  };
+
+  const saveRetention = async () => {
+    const v = String(retention).trim();
+    const n = parseInt(v, 10);
+    if (!/^\d+$/.test(v) || !(n === 0 || (n >= 7 && n <= 3650))) {
+      setError('Retention must be 0 (keep forever) or between 7 and 3650 days.');
+      return;
+    }
+    setSavingRetention(true);
+    setError(null);
+    const { ok, data } = await apiFetch('/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ guest_detail_retention_days: String(n) }),
+    });
+    setSavingRetention(false);
+    if (!ok || !data?.success) { setError(data?.message || 'Save failed'); return; }
+    setRetention(String(n));
+    setBanner(n === 0 ? 'Guest details will be kept indefinitely.' : `Guest details will be deleted ${n} days after check-out.`);
+    setTimeout(() => setBanner(null), 3500);
   };
 
   const editRow = (code, patch) => {
@@ -218,6 +246,31 @@ const ForecastSettings = ({ onClose }) => {
                   {savingLabor ? 'Saving…' : 'Save labor settings'}
                 </button>
               </div>
+
+              <section>
+                <h3>Guest data retention</h3>
+                <label className="fc-form-row">
+                  <span>Delete saved guest details</span>
+                  <input
+                    type="number" min="0" max="3650" step="1"
+                    value={retention}
+                    onChange={e => setRetention(e.target.value)}
+                  />
+                  <span>days after check-out</span>
+                </label>
+                <p className="fc-form-help">
+                  HotelOps saves each guest’s contact info, folio and masked card details so
+                  the Reservations page loads instantly. They’re removed this many days after
+                  the stay ends (default <code>90</code>; <code>0</code> keeps them forever).
+                  Cleanup runs automatically after each scrape. You can also remove one guest’s
+                  saved details from the reservation’s “More details” panel.
+                </p>
+                <div className="fc-modal-footer">
+                  <button className="fc-modal-btn fc-modal-btn-primary" onClick={saveRetention} disabled={savingRetention}>
+                    {savingRetention ? 'Saving…' : 'Save retention'}
+                  </button>
+                </div>
+              </section>
             </div>
           )}
 
