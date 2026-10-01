@@ -15,11 +15,131 @@ sub-sprint list.
 | Sub-sprint | Focus                                                        | Status |
 |------------|--------------------------------------------------------------|--------|
 | 19.1       | Koyeb/Neon DB compute hours ballooned (~140 h / ~$30)       | Deployed — user monitoring DB graph |
-| 19.2       | Staff detail UI: compact profile card + weekly time entries | Built, `npm run build` clean — **visual check pending** |
+| 19.2       | Staff detail UI: compact profile card + weekly time entries | Built; layout verified at 390 px + 1280 px (static render) |
+| 19.3       | Delete time entry, entries above PIN, mobile/PC polish, **endpoint auth audit** | Built, not yet run against live DB; audit done |
+| 19.4       | Fix auth gaps found in 19.3 audit (21 unprotected routes)    | **Next** — plan in 19.3 entry |
 
 ---
 
 ## 2. Sprint logs (19.1 → present)
+
+### 2026-09-30 — Sprint 19.3: delete time entries, section reorder, responsive pass, endpoint auth audit
+
+**1. 19.2 responsive pass (mobile + PC).** Rendered the real built CSS +
+the component's real markup in headless Chrome at 390 px and 1280 px
+(static mock — no login/DB needed; animations disabled for the capture).
+Verified both layouts; fixes made from what the render showed:
+- **PC:** `.emp-detail` was stretching to the full main-area width
+  (~1,350 px on a wide monitor). Now `max-width: 960px`, centered.
+- Facts grid is deterministic: 2 columns by default, 4 at ≥1100 px,
+  1 column ≤360 px (was `auto-fit`, which could produce a lopsided 3+3+2).
+- Week navigator capped at 480 px so the arrows don't fly to the card
+  edges on desktop; on phone the "This week" pill drops to its own row.
+- Replaced a `:has()` selector with an explicit `.has-facts` class.
+- Phone page padding 24 → 16 px at ≤480 px.
+- Limits of this check: static mock, real fonts/data/dark mode not
+  exercised; the real page still deserves a quick look on a device.
+
+**2. Delete a time entry.** Edit could only change times. Now:
+- **UI:** the Override-Hours modal (edit mode only — not "Add entry")
+  has a **Delete** button on the left. It swaps in an inline red confirm
+  panel showing the entry's date/times and the consequence ("removes it
+  from payroll hours… recorded in the audit log") with **Keep** /
+  **Yes, delete**. Phone: modal is bottom-sheet style with ≥44 px
+  buttons, Delete on its own row.
+- **API:** `DELETE /api/admin/time-entries/:id`
+  (`requireAuth` + `requireRole('admin')`, UUID-validated). One
+  transaction: `SELECT … FOR UPDATE` → delete dependent
+  `approval_requests` (NOT NULL FK; table has no writers today) → delete
+  the entry → insert `audit_logs` row `admin_time_entry_delete` with the
+  **full original row in `old_data`** and the admin username in
+  `new_data`. Hard delete, but reconstructable from the audit log.
+- Client: uses `apiFetch` (token), then reloads entries and stays on
+  the current week.
+- **Not tested against a live DB** (didn't run against the Koyeb DB).
+  First real use: delete a throwaway test entry and confirm the
+  `audit_logs` row exists.
+
+**3. Time Entries now sits above PIN Access** (pure JSX reorder).
+
+**4. Endpoint auth audit (no fixes yet — those are 19.4).** All 84
+routes in `server/server.js` parsed for `requireAuth` / `requireRole`
+(helper output kept in the session scratchpad). Findings:
+
+*Public on purpose (keep):* `GET /api/health`, `POST /api/auth/staff/login`,
+`POST /api/auth/admin/login`, `GET /api/public-config` (only 4 non-sensitive
+login-screen keys), static `*`.
+
+*Authenticated, any role — OK:* `/api/me*`, `/api/auth/staff/set-pin|change-pin|logout`,
+`/api/clock-in-self|clock-out-self`, `/api/handoff-notes*` (PATCH/DELETE
+verified: author-or-admin ownership check; pin/resolve admin-only).
+
+**Unprotected — NO `requireAuth` at all (26 routes; 5 are public on purpose → 21 real problems):**
+
+| Sev | Route(s) | Impact today | Client caller |
+|-----|----------|--------------|---------------|
+| CRITICAL | `DELETE /admin/employees/:id`, `PUT /admin/employees/:id`, `POST /admin/employees`, `PATCH /admin/employees/:id/status` | Anyone on the internet can create / edit (role, phone, rate, login IDs) / deactivate / delete staff | StaffManager, StaffDetail (raw `fetch`) |
+| CRITICAL | `PUT /admin/settings` | Anyone can change app config (OT threshold, login methods, idle timeouts…) | AdminSettings, DevPanel (raw `fetch`) |
+| CRITICAL | `POST /admin/schedule`, `PUT`/`DELETE /admin/schedule/:id` | Anyone can rewrite/erase the schedule | Calendar (raw `fetch`) |
+| CRITICAL | `POST /clock-in`, `POST /clock-out` | Phone number alone clocks any employee in/out → falsified payroll | **none** (legacy; `services/timeClock.js` exports unused) |
+| HIGH | `POST /authenticate`, `GET /user/:phone/history` | Phone → user_id/name/role/hire date; full punch history by phone number | `/authenticate`: only `ShiftsView` (`lookupEmployee`); history: **none** |
+| HIGH | `GET /admin/employees`, `GET /admin/employees/:id`, `GET /admin/employees/:id/time-entries` | PII + pay rates + birthdays + punch times readable without login | StaffManager, StaffDetail, Calendar, ShiftSheet, **StaffCalendar (staff-role page!)** |
+| HIGH | `GET /admin/settings` | All app settings readable | Calendar, StaffManager, AdminSettings |
+| MED | `GET /admin/departments`, `GET /admin/shift-templates`, `GET /admin/schedule` | Org structure / schedule readable | many pages, incl. NotesPage, AdminReports, StaffCalendar |
+| MED | `GET /shifts/range`, `GET /shifts/daily` | Schedule readable; trusts a client-supplied `userId` query param to decide visibility scope (IDOR-ish) | StaffCalendar, NotesDrawer, ShiftsCalendar |
+
+**Other findings (outside route middleware):**
+- `server/auth.js`: `JWT_SECRET` falls back to the literal
+  `'dev-secret-do-not-ship'` if the env var is missing. If Koyeb lacks
+  `JWT_SECRET`, anyone can forge an admin token and bypass **every**
+  `requireAuth`. **Must verify the Koyeb env var is set — before/with
+  19.4.** Fix: crash on boot in production if unset.
+- `server/config/admins.json` holds plaintext admin passwords (committed
+  to a private repo; `findAdmin` compares plaintext). Hash them (bcrypt)
+  or move to env.
+- No rate limiting on `/auth/*/login` (PINs/4-digit codes are brute-forceable).
+- `requireRole('admin')` is the only role gate; `front_desk` has no
+  distinct permissions yet.
+- `cors` only whitelists localhost — fine (same-origin in prod).
+
+**19.4 plan (do in this order):**
+1. **Check `JWT_SECRET` on Koyeb**; make server refuse to start without it
+   in production.
+2. **Delete dead legacy routes:** `POST /clock-in`, `POST /clock-out`,
+   `GET /user/:phone/history` (+ the unused exports in
+   `src/services/timeClock.js`). Replace `/authenticate` use in
+   `ShiftsView` with the token identity (`/api/me`), then delete it.
+3. **Add `requireAuth, requireRole('admin')`** to every `/api/admin/*`
+   route listed above, and switch their callers from raw `fetch` to
+   `apiFetch` (raw fetch sends no token → they'd 401). Callers:
+   StaffDetail, StaffManager, Calendar, ShiftSheet, AdminSettings,
+   DevPanel, NotesPage, AdminReports, StaffCalendar.
+4. **Staff-facing needs:** `StaffCalendar` (staff role) uses
+   `/admin/employees` and `/admin/departments` to render names — after
+   step 3 it would 403. Add minimal read-only endpoints for any logged-in
+   user (e.g. `GET /api/directory` → `{user_id, name, department_id}` only,
+   no phone/rate/birthday; departments list) and point it there.
+   `/shifts/range|daily`: `requireAuth`, ignore client `userId` and use
+   `req.auth.sub` (admins may pass one).
+5. Tests: curl matrix — every route with no token (expect 401), staff
+   token on admin routes (expect 403), admin token (expect 200); then
+   click-through every admin page + staff pages in the browser.
+6. Follow-ups: admin password hashing, login rate-limit.
+Because step 3 changes callers and server together, deploy as one
+release; expect admin pages to break if only one side ships.
+
+**Verified.** `npm run build` clean (no `StaffDetail` warnings);
+`node --check server/server.js` passes. Delete endpoint **not yet run
+against a DB**. Static-render screenshots reviewed at 390 / 1280 px.
+
+**Files touched:**
+- `server/server.js` (new `DELETE /api/admin/time-entries/:id`)
+- `src/components/AdminPanel/StaffDetail.js` (delete UI, section reorder,
+  `.has-facts`)
+- `src/components/AdminPanel/AdminPanel.css` (responsive pass, delete styles)
+- `claude-instructions/part5.md`
+
+---
 
 ### 2026-09-30 — Sprint 19.2: Staff detail — compact profile card + weekly time entries
 

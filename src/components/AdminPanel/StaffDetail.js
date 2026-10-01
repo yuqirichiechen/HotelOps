@@ -119,6 +119,9 @@ const StaffDetail = ({ userId, editEntryId }) => {
   // admin *which* punch conflicts (not just "an overlap exists").
   const [entryMode,     setEntryMode]     = useState('edit'); // 'edit' | 'create'
   const [entryConflict, setEntryConflict] = useState(null);
+  // Sprint 19.3: two-step delete inside the edit modal.
+  const [confirmEntryDelete, setConfirmEntryDelete] = useState(false);
+  const [entryDeleting,      setEntryDeleting]      = useState(false);
 
   // Performance dashboard (Sprint 6D)
   const [perf,       setPerf]       = useState(null);
@@ -312,6 +315,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
     });
     setEntryErr('');
     setEntryConflict(null);
+    setConfirmEntryDelete(false);
   };
 
   // Sprint 18.13 — auto-open modal on the entry AdminHome sent us to.
@@ -345,9 +349,26 @@ const StaffDetail = ({ userId, editEntryId }) => {
   };
 
   const closeEntryEdit = () => {
+    setConfirmEntryDelete(false);
     setEditEntry(null);
     setEntryErr('');
     setEntryConflict(null);
+  };
+
+  // Sprint 19.3: delete the whole entry (audit-logged server-side).
+  const deleteEntry = async () => {
+    if (!editEntry?.entry_id) return;
+    setEntryDeleting(true);
+    setEntryErr('');
+    const { ok, data } = await apiFetch(`/admin/time-entries/${editEntry.entry_id}`, { method: 'DELETE' });
+    setEntryDeleting(false);
+    if (ok && data?.success) {
+      closeEntryEdit();
+      reloadEntries();
+    } else {
+      setConfirmEntryDelete(false);
+      setEntryErr(data?.message || 'Could not delete entry');
+    }
   };
 
   const saveEntryEdit = async (e) => {
@@ -453,7 +474,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
       <div className="emp-detail-profile">
         <div className="emp-detail-avatar">{emp.name.charAt(0).toUpperCase()}</div>
         <div className="emp-detail-id">
-          <div className="emp-detail-namerow">
+          <div className={`emp-detail-namerow${!editing ? ' has-facts' : ''}`}>
             <div className="emp-detail-name">{emp.name}</div>
             <span className={`emp-badge ${emp.active ? 'badge-active' : 'badge-inactive'}`}>
               {emp.active ? 'Active' : 'Inactive'}
@@ -714,49 +735,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
         </form>
       ) : null}
 
-      {/* PIN management */}
-      {!editing && (
-        <div className="emp-pin-section">
-          <h3 className="emp-pin-title">PIN Access</h3>
-
-          <div className="emp-pin-row">
-            <div className="emp-pin-info">
-              <div className="emp-pin-label">Require PIN at sign-in</div>
-              <div className="emp-pin-meta">
-                {emp.pin_required
-                  ? 'Employee must enter their PIN to log in.'
-                  : 'Employee can log in with their identifier alone.'}
-              </div>
-            </div>
-            <button
-              className={`emp-pin-toggle ${emp.pin_required ? 'is-on' : ''}`}
-              onClick={togglePinRequired}
-              disabled={pinBusy}
-              aria-label="Toggle PIN required"
-            />
-          </div>
-
-          <div className="emp-pin-row">
-            <div className="emp-pin-info">
-              <div className="emp-pin-label">PIN status</div>
-              <div className="emp-pin-meta">
-                {emp.pin_must_set
-                  ? 'Reset pending — employee will set a new PIN at next login.'
-                  : emp.has_pin
-                    ? 'PIN is set. You can reset it but cannot view it.'
-                    : 'No PIN set yet.'}
-              </div>
-            </div>
-            <button className="btn-pin-reset" onClick={resetPin} disabled={pinBusy}>
-              {pinBusy ? '…' : 'Reset PIN'}
-            </button>
-          </div>
-
-          {pinErr && <div className="admin-error" style={{ marginTop: 8 }}>{pinErr}</div>}
-        </div>
-      )}
-
-      {/* Time entries — Sprint 5D */}
+      {/* Time entries — Sprint 5D (moved above PIN Access in 19.3) */}
       {!editing && (
         <div className="emp-pin-section">
           <div className="emp-entries-head">
@@ -855,6 +834,48 @@ const StaffDetail = ({ userId, editEntryId }) => {
         </div>
       )}
 
+      {/* PIN management */}
+      {!editing && (
+        <div className="emp-pin-section">
+          <h3 className="emp-pin-title">PIN Access</h3>
+
+          <div className="emp-pin-row">
+            <div className="emp-pin-info">
+              <div className="emp-pin-label">Require PIN at sign-in</div>
+              <div className="emp-pin-meta">
+                {emp.pin_required
+                  ? 'Employee must enter their PIN to log in.'
+                  : 'Employee can log in with their identifier alone.'}
+              </div>
+            </div>
+            <button
+              className={`emp-pin-toggle ${emp.pin_required ? 'is-on' : ''}`}
+              onClick={togglePinRequired}
+              disabled={pinBusy}
+              aria-label="Toggle PIN required"
+            />
+          </div>
+
+          <div className="emp-pin-row">
+            <div className="emp-pin-info">
+              <div className="emp-pin-label">PIN status</div>
+              <div className="emp-pin-meta">
+                {emp.pin_must_set
+                  ? 'Reset pending — employee will set a new PIN at next login.'
+                  : emp.has_pin
+                    ? 'PIN is set. You can reset it but cannot view it.'
+                    : 'No PIN set yet.'}
+              </div>
+            </div>
+            <button className="btn-pin-reset" onClick={resetPin} disabled={pinBusy}>
+              {pinBusy ? '…' : 'Reset PIN'}
+            </button>
+          </div>
+
+          {pinErr && <div className="admin-error" style={{ marginTop: 8 }}>{pinErr}</div>}
+        </div>
+      )}
+
       {/* Status + Delete actions */}
       {!editing && (
         <div className="emp-detail-actions">
@@ -937,9 +958,38 @@ const StaffDetail = ({ userId, editEntryId }) => {
               </div>
             )}
             {entryErr && !entryConflict && <div className="admin-error">{entryErr}</div>}
+            {/* Sprint 19.3 — delete lives inside Edit, behind a confirm. */}
+            {entryMode === 'edit' && confirmEntryDelete && (
+              <div className="entry-delete-confirm" role="alertdialog" aria-label="Confirm delete">
+                <div className="entry-delete-confirm-text">
+                  <strong>Delete this entry?</strong>
+                  <span>
+                    {fmtEntryDateRange(editEntry.clock_in_time, editEntry.clock_out_time)}
+                    {' · '}{fmtTime(editEntry.clock_in_time)} → {editEntry.clock_out_time ? fmtTime(editEntry.clock_out_time) : 'in progress'}
+                    {' — this removes it from payroll hours. It is recorded in the audit log.'}
+                  </span>
+                </div>
+                <div className="entry-delete-confirm-btns">
+                  <button type="button" className="btn-logout" onClick={() => setConfirmEntryDelete(false)} disabled={entryDeleting}>Keep</button>
+                  <button type="button" className="btn-delete-confirm" onClick={deleteEntry} disabled={entryDeleting}>
+                    {entryDeleting ? 'Deleting…' : 'Yes, delete'}
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="entry-edit-actions">
+              {entryMode === 'edit' && !confirmEntryDelete && (
+                <button
+                  type="button"
+                  className="entry-delete-btn"
+                  onClick={() => setConfirmEntryDelete(true)}
+                  disabled={entrySave}
+                >
+                  Delete
+                </button>
+              )}
               <button type="button" className="btn-logout" onClick={closeEntryEdit}>Cancel</button>
-              <button type="submit" className="btn-save" disabled={entrySave}>
+              <button type="submit" className="btn-save" disabled={entrySave || entryDeleting}>
                 {entrySave
                   ? 'Saving…'
                   : entryMode === 'create' ? 'Add entry' : 'Save'}

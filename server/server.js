@@ -2268,6 +2268,49 @@ app.patch('/api/admin/time-entries/:id', requireAuth, requireRole('admin'), asyn
   }
 });
 
+// Sprint 19.3 — admin deletes a whole time entry (e.g. a duplicate or
+// mistaken punch; edit can only change the times). Hard delete, but the
+// full original row goes into audit_logs.old_data in the SAME transaction
+// so payroll can always reconstruct what was removed and by whom. Any
+// approval_requests pointing at the entry are removed first (NOT NULL FK
+// would otherwise block the delete; the table has no writers today).
+app.delete('/api/admin/time-entries/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid entry id' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT * FROM time_entries WHERE entry_id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+    await client.query('DELETE FROM approval_requests WHERE entry_id = $1', [req.params.id]);
+    await client.query('DELETE FROM time_entries WHERE entry_id = $1', [req.params.id]);
+    await client.query(
+      `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data)
+       VALUES (NULL, 'admin_time_entry_delete', 'time_entries', $1, $2, $3)`,
+      [
+        req.params.id,
+        JSON.stringify(rows[0]),
+        JSON.stringify({ deleted: true, admin_username: req.auth.sub }),
+      ]
+    );
+    await client.query('COMMIT');
+    return res.json({ success: true, deleted: req.params.id });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[time-entry:delete]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // ── Admin: PIN management ────────────────────────────────────────────────────
 
 // Toggle whether an employee must enter a PIN at login.

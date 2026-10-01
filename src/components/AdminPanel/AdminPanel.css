@@ -731,6 +731,13 @@
   padding: 24px;
   animation: adminSlideUp 0.3s ease;
   min-height: 100%;
+  /* Sprint 19.3: cap line length on wide desktop screens; centered. */
+  max-width: 960px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+@media (max-width: 480px) {
+  .emp-detail { padding: 16px; }
 }
 
 .emp-detail-topbar {
@@ -810,13 +817,13 @@
 
 .emp-detail-facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 16px;
   margin: 2px 0 0;
   padding: 12px 0 0;
   border-top: 1px solid var(--border-light);
 }
-.emp-detail-namerow:has(+ .emp-detail-facts) { min-height: 0; margin-bottom: 10px; }
+.emp-detail-namerow.has-facts { min-height: 0; margin-bottom: 10px; }
 
 .emp-fact { min-width: 0; }
 .emp-fact dt {
@@ -839,8 +846,12 @@
 .emp-fact dd.is-cap   { text-transform: capitalize; }
 .emp-fact dd.is-empty { color: var(--text-lightest); }
 
-@media (min-width: 900px) {
-  .emp-detail-facts { grid-template-columns: repeat(4, 1fr); }
+@media (min-width: 1100px) {
+  .emp-detail-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 360px) {
+  .emp-detail-profile { padding: 14px; gap: 12px; }
+  .emp-detail-facts { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Status & delete actions */
@@ -1641,6 +1652,7 @@
 
 /* ── Sprint 19.2: week navigator above the Time Entries list ─────────────── */
 .emp-week-nav {
+  max-width: 480px; /* don't stretch arrows to the far edges on desktop */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1834,8 +1846,62 @@
 .entry-edit-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 10px;
   margin-top: 8px;
+}
+
+/* Sprint 19.3 — Delete (left) + confirm panel inside the entry modal */
+.entry-delete-btn {
+  margin-right: auto; /* pushes Cancel/Save right, Delete stays left */
+  padding: 10px 14px;
+  min-height: 40px;
+  background: transparent;
+  color: var(--danger-hover);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.entry-delete-btn:hover:not(:disabled) { background: var(--danger-subtle); }
+.entry-delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.entry-delete-confirm {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  border-radius: 10px;
+  animation: slideDown 0.2s ease;
+}
+.entry-delete-confirm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 13px;
+  color: var(--danger-hover);
+  margin-bottom: 12px;
+}
+.entry-delete-confirm-btns { display: flex; gap: 10px; }
+.entry-delete-confirm-btns .btn-logout,
+.entry-delete-confirm-btns .btn-delete-confirm { flex: 1; min-height: 40px; }
+.entry-delete-confirm-btns .btn-logout {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+@media (max-width: 480px) {
+  /* Phone: modal never taller than the screen; buttons stay reachable. */
+  .entry-edit-overlay { padding: 12px; align-items: flex-end; }
+  .entry-edit-modal   { max-height: calc(100vh - 24px); overflow-y: auto; padding: 18px; }
+  .entry-edit-actions { flex-wrap: wrap; }
+  .entry-edit-actions .btn-save,
+  .entry-edit-actions .btn-logout { flex: 1; min-height: 44px; }
+  .entry-delete-btn { flex-basis: 100%; margin-right: 0; order: 3; }
 }
 
 /* ── Staff performance dashboard (Sprint 6D) ─────────────────────────────── */
