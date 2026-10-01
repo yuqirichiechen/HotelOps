@@ -1439,3 +1439,7 @@
 @media (min-width: 701px) {
   .fc-tabs { flex-wrap: wrap; overflow-x: visible; }
 }
+
+/* Sprint 20.4: no right rail — the list gets the full width. */
+.fc-body { grid-template-columns: 1fr; }
+.fc-main { min-width: 0; }

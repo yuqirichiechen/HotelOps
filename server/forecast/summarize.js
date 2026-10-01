@@ -139,7 +139,7 @@ function summarizeDetail(detail, listItem = {}) {
 
   // ── cards (masked metadata only; that's all rGuest returns) ──
   const cards = arr(d.paymentInstruments).map(c => ({
-    issuer: str(c && c.cardIssuer),            // UUID — frontend maps to a brand (Sprint 18.8)
+    issuer: str(c && c.cardIssuer),            // already a readable brand name ("Visa", "Mastercard", "American Express") — verified live 2026-09-30
     type:   str(c && c.cardType),
     last4:  str(c && c.accountNumberLast4),
     exp:    str(c && c.expirationYearMonth),

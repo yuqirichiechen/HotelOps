@@ -16,6 +16,7 @@ import { useView } from '../../shells/ViewContext';
 import ForecastSettings from './ForecastSettings';
 import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
+import ResnItem, { useResnSummaries } from './ResnItem';
 import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate, computeTabCounts, sortForTab, EMPTY_COPY } from './resnTabs';
 
 
@@ -278,142 +279,6 @@ const STATUS_PILL_CLASS = {
   'Cancelled': 'cancelled',
 };
 
-// Sprint 18.4 — mobile reservation card. Collapsed shows guest +
-// conf + room/type + status pills. Tap (or click) expands into a
-// detail block with Arrive/Depart/Nights/Source + Reservation
-// Status + Room Status + Notes/Flags + "Open in rGuest Stay"
-// button. Selection state is shared with the desktop table — the
-// same `selectedId` drives both, so the right-rail panel still
-// works when a row is selected on a tablet-sized viewport.
-const ReservationCard = ({ r, isSelected, onSelect }) => {
-  const flags = buildResnFlags(r);
-  const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
-  const roomStatusLabel = r.roomNumber
-    ? (r.hkStatusLabel || r.occupancyStatus || '—')
-    : 'No Room Assigned';
-  // Sprint 18.7 — fetch on expand only. Passing `null` when
-  // collapsed prevents an unwanted preflight when scrolling
-  // through 30 cards.
-  const { data: detail, loading: detailLoading, error: detailError } = useReservationDetail(isSelected ? r.id : null);
-  const email     = detail ? fmtDetail_email(detail.profile)     : null;
-  const phone     = detail ? fmtDetail_phone(detail.profile)     : null;
-  const channel   = detail ? fmtDetail_channel(detail.reservation) : null;
-  const balance   = detail ? fmtDetail_balance(detail.balances, detail.reservation?.accountId) : null;
-  const stayCount = detail?.stayHistory?.pastCount;
-  // Sprint 18.8 — mobile mirrors the highest-value rich fields.
-  const occupancy = detail ? fmtDetail_occupancy(detail.reservation)              : null;
-  const cards     = detail ? fmtDetail_paymentInstruments(detail.paymentInstruments) : [];
-  // Sprint 18.9 — open service request count on mobile.
-  const svcReq    = detail ? fmtDetail_serviceRequests(detail.serviceRequests)    : null;
-  return (
-    <li className={`fc-resn-card${isSelected ? ' selected' : ''}`}>
-      <button
-        type="button"
-        className="fc-resn-card-toggle"
-        onClick={() => onSelect && onSelect(isSelected ? null : r.id)}
-        aria-expanded={isSelected}
-      >
-        <div className="fc-resn-card-head">
-          <div className="fc-resn-card-headtxt">
-            <div className="fc-resn-card-name">{r.guestName || '(no name)'}</div>
-            <div className="fc-resn-card-meta">
-              {r.confirmationId && <>Conf. {r.confirmationId} · </>}
-              {r.roomNumber || '—'}{r.baseLabel ? ` · ${r.baseLabel}` : ''}
-            </div>
-          </div>
-          <div className="fc-resn-card-status">
-            <span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span>
-            {r.roomNumber
-              ? <span className="fc-pill fc-pill-action-none">{roomStatusLabel}</span>
-              : <span className="fc-pill fc-pill-status-pending">No Room Assigned</span>}
-          </div>
-          <span className="fc-resn-card-caret" aria-hidden>{isSelected ? '▾' : '▸'}</span>
-        </div>
-      </button>
-      {isSelected && (
-        <div className="fc-resn-card-detail">
-          <dl className="fc-resn-card-grid">
-            <div><dt>Arrive</dt><dd>{fmtDate(r.arrivalDate)}</dd></div>
-            <div><dt>Depart</dt><dd>{fmtDate(r.departureDate)}</dd></div>
-            <div><dt>Nights</dt><dd>{r.nights}</dd></div>
-            <div><dt>Source</dt><dd>{r.source || '—'}</dd></div>
-          </dl>
-          {flags.length > 0 && (
-            <div className="fc-resn-card-flagsrow">
-              <span className="fc-resn-card-label">Notes / Flags</span>
-              <div>{flags.map(f => (
-                <span key={f.label} className={`fc-pill fc-flag-${f.cls}`}>{f.label}</span>
-              ))}</div>
-            </div>
-          )}
-
-          {/* Sprint 18.7 — on-demand guest detail. Loading state
-              is inline so the user sees something immediately
-              after tapping the card; the row-level fields above
-              already give context while the detail call resolves. */}
-          {detailLoading && (
-            <div className="fc-resn-card-loading">Loading guest detail…</div>
-          )}
-          {detailError && (
-            <div className="fc-resn-card-error" role="alert">{detailError}</div>
-          )}
-          {detail && (
-            <>
-              <dl className="fc-resn-card-grid fc-resn-card-grid-rich">
-                {email     && <div><dt>Email</dt><dd>{email}</dd></div>}
-                {phone     && <div><dt>Phone</dt><dd>{phone}</dd></div>}
-                {channel   && <div><dt>Channel</dt><dd>{channel}</dd></div>}
-                {occupancy && <div><dt>Occupancy</dt><dd>{occupancy}</dd></div>}
-                {balance && (
-                  <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
-                    <strong>{fmtMoney(balance.total)}</strong>
-                  </dd></div>
-                )}
-                {stayCount != null && stayCount > 0 && (
-                  <div><dt>History</dt><dd>{stayCount} prior stay{stayCount === 1 ? '' : 's'}</dd></div>
-                )}
-                {svcReq && svcReq.totalOpen > 0 && (
-                  <div><dt>Open requests</dt><dd>
-                    <span className="fc-pill fc-flag-move">{svcReq.totalOpen} open</span>
-                  </dd></div>
-                )}
-              </dl>
-              {/* Sprint 18.8 — card chip on mobile too. Distinguish
-                  empty array (no card on file) from null (failed)
-                  so the user sees the truth either way. */}
-              {detail.paymentInstruments != null && (
-                <div className="fc-card-chips fc-card-chips-mobile">
-                  {cards.length === 0 && (
-                    <div className="fc-card-chip fc-card-chip-empty">No card on file</div>
-                  )}
-                  {cards.map((c, i) => (
-                    <div key={i} className="fc-card-chip">
-                      <span className="fc-card-chip-brand">{c.issuer}</span>
-                      <span className="fc-card-chip-num">•••• {c.last4}</span>
-                      {c.exp && <span className="fc-card-chip-exp">exp {c.exp}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          <div className="fc-resn-card-actions">
-            <a
-              className="fc-btn fc-btn-primary"
-              href={RGUEST_RESERVATION_URL(r.id)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open in rGuest Stay <span aria-hidden>↗</span>
-            </a>
-          </div>
-        </div>
-      )}
-    </li>
-  );
-};
-
 // Sprint 18.3 — derive the Notes/Flags pill row for a reservation.
 // Order matters: VIP first (highest signal), then arrival timing,
 // then logistics. Returns an array of `{label, cls}` ready to map
@@ -429,240 +294,6 @@ function buildResnFlags(r) {
   if (r.isPetFriendly)         flags.push({ label: 'Pet friendly',  cls: 'pet' });
   if (r.isGroupBooking)        flags.push({ label: 'Group',         cls: 'group' });
   return flags;
-}
-
-// Sprint 18.7 — in-memory cache for per-reservation detail. Keyed
-// by reservation id; entries expire after 5 min so progress
-// (folio updates, comment additions) refreshes without forcing
-// the user to reload. Lives at module scope so the cache survives
-// component remounts (e.g. switching tabs).
-const _detailCache = new Map();
-const DETAIL_CACHE_MS = 5 * 60 * 1000;
-
-// On-demand fetcher. Returns { data, loading, error }; data is
-// `{ reservation, profile, comments, balances, stayHistory }` —
-// each field individually nullable since the backend wraps every
-// sub-call in catch() and returns partial data on failure.
-function useReservationDetail(id) {
-  const [data, setData]       = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError]     = React.useState(null);
-
-  React.useEffect(() => {
-    if (!id) { setData(null); setLoading(false); setError(null); return; }
-    const cached = _detailCache.get(id);
-    if (cached && Date.now() - cached.fetchedAt < DETAIL_CACHE_MS) {
-      setData(cached.data);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    apiFetch(`/admin/reservations/${id}/detail`).then(({ ok, data: result }) => {
-      if (cancelled) return;
-      setLoading(false);
-      if (!ok || !result?.success) {
-        setError(result?.message || 'Could not load reservation detail.');
-        return;
-      }
-      _detailCache.set(id, { data: result.detail, fetchedAt: Date.now() });
-      setData(result.detail);
-    });
-    return () => { cancelled = true; };
-  }, [id]);
-
-  return { data, loading, error };
-}
-
-// Sprint 18.7 — extracted helpers to format the rich detail
-// fields into the small bits the rail panel displays.
-
-function pickPrimary(arr, fields) {
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  // Prefer the default-flagged one; otherwise first.
-  return arr.find(x => x?.isDefault) || arr[0];
-}
-
-function fmtDetail_email(profile) {
-  const e = pickPrimary(profile?.emailDetails?.emailAddresses);
-  return e?.emailAddress || null;
-}
-function fmtDetail_phone(profile) {
-  const p = pickPrimary(profile?.phoneDetails?.phones);
-  if (!p) return null;
-  const num = p.phoneNumber || p.formattedNumber || p.number;
-  return num || null;
-}
-function fmtDetail_address(profile) {
-  const a = pickPrimary(profile?.addressDetails?.addresses);
-  if (!a) return null;
-  const parts = [
-    a.address1, a.address2, a.city,
-    a.stateProvince || a.state,
-    a.postalCode, a.country,
-  ].filter(Boolean);
-  return parts.length ? parts.join(', ') : null;
-}
-function fmtDetail_channel(reservation) {
-  const src = reservation?.sourceInfo;
-  if (!src) return null;
-  const bs = Array.isArray(src.bookingSources) && src.bookingSources.length
-    ? src.bookingSources.join(' / ') : null;
-  if (bs) return bs;
-  if (src.walkIn) return 'Walk-in';
-  if (src.groupId) return 'Group booking';
-  return src.bookedBy ? 'Direct' : null;
-}
-function fmtDetail_balance(balances, accountId) {
-  if (!balances?.accountStatementMap || !accountId) return null;
-  const stmt = balances.accountStatementMap[accountId];
-  return stmt?.balance || null;
-}
-function fmtMoney(n) {
-  if (n == null) return '—';
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-}
-
-// Sprint 18.8 — additional rich-detail helpers.
-
-// Adults / children / infants summary. Returns a friendly string
-// or null when occupancy isn't populated.
-function fmtDetail_occupancy(reservation) {
-  const occ = reservation?.occupancy;
-  if (!occ) return null;
-  const parts = [];
-  if (occ.totalAdults > 0)   parts.push(`${occ.totalAdults} adult${occ.totalAdults === 1 ? '' : 's'}`);
-  if (occ.totalChildren > 0) parts.push(`${occ.totalChildren} child${occ.totalChildren === 1 ? '' : 'ren'}`);
-  if (occ.totalInfants > 0)  parts.push(`${occ.totalInfants} infant${occ.totalInfants === 1 ? '' : 's'}`);
-  return parts.length ? parts.join(', ') : null;
-}
-
-// Loyalty tier + program name from the guest profile. The shape
-// is nested — `loyaltyDetails.loyaltyProfiles[]` each have a
-// `loyaltyProgram` reference and a `tier`. Rosa was empty in
-// recon; real-guest paths surface "Stash Hotel Rewards · Gold".
-function fmtDetail_loyalty(profile) {
-  const list = profile?.loyaltyDetails?.loyaltyProfiles;
-  if (!Array.isArray(list) || list.length === 0) return null;
-  const primary = list.find(p => p?.isDefault) || list[0];
-  const program = primary?.loyaltyProgram?.name || primary?.programName || null;
-  const tier    = primary?.tier?.name || primary?.tierName || null;
-  if (program && tier) return `${program} · ${tier}`;
-  return program || tier || null;
-}
-
-// Additional-guests list. The recon shape is an array of objects
-// with `firstName/lastName` (sometimes nested under `personalDetails`).
-function fmtDetail_additionalGuests(reservation) {
-  const list = reservation?.additionalGuests;
-  if (!Array.isArray(list) || list.length === 0) return [];
-  return list.map(g => {
-    const pd = g.personalDetails || g;
-    const name = [pd?.firstName, pd?.lastName].filter(Boolean).join(' ').trim();
-    return name || '(unnamed guest)';
-  });
-}
-
-// Comments arrive as a dict keyed by type (general / housekeeping /
-// frontDesk / billing / ...). Flatten into an array of {type, text}
-// items so the UI can render note cards. Empty array = no notes.
-function fmtDetail_comments(comments) {
-  if (!comments || typeof comments !== 'object') return [];
-  const items = [];
-  for (const [type, list] of Object.entries(comments)) {
-    if (!Array.isArray(list)) continue;
-    for (const c of list) {
-      const text = c?.comment || c?.text || c?.note || '';
-      if (text.trim()) items.push({ type, text: text.trim() });
-    }
-  }
-  return items;
-}
-
-// Map an rGuest cardIssuer UUID to a brand label. The catalog is
-// at `/payment-service/.../cardIssuers` but the common values are
-// stable enough to inline here; unmapped UUIDs fall back to
-// `cardIssuerName` or "Card" so the chip still renders.
-const _CARD_ISSUER_NAMES = {
-  // (Populate as we discover them in production scrapes — for now
-  // we trust the response's own cardIssuerName field.)
-};
-function fmtDetail_paymentInstruments(paymentInstruments) {
-  if (!Array.isArray(paymentInstruments) || paymentInstruments.length === 0) return [];
-  return paymentInstruments.map(pi => {
-    const last4   = pi?.accountNumberLast4 || pi?.last4 || '••••';
-    const issuer  = pi?.cardIssuerName
-                 || _CARD_ISSUER_NAMES[pi?.cardIssuer]
-                 || pi?.cardType
-                 || 'Card';
-    // expirationYearMonth observed as "2027-12" or "202712" in
-    // various recons; tolerate both forms.
-    let exp = null;
-    const raw = pi?.expirationYearMonth || '';
-    const m = /^(\d{4})-?(\d{2})$/.exec(raw);
-    if (m) exp = `${m[2]}/${m[1].slice(2)}`;
-    return { last4, issuer, exp, holder: pi?.cardHolderName || null };
-  });
-}
-
-// Per-night rate snapshots → total rollup. Some reservations don't
-// expose this (groups, comps); returns null in that case.
-function fmtDetail_rateRollup(reservation) {
-  const snaps = reservation?.rateSnapshots;
-  if (!Array.isArray(snaps) || snaps.length === 0) return null;
-  let total = 0;
-  let nights = 0;
-  for (const s of snaps) {
-    const r = s?.rate ?? s?.amount;
-    if (typeof r === 'number') { total += r; nights++; }
-  }
-  if (nights === 0) return null;
-  return { total, nights, avg: total / nights };
-}
-
-// Sprint 18.9 — service requests linked to a reservation. The
-// backend returns a flat array with each item tagged `_kind:
-// guest|housekeeping|maintenance`. We bucket by kind for the
-// section count, then expose the raw items so the UI can render
-// individual chips. Open vs closed is inferred from `statusId`:
-// rGuest's "C-" prefix means "Completed/closed" while "P-"/"S-"
-// mean "Pending/Started". Unknowns are treated as open since
-// the FD cares more about false-positive surfacing than false
-// negatives here.
-function fmtDetail_serviceRequests(serviceRequests) {
-  if (!Array.isArray(serviceRequests) || serviceRequests.length === 0) return null;
-  const isClosed = (sr) => {
-    const s = String(sr?.statusId || '').toUpperCase();
-    return s.startsWith('C-') || s === 'CLOSED' || s === 'COMPLETED';
-  };
-  const items = serviceRequests.map(sr => ({
-    kind:      sr._kind || 'guest',
-    status:    sr.statusId || null,
-    severity:  sr.severity || null,
-    requestId: sr.requestId || null,
-    startDate: sr.startDate || null,
-    closed:    isClosed(sr),
-    raw:       sr,
-  }));
-  const open   = items.filter(x => !x.closed);
-  const closed = items.filter(x =>  x.closed);
-  return { items, open, closed, totalOpen: open.length, totalClosed: closed.length };
-}
-
-// Stay history detail beyond pastCount: returns the breakdown
-// pieces if any are > 0. Used for the expandable stay history
-// callout ("3 past · 1 future · 2 no-shows").
-function fmtDetail_stayHistoryBreakdown(stayHistory) {
-  if (!stayHistory) return null;
-  const parts = [];
-  if (stayHistory.pastCount > 0)      parts.push(`${stayHistory.pastCount} past`);
-  if (stayHistory.futureCount > 0)    parts.push(`${stayHistory.futureCount} future`);
-  if (stayHistory.currentCount > 0)   parts.push(`${stayHistory.currentCount} current`);
-  if (stayHistory.totalNoShows > 0)   parts.push(`${stayHistory.totalNoShows} no-show${stayHistory.totalNoShows === 1 ? '' : 's'}`);
-  if (stayHistory.totalCancelled > 0) parts.push(`${stayHistory.totalCancelled} cancelled`);
-  return parts.length ? parts.join(' · ') : null;
 }
 
 // Sprint 18.2 — deep-link URL pattern for an individual reservation
@@ -744,8 +375,8 @@ const Pagination = ({ page, totalPages, onPage, pageSize, onPageSize }) => {
 const ReservationDetailsTable = ({
   rows, filter, onFilter, sources = [], roomTypes = [],
   sourceFilter, onSourceFilter, typeFilter, onTypeFilter,
-  // Sprint 18.2 — selection wiring for the right-rail detail panel.
-  selectedId, onSelect,
+  // Sprint 20.4 — job progress (refetch stored summaries as the guest-detail job fills them in).
+  jobTick, jobRunning,
 }) => {
   // Sprint 20.3 — counts always reflect ALL rows (like rGuest's tiles);
   // the room-type / source dropdowns only narrow the list below.
@@ -777,11 +408,18 @@ const ReservationDetailsTable = ({
   const [page, setPage]         = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25); // Sprint 20.3: 10 → 25 (fewer taps to reach a guest)
   React.useEffect(() => { setPage(1); }, [filter, sourceFilter, typeFilter]);
+  // Sprint 20.4 — in-place expand (several at once) + stored guest summaries for the rows on screen.
+  const [openIds, setOpenIds] = React.useState({});
+  const toggleOpen = (id) => setOpenIds(m => ({ ...m, [id]: !m[id] }));
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const effectivePage = Math.min(page, totalPages);
   const pageStart = (effectivePage - 1) * pageSize;
   const pageEnd   = Math.min(pageStart + pageSize, filtered.length);
   const paged     = filtered.slice(pageStart, pageEnd);
+  const pagedIds  = paged.map(r => r.id);
+  const { get: getSummary, refresh: refreshOne, refreshing } = useResnSummaries(pagedIds, jobTick);
+  const allOpen   = paged.length > 0 && paged.every(r => openIds[r.id]);
+  const setAllOpen = (open) => setOpenIds(m => { const n = { ...m }; paged.forEach(r => { n[r.id] = open; }); return n; });
 
   return (
     <div className="fc-detail-wrap">
@@ -821,98 +459,37 @@ const ReservationDetailsTable = ({
         </div>
       </div>
 
-      {/* Sprint 18.4 — mobile card list. CSS hides whichever
-          layout (table or cards) is wrong for the current viewport. */}
-      <ul className="fc-resn-cards fc-mobile-only">
-        {filtered.length === 0 && (
-          <li className="fc-resn-empty">{emptyEl}</li>
-        )}
+      {/* Sprint 20.4 — one dense list for phone AND desktop (CSS lays each item
+          out as stacked blocks on a phone, a 4-column row on a wide screen).
+          Everything useful is visible without a click; "More details"
+          expands in place. Reads stored summaries only. */}
+      {filtered.length > 0 && (
+        <div className="rl-toolbar">
+          <span>{filtered.length} reservation{filtered.length === 1 ? '' : 's'}</span>
+          <button type="button" onClick={() => setAllOpen(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all on this page'}</button>
+        </div>
+      )}
+      <div className="rl-head" aria-hidden="true">
+        <span>Guest</span><span>Stay</span><span>Status &amp; room</span><span>Charges &amp; notes</span>
+      </div>
+      <ul className="rl-list">
+        {filtered.length === 0 && <li className="fc-resn-empty">{emptyEl}</li>}
         {paged.map(r => (
-          <ReservationCard
+          <ResnItem
             key={r.id}
             r={r}
-            isSelected={selectedId === r.id}
-            onSelect={onSelect}
+            entry={getSummary(r.id)}
+            flags={buildResnFlags(r)}
+            statusCls={STATUS_PILL_CLASS[r.statusLabel] || 'inhouse'}
+            open={!!openIds[r.id]}
+            onToggle={() => toggleOpen(r.id)}
+            onRefresh={() => refreshOne(r.id)}
+            refreshing={!!refreshing[r.id]}
+            jobRunning={!!jobRunning}
+            rguestUrl={RGUEST_RESERVATION_URL(r.id)}
           />
         ))}
       </ul>
-
-      <div className="fc-detail-tablewrap fc-desktop-only">
-        {/* Sprint 18.1 — column layout per Reservations mockup:
-            Guest / Room / Room Type / Arrival / Departure / Nights
-            / Source / Status / Room Status / Notes-Flags. Notes-
-            Flags column shows derived flags only for v1 (VIP, late
-            arrival, etc. land in 18.3 after recon). */}
-        <table className="fc-detail-table fc-detail-table-v18">
-          <thead>
-            <tr>
-              <th>Guest</th>
-              <th>Room</th>
-              <th>Room Type</th>
-              <th>Arrival</th>
-              <th>Departure</th>
-              <th>Nights</th>
-              <th>Source</th>
-              <th>Status</th>
-              <th>Room Status</th>
-              <th>Notes / Flags</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={10} className="fc-detail-empty">{emptyEl}</td></tr>
-            )}
-            {paged.map(r => {
-              const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
-              // Sprint 18.1 — Room Status pulls from per-room data
-              // when the reservation is assigned; otherwise shows
-              // "No Room Assigned" inline.
-              const roomStatusLabel = r.roomNumber
-                ? (r.hkStatusLabel || r.occupancyStatus || '—')
-                : 'No Room Assigned';
-              const flags = buildResnFlags(r);
-              const isSelected = selectedId === r.id;
-              return (
-                <tr
-                  key={r.id}
-                  className={`fc-detail-row${isSelected ? ' selected' : ''}`}
-                  onClick={() => onSelect && onSelect(isSelected ? null : r.id)}
-                >
-                  <td>
-                    <div className="fc-detail-guest">{r.guestName || '(no name)'}</div>
-                    {r.confirmationId && (
-                      <div className="fc-detail-sub">Conf. {r.confirmationId}</div>
-                    )}
-                  </td>
-                  <td className="fc-detail-room">{r.roomNumber || '—'}</td>
-                  <td>
-                    <div>{r.baseLabel || '—'}</div>
-                    {r.subLabel && r.subLabel !== 'Standard' && (
-                      <div className="fc-detail-sub">{r.subLabel}</div>
-                    )}
-                  </td>
-                  <td>{fmtDate(r.arrivalDate)}</td>
-                  <td>{fmtDate(r.departureDate)}</td>
-                  <td className="fc-detail-nights">{r.nights}</td>
-                  <td>{r.source || '—'}</td>
-                  <td><span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span></td>
-                  <td>
-                    {r.roomNumber
-                      ? <span className="fc-pill fc-pill-action-none">{roomStatusLabel}</span>
-                      : <span className="fc-pill fc-pill-status-pending">No Room Assigned</span>}
-                  </td>
-                  <td>
-                    {flags.length === 0 && <span className="fc-detail-sub-inline">—</span>}
-                    {flags.map(f => (
-                      <span key={f.label} className={`fc-pill fc-flag-${f.cls}`}>{f.label}</span>
-                    ))}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
       <div className="fc-detail-footer">
         <div className="fc-detail-footer-text">
           {filtered.length === 0
@@ -970,278 +547,6 @@ const ServiceProgress = ({ kpis, metricsSnapshot }) => {
       <h3>Service Progress</h3>
       <Row label="Departure cleans"  done={depDone}  total={depTotal}  pct={depPct}  accent="dep"  />
       <Row label="Stayover touch-ups" done={stayDone} total={stayTotal} pct={stayPct} accent="stay" />
-    </div>
-  );
-};
-
-// Sprint 18.2 — compact "Today at a glance" rail card. Mirrors
-// the 5 top KPI cards in a slimmer vertical list so the rail
-// stays useful when a row hasn't been selected yet.
-const TodayAtAGlance = ({ kpis, reservations, onSelectAll }) => {
-  const remDep         = kpis.remainingDepartures ?? kpis.departures ?? 0;
-  const inHouseTonight = Math.max(0, (kpis.inHouse ?? 0) - remDep);
-  const noRoomCount    = (reservations || []).filter(r =>
-    r.kind === 'arrival' && !r.isPreAssigned
-  ).length;
-  const rows = [
-    { icon: <IconBriefcase    size={16} />, accent: 'arrivals',   label: 'Arrivals Today',   value: kpis.arrivals  ?? 0, sub: `${kpis.remainingArrivals ?? 0} not arrived` },
-    { icon: <IconBed          size={16} />, accent: 'inhouse',    label: 'In-house',         value: kpis.inHouse   ?? 0, sub: 'Guests currently staying' },
-    { icon: <IconExit         size={16} />, accent: 'departures', label: 'Departures Today', value: kpis.departures?? 0, sub: `${remDep} not checked out` },
-    { icon: <IconMoon         size={16} />, accent: 'staying',    label: 'Staying Tonight',  value: inHouseTonight,        sub: 'In-house, not departing today' },
-    { icon: <IconAlertTriangle size={16}/>, accent: 'noroom',     label: 'No Room Assigned', value: noRoomCount,           sub: 'Needs review' },
-  ];
-  return (
-    <div className="fc-rail-card fc-glance-card">
-      <h3>Today at a glance</h3>
-      <ul className="fc-glance-list">
-        {rows.map(r => (
-          <li key={r.label} className={`fc-glance-row fc-kpi-${r.accent}`}>
-            <span className="fc-glance-icon">{r.icon}</span>
-            <span className="fc-glance-body">
-              <span className="fc-glance-label">{r.label}</span>
-              <span className="fc-glance-sub">{r.sub}</span>
-            </span>
-            <span className="fc-glance-value">{r.value}</span>
-          </li>
-        ))}
-      </ul>
-      {onSelectAll && (
-        <button type="button" className="fc-meta-link fc-glance-cta" onClick={onSelectAll}>
-          View all reservations <span aria-hidden>→</span>
-        </button>
-      )}
-    </div>
-  );
-};
-
-// Sprint 18.2 — detail panel for the currently-selected reservation.
-// Shows a compact metadata grid plus three actions: View details
-// (stub), Guest folio (stub — 18.3), and the rGuest deep link.
-const SelectedReservation = ({ reservation, onClose }) => {
-  // Sprint 18.7 — on-demand detail fetch. Loading + error states
-  // render inline so the panel stays useful even when the API call
-  // is in flight or partially failed.
-  const { data: detail, loading: detailLoading, error: detailError } = useReservationDetail(reservation?.id);
-
-  if (!reservation) {
-    return (
-      <div className="fc-rail-card fc-selected-empty">
-        <h3>Selected reservation</h3>
-        <p>Click a row in the table to see full reservation details here.</p>
-      </div>
-    );
-  }
-  const r = reservation;
-  const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
-  const flags = buildResnFlags(r);
-  // Sprint 18.7 — rich fields surface only once the detail fetch
-  // resolves (loading state is rendered inline below).
-  const email     = detail ? fmtDetail_email(detail.profile)     : null;
-  const phone     = detail ? fmtDetail_phone(detail.profile)     : null;
-  const address   = detail ? fmtDetail_address(detail.profile)   : null;
-  const channel   = detail ? fmtDetail_channel(detail.reservation) : null;
-  const bookedBy  = detail?.reservation?.sourceInfo?.bookedBy   || null;
-  const balance   = detail ? fmtDetail_balance(detail.balances, detail.reservation?.accountId) : null;
-  const stayCount = detail?.stayHistory?.pastCount;
-  // Sprint 18.8 — additional surfaced fields.
-  const occupancy        = detail ? fmtDetail_occupancy(detail.reservation)              : null;
-  const loyalty          = detail ? fmtDetail_loyalty(detail.profile)                    : null;
-  const addlGuests       = detail ? fmtDetail_additionalGuests(detail.reservation)       : [];
-  const comments         = detail ? fmtDetail_comments(detail.comments)                  : [];
-  const cards            = detail ? fmtDetail_paymentInstruments(detail.paymentInstruments) : [];
-  const rateRollup       = detail ? fmtDetail_rateRollup(detail.reservation)             : null;
-  const stayBreakdown    = detail ? fmtDetail_stayHistoryBreakdown(detail.stayHistory)   : null;
-  const walkIn           = detail?.reservation?.sourceInfo?.walkIn === true;
-  // Sprint 18.9 — open service requests for this reservation.
-  const svcRequests      = detail ? fmtDetail_serviceRequests(detail.serviceRequests)    : null;
-  const roomStatusLabel = r.roomNumber
-    ? (r.hkStatusLabel || r.occupancyStatus || '—')
-    : 'No Room Assigned';
-  return (
-    <div className="fc-rail-card fc-selected-card">
-      <div className="fc-selected-head">
-        <h3>Selected reservation</h3>
-        <span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span>
-      </div>
-      <div className="fc-selected-guest">
-        <strong>{r.guestName || '(no name)'}</strong>
-        {r.confirmationId && <span className="fc-selected-conf">Conf. {r.confirmationId}</span>}
-      </div>
-      <dl className="fc-selected-grid">
-        <div><dt>Room</dt><dd>{r.roomNumber || '—'}</dd></div>
-        <div><dt>Room Type</dt><dd>{r.baseLabel || '—'}{r.subLabel && r.subLabel !== 'Standard' ? ` · ${r.subLabel}` : ''}</dd></div>
-        <div><dt>Arrival</dt><dd>{fmtDate(r.arrivalDate)}</dd></div>
-        <div><dt>Departure</dt><dd>{fmtDate(r.departureDate)}</dd></div>
-        <div><dt>Nights</dt><dd>{r.nights}</dd></div>
-        <div><dt>Source</dt><dd>{r.source || '—'}</dd></div>
-        <div><dt>Reservation Status</dt><dd><span className={`fc-pill fc-pill-status-${statusCls}`}>{r.statusLabel}</span></dd></div>
-        <div><dt>Room Status</dt><dd>
-          {r.roomNumber
-            ? <span className="fc-pill fc-pill-action-none">{roomStatusLabel}</span>
-            : <span className="fc-pill fc-pill-status-pending">No Room Assigned</span>}
-        </dd></div>
-        <div className="fc-selected-flags"><dt>Notes / Flags</dt><dd>
-          {flags.length === 0 && <span className="fc-detail-sub-inline">—</span>}
-          {flags.map(f => (
-            <span key={f.label} className={`fc-pill fc-flag-${f.cls}`}>{f.label}</span>
-          ))}
-        </dd></div>
-      </dl>
-
-      {/* Sprint 18.7 — rich detail block. Renders below the row-level
-          metadata; loads on demand the first time the row is
-          selected (5-min in-memory cache prevents thrash). */}
-      <div className="fc-selected-rich">
-        {detailLoading && (
-          <div className="fc-selected-loading">Loading guest detail…</div>
-        )}
-        {detailError && (
-          <div className="fc-selected-error" role="alert">{detailError}</div>
-        )}
-        {detail && (
-          <>
-            <h4 className="fc-selected-rich-head">Guest details</h4>
-            <dl className="fc-selected-grid fc-selected-grid-rich">
-              <div><dt>Email</dt><dd>{email || <span className="fc-detail-sub-inline">—</span>}</dd></div>
-              <div><dt>Phone</dt><dd>{phone || <span className="fc-detail-sub-inline">—</span>}</dd></div>
-              <div className="fc-selected-flags"><dt>Address</dt><dd>
-                {address || <span className="fc-detail-sub-inline">—</span>}
-              </dd></div>
-              {loyalty && (
-                <div className="fc-selected-flags"><dt>Loyalty</dt><dd>{loyalty}</dd></div>
-              )}
-            </dl>
-
-            <h4 className="fc-selected-rich-head">Booking</h4>
-            <dl className="fc-selected-grid fc-selected-grid-rich">
-              <div><dt>Channel</dt><dd>
-                {channel || <span className="fc-detail-sub-inline">Direct</span>}
-                {walkIn && <span className="fc-pill fc-flag-move" style={{ marginLeft: 6 }}>Walk-in</span>}
-              </dd></div>
-              <div><dt>Booked by</dt><dd>{bookedBy || <span className="fc-detail-sub-inline">—</span>}</dd></div>
-              {occupancy && (
-                <div><dt>Occupancy</dt><dd>{occupancy}</dd></div>
-              )}
-              {rateRollup && (
-                <div><dt>Room charges</dt><dd>
-                  {fmtMoney(rateRollup.total)}
-                  <span className="fc-detail-sub-inline"> ({rateRollup.nights} × {fmtMoney(rateRollup.avg)})</span>
-                </dd></div>
-              )}
-            </dl>
-
-            {(balance || cards.length > 0) && (
-              <>
-                <h4 className="fc-selected-rich-head">Folio</h4>
-                {balance && (
-                  <dl className="fc-selected-grid fc-selected-grid-rich">
-                    <div><dt>Subtotal</dt><dd>{fmtMoney(balance.subtotal)}</dd></div>
-                    <div><dt>Tax</dt><dd>{fmtMoney(balance.tax)}</dd></div>
-                    <div><dt>Paid</dt><dd className="fc-balance-good">{fmtMoney(balance.paid)}</dd></div>
-                    <div><dt>Balance due</dt><dd className={balance.total > 0 ? 'fc-balance-due' : 'fc-balance-good'}>
-                      <strong>{fmtMoney(balance.total)}</strong>
-                    </dd></div>
-                  </dl>
-                )}
-                {/* Sprint 18.8 — card chips. Render each instrument as
-                    its own visual card; usually one but groups/corporate
-                    can have multiple. Backend distinguishes empty array
-                    (no card on file) from null (failed to fetch). */}
-                {detail.paymentInstruments != null && (
-                  <div className="fc-card-chips">
-                    {cards.length === 0 && (
-                      <div className="fc-card-chip fc-card-chip-empty">No card on file</div>
-                    )}
-                    {cards.map((c, i) => (
-                      <div key={i} className="fc-card-chip">
-                        <span className="fc-card-chip-brand">{c.issuer}</span>
-                        <span className="fc-card-chip-num">•••• {c.last4}</span>
-                        {c.exp && <span className="fc-card-chip-exp">exp {c.exp}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {addlGuests.length > 0 && (
-              <>
-                <h4 className="fc-selected-rich-head">Additional guests</h4>
-                <ul className="fc-addl-guests">
-                  {addlGuests.map((name, i) => <li key={i}>{name}</li>)}
-                </ul>
-              </>
-            )}
-
-            {comments.length > 0 && (
-              <>
-                <h4 className="fc-selected-rich-head">Notes</h4>
-                <ul className="fc-note-list">
-                  {comments.map((c, i) => (
-                    <li key={i} className="fc-note-card">
-                      <span className="fc-note-type">{c.type}</span>
-                      <p className="fc-note-text">{c.text}</p>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {svcRequests && svcRequests.items.length > 0 && (
-              <>
-                <h4 className="fc-selected-rich-head">
-                  Service requests
-                  {svcRequests.totalOpen > 0 && (
-                    <span className="fc-svc-open-count"> · {svcRequests.totalOpen} open</span>
-                  )}
-                </h4>
-                <ul className="fc-svc-list">
-                  {svcRequests.items.map((sr, i) => (
-                    <li key={i} className={`fc-svc-row fc-svc-kind-${sr.kind}${sr.closed ? ' fc-svc-closed' : ''}`}>
-                      <span className={`fc-svc-dot fc-svc-dot-${sr.kind}`} aria-hidden></span>
-                      <span className="fc-svc-kind">{sr.kind}</span>
-                      <span className="fc-svc-status">{sr.status || '—'}</span>
-                      {sr.severity && sr.severity !== 'NORMAL' && (
-                        <span className={`fc-pill fc-flag-${sr.severity === 'HIGH' || sr.severity === 'URGENT' ? 'vip' : 'move'}`}>{sr.severity}</span>
-                      )}
-                      {sr.requestId && (
-                        <span className="fc-svc-ticket">#{sr.requestId}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {(stayCount != null || stayBreakdown) && (
-              <div className="fc-selected-badges">
-                {stayCount != null && stayCount > 0 && (
-                  <span className="fc-pill fc-flag-group">Returning guest · {stayCount} prior stay{stayCount === 1 ? '' : 's'}</span>
-                )}
-                {stayBreakdown && stayCount === 0 && (
-                  <span className="fc-pill fc-flag-move">{stayBreakdown}</span>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Sprint 18.7 — old "View details" / "Guest folio" placeholders
-          retired; the rich detail (folio incl.) now renders inline above. */}
-      <a
-        className="fc-btn fc-btn-primary fc-selected-deep"
-        href={RGUEST_RESERVATION_URL(r.id)}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Open in rGuest Stay <span aria-hidden>↗</span>
-      </a>
-      {onClose && (
-        <button type="button" className="fc-meta-link fc-selected-close" onClick={onClose}>
-          Close
-        </button>
-      )}
     </div>
   );
 };
@@ -1587,9 +892,6 @@ const Forecasting = () => {
   const [resnFilter, setResnFilter]     = useState(DEFAULT_RESN_TAB);   // Sprint 20.3: opens on Remaining arrivals
   const [resnSourceFilter, setResnSourceFilter] = useState(null);
   const [resnTypeFilter, setResnTypeFilter]     = useState(null);
-  // Sprint 18.2 — currently-selected reservation. Drives the
-  // right-rail detail panel + row highlight.
-  const [selectedResId, setSelectedResId] = useState(null);
   // sheetOpen state removed in 17.12 (Generate Forecast moved off this page).
   const [settingsOpen, setSettingsOpen] = useState(false); // Sprint 17.5
   const [historyOpen, setHistoryOpen]   = useState(false); // Sprint 17.5
@@ -1701,14 +1003,6 @@ const Forecasting = () => {
     return [...set].sort();
   }, [snapshot]);
 
-  // Sprint 18.2 — resolve the currently-selected reservation
-  // object (if any) for the right-rail detail panel.
-  const selectedReservation = useMemo(() => {
-    if (!selectedResId) return null;
-    const list = snapshot?.payload?.reservations || [];
-    return list.find(r => r.id === selectedResId) || null;
-  }, [selectedResId, snapshot]);
-
   const tableEl = useMemo(() => {
     if (!snapshot?.payload) return null;
     if (view === 'details') {
@@ -1723,8 +1017,8 @@ const Forecasting = () => {
           onSourceFilter={setResnSourceFilter}
           typeFilter={resnTypeFilter}
           onTypeFilter={setResnTypeFilter}
-          selectedId={selectedResId}
-          onSelect={setSelectedResId}
+          jobTick={`${detailJob?.status || ''}:${detailJob?.done || 0}:${detailJob?.failed || 0}`}
+          jobRunning={detailJob?.status === 'running'}
         />
       );
     }
@@ -1732,7 +1026,7 @@ const Forecasting = () => {
     if (view === 'room')     return <ByRoomTypeTable rows={snapshot.payload.byRoomType    || []} />;
     if (view === 'floor')    return <ByFloorTable    rows={snapshot.payload.byFloor       || []} />;
     return null;
-  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes, selectedResId]);
+  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes, detailJob?.status, detailJob?.done, detailJob?.failed]);
 
   return (
     <div className="fc-page">
@@ -1860,7 +1154,7 @@ const Forecasting = () => {
               const reservations   = snapshot.payload.reservations || [];
               // Sprint 20.3: same definition as the "Needs a room" tab.
               const noRoomCount    = reservations.filter(tabPredicate('needsRoom')).length;
-              const goTab = (key) => { setResnFilter(key); setSelectedResId(null); };
+              const goTab = (key) => { setResnFilter(key); };
               return (
                 <>
                   <KpiCard
@@ -1926,23 +1220,8 @@ const Forecasting = () => {
               {tableEl}
             </main>
 
-            <aside className="fc-rail">
-              {/* Sprint 18.2 — rail now hosts "Today at a glance"
-                  (compact KPI list mirroring the top cards) and
-                  the "Selected reservation" detail panel. The old
-                  forecast-y cards (ServiceProgress, Scraper
-                  Output, Dispatch Summary) moved off this page —
-                  they belong on the Forecast page. */}
-              <TodayAtAGlance
-                kpis={kpis}
-                reservations={snapshot.payload.reservations}
-                onSelectAll={() => { setResnFilter('all'); setSelectedResId(null); }}
-              />
-              <SelectedReservation
-                reservation={selectedReservation}
-                onClose={() => setSelectedResId(null)}
-              />
-            </aside>
+            {/* Sprint 20.4: the right rail (Today at a glance + Selected reservation) is gone — the KPI tiles above
+                are the glance, and details expand in place on each card. */}
           </div>
 
           <div className="fc-bottom">

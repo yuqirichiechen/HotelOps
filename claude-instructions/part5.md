@@ -22,7 +22,8 @@ sub-sprint list.
 | 20.1       | Reservations header: title + last-sync + icon-only refresh on one line | Built; rendered at 390/360/1280 px |
 | 20.2       | **Scraper v2:** deep per-reservation fetch (~25 sections), stored in DB by a background job; UI reads stored data | Built + tested (unit, fake-DB job runner, live rGuest e2e). **Apply migration 027 before deploy** |
 | 20.3       | **Status tabs** (Remaining arrivals default, clickable like rGuest) + job progress + **fix: scraper silently dropped ~19% of reservations** | Built; tab counts verified against rGuest's own numbers (5/5 match, stable across runs) |
-| 20.4–20.5  | Dense inline cards (use `reservation_detail.summary`), search/sort/print | Planned |
+| 20.4       | **Dense inline cards** (phone + desktop) from stored `reservation_detail.summary`; expand in place; right rail removed | Built; real component rendered at 390/1280 px; 23 automated checks |
+| 20.5       | Search (name/conf/room), "needs attention" sort, print-friendly list, PII retention pruning | Planned |
 
 ---
 
@@ -50,7 +51,7 @@ sub-sprint list.
 |---|------|
 | 20.1 | Header layout (done) |
 | 20.3 | **(DONE) Status model + filters:** tabs with live counts — *Remaining arrivals* (default), Arrived, In-house, Remaining departures, Departed, Future, No room. Definitions mirror rGuest's top tiles so numbers match theirs. Filters become one sticky row (room type / source collapse into a "Filters" popover on mobile). |
-| 20.4 | **Dense cards, no drill-down:** every card shows the essentials at a glance — name (+VIP), status, room/"Unassigned", type, dates + nights, ETA/early/red-eye, channel, rate plan, balance due, guests, flags, phone/email (tap-to-call/mail). Mobile: 3-line card. Desktop: table-style rows with the same fields as columns. Optional in-place expand (accordion, never a new page) for the long tail. |
+| 20.4 | **(DONE) Dense cards, no drill-down:** every card shows the essentials at a glance — name (+VIP), status, room/"Unassigned", type, dates + nights, ETA/early/red-eye, channel, rate plan, balance due, guests, flags, phone/email (tap-to-call/mail). Mobile: 3-line card. Desktop: table-style rows with the same fields as columns. Optional in-place expand (accordion, never a new page) for the long tail. |
 | 20.2 | **Scraper expansion — DONE, reordered first at the user's request** (see the 20.2 entry for the final design: all ~25 per-reservation sections, sensitive data kept admin-only, stored by a background job so cards never depend on a live call). |
 | 20.5 | **Search + sort + inline polish:** name/conf/room search, "needs attention" sorting (no room, VIP, early, unpaid), print-friendly list for the desk. |
 
@@ -67,6 +68,97 @@ arrivals only); (3) PII scope = **no card/ID/document data stored**.
 Risk to manage: rGuest rate limits / account lockout (the scraper uses a
 real staff login) → concurrency ≤ 4, back off on 429/401, never retry a
 failed login.
+
+---
+
+### 2026-09-30 — Sprint 20.4: dense inline reservation cards (no drill-down)
+
+Replaces the Sprint 18.4 collapsed-card / 18.1 table / 18.2 right-rail
+trio with ONE dense list used on phone and desktop. Everything the desk needs
+is visible without a click; the long tail expands **in place**. Reads only the
+stored summaries from 20.2 — a card can never fail because rGuest changed.
+
+**What a card shows (collapsed).**
+- *Guest:* name, confirmation #, room type, **tap-to-call phone**, **tap-to-mail
+  email**, city/country.
+- *Stay:* `Sep 30 → Oct 3 · 3 nights`, `2 adults · 1 child`, channel (Booking.com /
+  Walk-in) · rate plan.
+- *Status & room:* status pill, `Room 305 · Dirty` or **No room assigned**, plus the
+  existing flag pills (VIP, Early arrival, Pet, Group…).
+- *Charges & notes chips* (money problems first, colour-coded): `Balance $239.55`
+  (red), `Deposit due $100 · Sep 29` (amber) / `Deposit paid` (green), `Paid`, `Stay
+  $940.46`, `Visa ••8018 +1` / **`No card on file`** (amber), `1 prior no-show`
+  (amber), `Returning · 5 stays`, `2 notes`, `1 preference`, `Loyalty member`,
+  `2 service requests`, `Do not disturb/move`, `Group · <name>`.
+- *Footer:* **"Details as of 3:12 PM"** (amber + "9h old" after 6 h; "N sections
+  couldn't refresh" / "refresh failed" when relevant) · **Refresh** (live re-fetch
+  of that one reservation) · **rGuest ↗** · **More details**.
+- A reservation gone from rGuest shows a dashed card + banner "No longer in rGuest
+  (cancelled, merged or moved) — showing the last details we saved." Not-yet-loaded
+  shows "Loading guest details…" (job running) or "not loaded yet".
+
+**"More details" (in place, multiple open at once; "Expand all on this page").**
+Sections, each hidden when empty: Guest (contact, additional guests, loyalty) ·
+Stay (dates, guests, room, group, booked by, channel, avg rate, created/cancelled)
+· Charges (estimated, rooms, taxes, posted, paid, balance, deposits, authorized,
+folios) · Payment cards (masked: brand, last 4, exp, holder, auth) · Notes ·
+Preferences · Guest history (prior stays, no-shows, cancellations, total spent,
+avg rate) · Service requests · Communications (last email, reg card, unread).
+
+**Layout.** Phone: stacked blocks, ≥40 px buttons that never wrap. Desktop
+(≥1000 px): a 4-column row (Guest | Stay | Status & room | Charges & notes) with a
+column-header strip. **The right rail (Today at a glance + Selected reservation) is
+removed** — the clickable KPI tiles are the glance; the list gets full width.
+
+**Data flow.** `useResnSummaries(idsOnScreen, jobTick)`: one request for just the
+rows on the current page (`GET /admin/reservations/summaries?ids=…`, ≤100, UUID-
+validated, deduped) — not the whole 600-row snapshot; refetched as the 20.2 job
+progresses (only while it runs). Module-level store survives tab/page switches.
+`POST …/:id/refresh` updates one card; failures keep the stored data and show
+"refresh failed".
+
+**Findings along the way.** rGuest returns `cardIssuer` as a readable name (Visa /
+Mastercard / American Express) — no mapping needed; corrected a wrong comment.
+
+**Code removed (dead after this).** `ReservationCard`, `SelectedReservation`,
+`TodayAtAGlance`, `useReservationDetail` + its 5-min cache, ~15 `fmtDetail_*`
+helpers, the desktop table. `index.js` 1,979 → ~1,300 lines. (An over-eager regex
+also deleted `RawOutputModal` + `HousekeepingMessagePreview` mid-way; caught by
+the build and restored from the pre-change backup — verified by diffing top-level
+declarations before/after.)
+
+**New files.** `resnFormat.js` (pure view-model: chips/sections/dates/money/
+as-of), `ResnItem.js` (component + data hook), `ResnList.css`.
+
+**Verification.**
+- 7 unit tests for the formatters (money/dates/guests, as-of staleness, contact
+  links only when valid, chip ordering/tones, settled/deposit/no-card cases,
+  hostile/empty input, section dropping).
+- 5 in-process route tests for `summaries?ids=` (auth 401/403, only valid UUIDs
+  reach SQL incl. an injection attempt + duplicates, cap 100, all-junk → empty
+  without a query, no-ids fallback).
+- Earlier suites re-run: exact-fetch 5/5, job+summary 11/11, auth matrix 83/83;
+  build compiles with only pre-existing warnings.
+- **Visual:** rendered the REAL `ResnItem` component (Babel + react-dom/server)
+  with realistic data at 390 px and 1280 px — collapsed, expanded, cancelled and
+  loading states. Two issues found and fixed from the render (mobile "More
+  details" wrapping; payment-card row cramped).
+- **Not exercised:** the full page in a browser against the real DB (needs
+  migration 027 applied + a scrape + login).
+
+**Deploy.** Same order as 20.2/20.3: migration 027 → deploy → scrape once; cards
+fill in as the background job runs (header bar shows progress).
+
+**Follow-ups.** 20.5: search by name/conf/room, "needs attention" sort (no room,
+no card, balance, deposit due), print-friendly desk list. **PII retention**
+pruning for `reservation_detail` still open (see 20.2). Summary `comments` /
+`preferences` / `loyalty` remain defensive (no real examples seen yet) — once one
+exists, check how it renders.
+
+**Files touched:** `src/components/Forecasting/{index.js, Forecasting.css,
+resnFormat.js (new), ResnItem.js (new), ResnList.css (new)}`, `server/server.js`
+(`summaries?ids=`), `server/forecast/summarize.js` (comment),
+`claude-instructions/part5.md`.
 
 ---
 

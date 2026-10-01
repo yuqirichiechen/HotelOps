@@ -4503,10 +4503,17 @@ app.post('/api/admin/reservations/:id/refresh', requireAuth, requireRole('admin'
 // render from this; no per-card requests).
 app.get('/api/admin/reservations/summaries', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const snap = await pool.query(
-      `SELECT payload FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
-    const list = snap.rows[0] && snap.rows[0].payload && snap.rows[0].payload.reservations;
-    const ids = Array.isArray(list) ? list.map(r => r && r.id).filter(Boolean) : [];
+    let ids;
+    if (typeof req.query.ids === 'string' && req.query.ids.trim()) {
+      // Sprint 20.4: the page asks only for the rows it is showing (≤ 100) —
+      // a full-snapshot response would be MBs.
+      ids = [...new Set(req.query.ids.split(',').map(x => x.trim()).filter(x => UUID_RE.test(x)))].slice(0, 100);
+    } else {
+      const snap = await pool.query(
+        `SELECT payload FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
+      const list = snap.rows[0] && snap.rows[0].payload && snap.rows[0].payload.reservations;
+      ids = Array.isArray(list) ? list.map(r => r && r.id).filter(Boolean) : [];
+    }
     if (!ids.length) return res.json({ success: true, summaries: {} });
     const { rows } = await pool.query(
       `SELECT reservation_id, summary, remote_state, fetched_at, sections, last_error
