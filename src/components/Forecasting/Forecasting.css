@@ -1352,3 +1352,90 @@
 @media (max-width: 360px) {
   .fc-sync-label { display: none; } /* dot + time only */
 }
+
+/* ── Sprint 20.3: status tabs (rGuest-style) ─────────────────────────────── */
+.fc-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;              /* one row; scroll sideways on a phone */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 2px 6px;
+  margin: 0 -2px;
+}
+.fc-tabs::-webkit-scrollbar { display: none; }
+.fc-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 12px 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.fc-tab:hover { background: var(--bg-surface-alt); }
+.fc-tab-count {
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.fc-tab.active {
+  background: var(--brand-bg);
+  border-color: var(--brand-bg);
+  color: #fff;
+}
+.fc-tab.active .fc-tab-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.fc-tab.is-zero:not(.active) { opacity: 0.6; }
+.fc-detail-controls { flex-wrap: wrap; row-gap: 10px; }
+.fc-detail-controls .fc-tabs { flex: 1 1 100%; min-width: 0; }
+
+.fc-resn-emptybox {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 22px 12px; text-align: center; color: var(--text-secondary);
+}
+
+/* KPI cards double as tab buttons */
+.fc-kpi-clickable { cursor: pointer; transition: box-shadow 0.12s ease, transform 0.05s ease; }
+.fc-kpi-clickable:hover  { box-shadow: var(--shadow-md, 0 4px 14px rgba(0,0,0,0.12)); }
+.fc-kpi-clickable:active { transform: scale(0.99); }
+.fc-kpi-clickable:focus-visible { outline: 2px solid var(--accent-alt); outline-offset: 2px; }
+.fc-kpi-active { box-shadow: inset 0 0 0 2px var(--accent-alt); }
+
+/* Guest-detail job progress bar */
+.fc-jobbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: -8px 0 16px; padding: 8px 12px;
+  border-radius: 10px; font-size: 13px;
+  background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.fc-jobbar strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.fc-jobbar-track { flex: 1 1 120px; height: 6px; border-radius: 999px; background: var(--bg-surface-alt); overflow: hidden; }
+.fc-jobbar-fill  { display: block; height: 100%; background: var(--accent-alt); transition: width 0.4s ease; }
+.fc-jobbar-partial, .fc-jobbar-interrupted { background: var(--warn-bg, #fffbeb); border-color: var(--warn-border, #fde68a); color: var(--warn-text, #92400e); }
+.fc-jobbar-failed { background: var(--danger-subtle, #fef2f2); border-color: var(--danger-border, #fecaca); color: var(--danger-hover, #b91c1c); }
+
+@media (max-width: 700px) {
+  /* The old stacked-controls rule (18.4) would wrap the tab row; keep it one scrolling line. */
+  .fc-detail-controls { flex-direction: column; align-items: stretch; }
+  .fc-detail-controls .fc-tabs { flex-basis: auto; }
+}
+
+/* Sprint 20.3: wide screens have room — wrap the tabs instead of scrolling. */
+@media (min-width: 701px) {
+  .fc-tabs { flex-wrap: wrap; overflow-x: visible; }
+}

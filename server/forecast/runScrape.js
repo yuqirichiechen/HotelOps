@@ -268,7 +268,9 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
     // forecastDate matches whatever rGuest's dashboard widgets
     // are operating on. `todayInLA()` is the last-resort fallback
     // only used when both requested date AND propertyDate fail.
-    const inputs = await client.fetchForecastInputs(forecastDate || null);
+    const inputs = await client.fetchForecastInputs(forecastDate || null, {
+      futureWindowDays: Number(config.future_window_days) || 30, // Sprint 20.3: bounds the exact future fetch
+    });
     effectiveDate = inputs.effectiveDate || forecastDate || todayInLA();
 
     const payload = computeForecast({
@@ -282,6 +284,10 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
       config,
       forecastDate:    effectiveDate,
     });
+
+    // Sprint 20.3: surface whether the reservation list is provably complete
+    // (client.fetchReservationsExact). The UI shows a warning if false.
+    payload.reservationsComplete = inputs.reservationsComplete !== false;
 
     const inserted = await upsertNewMappings(pool, payload.newMappings);
 

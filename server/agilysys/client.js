@@ -329,6 +329,134 @@ function createAgilysysClient(overrides = {}) {
     return all;
   }
 
+  // ── Sprint 20.3: EXACT reservation fetch ───────────────────────────────
+  //
+  // BUG FOUND 2026-09-30: `search/date` pagination has NO stable order
+  // (response.sort is always empty and every sort param we tried is
+  // ignored). Walking N pages therefore returns duplicates and silently
+  // drops others — measured: 11 pages of the full list gave 813-870 unique
+  // of 1008, a DIFFERENT subset on every walk (~15-19% of reservations
+  // missing per scrape). That is why counts wandered and never matched
+  // rGuest. A single page is unaffected (the page IS the whole result).
+  //
+  // Fix: use the filters the endpoint does honour — `endDate` (date range;
+  // matches the 127 the rGuest UI shows for one day) and `statuses` — and
+  // slice until every slice has ≤ `size` results, so each is ONE page.
+  //   • INH and DPT single-day slices are exact (verified: 68 / 46 matching
+  //     rGuest's own counts, identical across runs).
+  //   • RES is NOT sliceable: with statuses:['RES'] a single-day range
+  //     returns 0 and multi-day ranges return totals that don't follow
+  //     arrival dates (live-probed 2026-09-30). The date-only form
+  //     `{date, statuses:['RES']}` DOES give a stable totalElements
+  //     (all booked reservations from `date` on), so RES is fetched by
+  //     repeated walks UNIONED until the unique count reaches that total
+  //     (typically 2-4 walks) — `complete:false` if it can't.
+  // Anything unsliceable falls back to the same union-walk and reports
+  // `complete:false` so callers can warn.
+  const SEARCH_PATH = `/reservation-service/v2/tenants/${tenantId}/properties/${propertyId}/reservations/search/date`;
+  const addDaysYmd = (ymd, n) => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d + n));
+    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+  };
+  const midYmd = (a, b) => {
+    const [y1, m1, d1] = a.split('-').map(Number), [y2, m2, d2] = b.split('-').map(Number);
+    const days = Math.floor((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+    return addDaysYmd(a, Math.floor(days / 2));
+  };
+
+  // `to` omitted → the date-only form `{date, …}` (everything from `date`
+  // onward for the given statuses).
+  async function searchRange({ from, to, statuses, page = 0, size = 99 }) {
+    const body = { date: from, page, size };
+    if (to) body.endDate = to;
+    if (statuses && statuses.length) body.statuses = statuses;
+    return call('POST', SEARCH_PATH, body);
+  }
+
+  // Last resort for a slice that can't be reduced to one page.
+  async function unionWalk(from, to, statuses, size, maxWalks = 10) {
+    const map = new Map();
+    let target = null, stagnant = 0, walks = 0;
+    while (walks < maxWalks) {
+      walks++;
+      const before = map.size;
+      let page = 0, totalPages = 1;
+      do {
+        const r = await searchRange({ from, to, statuses, page, size });
+        (r.content || []).forEach(x => map.set(x.id, x));
+        totalPages = r.totalPages || 1;
+        if (typeof r.totalElements === 'number') target = r.totalElements;
+        page++;
+      } while (page < totalPages);
+      stagnant = map.size === before ? stagnant + 1 : 0;
+      if (target != null && map.size >= target) break;
+      if (stagnant >= 3) break;
+    }
+    const complete = target == null || map.size >= target;
+    log(complete ? 'info' : 'warn', 'agilysys.reservations.union_walk', {
+      from, to, statuses, walks, unique: map.size, target, complete,
+    });
+    return { map, complete, calls: walks };
+  }
+
+  async function sliceExact(from, to, statuses, size) {
+    const first = await searchRange({ from, to, statuses, size });
+    const total = typeof first.totalElements === 'number' ? first.totalElements : (first.content || []).length;
+    if (total <= size) {
+      const map = new Map((first.content || []).map(x => [x.id, x]));
+      if (map.size === total) return { map, complete: true, calls: 1 };
+      log('warn', 'agilysys.reservations.single_page_mismatch', { from, to, statuses, total, unique: map.size });
+      return unionWalk(from, to, statuses, size);
+    }
+    let parts;
+    if (from < to) {
+      const mid = midYmd(from, to);
+      parts = await Promise.all([
+        sliceExact(from, mid, statuses, size),
+        sliceExact(addDaysYmd(mid, 1), to, statuses, size),
+      ]);
+    } else if (statuses && statuses.length > 1) {
+      parts = await Promise.all(statuses.map(st => sliceExact(from, to, [st], size)));
+    } else {
+      return unionWalk(from, to, statuses, size);
+    }
+    const map = new Map();
+    let complete = true, calls = 1;
+    parts.forEach(pt => { pt.map.forEach((v, k) => map.set(k, v)); complete = complete && pt.complete; calls += pt.calls; });
+    return { map, complete, calls };
+  }
+
+  /**
+   * Every reservation the Reservations page needs for `effectiveDate`:
+   * today's RES/INH/DPT (arrivals, in-house, departures) plus RES bookings
+   * in the next `futureWindowDays` days. Exact (no dropped/duplicated rows).
+   * @returns {{ items: Array, complete: boolean, calls: number }}
+   */
+  async function fetchReservationsExact(effectiveDate, futureWindowDays = 30, { size = 99 } = {}) {
+    // Slices:
+    //   INH  today (single page)  → in-house: arrived today + stayovers + not-yet-out departures
+    //   DPT  today (single page)  → departed today
+    //   RES  from today, union-walk → booked & not arrived (today's remaining arrivals + every future
+    //                                 booking; compute.classifyForDate later keeps only the
+    //                                 next `futureWindowDays`)
+    // CXL / NS / NSG / MOV are excluded downstream anyway, so never fetched.
+    const [inh, dpt, res] = await Promise.all([
+      sliceExact(effectiveDate, effectiveDate, ['INH'], size),
+      sliceExact(effectiveDate, effectiveDate, ['DPT'], size),
+      unionWalk(effectiveDate, null, ['RES'], size),
+    ]);
+    const parts = [inh, dpt, res];
+    const map = new Map();
+    let complete = true, calls = 0;
+    parts.forEach(pt => { pt.map.forEach((v, k) => { if (!map.has(k)) map.set(k, v); }); complete = complete && pt.complete; calls += pt.calls; });
+    log(complete ? 'info' : 'warn', 'agilysys.reservations.exact', {
+      effectiveDate, futureWindowDays, inh: inh.map.size, dpt: dpt.map.size, res: res.map.size,
+      unique: map.size, complete, calls,
+    });
+    return { items: [...map.values()], complete, calls };
+  }
+
   // GET /property-service/.../propertyDate
   //
   // Sprint 17.14 — returns rGuest's *property date* (business
@@ -812,7 +940,7 @@ function createAgilysysClient(overrides = {}) {
     return { remoteState: 'ok', detail, sections };
   }
 
-  async function fetchForecastInputs(requestedDate) {
+  async function fetchForecastInputs(requestedDate, { futureWindowDays = 30 } = {}) {
     log('info', 'agilysys.scrape.start', { requestedDate });
     if (!token) await login();
 
@@ -840,18 +968,22 @@ function createAgilysysClient(overrides = {}) {
     // cache so this is free on cache hit. Soft failure: if the
     // rate-service is down the rest of the scrape still ships,
     // we just fall back to showing raw rate plan codes.
-    const [rooms, roomTypes, reservations, metrics, ratePlans] = await Promise.all([
+    const [rooms, roomTypes, resFetch, metrics, ratePlans] = await Promise.all([
       listRooms(),
       listRoomTypes(),
-      searchAllReservationsByDate(effectiveDate),
+      // Sprint 20.3: exact fetch (see fetchReservationsExact) — the old
+      // paginated walk silently dropped ~15-19% of reservations.
+      fetchReservationsExact(effectiveDate, futureWindowDays),
       getReservationMetrics(effectiveDate),
       getRatePlans().catch(err => {
         log('warn', 'agilysys.ratePlans.skipped', { error: String(err.message || err) });
         return null;
       }),
     ]);
+    const reservations = resFetch.items;
     log('info', 'agilysys.scrape.done', {
       effectiveDate,
+      reservationsComplete: resFetch.complete,
       rooms: rooms.length,
       roomTypes: roomTypes.length,
       reservations: reservations.length,
@@ -862,6 +994,7 @@ function createAgilysysClient(overrides = {}) {
     });
     return {
       rooms, roomTypes, reservations, metrics, vipStatuses, ratePlans,
+      reservationsComplete: resFetch.complete,
       propertyDate,
       effectiveDate,
     };
@@ -872,7 +1005,8 @@ function createAgilysysClient(overrides = {}) {
     listRooms,
     listRoomTypes,
     searchReservationsByDate,
-    searchAllReservationsByDate,
+    searchAllReservationsByDate, // DEPRECATED (unstable pagination) — use fetchReservationsExact
+    fetchReservationsExact,
     getReservationMetrics,
     getPropertyDate,
     getVipStatuses,
@@ -892,6 +1026,7 @@ function createAgilysysClient(overrides = {}) {
     // Exposed for testing / introspection — don't rely on these in
     // app code.
     _getToken: () => token,
+    _call:     call, // generic authenticated call (diagnostics / probes)
     _config:   { baseUrl, tenantId, propertyId, hasCreds: !!(username && password) },
   };
 }

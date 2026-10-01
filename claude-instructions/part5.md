@@ -21,7 +21,8 @@ sub-sprint list.
 | 19.5       | Scraper: rGuest login 401 "Invalid credentials" after password change | **Resolved** — Koyeb env var hadn't been updated (user fixed) |
 | 20.1       | Reservations header: title + last-sync + icon-only refresh on one line | Built; rendered at 390/360/1280 px |
 | 20.2       | **Scraper v2:** deep per-reservation fetch (~25 sections), stored in DB by a background job; UI reads stored data | Built + tested (unit, fake-DB job runner, live rGuest e2e). **Apply migration 027 before deploy** |
-| 20.3–20.5  | Status tabs (Remaining arrivals default, clickable like rGuest), dense inline cards, search/sort | Planned — builds on 20.2 data |
+| 20.3       | **Status tabs** (Remaining arrivals default, clickable like rGuest) + job progress + **fix: scraper silently dropped ~19% of reservations** | Built; tab counts verified against rGuest's own numbers (5/5 match, stable across runs) |
+| 20.4–20.5  | Dense inline cards (use `reservation_detail.summary`), search/sort/print | Planned |
 
 ---
 
@@ -48,7 +49,7 @@ sub-sprint list.
 | # | What |
 |---|------|
 | 20.1 | Header layout (done) |
-| 20.3 | **Status model + filters:** tabs with live counts — *Remaining arrivals* (default), Arrived, In-house, Remaining departures, Departed, Future, No room. Definitions mirror rGuest's top tiles so numbers match theirs. Filters become one sticky row (room type / source collapse into a "Filters" popover on mobile). |
+| 20.3 | **(DONE) Status model + filters:** tabs with live counts — *Remaining arrivals* (default), Arrived, In-house, Remaining departures, Departed, Future, No room. Definitions mirror rGuest's top tiles so numbers match theirs. Filters become one sticky row (room type / source collapse into a "Filters" popover on mobile). |
 | 20.4 | **Dense cards, no drill-down:** every card shows the essentials at a glance — name (+VIP), status, room/"Unassigned", type, dates + nights, ETA/early/red-eye, channel, rate plan, balance due, guests, flags, phone/email (tap-to-call/mail). Mobile: 3-line card. Desktop: table-style rows with the same fields as columns. Optional in-place expand (accordion, never a new page) for the long tail. |
 | 20.2 | **Scraper expansion — DONE, reordered first at the user's request** (see the 20.2 entry for the final design: all ~25 per-reservation sections, sensitive data kept admin-only, stored by a background job so cards never depend on a live call). |
 | 20.5 | **Search + sort + inline polish:** name/conf/room search, "needs attention" sorting (no room, VIP, early, unpaid), print-friendly list for the desk. |
@@ -66,6 +67,96 @@ arrivals only); (3) PII scope = **no card/ID/document data stored**.
 Risk to manage: rGuest rate limits / account lockout (the scraper uses a
 real staff login) → concurrency ≤ 4, back off on 429/401, never retry a
 failed login.
+
+---
+
+### 2026-09-30 — Sprint 20.3: status tabs + exact reservation fetch (scraper data-loss bug)
+
+**Headline finding — the scraper has been losing ~15–19% of reservations on
+every scrape.** While validating the new tab counts against rGuest's own
+numbers, the same hotel's in-house count changed 72 → 61 in 25 seconds. Root
+cause, measured live: `POST …/reservations/search/date` has **no stable page
+order** (`response.sort` is always empty; every sort param tried — body and
+query-string — is ignored). `searchAllReservationsByDate` walked ~11 pages of
+99, so pages overlapped and skipped: **813–870 unique of 1,008 per walk, a
+different subset each time (~195 duplicates, ~195 missing).** This is the
+real reason counts wandered and never matched rGuest, and the long history of
+"numbers don't match" sprints (17.7, 17.7.1, 17.14, 17.16 dedupe…). Snapshots
+already in the DB are incomplete by this amount.
+
+**Fix — `client.fetchReservationsExact(date, window)`** (replaces the walk in
+`fetchForecastInputs`; old function kept, marked DEPRECATED):
+- The endpoint *does* honour `endDate` (range) and `statuses` (live-probed).
+  **INH and DPT single-day slices are exact single pages** (68 / 46 → identical
+  to rGuest's counts, identical across runs). A single page has no ordering
+  problem.
+- **RES is not sliceable** (quirk: `statuses:['RES']` with a one-day range
+  returns 0; multi-day ranges return totals that don't track arrival dates).
+  The date-only form `{date, statuses:['RES']}` has a stable `totalElements`,
+  so RES is fetched by **repeated walks unioned until unique == totalElements**
+  (2–4 walks), `complete:false` if it can't (never a silent success).
+- `payload.reservationsComplete` is stored on the snapshot; the page shows a
+  warning banner if false. `runScrape` passes `future_window_days`.
+- Cost: ~6 s, ~10–40 calls per scrape (was ~11 calls that were wrong).
+
+**Acceptance test (live).** Ground truth = union of full walks (1008/1008).
+Exact fetch ×3: **0 missing, identical sets every run, `complete=true`**;
+payload = 609 rows = the expected set. Against rGuest's own metrics:
+remaining arrivals ✔, arrivals total (arrived + remaining) ✔, departures
+total ✔, remaining departures ✔, in-house ✔ — **5/5 match**. 5 automated
+tests with a mock rGuest that reproduces the random-page-order bug (including
+a control proving a naive walk loses rows, and a "can never complete" case).
+
+**Tabs (`src/components/Forecasting/resnTabs.js`, pure + tested against live
+data).** Replace the old chips (All / Arrivals Today / …), rGuest-style with
+live counts, default **Remaining arrivals**:
+| Tab | Definition |
+|-----|-----------|
+| Remaining arrivals | `kind=arrival` and `status=RES` (not checked in) — default |
+| Arrived | `kind=arrival` and `status=INH` |
+| In-house | `status=INH` (everyone in a room: arrived today + stayovers + not-yet-out departures) |
+| Remaining departures | `kind=departure` and `status=INH` |
+| Departed | `status=DPT` |
+| Future | `kind=future` (next 30 days, RES) |
+| Needs a room | remaining arrival with no pre-assigned room |
+| All | everything |
+(Behaviour change: *In-house* now means every INH guest — matches rGuest's
+80/72 — the old chip showed only stayovers; *Departures Today* chip became
+Remaining departures + Departed.)
+- Counts always cover all rows; room-type / Source dropdowns narrow only the list.
+  Per-tab sort: arrival tabs list room-less guests first, then A→Z; Future by
+  arrival date; others A→Z. Page size default 10 → 25.
+- Friendly empty states with a jump ("Everyone expected today has arrived →
+  See who has arrived"); "Clear filters" when the dropdowns hide everything.
+- **KPI tiles are tab buttons** (like rGuest's top tiles): Arrivals → Remaining
+  arrivals, In-house, Departures → Remaining departures, No Room → Needs a
+  room; active tile outlined; keyboard accessible.
+- Tabs: one horizontally-scrolling row on phones, wrap on desktop.
+- **Guest-detail job progress** (from 20.2): "Loading guest details 37 / 130" +
+  bar under the title while the background job runs; amber/red notes for
+  partial / failed / interrupted. Polls `/admin/forecast/jobs/latest` every
+  2.5 s **only while running and visible**; fetched once on mount; idle page
+  = no polling (19.1 compute rule).
+
+**Verification.** All server files `node --check`; exact-fetch 5/5, job/summary
+11/11, auth matrix 83/83; `npm run build` compiles (only pre-existing
+warnings). Layout rendered at 390 px and 1280 px. **Not exercised in the real
+app** (needs migration 027 applied + a login) — expect a final look on a
+device.
+
+**Deploy order.** 1) migration 027 (from 20.2) 2) deploy 3) scrape once —
+the first scrape after this is the first *complete* one; counts may jump up
+vs. earlier snapshots (that is the 15–19% that was missing).
+
+**Follow-ups.** Old snapshots remain incomplete (not backfilled).
+`reservation_history` upserts from past scrapes are missing the same rows
+(they will fill in as scrapes run). `searchAllReservationsByDate` is unused
+by the app now — delete once nothing else references it. rGuest quirks are in
+memory `rguest_search_quirks`.
+
+**Files touched:** `server/agilysys/client.js`, `server/forecast/runScrape.js`,
+`src/components/Forecasting/{resnTabs.js (new), index.js, Forecasting.css}`,
+`claude-instructions/part5.md`.
 
 ---
 

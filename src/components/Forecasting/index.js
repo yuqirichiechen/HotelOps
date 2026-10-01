@@ -16,6 +16,7 @@ import { useView } from '../../shells/ViewContext';
 import ForecastSettings from './ForecastSettings';
 import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
+import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate, computeTabCounts, sortForTab, EMPTY_COPY } from './resnTabs';
 
 
 // ── Sprint 17.9 inline SVG icons ───────────────────────────
@@ -219,10 +220,19 @@ const ACTION_LABEL = {
 // `secondary` is the muted "of N" companion (e.g. "of 38"). When
 // primary === 0 (work finished) the card outlines green. Icon
 // renders inside a colored circle — accent picks the bg color.
-const KpiCard = ({ label, primary, secondary, sublabel, accent, icon }) => {
+const KpiCard = ({ label, primary, secondary, sublabel, accent, icon, onClick, active }) => {
   const done = primary === 0;
+  // Sprint 20.3 — like rGuest's top tiles, a KPI card can act as a tab button.
+  const clickable = typeof onClick === 'function';
   return (
-    <div className={`fc-kpi-card fc-kpi-${accent || 'default'}${done ? ' fc-kpi-done' : ''}`}>
+    <div
+      className={`fc-kpi-card fc-kpi-${accent || 'default'}${done ? ' fc-kpi-done' : ''}${clickable ? ' fc-kpi-clickable' : ''}${active ? ' fc-kpi-active' : ''}`}
+      {...(clickable ? {
+        role: 'button', tabIndex: 0, 'aria-pressed': !!active,
+        onClick,
+        onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } },
+      } : {})}
+    >
       <div className="fc-kpi-icon" aria-hidden="true">{icon}</div>
       <div className="fc-kpi-body">
         <div className="fc-kpi-label">{label}</div>
@@ -246,14 +256,8 @@ const KpiCard = ({ label, primary, secondary, sublabel, accent, icon }) => {
 // "Stayovers" chip dropped (overlap with In-house — staying-tonight
 // surfaces as its own KPI card instead). "Future" + "No Room
 // Assigned" are new.
-const RESN_FILTER_LABELS = [
-  ['all',         'All'],
-  ['arrival',     'Arrivals Today'],
-  ['inhouse',     'In-house'],
-  ['departure',   'Departures Today'],
-  ['future',      'Future'],
-  ['noRoom',      'No Room Assigned'],
-];
+// Sprint 20.3: tab definitions live in ./resnTabs.js (RESN_TABS).
+
 
 // HK action implied by the reservation's kind. Mirrors what the
 // per-room compute does — duplicated here so the table can show it
@@ -670,14 +674,8 @@ const RGUEST_RESERVATION_URL = (id) =>
 
 // Sprint 18.1 — predicate per filter chip. Composes with the
 // Room Type + Source dropdowns inside the table.
-const FILTER_PREDICATES = {
-  all:       () => true,
-  arrival:   r => r.kind === 'arrival',
-  inhouse:   r => r.kind === 'inhouse'  || r.kind === 'stayover',
-  departure: r => r.kind === 'departure',
-  future:    r => r.kind === 'future',
-  noRoom:    r => r.kind === 'arrival' && !r.isPreAssigned,
-};
+// Sprint 20.3: predicates come from tabPredicate() in ./resnTabs.js.
+
 
 // Sprint 18.6 — page-size options + pagination control.
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -749,18 +747,35 @@ const ReservationDetailsTable = ({
   // Sprint 18.2 — selection wiring for the right-rail detail panel.
   selectedId, onSelect,
 }) => {
-  const filtered = rows.filter(r => {
-    const pred = FILTER_PREDICATES[filter] || FILTER_PREDICATES.all;
-    if (!pred(r)) return false;
-    if (sourceFilter && r.source !== sourceFilter) return false;
-    if (typeFilter   && r.baseLabel !== typeFilter) return false;
-    return true;
-  });
+  // Sprint 20.3 — counts always reflect ALL rows (like rGuest's tiles);
+  // the room-type / source dropdowns only narrow the list below.
+  const counts = React.useMemo(() => computeTabCounts(rows), [rows]);
+  const filtered = React.useMemo(() => {
+    const pred = tabPredicate(filter);
+    return sortForTab(filter, rows.filter(r => {
+      if (!pred(r)) return false;
+      if (sourceFilter && r.source !== sourceFilter) return false;
+      if (typeFilter   && r.baseLabel !== typeFilter) return false;
+      return true;
+    }));
+  }, [rows, filter, sourceFilter, typeFilter]);
+  const narrowed = !!(sourceFilter || typeFilter);
+  const emptyCopy = EMPTY_COPY[filter] || EMPTY_COPY.all;
+  const emptyEl = (
+    <div className="fc-resn-emptybox">
+      <div>{narrowed && counts[filter] > 0 ? 'No reservations match the current filters.' : emptyCopy.text}</div>
+      {narrowed && counts[filter] > 0 ? (
+        <button type="button" className="fc-chip" onClick={() => { onSourceFilter(null); onTypeFilter(null); }}>Clear filters</button>
+      ) : emptyCopy.goto ? (
+        <button type="button" className="fc-chip" onClick={() => onFilter(emptyCopy.goto)}>{emptyCopy.gotoLabel}</button>
+      ) : null}
+    </div>
+  );
 
   // Sprint 18.6 — pagination. State local to the component so the
   // page resets cleanly when filters change (via the effect below).
   const [page, setPage]         = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(10);
+  const [pageSize, setPageSize] = React.useState(25); // Sprint 20.3: 10 → 25 (fewer taps to reach a guest)
   React.useEffect(() => { setPage(1); }, [filter, sourceFilter, typeFilter]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const effectivePage = Math.min(page, totalPages);
@@ -771,16 +786,21 @@ const ReservationDetailsTable = ({
   return (
     <div className="fc-detail-wrap">
       <div className="fc-detail-controls">
-        <div className="fc-chip-row" role="tablist">
-          {RESN_FILTER_LABELS.map(([key, lbl]) => (
+        {/* Sprint 20.3 — status tabs with live counts (rGuest-style). One row;
+            scrolls sideways on a phone instead of wrapping into 3 rows. */}
+        <div className="fc-tabs" role="tablist" aria-label="Reservation status">
+          {RESN_TABS.map(t => (
             <button
-              key={key}
+              key={t.key}
               type="button"
               role="tab"
-              aria-selected={filter === key}
-              className={`fc-chip${filter === key ? ' active' : ''}`}
-              onClick={() => onFilter(key)}
-            >{lbl}</button>
+              aria-selected={filter === t.key}
+              className={`fc-tab${filter === t.key ? ' active' : ''}${counts[t.key] === 0 ? ' is-zero' : ''}`}
+              onClick={() => onFilter(t.key)}
+            >
+              <span className="fc-tab-label">{t.label}</span>
+              <span className="fc-tab-count">{counts[t.key]}</span>
+            </button>
           ))}
         </div>
         <div className="fc-detail-selects">
@@ -805,7 +825,7 @@ const ReservationDetailsTable = ({
           layout (table or cards) is wrong for the current viewport. */}
       <ul className="fc-resn-cards fc-mobile-only">
         {filtered.length === 0 && (
-          <li className="fc-resn-empty">No reservations match the current filters.</li>
+          <li className="fc-resn-empty">{emptyEl}</li>
         )}
         {paged.map(r => (
           <ReservationCard
@@ -840,7 +860,7 @@ const ReservationDetailsTable = ({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="fc-detail-empty">No reservations match the current filters.</td></tr>
+              <tr><td colSpan={10} className="fc-detail-empty">{emptyEl}</td></tr>
             )}
             {paged.map(r => {
               const statusCls = STATUS_PILL_CLASS[r.statusLabel] || 'inhouse';
@@ -1564,7 +1584,7 @@ const Forecasting = () => {
   const [scraping, setScraping] = useState(false);
   const [error, setError]       = useState(null);
   const [view, setView]         = useState('details'); // 'cleaning' | 'room' | 'floor' | 'details' (17.8 default)
-  const [resnFilter, setResnFilter]     = useState('all');   // 17.8: filter chips
+  const [resnFilter, setResnFilter]     = useState(DEFAULT_RESN_TAB);   // Sprint 20.3: opens on Remaining arrivals
   const [resnSourceFilter, setResnSourceFilter] = useState(null);
   const [resnTypeFilter, setResnTypeFilter]     = useState(null);
   // Sprint 18.2 — currently-selected reservation. Drives the
@@ -1575,6 +1595,8 @@ const Forecasting = () => {
   const [historyOpen, setHistoryOpen]   = useState(false); // Sprint 17.5
   const [rawOpen, setRawOpen]           = useState(false); // Sprint 17.9
   const [scrapePct, setScrapePct]       = useState(0);     // 17.9 progress ring
+  // Sprint 20.3 — background guest-detail job (Sprint 20.2): progress shown under the title.
+  const [detailJob, setDetailJob]       = useState(null);
 
   const loadLatest = useCallback(async () => {
     setError(null);
@@ -1589,6 +1611,22 @@ const Forecasting = () => {
   }, []);
 
   useEffect(() => { loadLatest(); }, [loadLatest]);
+
+  // Sprint 20.3 — job progress. Fetch once on mount (so a job started in
+  // another tab/earlier shows), then poll every 2.5 s ONLY while it is
+  // running and the tab is visible. Idle page = zero polling (compute-cost
+  // rule from Sprint 19.1).
+  const jobRunning = detailJob?.status === 'running';
+  const fetchJob = useCallback(async () => {
+    const { ok, data } = await apiFetch('/admin/forecast/jobs/latest');
+    if (ok && data?.success) setDetailJob(data.job || null);
+  }, []);
+  useEffect(() => { fetchJob(); }, [fetchJob]);
+  useEffect(() => {
+    if (!jobRunning) return undefined;
+    const id = setInterval(() => { if (document.visibilityState === 'visible') fetchJob(); }, 2500);
+    return () => clearInterval(id);
+  }, [jobRunning, fetchJob]);
 
   const handleScrape = async () => {
     setScraping(true);
@@ -1607,6 +1645,7 @@ const Forecasting = () => {
       return;
     }
     setSnapshot(data.snapshot);
+    if (data.detailJob?.job) setDetailJob(data.detailJob.job);
   };
 
   // Sprint 17.9 — faux progress timer. Backend doesn't stream
@@ -1767,6 +1806,30 @@ const Forecasting = () => {
         </div>
       </header>
 
+      {/* Sprint 20.3 — guest-detail job (Sprint 20.2) progress; only while running or when it needs attention. */}
+      {detailJob && (detailJob.status === 'running' || detailJob.status === 'failed' || detailJob.status === 'partial' || detailJob.status === 'interrupted') && (
+        <div className={`fc-jobbar fc-jobbar-${detailJob.status}`} role="status" aria-live="polite">
+          {detailJob.status === 'running' ? (
+            <>
+              <span>Loading guest details <strong>{detailJob.done + detailJob.failed} / {detailJob.total}</strong></span>
+              <span className="fc-jobbar-track" aria-hidden="true">
+                <span className="fc-jobbar-fill" style={{ width: `${detailJob.total ? Math.min(100, Math.round(((detailJob.done + detailJob.failed) / detailJob.total) * 100)) : 0}%` }} />
+              </span>
+            </>
+          ) : detailJob.status === 'partial' ? (
+            <span>Guest details loaded, but {detailJob.failed} reservation{detailJob.failed === 1 ? '' : 's'} couldn't be refreshed — the last known data is shown.</span>
+          ) : (
+            <span>Guest details couldn't finish loading{detailJob.error ? `: ${detailJob.error}` : '.'} Refresh to retry.</span>
+          )}
+        </div>
+      )}
+
+      {snapshot?.payload && snapshot.payload.reservationsComplete === false && (
+        <div className="fc-jobbar fc-jobbar-partial" role="alert">
+          The reservation list may be incomplete (rGuest didn't return every record). Refresh to try again.
+        </div>
+      )}
+
       {loading && (
         <div className="fc-loading">Loading latest forecast…</div>
       )}
@@ -1795,9 +1858,9 @@ const Forecasting = () => {
               const remDep         = kpis.remainingDepartures ?? kpis.departures ?? 0;
               const inHouseTonight = Math.max(0, (kpis.inHouse ?? 0) - remDep);
               const reservations   = snapshot.payload.reservations || [];
-              const noRoomCount    = reservations.filter(r =>
-                r.kind === 'arrival' && !r.isPreAssigned
-              ).length;
+              // Sprint 20.3: same definition as the "Needs a room" tab.
+              const noRoomCount    = reservations.filter(tabPredicate('needsRoom')).length;
+              const goTab = (key) => { setResnFilter(key); setSelectedResId(null); };
               return (
                 <>
                   <KpiCard
@@ -1806,6 +1869,8 @@ const Forecasting = () => {
                     label="Arrivals Today"
                     primary={kpis.arrivals ?? 0}
                     sublabel={`${kpis.remainingArrivals ?? 0} not arrived`}
+                    onClick={() => goTab('remainingArrivals')}
+                    active={resnFilter === 'remainingArrivals' || resnFilter === 'arrived'}
                   />
                   <KpiCard
                     accent="inhouse"
@@ -1813,6 +1878,8 @@ const Forecasting = () => {
                     label="In-house"
                     primary={kpis.inHouse ?? 0}
                     sublabel="guests currently staying"
+                    onClick={() => goTab('inhouse')}
+                    active={resnFilter === 'inhouse'}
                   />
                   <KpiCard
                     accent="departures"
@@ -1820,6 +1887,8 @@ const Forecasting = () => {
                     label="Departures Today"
                     primary={kpis.departures ?? 0}
                     sublabel={`${kpis.remainingDepartures ?? 0} not checked out`}
+                    onClick={() => goTab('remainingDepartures')}
+                    active={resnFilter === 'remainingDepartures' || resnFilter === 'departed'}
                   />
                   <KpiCard
                     accent="staying"
@@ -1834,6 +1903,8 @@ const Forecasting = () => {
                     label="No Room Assigned"
                     primary={noRoomCount}
                     sublabel="needs review"
+                    onClick={() => goTab('needsRoom')}
+                    active={resnFilter === 'needsRoom'}
                   />
                 </>
               );
