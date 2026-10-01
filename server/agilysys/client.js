@@ -55,8 +55,12 @@ function createAgilysysClient(overrides = {}) {
   const baseUrl    = overrides.baseUrl    || BASE_URL;
   const tenantId   = overrides.tenantId   || TENANT_ID;
   const propertyId = overrides.propertyId || PROPERTY_ID;
-  const username   = overrides.username   || process.env.AGILYSYS_USER;
-  const password   = overrides.password   || process.env.AGILYSYS_PASS;
+  // Sprint 19.5: trim — a trailing space/newline pasted into a Koyeb env
+  // var is invisible in the dashboard but makes rGuest answer 401.
+  const rawUser = overrides.username || process.env.AGILYSYS_USER || '';
+  const rawPass = overrides.password || process.env.AGILYSYS_PASS || '';
+  const username = rawUser.trim();
+  const password = rawPass.trim();
 
   let token = null;
   const logs = [];
@@ -81,7 +85,14 @@ function createAgilysysClient(overrides = {}) {
       );
     }
     const url = `${baseUrl}/auth-service/auth/tenants/${tenantId}/users/login`;
-    log('info', 'agilysys.login.start', { url, username });
+    // passwordLength (never the password itself) lets us compare what the
+    // running server sees against what the user typed — catches a stale
+    // Koyeb env var vs the local .env without leaking the secret.
+    log('info', 'agilysys.login.start', {
+      url, username,
+      passwordLength: password.length,
+      trimmedWhitespace: rawUser !== username || rawPass !== password,
+    });
     let res;
     try {
       res = await fetch(url, {
@@ -99,6 +110,17 @@ function createAgilysysClient(overrides = {}) {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       log('error', 'agilysys.login.http_error', { status: res.status, body: body.slice(0, 200) });
+      if (res.status === 401) {
+        // Actionable message — this lands in forecast_snapshot.error_message
+        // and the Forecast page. Repeated bad logins can lock the rGuest
+        // account, so the fix is to correct the secret, not to retry.
+        throw new Error(
+          'rGuest rejected the login (401 Invalid credentials). Check AGILYSYS_USER / ' +
+          'AGILYSYS_PASS in the SERVER environment (Koyeb → Environment variables, then ' +
+          'redeploy) — not just your local server/.env — and confirm the same login works ' +
+          'at stay.rguest.com. Avoid re-running the scraper until fixed (account lockout).'
+        );
+      }
       throw new Error(`Agilysys login failed: ${res.status}`);
     }
     const data = await res.json();

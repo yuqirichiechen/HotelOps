@@ -18,10 +18,70 @@ sub-sprint list.
 | 19.2       | Staff detail UI: compact profile card + weekly time entries | Built; layout verified at 390 px + 1280 px (static render) |
 | 19.3       | Delete time entry, entries above PIN, mobile/PC polish, **endpoint auth audit** | Built, not yet run against live DB; audit done |
 | 19.4       | Fix auth gaps found in 19.3 audit (21 unprotected routes)    | Built + route-matrix tested locally (80/80); **deploy as one release, then click-through** |
+| 19.5       | Scraper: rGuest login 401 "Invalid credentials" after password change | Diagnostics + trim shipped; **root cause = verify server env (see entry)** |
 
 ---
 
 ## 2. Sprint logs (19.1 → present)
+
+### 2026-09-30 — Sprint 19.5: scraper login 401 after the rGuest password change
+
+**Symptom.** Forecast scrape fails: `agilysys.login.http_error` →
+`{"status":401,"code":1003,"message":"Invalid credentials"}` for user
+`richie` on tenant 1566, even after the user updated `AGILYSYS_PASS` in
+`server/.env`.
+
+**What was checked (no login attempted — repeated bad logins can lock the
+rGuest account).**
+- Local `server/.env` parses cleanly through dotenv: `AGILYSYS_USER` =
+  `richie` (the raw line has trailing spaces; dotenv trims them),
+  `AGILYSYS_PASS` = 17 chars, **no `#`, `$`, quotes, spaces or backslashes**
+  (a `#` in an unquoted value would have been silently truncated by
+  dotenv — ruled out).
+- `client.js` reads `process.env.AGILYSYS_USER/PASS` per client; no
+  caching of old values.
+- The failing log shows `"username":"richie"` with no stray whitespace.
+
+**Most likely cause: the running server isn't using the local `.env`.**
+The scrape that produced the log runs on Koyeb, which only sees the
+Koyeb service's environment variables — `server/.env` is gitignored and
+never deployed. Editing it locally changes nothing in production. (Env
+var changes in Koyeb also need a redeploy/restart to take effect, and if
+`AGILYSYS_PASS` is stored as a Koyeb *Secret*, the secret's value must be
+updated, not just the variable.) Second possibility: the new password
+itself isn't accepted/locked (login at stay.rguest.com in a browser with
+the same password to confirm). Note: earlier in Sprint 19.4 testing, a
+few of *my* local test runs attempted real logins with the local `.env`
+creds and got the same 401 — i.e. the local password was already
+rejected at that point, and those attempts added to the failed-login
+count.
+
+**Code changes (`server/agilysys/client.js`).**
+1. Credentials are `.trim()`-ed (a trailing space/newline pasted into a
+   Koyeb env var is invisible in the dashboard but yields 401).
+2. `agilysys.login.start` now also logs `passwordLength` (never the
+   password) and `trimmedWhitespace`. After redeploying, the next scrape
+   log should show `passwordLength: 17` — if Koyeb shows a different
+   number, the Koyeb variable is stale/wrong.
+3. A 401 now throws an actionable message (shown on the Forecast page /
+   `forecast_snapshot.error_message`) telling the operator to fix the
+   server environment and not to hammer retry.
+
+**User checklist.**
+1. Koyeb → service → Environment variables → set `AGILYSYS_USER` and
+   `AGILYSYS_PASS` (no quotes, no trailing space) → **redeploy**.
+2. Make sure the same username/password signs in at stay.rguest.com.
+3. Run the scraper **once**; open the log and confirm
+   `passwordLength: 17`. If it still 401s with the right length, the
+   credentials themselves are being rejected (lockout / wrong user /
+   different tenant) — stop retrying and unlock via rGuest/Agilysys.
+
+**Verified.** `node --check`; module loads and builds a client with
+padded creds. Not verified against rGuest (deliberately).
+
+**Files touched:** `server/agilysys/client.js`, `claude-instructions/part5.md`
+
+---
 
 ### 2026-09-30 — Sprint 19.4: close the 21 unauthenticated routes + harden tokens
 
