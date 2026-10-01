@@ -18,11 +18,209 @@ sub-sprint list.
 | 19.2       | Staff detail UI: compact profile card + weekly time entries | Built; layout verified at 390 px + 1280 px (static render) |
 | 19.3       | Delete time entry, entries above PIN, mobile/PC polish, **endpoint auth audit** | Built, not yet run against live DB; audit done |
 | 19.4       | Fix auth gaps found in 19.3 audit (21 unprotected routes)    | Built + route-matrix tested locally (80/80); **deploy as one release, then click-through** |
-| 19.5       | Scraper: rGuest login 401 "Invalid credentials" after password change | Diagnostics + trim shipped; **root cause = verify server env (see entry)** |
+| 19.5       | Scraper: rGuest login 401 "Invalid credentials" after password change | **Resolved** — Koyeb env var hadn't been updated (user fixed) |
+| 20.1       | Reservations header: title + last-sync + icon-only refresh on one line | Built; rendered at 390/360/1280 px |
+| 20.2       | **Scraper v2:** deep per-reservation fetch (~25 sections), stored in DB by a background job; UI reads stored data | Built + tested (unit, fake-DB job runner, live rGuest e2e). **Apply migration 027 before deploy** |
+| 20.3–20.5  | Status tabs (Remaining arrivals default, clickable like rGuest), dense inline cards, search/sort | Planned — builds on 20.2 data |
 
 ---
 
 ## 2. Sprint logs (19.1 → present)
+
+### Sprint 20 roadmap — Reservations redesign (proposal, 2026-09-30)
+
+**Problem (from user screenshots + code read).**
+- "Remaining arrivals: 4 of 38" is the number the front desk cares about,
+  but there is no way to see *those 4*: the `Arrivals Today` chip
+  (`FILTER_PREDICATES.arrival`, `kind === 'arrival'`) lists all 38.
+- A collapsed card shows only name, conf #, room (`—`), type and two
+  pills. Dates, nights, source, flags — and everything from the guest
+  record (email, phone, channel, occupancy, balance, history, open
+  requests, card on file) — sit behind a tap, and the guest record is a
+  separate on-demand call per reservation (`useReservationDetail`,
+  Sprint 18.7). That's the "second level" the user wants gone.
+- rGuest's own reservation page carries far more (comments, preferences,
+  folio summary, stay history, upsells, loyalty, documents, print/email
+  history); `scraper/recon/20260611-143158` shows opening one reservation
+  fires 249 XHRs, ~80% config noise.
+
+**Proposed sprints** *(numbering updated: scraper became 20.2; status tabs 20.3; cards 20.4)*.
+| # | What |
+|---|------|
+| 20.1 | Header layout (done) |
+| 20.3 | **Status model + filters:** tabs with live counts — *Remaining arrivals* (default), Arrived, In-house, Remaining departures, Departed, Future, No room. Definitions mirror rGuest's top tiles so numbers match theirs. Filters become one sticky row (room type / source collapse into a "Filters" popover on mobile). |
+| 20.4 | **Dense cards, no drill-down:** every card shows the essentials at a glance — name (+VIP), status, room/"Unassigned", type, dates + nights, ETA/early/red-eye, channel, rate plan, balance due, guests, flags, phone/email (tap-to-call/mail). Mobile: 3-line card. Desktop: table-style rows with the same fields as columns. Optional in-place expand (accordion, never a new page) for the long tail. |
+| 20.2 | **Scraper expansion — DONE, reordered first at the user's request** (see the 20.2 entry for the final design: all ~25 per-reservation sections, sensitive data kept admin-only, stored by a background job so cards never depend on a live call). |
+| 20.5 | **Search + sort + inline polish:** name/conf/room search, "needs attention" sorting (no room, VIP, early, unpaid), print-friendly list for the desk. |
+
+**DECISIONS (user, 2026-09-30) — supersede the defaults below:** start with the
+scraper (cards need its data); default tab = Remaining arrivals but switchable
+like rGuest's tiles; prefetch **everything** even if slow; **keep sensitive
+data** (admin-only) — scrape everything possible; and fetch guest detail in a
+way that doesn't break when the list goes stale (→ the 20.2 design).
+
+**Original open decisions (defaults in bold):** (1) default tab =
+**Remaining arrivals**; (2) prefetch detail for **arrivals + in-house**
+(≈40–150 reservations/scrape; adds ~1–2 min and N×4 rGuest calls — vs
+arrivals only); (3) PII scope = **no card/ID/document data stored**.
+Risk to manage: rGuest rate limits / account lockout (the scraper uses a
+real staff login) → concurrency ≤ 4, back off on 429/401, never retry a
+failed login.
+
+---
+
+### 2026-09-30 — Sprint 20.2: Scraper v2 — stored deep fetch of every reservation
+
+**Problem.** Guest detail was fetched LIVE from rGuest when a card was tapped
+(`GET /admin/reservations/:id/detail`, a fresh rGuest login each time). If the
+list snapshot was hours old and that reservation had since moved/cancelled/
+merged, the live call failed and the card showed an error. It also covered only
+~8 of the ~25 per-reservation data sources rGuest exposes, and "all the data"
+(comments, folio, deposits, history, group…) was never available inline.
+
+**Design — "list snapshot + stored detail, UI reads only the DB".**
+1. *Fast list scrape* (as before, ~15 s) → `forecast_snapshot`.
+2. *Background job* (`server/forecast/detailJob.js`) is kicked off by the
+   scrape route and returns immediately. It deep-fetches each reservation in
+   the snapshot and **upserts it into `reservation_detail` as each one
+   completes** (progressive), heart-beating progress to `scrape_job`.
+3. **UI never calls rGuest to render a card.** `GET …/detail` reads the stored
+   row; fallback: if not stored yet it fetches once live and stores it.
+4. **Staleness is explicit, not an error:** every row has `fetched_at`,
+   `remote_state` (`ok` | `gone` = 404 in rGuest) and per-section status.
+   A cancelled/moved/merged reservation keeps its last data and is flagged
+   `gone` instead of throwing.
+5. **Failure isolation:** each section has its own try/catch; a failed section
+   keeps its previous good data (flagged `staleSince`) and is retried next run;
+   a failed reservation never wipes or creates a row.
+6. **Incremental:** re-fetch only if new, list-fingerprint changed (status /
+   kind / room / dates / type / rate plan…), older than TTL (3 h active, 24 h
+   future), or has a section that failed > 30 min ago. A second scrape with no
+   changes fetches nothing.
+7. **Order:** remaining (pending) arrivals first, then in-house, departures,
+   future — so the cards the desk needs appear first.
+
+**What is scraped per reservation (all stored RAW, admin-only; `summary` is
+derived).** reservation (full: rate snapshots, occupancy, source, preferences,
+policies…), guest profile (contact, addresses, loyalty, preferences),
+preferred rooms, comments, additional guests, loyalty info, messages summary,
+scheduled deposits, coupons, room-assignment restrictions, email/print
+history, service requests (guest/HK/maintenance), group, room allocation,
+stay history counts, guest's other stays (slimmed), account details, folios
+(+line items), posting rules, estimated charges, auth details, balances, and
+payment instruments (masked card metadata: last4/holder/exp/auth amount).
+**Sensitive data is kept** (user decision): contact info, folio lines, masked
+cards. Protected by `requireAuth + requireRole('admin')` on every route that
+returns it. **Not scraped (no known GET endpoint):** identity-document images,
+document-attachment list (POST with unknown body) — IDs sit in `reservation`
+(`verifiedGuestIdentityIds`); revisit if wanted.
+
+**Safety / ops.**
+- Client (`server/agilysys/client.js`): global cap of **6 in-flight requests**
+  (`AGILYSYS_MAX_INFLIGHT`); backoff+retry on 429/502/503/504; one shared
+  re-login for concurrent callers; **a rejected login is never retried** and
+  aborts the job (`err.fatal`) — protects the rGuest account from lockout;
+  204/empty bodies → `null`; errors carry `.status`; balances call now tries
+  the body shape rGuest accepts first (the old one 500'd).
+- Job aborts after 8 consecutive failures ("rGuest looks down"); one job at a
+  time; a job with no heartbeat for 90 s is marked `interrupted` lazily (no
+  boot query, no timers — respects the 19.1 compute rule). Runs only when an
+  admin scrapes/refreshes.
+
+**API (all admin-only).**
+- `POST /api/admin/forecast/scrape` → now also starts the job; response adds
+  `detailJob {started, reused, job}`. Body `{details:false}` skips it,
+  `{forceDetails:true}` re-fetches everything.
+- `GET /api/admin/forecast/jobs/latest` → progress (`total/done/failed/gone/status`).
+- `GET /api/admin/reservations/summaries` → compact card data for every
+  reservation in the latest snapshot in ONE query (for the 20.3 cards).
+- `GET /api/admin/reservations/:id/detail` → stored `detail` (same keys the
+  18.7 UI uses → existing UI keeps working) + `summary` + `meta`
+  (`source`, `fetchedAt`, `remoteState`, `sections`).
+- `POST /api/admin/reservations/:id/refresh` → live re-fetch of one
+  reservation; tolerant (returns stored data + `refreshError` on failure).
+
+**DB — migration 027** (`database/migrations/027_sprint20_reservation_detail.sql`,
+mirrored in `schema.sql`): `reservation_detail` (raw `detail` JSONB, `summary`
+JSONB, `sections` JSONB, `fetched_at`, `remote_state`, `list_fingerprint`,
+attempts/last_error) and `scrape_job` (status/progress/heartbeat).
+**Apply 027 on Koyeb BEFORE deploying** — without it the job fails to start
+(caught: the list scrape still succeeds) and the detail route 500s.
+
+**Findings from the live probes (2026-09-30).** rGuest answered every
+per-reservation endpoint with 200/204 for 45 + 30 real reservations (0 failed
+sections). One reservation = ~25 requests, ~0.6 s unthrottled; avg raw detail
+≈ 48 KB (up to ~130 KB for long in-house stays with many folio lines).
+`stay/allocation` etc. shapes recorded in `server/forecast/summarize.js`.
+Comments / guest preferences / loyalty were **empty** in every probed
+reservation, so `summarize.js` reads them defensively (collects any readable
+text) — revisit once a real example exists (raw is stored, so the summary can
+be re-derived without re-scraping).
+
+**Verification.**
+- 11 automated tests (scratchpad `jobtest.js`): target selection/ordering/TTL/
+  fingerprint/section-retry; job runner against an in-memory fake pg + fake
+  rGuest — happy path, incremental no-op second run, 404→`gone` keeps prior
+  data, partial failure creates no empty row, fatal login aborts without
+  attempting the rest, 8-failure circuit breaker, single-job guard + stale
+  detection; summary math on a real-shape fixture + hostile input.
+- **Live e2e (real rGuest, fake DB):** 30 real reservations in **8.4 s**,
+  730 HTTP calls, **peak in-flight 6 (cap holds)**, 0 failed sections;
+  extrapolates to ~40 s for a full ~130-reservation run. Summary coverage:
+  email 28/30, phone 26/30, card 28/30.
+- Auth matrix: 83 routes, 0 failures (new routes admin-only).
+- **Not done:** not run against the real Koyeb DB; no UI changes yet (cards
+  still render as before — they just read stored data now).
+
+**Known follow-ups / risks.**
+- **PII retention:** the DB now holds guest contact + folio data for every
+  reservation we've seen, indefinitely. Add pruning (e.g. delete detail for
+  reservations departed > 90 days ago) — not done.
+- No UI for job progress yet (20.3: header "Details 37/130" + per-card
+  "as of 3:12 PM" / "no longer in rGuest" / "refreshing" states + a refresh
+  action).
+- `summary` v1 can be re-derived from stored raw if the format improves.
+- TTLs/constants live at the top of `detailJob.js`.
+
+**Files touched:** `server/agilysys/client.js`, `server/forecast/detailJob.js`
+(new), `server/forecast/summarize.js` (new), `server/server.js`,
+`database/migrations/027_sprint20_reservation_detail.sql` (new),
+`database/schema.sql`, `claude-instructions/part5.md`.
+
+---
+
+### 2026-09-30 — Sprint 20.1: Reservations header on one line (icon-only refresh)
+
+Layout fix, mobile first. On the Reservations page the title sat on its own
+line while "Run scraper" (a 154 px min-width labelled button) and the
+"Last sync" badge wrapped underneath — three rows of chrome before any data
+on a phone.
+
+- **One row at every width:** `Reservations` (left) · `● Last sync 8:23 PM`
+  badge · square **refresh icon button** (right). The "Run scraper" text is
+  gone; the button keeps `title` + `aria-label` ("Refresh: run the rGuest
+  scraper"), and while running shows the progress ring (percent moved into
+  the tooltip/aria-label — no width-changing text).
+- **Sizes:** icon button 40 px (44 px on `pointer: coarse` touch screens);
+  h1 32 → 24 px at ≤480 px; at ≤360 px the badge drops the words "Last
+  sync" and shows dot + time only.
+- **Also fixed:** the three meta links (Snapshot history / Forecast
+  settings / Raw scraper output) were `inline-flex` with no wrap — now wrap
+  under the title instead of overflowing a 390 px screen.
+- Empty-state copy updated ("Tap the refresh button above…").
+- **Not changed:** the *Forecast* page header (it has "Sync arrivals" +
+  "Generate forecast" + badge) — not requested; same pattern can be applied
+  if wanted.
+
+**Verified.** Static render of the real built CSS + header markup at 390,
+360 and 1280 px (all single-row); `npm run build` compiles; no new
+warnings. Not yet checked on a real device / with the running state.
+
+**Files touched:** `src/components/Forecasting/index.js` (header JSX),
+`src/components/Forecasting/Forecasting.css`, `server/agilysys/client.js`
+(401 message revert), `claude-instructions/part5.md`.
+
+---
 
 ### 2026-09-30 — Sprint 19.5: scraper login 401 after the rGuest password change
 
@@ -63,11 +261,14 @@ count.
    password) and `trimmedWhitespace`. After redeploying, the next scrape
    log should show `passwordLength: 17` — if Koyeb shows a different
    number, the Koyeb variable is stale/wrong.
-3. A 401 now throws an actionable message (shown on the Forecast page /
-   `forecast_snapshot.error_message`) telling the operator to fix the
-   server environment and not to hammer retry.
+3. ~~Actionable 401 message~~ — **reverted at user request (20.1 session):**
+   a 401 now throws the short `rGuest rejected the login — username or
+   password is incorrect.` (the Koyeb hint was too specific).
 
-**User checklist.**
+**RESOLUTION (user, later same day):** the Koyeb `AGILYSYS_PASS` env var had
+not been updated — only the local `.env`. Updating Koyeb fixed it.
+
+**User checklist (kept for reference).**
 1. Koyeb → service → Environment variables → set `AGILYSYS_USER` and
    `AGILYSYS_PASS` (no quotes, no trailing space) → **redeploy**.
 2. Make sure the same username/password signs in at stay.rguest.com.

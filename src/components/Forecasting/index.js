@@ -1710,7 +1710,30 @@ const Forecasting = () => {
           >
             <IconBack /> <span>Home</span>
           </button>
-          <h1>Reservations</h1>
+          {/* Sprint 20.1 — title, last-sync badge and the icon-only refresh
+              share ONE row at every width (phone included). The old
+              "Run scraper" text button (154 px min-width) forced the
+              actions onto their own line below the title. */}
+          <div className="fc-title-row">
+            <h1>Reservations</h1>
+            <div className="fc-header-actions">
+              <div className={`fc-sync-badge fc-sync-${snapshot?.status || 'idle'}`}>
+                <span className="fc-sync-dot" aria-hidden="true" />
+                <span className="fc-sync-label">Last sync</span>
+                <strong>{lastSync}</strong>
+              </div>
+              <button
+                type="button"
+                className="fc-btn fc-btn-primary fc-btn-icon"
+                onClick={handleScrape}
+                disabled={scraping}
+                title={scraping ? `Running… ${scrapePct}%` : 'Refresh — run the rGuest scraper'}
+                aria-label={scraping ? `Scraper running, ${scrapePct} percent` : 'Refresh: run the rGuest scraper'}
+              >
+                {scraping ? <ProgressRing pct={scrapePct} /> : <IconRefresh />}
+              </button>
+            </div>
+          </div>
           {/* Sprint 17.9 — subtitle removed (was descriptive only);
               the three meta links carry the actionable affordances. */}
           <div className="fc-header-meta-actions">
@@ -1742,24 +1765,6 @@ const Forecasting = () => {
             </button>
           </div>
         </div>
-        <div className="fc-header-actions">
-          <button
-            className="fc-btn fc-btn-primary"
-            onClick={handleScrape}
-            disabled={scraping}
-          >
-            {scraping ? <ProgressRing pct={scrapePct} /> : <IconRefresh />}
-            <span>{scraping ? `Running… ${scrapePct}%` : 'Run scraper'}</span>
-          </button>
-          {/* Sprint 17.12: Generate Forecast moved to the Forecast
-              page (lives next to the room-availability projection
-              it summarizes). */}
-          <div className={`fc-sync-badge fc-sync-${snapshot?.status || 'idle'}`}>
-            <span className="fc-sync-dot" aria-hidden="true" />
-            <span>Last sync</span>
-            <strong>{lastSync}</strong>
-          </div>
-        </div>
       </header>
 
       {loading && (
@@ -1775,7 +1780,7 @@ const Forecasting = () => {
       {!loading && !snapshot && !error && (
         <div className="fc-empty">
           <h2>No forecast yet</h2>
-          <p>Click <strong>Run scraper</strong> above to pull today's data from rGuest Stay and generate the first forecast.</p>
+          <p>Tap the <strong>refresh</strong> button above to pull today's data from rGuest Stay and generate the first forecast.</p>
         </div>
       )}
 

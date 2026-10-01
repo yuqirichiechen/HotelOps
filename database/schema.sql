@@ -469,3 +469,41 @@ CREATE TRIGGER trg_users_updated_at
 -- the shift_notes table itself (migration 012). The equivalent
 -- behavior for handoff_notes is set up by migration 011 via its
 -- own handoff_notes_touch_updated_at function + trigger.
+
+-- ── RESERVATION DETAIL + DEEP-FETCH JOBS (Sprint 20.2, migration 027) ────────
+-- Full per-reservation rGuest data stored by a background job after each
+-- list scrape; the Reservations UI reads only from here (never live).
+
+CREATE TABLE reservation_detail (
+  reservation_id    UUID         PRIMARY KEY,
+  confirmation_id   VARCHAR(40),
+  remote_state      VARCHAR(12)  NOT NULL DEFAULT 'ok',
+  list_fingerprint  CHAR(64),
+  detail            JSONB        NOT NULL DEFAULT '{}'::jsonb,
+  summary           JSONB        NOT NULL DEFAULT '{}'::jsonb,
+  sections          JSONB        NOT NULL DEFAULT '{}'::jsonb,
+  first_fetched_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  fetched_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  last_attempt_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  attempts          INT          NOT NULL DEFAULT 1,
+  last_error        TEXT
+);
+CREATE INDEX idx_reservation_detail_fetched ON reservation_detail(fetched_at DESC);
+
+CREATE TABLE scrape_job (
+  job_id        UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind          VARCHAR(20)  NOT NULL DEFAULT 'detail',
+  snapshot_id   UUID         REFERENCES forecast_snapshot(snapshot_id) ON DELETE SET NULL,
+  status        VARCHAR(20)  NOT NULL DEFAULT 'running',
+  total         INT          NOT NULL DEFAULT 0,
+  skipped       INT          NOT NULL DEFAULT 0,
+  done          INT          NOT NULL DEFAULT 0,
+  failed        INT          NOT NULL DEFAULT 0,
+  gone          INT          NOT NULL DEFAULT 0,
+  error         TEXT,
+  options       JSONB        NOT NULL DEFAULT '{}'::jsonb,
+  started_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  heartbeat_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  finished_at   TIMESTAMPTZ
+);
+CREATE INDEX idx_scrape_job_started ON scrape_job(started_at DESC);

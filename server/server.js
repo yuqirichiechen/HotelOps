@@ -11,6 +11,10 @@ const {
 
 // Sprint 17 — Front Desk forecast (Agilysys rGuest Stay).
 const { runScrape: runForecastScrape } = require('./forecast/runScrape');
+// Sprint 20.2 — background deep-fetch of every reservation's full detail;
+// the Reservations UI reads stored detail (never live) → no more
+// "detail changed since the list scrape" errors.
+const { startDetailJob, getLatestJob, refreshOne } = require('./forecast/detailJob');
 // Sprint 18.7 — per-reservation detail (on-demand). Used by the
 // Reservations rail panel to surface email / phone / address /
 // folio balance / stay history that bulk scrape doesn't carry.
@@ -4207,7 +4211,27 @@ app.post('/api/admin/forecast/scrape', requireAuth, requireRole('admin'), async 
       triggeredBy: null,
       forecastDate,
     });
-    return res.json({ success: true, snapshot });
+    // Sprint 20.2: the list scrape is done (fast). Kick off the deep
+    // per-reservation fetch in the BACKGROUND and return immediately; the
+    // UI polls GET /api/admin/forecast/jobs/latest for progress. Skipped
+    // with { details: false } or when the snapshot has no reservations.
+    let detailJob = null;
+    const wantDetails = !(req.body && req.body.details === false);
+    const resList = snapshot && snapshot.payload && snapshot.payload.reservations;
+    if (wantDetails && Array.isArray(resList) && resList.length) {
+      try {
+        const out = await startDetailJob({
+          pool, snapshotId: snapshot.snapshot_id, reservations: resList,
+          force: !!(req.body && req.body.forceDetails),
+        });
+        detailJob = { started: out.started, reused: out.reused, job: out.job };
+      } catch (jobErr) {
+        // The list scrape succeeded — never fail it because the job couldn't start.
+        console.error('[forecast:scrape] detail job failed to start:', jobErr && jobErr.message);
+        detailJob = { started: false, error: String(jobErr && jobErr.message).slice(0, 200) };
+      }
+    }
+    return res.json({ success: true, snapshot, detailJob });
   } catch (err) {
     console.error('[forecast:scrape]', err);
     return res.status(500).json({ success: false, message: err.message || 'Scrape failed' });
@@ -4398,11 +4422,33 @@ app.put('/api/admin/forecast/mapping/:code', requireAuth, requireRole('admin'), 
   }
 });
 
-// ── Sprint 18.7: per-reservation detail (on-demand) ───────────────────────────
-// Fans out to ~5 rGuest endpoints (reservation, guest profile,
-// comments, account balances, stay history) in parallel after the
-// first reservation fetch resolves accountId + profileId. ~3s
-// round-trip; called from the Reservations rail panel.
+// ── Sprint 18.7 → 20.2: per-reservation detail (STORED, not live) ────────────
+// Sprint 20.2 flipped this from "call rGuest when a card is tapped" to
+// "read what the background job already stored". The response keeps the
+// Sprint 18.7 keys (reservation, profile, comments, balances, stayHistory,
+// accountDetails, paymentInstruments, serviceRequests) so the existing UI
+// keeps working, and adds the new sections + `summary` + `meta`
+// (fetchedAt / remoteState / per-section status) for the redesign.
+
+const detailPayload = (row, source) => ({
+  detail:  row.detail || {},
+  summary: row.summary || {},
+  meta: {
+    source,                                   // 'stored' | 'live'
+    fetchedAt:   row.fetched_at,
+    remoteState: row.remote_state,            // 'ok' | 'gone'
+    sections:    row.sections || {},
+    lastError:   row.last_error || null,
+    attempts:    row.attempts,
+  },
+});
+
+async function latestListItem(reservationId) {
+  const { rows } = await pool.query(
+    `SELECT payload FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
+  const list = rows[0] && rows[0].payload && rows[0].payload.reservations;
+  return Array.isArray(list) ? (list.find(r => r && r.id === reservationId) || null) : null;
+}
 
 // GET /api/admin/reservations/:id/detail
 app.get('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin'), async (req, res) => {
@@ -4411,15 +4457,82 @@ app.get('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin'),
     return res.status(400).json({ success: false, message: 'bad reservation id' });
   }
   try {
-    const client = createAgilysysClient();
-    const detail = await client.fetchReservationFullDetail(id);
-    return res.json({ success: true, detail, logs: client.getLogs() });
+    let { rows } = await pool.query('SELECT * FROM reservation_detail WHERE reservation_id = $1', [id]);
+    let source = 'stored';
+    if (!rows.length) {
+      // Not stored yet (job still running, or outside the snapshot) — fetch
+      // once live and store, so the card still works.
+      const state = await refreshOne({ pool, reservationId: id, listItem: await latestListItem(id), createClient: createAgilysysClient });
+      ({ rows } = await pool.query('SELECT * FROM reservation_detail WHERE reservation_id = $1', [id]));
+      if (!rows.length) {
+        return res.status(404).json({ success: false, message: state === 'gone' ? 'Reservation no longer exists in rGuest.' : 'No detail available.' });
+      }
+      source = 'live';
+    }
+    return res.json({ success: true, ...detailPayload(rows[0], source) });
   } catch (err) {
     console.error('[reservation:detail]', err);
-    return res.status(500).json({
-      success: false,
-      message: err.message || 'Could not load reservation detail',
+    return res.status(500).json({ success: false, message: err.message || 'Could not load reservation detail' });
+  }
+});
+
+// POST /api/admin/reservations/:id/refresh — live re-fetch of ONE reservation.
+// Failure-tolerant: if rGuest 404s the stored data is kept and flagged 'gone';
+// if the call fails entirely the stored row is returned with the error.
+app.post('/api/admin/reservations/:id/refresh', requireAuth, requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ success: false, message: 'bad reservation id' });
+  }
+  let refreshError = null;
+  try {
+    await refreshOne({ pool, reservationId: id, listItem: await latestListItem(id), createClient: createAgilysysClient });
+  } catch (err) {
+    refreshError = err.message || 'Refresh failed';
+    console.error('[reservation:refresh]', id, refreshError);
+  }
+  const { rows } = await pool.query('SELECT * FROM reservation_detail WHERE reservation_id = $1', [id]);
+  if (!rows.length) {
+    return res.status(refreshError ? 502 : 404).json({ success: false, message: refreshError || 'No detail available.' });
+  }
+  return res.json({ success: true, refreshError, ...detailPayload(rows[0], refreshError ? 'stored' : 'live') });
+});
+
+// GET /api/admin/reservations/summaries — compact card data for every
+// reservation in the latest successful snapshot, in ONE query (the cards
+// render from this; no per-card requests).
+app.get('/api/admin/reservations/summaries', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const snap = await pool.query(
+      `SELECT payload FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
+    const list = snap.rows[0] && snap.rows[0].payload && snap.rows[0].payload.reservations;
+    const ids = Array.isArray(list) ? list.map(r => r && r.id).filter(Boolean) : [];
+    if (!ids.length) return res.json({ success: true, summaries: {} });
+    const { rows } = await pool.query(
+      `SELECT reservation_id, summary, remote_state, fetched_at, sections, last_error
+         FROM reservation_detail WHERE reservation_id = ANY($1::uuid[])`, [ids]);
+    const summaries = {};
+    rows.forEach(r => {
+      const failed = Object.entries(r.sections || {}).filter(([, v]) => v && v.ok === false).map(([k]) => k);
+      summaries[r.reservation_id] = {
+        summary: r.summary, remoteState: r.remote_state, fetchedAt: r.fetched_at,
+        failedSections: failed, lastError: r.last_error || null,
+      };
     });
+    return res.json({ success: true, summaries, total: ids.length, stored: rows.length });
+  } catch (err) {
+    console.error('[reservations:summaries]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/forecast/jobs/latest — progress of the newest deep-fetch run.
+app.get('/api/admin/forecast/jobs/latest', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    return res.json({ success: true, job: await getLatestJob(pool) });
+  } catch (err) {
+    console.error('[forecast:jobs:latest]', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

@@ -78,7 +78,12 @@ function createAgilysysClient(overrides = {}) {
   // Hits the tenant-scoped login endpoint and stashes the token.
   // Throws if credentials are missing or the response doesn't
   // include a token.
+  // Sprint 20.2: once rGuest rejects the credentials, this client never
+  // tries again — a deep-fetch job makes hundreds of calls and a retry
+  // loop on a bad password could lock the rGuest account.
+  let loginFailure = null;
   async function login() {
+    if (loginFailure) throw loginFailure;
     if (!username || !password) {
       throw new Error(
         'Agilysys client: AGILYSYS_USER and AGILYSYS_PASS env vars are required',
@@ -111,15 +116,11 @@ function createAgilysysClient(overrides = {}) {
       const body = await res.text().catch(() => '');
       log('error', 'agilysys.login.http_error', { status: res.status, body: body.slice(0, 200) });
       if (res.status === 401) {
-        // Actionable message — this lands in forecast_snapshot.error_message
-        // and the Forecast page. Repeated bad logins can lock the rGuest
-        // account, so the fix is to correct the secret, not to retry.
-        throw new Error(
-          'rGuest rejected the login (401 Invalid credentials). Check AGILYSYS_USER / ' +
-          'AGILYSYS_PASS in the SERVER environment (Koyeb → Environment variables, then ' +
-          'redeploy) — not just your local server/.env — and confirm the same login works ' +
-          'at stay.rguest.com. Avoid re-running the scraper until fixed (account lockout).'
-        );
+        // Shown on the Forecast page via forecast_snapshot.error_message.
+        loginFailure = new Error('rGuest rejected the login — username or password is incorrect.');
+        loginFailure.status = 401;
+        loginFailure.fatal  = true;
+        throw loginFailure;
       }
       throw new Error(`Agilysys login failed: ${res.status}`);
     }
@@ -136,26 +137,62 @@ function createAgilysysClient(overrides = {}) {
   // ── HTTP helper ─────────────────────────────────────────
   // Wraps fetch with the x-token header. On 401, drops the cached
   // token, re-logs-in once, and retries. Anything else is fatal.
+  // Sprint 20.2: concurrent callers (the deep-fetch job runs several at
+  // once) must not each re-login when the token expires — share ONE login.
+  let loginInFlight = null;
+  async function refreshToken(staleToken) {
+    if (token && token !== staleToken) return; // someone already refreshed it
+    if (!loginInFlight) {
+      token = null;
+      loginInFlight = login().finally(() => { loginInFlight = null; });
+    }
+    await loginInFlight;
+  }
+
+  const RETRY_STATUSES = new Set([429, 502, 503, 504]);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Sprint 20.2: global cap on simultaneous requests to rGuest. One deep
+  // fetch fans out ~25 calls at once; without a cap, several reservations
+  // in flight would hammer a production system we log into with a real
+  // staff account. Default 6; override with AGILYSYS_MAX_INFLIGHT.
+  const MAX_INFLIGHT = Math.max(1, Number(process.env.AGILYSYS_MAX_INFLIGHT) || 6);
+  let inflight = 0;
+  const waiters = [];
+  async function limited(fn) {
+    if (inflight >= MAX_INFLIGHT) await new Promise(r => waiters.push(r));
+    inflight++;
+    try { return await fn(); }
+    finally { inflight--; const next = waiters.shift(); if (next) next(); }
+  }
+
   async function call(method, path, body) {
-    if (!token) await login();
+    if (!token) await refreshToken(null);
 
     const url = `${baseUrl}${path}`;
-    const headers = {
-      'x-token':      token,
-      'Accept':       'application/json',
-      'Content-Type': 'application/json',
+    const init = {
+      method,
+      headers: { 'x-token': token, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
     };
-    const init = { method, headers, body: body ? JSON.stringify(body) : undefined };
 
     log('debug', 'agilysys.call.start', { method, path });
-    let res = await fetch(url, init);
+    let res = await limited(() => fetch(url, init));
 
     if (res.status === 401) {
       log('warn', 'agilysys.call.token_expired_retry', { method, path });
-      token = null;
-      await login();
+      const stale = init.headers['x-token'];
+      await refreshToken(stale);
       init.headers['x-token'] = token;
-      res = await fetch(url, init);
+      res = await limited(() => fetch(url, init));
+    }
+
+    // Transient overload / rate-limit: back off and retry (max 3x).
+    for (let attempt = 1; RETRY_STATUSES.has(res.status) && attempt <= 3; attempt++) {
+      const wait = 500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 250);
+      log('warn', 'agilysys.call.backoff', { method, path, status: res.status, attempt, waitMs: wait });
+      await sleep(wait);
+      res = await limited(() => fetch(url, init));
     }
 
     if (!res.ok) {
@@ -163,10 +200,15 @@ function createAgilysysClient(overrides = {}) {
       log('error', 'agilysys.call.http_error', {
         method, path, status: res.status, body: errBody.slice(0, 200),
       });
-      throw new Error(`Agilysys ${method} ${path} failed: ${res.status}`);
+      const err = new Error(`Agilysys ${method} ${path} failed: ${res.status}`);
+      err.status = res.status;
+      throw err;
     }
 
-    const json = await res.json();
+    // 204 / empty body → null (several rGuest endpoints answer 204 when
+    // there is nothing to return).
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : null;
     log('debug', 'agilysys.call.success', { method, path, status: res.status });
     return json;
   }
@@ -454,19 +496,22 @@ function createAgilysysClient(overrides = {}) {
   async function getAccountBalances(accountIds) {
     if (!Array.isArray(accountIds) || accountIds.length === 0) return null;
     const path = `/account-service/v1/tenants/${tenantId}/properties/${propertyId}/accounts/balances`;
-    const structuredBody = {
-      accountStatementMap: Object.fromEntries(accountIds.map(id => [id, {}])),
-    };
+    // Sprint 20.2: live test showed the `{accountIds}` body is the one
+    // rGuest accepts; the older `accountStatementMap` body answers 500
+    // (NullPointerException) — so try the working shape first and only
+    // fall back to the old one.
     try {
-      const result = await call('POST', path, structuredBody);
-      log('info', 'agilysys.accountBalances.fetched', { accounts: accountIds.length, shape: 'structured' });
+      const result = await call('POST', path, { accountIds });
+      log('info', 'agilysys.accountBalances.fetched', { accounts: accountIds.length, shape: 'array' });
       return result;
     } catch (err) {
-      log('warn', 'agilysys.accountBalances.structured_failed', { error: String(err.message || err) });
-      // Try simple array body as a fallback.
-      const arrayBody = { accountIds };
-      const result = await call('POST', path, arrayBody);
-      log('info', 'agilysys.accountBalances.fetched', { accounts: accountIds.length, shape: 'array' });
+      if (err && err.fatal) throw err;
+      log('warn', 'agilysys.accountBalances.array_failed', { error: String(err.message || err) });
+      const structuredBody = {
+        accountStatementMap: Object.fromEntries(accountIds.map(id => [id, {}])),
+      };
+      const result = await call('POST', path, structuredBody);
+      log('info', 'agilysys.accountBalances.fetched', { accounts: accountIds.length, shape: 'structured' });
       return result;
     }
   }
@@ -625,6 +670,148 @@ function createAgilysysClient(overrides = {}) {
     };
   }
 
+  // ── Sprint 20.2: deep per-reservation collector ────────────────────────
+  //
+  // Everything rGuest shows on a reservation page that is specific to ONE
+  // reservation (from the 2026-06-11 recon + the 2026-09-30 live probe).
+  // Catalog/config calls (room types, rate plans, countries…) are
+  // deliberately NOT here — those are shared and cached elsewhere.
+  //
+  // Design rules:
+  //  • Each section is isolated: its own try/catch, its own status. A 5xx
+  //    on "coupons" never costs us "profile".
+  //  • Core = the reservation itself. 404 there means the reservation no
+  //    longer exists in rGuest (cancelled+purged / merged / bad id) →
+  //    remoteState 'gone', NOT an error. Any other core failure throws.
+  //  • `prior` (previously stored detail) lets a failed section keep its
+  //    last good data, flagged stale in `sections[name]`.
+  //  • Stored RAW (admin-only data, user wants everything). The compact
+  //    summary for cards is derived elsewhere (forecast/summarize.js).
+  //  • Not collected (no known GET endpoint yet): identity-document images,
+  //    document attachments list (POST with unknown body). IDs for them are
+  //    inside `reservation` (verifiedGuestIdentityIds…) — revisit.
+  async function deepFetchReservation(reservationId, { prior = null } = {}) {
+    const T = tenantId, P = propertyId;
+    const R_BASE = `/reservation-service/v1/tenants/${T}/properties/${P}/reservations`;
+    const detail   = {};
+    const sections = {};
+    const now = () => new Date().toISOString();
+    const priorDetail   = (prior && prior.detail)   || {};
+    const priorSections = (prior && prior.sections) || {};
+
+    async function section(name, fn) {
+      try {
+        const data = await fn();
+        detail[name]   = data === undefined ? null : data;
+        sections[name] = { ok: true, at: now() };
+      } catch (e) {
+        if (e && e.fatal) throw e; // bad credentials: abort everything
+        const hadPrior = Object.prototype.hasOwnProperty.call(priorDetail, name);
+        if (hadPrior) detail[name] = priorDetail[name];
+        sections[name] = {
+          ok: false,
+          at: now(),
+          status: e && e.status ? e.status : null,
+          error: String((e && e.message) || e).slice(0, 200),
+          // keep when the data we're showing was last good
+          staleSince: hadPrior ? ((priorSections[name] && (priorSections[name].staleSince || priorSections[name].at)) || null) : null,
+          hasPrior: hadPrior,
+        };
+        log('warn', 'agilysys.deep.section_failed', { reservationId, section: name, status: e && e.status });
+      }
+    }
+
+    if (!token) await refreshToken(null);
+
+    // ── core ──
+    let reservation;
+    try {
+      reservation = await call('GET', `${R_BASE}/${reservationId}?travelAndTransportInfo=false&updateCasinoDetails=true`);
+    } catch (e) {
+      if (e && e.status === 404) {
+        return { remoteState: 'gone', detail: priorDetail, sections: { ...priorSections, reservation: { ok: false, at: now(), status: 404, error: 'not found in rGuest' } } };
+      }
+      throw e;
+    }
+    detail.reservation = reservation;
+    sections.reservation = { ok: true, at: now() };
+
+    const profileId = reservation && reservation.primaryGuestInfo && reservation.primaryGuestInfo.profileId;
+    const accountId = reservation && reservation.accountId;
+    const groupId   = reservation && (reservation.groupId || (reservation.sourceInfo && reservation.sourceInfo.groupId));
+    const allocId   = reservation && reservation.allocationId;
+    const dates     = (reservation && reservation.arrivalDate && reservation.departureDate)
+      ? `startDate=${encodeURIComponent(String(reservation.arrivalDate).slice(0, 10))}&endDate=${encodeURIComponent(String(reservation.departureDate).slice(0, 10))}`
+      : '';
+    const A = `/account-service/v1/tenants/${T}/properties/${P}/accounts/${accountId}`;
+
+    // ── fan-out: all independent given the core ids ──
+    const jobs = [];
+    const add = (name, fn) => jobs.push(section(name, fn));
+
+    if (profileId) {
+      add('profile',        () => call('GET', `/profile-service/v1/tenants/${T}/properties/${P}/guests/${profileId}?updateCasinoDetails=true`));
+      add('preferredRooms', () => call('GET', `/profile-service/v1/tenants/${T}/properties/${P}/guests/${profileId}/guestPreferredRooms`));
+      add('stayHistory',    () => call('GET', `${R_BASE}/guest/${profileId}/stayHistory`));
+      add('guestStays',     async () => {
+        const r = await call('GET', `${R_BASE}/guest/${profileId}/allReservations?includeProperty=true`);
+        // Slim the guest's other stays: the bulky rate/preference arrays
+        // of each stay aren't needed to show "prior stays".
+        const slim = (x) => x && ({
+          id: x.id, confirmationCode: x.confirmationCode, status: x.status,
+          arrivalDate: x.arrivalDate, departureDate: x.departureDate,
+          cancellationDate: x.cancellationDate, nights: x.nights, propertyId: x.propertyId,
+          roomTypeId: x.roomTypeId || (x.roomType && x.roomType.id) || null,
+          ratePlanCode: x.ratePlanCode || null,
+        });
+        return r && typeof r === 'object'
+          ? { past: (r.past || []).map(slim), current: (r.current || []).map(slim), future: (r.future || []).map(slim) }
+          : r;
+      });
+    }
+    add('comments',          () => call('GET', `/comment-service/tenants/${T}/reservation/${reservationId}`));
+    add('additionalGuests',  () => call('GET', `${R_BASE}/${reservationId}/additionalGuestsInfo`));
+    add('loyaltyInfo',       () => call('GET', `${R_BASE}/${reservationId}/loyaltyInfo`));
+    add('messagesSummary',   () => call('GET', `${R_BASE}/${reservationId}/messages/summary`));
+    add('scheduledDeposit',  () => call('GET', `${R_BASE}/${reservationId}/scheduledDeposit`));
+    add('coupons',           () => call('GET', `${R_BASE}/${reservationId}/getCouponsByReservationId`));
+    add('roomAssignmentRestrictions', () => call('GET', `${R_BASE}/${reservationId}/roomAssignmentRestricitions`)); // sic — rGuest's own typo
+    add('emailPrintHistory', () => call('GET', `/report-service/tenants/${T}/properties/${P}/trackEmailPrint/${reservationId}`));
+    add('serviceRequests',   () => getServiceRequestsByReservation(reservationId));
+    if (groupId) add('group', () => call('GET', `/profile-service/tenants/${T}/properties/${P}/groups/${groupId}`));
+    if (allocId) add('allocation', () => call('GET', `/property-service/tenants/${T}/properties/${P}/allocatedRooms/${allocId}`));
+
+    if (accountId) {
+      add('accountDetails',    () => call('GET', `${A}/details`));
+      add('folios',            () => call('GET', `${A}/folios`));
+      add('postingRules',      () => call('GET', `${A}/postingRules`));
+      add('estimatedCharges',  () => call('GET', `/account-service/tenants/${T}/properties/${P}/accounts/${accountId}/estimatedChargesByPaymentSetting?${dates}`));
+      add('authDetails',       () => call('GET', `/account-service/tenants/${T}/properties/${P}/accounts/${accountId}/authDetails?${dates}&numAdults=0`));
+      add('balances',          () => getAccountBalances([accountId]));
+    }
+    await Promise.all(jobs);
+
+    // ── second wave: dereference payment instruments (masked card info) ──
+    if (accountId) {
+      await section('paymentInstruments', async () => {
+        const ad = detail.accountDetails;
+        const refs = Array.isArray(ad && ad.paymentSettings) ? ad.paymentSettings : [];
+        const ids = refs.map(x => x && (x.paymentInstrumentId || x.id)).filter(Boolean);
+        if (!ids.length) return [];
+        const out = [];
+        for (const id of ids) {
+          try { out.push(await getPaymentInstrument(accountId, id)); }
+          catch (e) { if (e && e.fatal) throw e; log('warn', 'agilysys.deep.instrument_failed', { reservationId, id, status: e && e.status }); }
+        }
+        return out;
+      });
+    }
+
+    const failed = Object.entries(sections).filter(([, v]) => !v.ok).map(([k]) => k);
+    log('info', 'agilysys.deep.done', { reservationId, sections: Object.keys(sections).length, failed });
+    return { remoteState: 'ok', detail, sections };
+  }
+
   async function fetchForecastInputs(requestedDate) {
     log('info', 'agilysys.scrape.start', { requestedDate });
     if (!token) await login();
@@ -699,6 +886,7 @@ function createAgilysysClient(overrides = {}) {
     getRatePlans,
     getServiceRequestsByReservation,
     fetchReservationFullDetail,
+    deepFetchReservation,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
     // Exposed for testing / introspection — don't rely on these in
