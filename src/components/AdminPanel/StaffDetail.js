@@ -6,7 +6,6 @@ import HopDateTimePicker from '../shared/HopDateTimePicker';
 const ROLES = ['employee', 'front_desk', 'admin'];
 
 const fmt     = (v) => v ?? '—';
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }) : '—';
 const fmtRate = (r) => r ? `$${parseFloat(r).toFixed(2)}/hr` : '—';
 
 const fmtTime = (iso) =>
@@ -49,6 +48,29 @@ const fmtHrs = (h) => {
   return `${mins}m`;
 };
 
+// Sprint 19.2: "(425) 377-5167" for 10-digit phones; anything else as-is.
+const fmtPhone = (p) => {
+  const d = String(p || '').replace(/\D/g, '');
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : fmt(p);
+};
+const fmtDateShort = (d) =>
+  d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+// Sprint 19.2: week math for the Time Entries navigator. Weeks start on
+// MONDAY (same as the Performance trend bars / server weekStart), in the
+// admin's local timezone. weekOffset 0 = this week, -1 = last week, …
+const mondayOf = (d) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+};
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+// Math.round absorbs the 23h/25h weeks around DST changes.
+const weekOffsetOf = (d) =>
+  Math.round((mondayOf(d) - mondayOf(new Date())) / (7 * 86400000));
+const fmtMD = (d) => d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
 // Convert ISO timestamp to value usable by datetime-local input (YYYY-MM-DDTHH:MM)
 // in the user's local timezone.
 const toLocalInput = (iso) => {
@@ -85,6 +107,8 @@ const StaffDetail = ({ userId, editEntryId }) => {
   // Time entries (Sprint 5D)
   const [entries,    setEntries]    = useState([]);
   const [entryLoad,  setEntryLoad]  = useState(true);
+  // Sprint 19.2: which week the entries list shows (0 = this week).
+  const [weekOffset, setWeekOffset] = useState(0);
   const [editEntry,  setEditEntry]  = useState(null);   // entry object being edited
   const [entryForm,  setEntryForm]  = useState({ in: '', out: '' });
   const [entrySave,  setEntrySave]  = useState(false);
@@ -303,6 +327,8 @@ const StaffDetail = ({ userId, editEntryId }) => {
     const entry = entries.find(e => e.entry_id === editEntryId);
     if (!entry) return;
     hasAutoOpenedRef.current = true;
+    // The entry may be in a past week — show that week behind the modal.
+    setWeekOffset(weekOffsetOf(entry.clock_in_time));
     openEntryEdit(entry);
   }, [editEntryId, entryLoad, entries]);
 
@@ -354,6 +380,9 @@ const StaffDetail = ({ userId, editEntryId }) => {
     setEntrySave(false);
     if (ok && data?.success) {
       closeEntryEdit();
+      // Follow the saved entry so an edit/add never "disappears" into
+      // a week the admin isn't looking at.
+      setWeekOffset(weekOffsetOf(inDate));
       reloadEntries();
     } else {
       // 409 carries `conflict` (the colliding entry). Render the
@@ -380,8 +409,37 @@ const StaffDetail = ({ userId, editEntryId }) => {
   const deptName = () =>
     departments.find(d => d.department_id === emp.department_id)?.name || emp.department || '—';
 
-  // Recent entries (last 30, latest first)
-  const recentEntries = entries.slice(0, 30);
+  // Sprint 19.2: entries for the selected week (Mon 00:00 → next Mon
+  // 00:00, bucketed by clock-in so an overnight shift stays in the week
+  // it started — same rule as the Performance trend). `entries` is
+  // already loaded for all time, so switching weeks is instant and
+  // costs no extra DB queries.
+  const weekStart  = addDays(mondayOf(new Date()), weekOffset * 7);
+  const weekEnd    = addDays(weekStart, 7);
+  const weekLast   = addDays(weekStart, 6);
+  const weekEntries = entries.filter(e => {
+    const t = new Date(e.clock_in_time);
+    return t >= weekStart && t < weekEnd;
+  });
+  const weekHours = weekEntries.reduce(
+    (sum, e) => sum + hoursOf(e.clock_in_time, e.clock_out_time), 0);
+  const hasOlder = entries.some(e => new Date(e.clock_in_time) < weekStart);
+  const weekTitle = weekOffset === 0 ? 'This week'
+    : weekOffset === -1 ? 'Last week'
+    : `${-weekOffset} weeks ago`;
+
+  // Profile facts shown beside the name (replaces the old full-width
+  // 8-row info table).
+  const facts = [
+    ['Phone',       fmtPhone(emp.phone_number)],
+    ['Username',    fmt(emp.username)],
+    ['Employee ID', fmt(emp.employee_code)],
+    ['Birthday',    fmtDateShort(emp.birthday)],
+    ['Role',        emp.role.replace('_', ' '), 'is-cap'],
+    ['Department',  deptName()],
+    ['Hire date',   fmtDateShort(emp.hire_date)],
+    ['Hourly rate', fmtRate(emp.base_hourly_rate)],
+  ];
 
   return (
     <div className="emp-detail">
@@ -394,10 +452,25 @@ const StaffDetail = ({ userId, editEntryId }) => {
       {/* Profile card */}
       <div className="emp-detail-profile">
         <div className="emp-detail-avatar">{emp.name.charAt(0).toUpperCase()}</div>
-        <div className="emp-detail-name">{emp.name}</div>
-        <span className={`emp-badge ${emp.active ? 'badge-active' : 'badge-inactive'}`}>
-          {emp.active ? 'Active' : 'Inactive'}
-        </span>
+        <div className="emp-detail-id">
+          <div className="emp-detail-namerow">
+            <div className="emp-detail-name">{emp.name}</div>
+            <span className={`emp-badge ${emp.active ? 'badge-active' : 'badge-inactive'}`}>
+              {emp.active ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          {/* Sprint 19.2: facts live beside the name, not in a separate table. */}
+          {!editing && (
+            <dl className="emp-detail-facts">
+              {facts.map(([label, value, cls]) => (
+                <div key={label} className="emp-fact">
+                  <dt>{label}</dt>
+                  <dd className={`${cls || ''}${value === '—' ? ' is-empty' : ''}`}>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
       </div>
 
       {error && <div className="admin-error" style={{ margin: '0 0 16px' }}>{error}</div>}
@@ -515,8 +588,18 @@ const StaffDetail = ({ userId, editEntryId }) => {
                 const max = Math.max(8, ...((perf?.trend || []).map(x => x.hours)));
                 const pct = max > 0 ? (t.hours / max) * 100 : 0;
                 const isOT = t.hours > (perf?.config?.overtime_threshold_hours || 40);
+                const barOffset = t.weekStart ? weekOffsetOf(t.weekStart + 'T00:00:00') : null;
+                const selected  = barOffset !== null && barOffset === weekOffset;
                 return (
-                  <div key={t.weekStart || i} className="staff-perf-bar-col">
+                  <button
+                    type="button"
+                    key={t.weekStart || i}
+                    className={`staff-perf-bar-col${selected ? ' is-selected' : ''}`}
+                    disabled={barOffset === null}
+                    onClick={() => setWeekOffset(barOffset)}
+                    title={t.weekStart ? 'Show this week\'s time entries' : undefined}
+                    aria-pressed={selected}
+                  >
                     <div className="staff-perf-bar-track">
                       <div
                         className={`staff-perf-bar-fill${isOT ? ' is-overtime' : ''}`}
@@ -529,7 +612,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
                         ? new Date(t.weekStart + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })
                         : ''}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -629,18 +712,7 @@ const StaffDetail = ({ userId, editEntryId }) => {
             <button type="submit" className="btn-save" disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
           </div>
         </form>
-      ) : (
-        <div className="emp-detail-info-grid">
-          <div className="detail-info-row"><span className="detail-info-lbl">Phone</span><span className="detail-info-val">{fmt(emp.phone_number)}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Username</span><span className="detail-info-val">{fmt(emp.username)}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Employee ID</span><span className="detail-info-val">{fmt(emp.employee_code)}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Birthday</span><span className="detail-info-val">{emp.birthday ? new Date(emp.birthday).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Role</span><span className="detail-info-val" style={{ textTransform: 'capitalize' }}>{emp.role.replace('_',' ')}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Department</span><span className="detail-info-val">{deptName()}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Hire Date</span><span className="detail-info-val">{fmtDate(emp.hire_date)}</span></div>
-          <div className="detail-info-row"><span className="detail-info-lbl">Hourly Rate</span><span className="detail-info-val">{fmtRate(emp.base_hourly_rate)}</span></div>
-        </div>
-      )}
+      ) : null}
 
       {/* PIN management */}
       {!editing && (
@@ -702,14 +774,48 @@ const StaffDetail = ({ userId, editEntryId }) => {
             </button>
           </div>
 
+          {/* Sprint 19.2 — week navigator. Default = this week; ‹ › step
+              through weeks, and tapping a bar in "Last 8 weeks" above
+              jumps straight to that week. */}
+          <div className="emp-week-nav">
+            <button
+              type="button"
+              className="emp-week-step"
+              onClick={() => setWeekOffset(o => o - 1)}
+              disabled={!hasOlder}
+              aria-label="Previous week"
+            >‹</button>
+            <div className="emp-week-label">
+              <div className="emp-week-range">{fmtMD(weekStart)} – {fmtMD(weekLast)}</div>
+              <div className="emp-week-sub">
+                {weekTitle}
+                {!entryLoad && ` · ${fmtHrs(weekHours) === '—' ? '0h' : fmtHrs(weekHours)} · ${weekEntries.length} ${weekEntries.length === 1 ? 'entry' : 'entries'}`}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="emp-week-step"
+              onClick={() => setWeekOffset(o => Math.min(0, o + 1))}
+              disabled={weekOffset >= 0}
+              aria-label="Next week"
+            >›</button>
+            {weekOffset !== 0 && (
+              <button type="button" className="emp-week-today" onClick={() => setWeekOffset(0)}>
+                This week
+              </button>
+            )}
+          </div>
+
           {entryLoad && <div className="emp-pin-meta">Loading…</div>}
-          {!entryLoad && recentEntries.length === 0 && (
-            <div className="emp-pin-meta">No time entries yet.</div>
+          {!entryLoad && weekEntries.length === 0 && (
+            <div className="emp-pin-meta">
+              {entries.length === 0 ? 'No time entries yet.' : 'No time entries this week.'}
+            </div>
           )}
 
-          {!entryLoad && recentEntries.length > 0 && (
+          {!entryLoad && weekEntries.length > 0 && (
             <ul className="emp-entries-list">
-              {recentEntries.map(e => {
+              {weekEntries.map(e => {
                 const hrs = e.clock_out_time ? hoursOf(e.clock_in_time, e.clock_out_time) : null;
                 return (
                   <li key={e.entry_id} className={`emp-entry-row${e.system_generated ? ' is-system' : ''}`}>

@@ -756,31 +756,48 @@
 
 .btn-edit:hover { background: var(--brand-hover); }
 
+/* Sprint 19.2: compact profile card — avatar left, name + badge on top,
+   key facts in a grid beside/below the name (was a tall centered card
+   plus a separate 8-row table). */
 .emp-detail-profile {
   background: var(--bg-surface);
   border-radius: 16px;
-  padding: 28px 20px;
+  padding: 16px 18px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
   box-shadow: var(--shadow-card);
   margin-bottom: 20px;
   animation: adminSlideUp 0.3s ease;
 }
 
 .emp-detail-avatar {
-  width: 70px;
-  height: 70px;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: var(--brand-bg);
   color: white;
   font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.emp-detail-id {
+  flex: 1;
+  min-width: 0;
+}
+
+.emp-detail-namerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-height: 52px; /* keeps the name centred on the avatar when no facts show (edit mode) */
 }
 
 .emp-detail-name {
@@ -791,42 +808,39 @@
   letter-spacing: -0.02em;
 }
 
-.emp-detail-info-grid {
-  background: var(--bg-surface);
-  border-radius: 14px;
-  padding: 6px 0;
-  box-shadow: var(--shadow-sm);
-  margin-bottom: 20px;
-  animation: adminSlideUp 0.3s ease;
+.emp-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px 16px;
+  margin: 2px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border-light);
 }
+.emp-detail-namerow:has(+ .emp-detail-facts) { min-height: 0; margin-bottom: 10px; }
 
-.detail-info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border-light);
-  gap: 12px;
-}
-
-.detail-info-row:last-child { border-bottom: none; }
-
-.detail-info-lbl {
+.emp-fact { min-width: 0; }
+.emp-fact dt {
   font-family: 'TiemposText', Georgia, serif;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  flex-shrink: 0;
+  margin: 0 0 2px;
 }
-
-.detail-info-val {
+.emp-fact dd {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
-  text-align: right;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.emp-fact dd.is-cap   { text-transform: capitalize; }
+.emp-fact dd.is-empty { color: var(--text-lightest); }
+
+@media (min-width: 900px) {
+  .emp-detail-facts { grid-template-columns: repeat(4, 1fr); }
 }
 
 /* Status & delete actions */
@@ -1625,6 +1639,62 @@
   border-color: var(--brand-text, #1f2937);
 }
 
+/* ── Sprint 19.2: week navigator above the Time Entries list ─────────────── */
+.emp-week-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  padding: 6px;
+  background: var(--bg-page, rgba(0,0,0,0.03));
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+}
+.emp-week-step {
+  width: 40px;
+  height: 40px; /* ≥40px touch target */
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--brand-text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.emp-week-step:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+.emp-week-label { flex: 1; min-width: 0; text-align: center; }
+.emp-week-range {
+  font-family: 'TiemposHeadline', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+.emp-week-sub {
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.emp-week-today {
+  flex-shrink: 0;
+  font-family: 'TiemposText', Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-alt);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent-alt);
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .emp-week-nav { flex-wrap: wrap; justify-content: space-between; }
+  .emp-week-label { order: 0; flex-basis: 40%; }
+  .emp-week-today { flex-basis: 100%; }
+}
+
 /* Sprint 18.11 — overlap-conflict callout inside the modal. Soft-red
    panel so it reads as "blocking warning" rather than a system error;
    the meta line shows which existing punch is in the way. */
@@ -1941,7 +2011,23 @@
   align-items: center;
   height: 100%;
   gap: 4px;
+  /* Sprint 19.2: bars are buttons (tap = show that week's entries) */
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 2px 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
+.staff-perf-bar-col:hover:not(:disabled)  { background: rgba(0, 0, 0, 0.04); }
+.staff-perf-bar-col.is-selected {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--accent-alt);
+}
+.staff-perf-bar-col.is-selected .staff-perf-bar-label { font-weight: 700; color: var(--brand-text); }
+.staff-perf-bar-col:disabled { cursor: default; }
 
 .staff-perf-bar-track {
   flex: 1;

@@ -14,11 +14,76 @@ sub-sprint list.
 
 | Sub-sprint | Focus                                                        | Status |
 |------------|--------------------------------------------------------------|--------|
-| 19.1       | Koyeb/Neon DB compute hours ballooned (~140 h / ~$30)       | Fixed in code — **deploy + verify pending** |
+| 19.1       | Koyeb/Neon DB compute hours ballooned (~140 h / ~$30)       | Deployed — user monitoring DB graph |
+| 19.2       | Staff detail UI: compact profile card + weekly time entries | Built, `npm run build` clean — **visual check pending** |
 
 ---
 
 ## 2. Sprint logs (19.1 → present)
+
+### 2026-09-30 — Sprint 19.2: Staff detail — compact profile card + weekly time entries
+
+UI fix on the admin Staff detail page (`StaffDetail.js`). Frontend only —
+no server, schema, or API changes.
+
+**1. Compact profile card.** The old layout was a tall centered card
+(avatar / name / badge, ~380 px on phone) plus a separate full-width
+8-row info table below it. Now one card: 52 px avatar on the left;
+name + Active/Inactive badge on top; the 8 facts (Phone, Username,
+Employee ID, Birthday, Role, Department, Hire date, Hourly rate) in a
+label-over-value grid beside/below the name (auto-fit ≥112 px columns →
+2 cols on phone, 4 on ≥900 px desktop). The separate info table is gone.
+- Phone formatted `(425) 377-5167`; dates shortened (`Aug 9, 2026`);
+  empty values (`—`) dimmed so gaps are visible but not loud.
+- Facts hide in edit mode (the form shows the same fields) — the card
+  collapses to avatar + name.
+- Removed dead CSS selectors `.emp-detail-info-grid`, `.detail-info-*`
+  (verified unused elsewhere in `src/`).
+
+**2. Weekly time entries.** Was: every entry in one list, capped at the
+latest 30 (so older entries were unreachable *and* long lists were hard
+to scan). Now:
+- Default = **this week** (Monday → Sunday, local time — same week
+  definition as the Performance trend bars). Entries are bucketed by
+  **clock-in**, so an overnight shift stays in the week it started.
+- **Week navigator** above the list: `‹  Sep 28 – Oct 4  ›` with a
+  subline `This week · 6h 18m · 2 entries` (week total + count), plus a
+  "This week" reset pill when viewing another week. `›` disabled on the
+  current week; `‹` disabled when no older entries exist (no endless
+  empty weeks).
+- **Tap a bar in "Last 8 weeks"** to jump to that week; the selected
+  bar is highlighted (bars are now `<button>`s, `aria-pressed`).
+- **Follows the data:** opening via AdminHome "Edit hours" jumps to the
+  entry's week; after saving/adding an entry the view jumps to the
+  saved entry's week so it never vanishes into a week you aren't on.
+- Filtering is client-side on the already-loaded entries array →
+  switching weeks is instant and adds **zero DB queries** (consistent
+  with the 19.1 compute-cost rule).
+
+**Verified.** `npm run build` compiles; no warnings from `StaffDetail.js`
+(removed the now-unused `fmtDate`). Week math sanity-checked in node
+(Monday start; Sun 23:30 buckets to the prior week; 8-week-old bar →
+offset −8; DST-spanning weeks round correctly). **Not yet eyeballed in a
+browser** — check on phone width + desktop, light/dark.
+
+**Known / deferred.**
+- Mixed-timezone caveat: week boundaries use the admin's browser tz;
+  the Performance trend uses the server's `weekStart` strings. Fine for
+  a single-property single-tz deployment; revisit for multi-tenant.
+- **Security finding (not fixed, out of 19.2 scope):**
+  `GET /api/admin/employees/:id/time-entries` (server.js ~2314) has **no
+  `requireAuth`/`requireRole`**, and `StaffDetail.reloadEntries` calls it
+  with raw `fetch` (no token). Anyone who knows a user_id can read that
+  staff's punch times. Candidate for 19.3: add auth middleware + switch
+  the client to `apiFetch`. Same pattern likely applies to
+  `/api/admin/departments` — audit the other `/api/admin/*` GETs.
+
+**Files touched:**
+- `src/components/AdminPanel/StaffDetail.js`
+- `src/components/AdminPanel/AdminPanel.css`
+- `claude-instructions/part5.md`
+
+---
 
 ### 2026-09-30 — Sprint 19.1: DB compute-hour blowup (background timer kept Neon awake 24/7)
 
