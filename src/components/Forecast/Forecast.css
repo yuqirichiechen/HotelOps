@@ -617,3 +617,21 @@
   .fb-card-head { flex-wrap: wrap; gap: 10px; }
   .fb-formula { max-width: 100%; box-sizing: border-box; }
 }
+
+/* ── Sprint 21.3: live board, VI/PU, action lists ────────────────────────── */
+.fb-sync-badge.is-off .fb-sync-dot { background: #d69e2e; }
+.fb-cell-strong { font-weight: 700; color: var(--brand-text); }
+.fb-room-awaiting { background: #fffaf0; border-color: #f6e05e; color: #744210; }
+.fb-pill-open  { background: var(--success-bg, #e6f7ec); color: var(--success-text, #166534); }
+.fb-pill-full  { background: #e2e8f0; color: #1a202c; }
+.fb-pill-short { background: var(--danger-subtle, #fef2f2); color: var(--danger-hover, #b91c1c); font-weight: 700; }
+.fb-day-open   { border-top-color: var(--success, #38a169); } .fb-day-workload { border-top-color: var(--border); }
+.fb-day-full   { border-top-color: #1a202c; }
+.fb-day-svc { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.fb-day-flag-full  { background: #e2e8f0; color: #1a202c; }
+.fb-action { padding: 8px 0 10px; border-top: 1px solid var(--border-light); }
+.fb-action:first-of-type { border-top: 0; }
+.fb-action h3 { margin: 0 0 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.fb-action-count { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--bg-surface-alt); font-size: 12px; text-align: center; }
+.fb-action .fb-muted { margin: 0 0 8px; }
+.fb-action-chips { display: flex; flex-wrap: wrap; gap: 6px; }

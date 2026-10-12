@@ -5,15 +5,17 @@ const path = require('path'), fs = require('fs'), Module = require('module'); co
 const { createRoot } = require(ROOT + '/node_modules/react-dom/client'); const { act } = require(ROOT + '/node_modules/react-dom/test-utils');
 require(ROOT + '/server/node_modules/dotenv').config({ path: ROOT + '/server/.env', override: true });
 const { createAgilysysClient } = require(ROOT + '/server/agilysys/client'); const { computeForecast } = require(ROOT + '/server/forecast/compute');
-let snapshotPayload;
+let snapshotPayload, LIVEBOARD;
 const load = (file) => { const code = babel.transformFileSync(file, { presets: [[require.resolve(ROOT + '/node_modules/babel-preset-react-app'), { runtime: 'automatic' }]], babelrc: false, configFile: false }).code;
   const m = new Module(file); m.filename = file; m.paths = Module._nodeModulePaths(path.dirname(file)); m.paths.push(ROOT + '/node_modules'); const orig = m.require.bind(m);
-  m.require = (id) => { if (id.endsWith('.css')) return {}; if (id === '../../auth') return { apiFetch: async () => ({ ok: true, data: { success: true, snapshot: { scraped_at: new Date().toISOString(), status: 'success', payload: snapshotPayload } } }) };
+  m.require = (id) => { if (id.endsWith('.css')) return {}; if (id === '../../auth') return { apiFetch: async (p) => (p === '/admin/forecast/live' ? { ok: true, data: { success: true, live: LIVEBOARD } } : { ok: true, data: { success: true, snapshot: { scraped_at: new Date().toISOString(), status: 'success', payload: snapshotPayload } } }) };
     if (id === '../../shells/ViewContext') return { useView: () => ({ goTo() {} }) }; if (id.startsWith('.')) { const p = path.resolve(path.dirname(file), id); return load(fs.existsSync(p + '.js') ? p + '.js' : p); } return orig(id); };
   m._compile(code, file); return m.exports; };
 (async () => {
   const c = createAgilysysClient(); const inputs = await c.fetchForecastInputs(null);
+  liveBoard = await c.fetchTodayLive();
   const mapping = []; snapshotPayload = computeForecast({ rooms: inputs.rooms, roomTypes: inputs.roomTypes, reservations: inputs.reservations, metrics: inputs.metrics, vipStatuses: inputs.vipStatuses, ratePlans: inputs.ratePlans, roomTypeMapping: mapping, config: {}, forecastDate: inputs.effectiveDate });
+  LIVEBOARD = await c.fetchTodayLive();
   console.log('payload keys:', Object.keys(snapshotPayload).join(','));
   console.log('payload.reservations:', snapshotPayload.reservations.length, '| byRoomType rows:', (snapshotPayload.byRoomType || []).length, '| perRoomSheet:', (snapshotPayload.perRoomSheet || []).length, '| newMappings:', (snapshotPayload.newMappings || []).length);
   const errors = []; const origErr = console.error; console.error = (...a) => { errors.push(a.map(String).join(' ').slice(0, 300)); };
@@ -25,4 +27,5 @@ const load = (file) => { const code = babel.transformFileSync(file, { presets: [
   console.error = origErr; const real = errors.filter(e => !/act\(/.test(e)); console.log('console errors (excluding act warnings):', real.length); real.slice(0, 4).forEach(e => console.log('  -', e));
   // Tell whether the mapping table being empty (my harness) vs real DB mapping matters
   const rt = snapshotPayload.byRoomType || []; console.log('byRoomType sample:', JSON.stringify(rt.slice(0, 2)).slice(0, 300));
+  process.exit(0); // the page registers a polling timer; don't wait for it
 })().catch(e => { console.error('HARNESS FAILED', e.message); process.exit(1); });

@@ -1,90 +1,119 @@
-// Sprint 21 — the REAL Forecast page in jsdom with a synthetic *morning* payload that has shortages
-// (the live hotel is rarely short, so shortage/“clean first” states need a fixture).  node tests/forecastpage.test.js "$PWD"
+// The REAL Forecast page in jsdom (Sprint 21.3): live board, no Sync, PU/VI split, action lists, workload-only future days,
+// ghost room, live-failure fallback, idle pause.   node tests/forecastpage.test.js "$PWD"
 const ROOT = process.argv[2]; process.env.NODE_ENV = 'test'; const assert = require('assert');
-const { JSDOM } = require(ROOT + '/node_modules/jsdom'); const dom = new JSDOM('<!doctype html><body><div id="root"></div></body>', { url: 'http://localhost/' }); const w = dom.window;
+const { JSDOM } = require(ROOT + '/node_modules/jsdom'); const dom = new JSDOM('<!doctype html><body><div id="root"></div></body>', { url: 'http://localhost/', pretendToBeVisual: true }); const w = dom.window;
 Object.defineProperty(globalThis, 'navigator', { value: w.navigator, configurable: true });
 Object.assign(globalThis, { window: w, document: w.document, sessionStorage: w.sessionStorage, localStorage: w.localStorage, HTMLElement: w.HTMLElement, Node: w.Node, Event: w.Event, IS_REACT_ACT_ENVIRONMENT: true });
 const path = require('path'), fs = require('fs'), Module = require('module'); const babel = require(ROOT + '/node_modules/@babel/core'); const React = require(ROOT + '/node_modules/react');
 const { createRoot } = require(ROOT + '/node_modules/react-dom/client'); const { act } = require(ROOT + '/node_modules/react-dom/test-utils');
-let snapshot; const gone = [];
+let snapshot, liveBoard, liveOk = true; const calls = [], gone = [];
+const apiFetch = async (p) => { calls.push(p);
+  if (p === '/admin/forecast/snapshots/latest') return { ok: true, data: { success: true, snapshot } };
+  if (p === '/admin/forecast/live') return liveOk ? { ok: true, data: { success: true, live: liveBoard } } : { ok: false, status: 502, data: { success: false } };
+  return { ok: false, data: null }; };
 const load = (file) => { const code = babel.transformFileSync(file, { presets: [[require.resolve(ROOT + '/node_modules/babel-preset-react-app'), { runtime: 'automatic' }]], babelrc: false, configFile: false }).code;
   const m = new Module(file); m.filename = file; m.paths = Module._nodeModulePaths(path.dirname(file)); m.paths.push(ROOT + '/node_modules'); const orig = m.require.bind(m);
-  m.require = (id) => { if (id.endsWith('.css')) return {}; if (id === '../../auth') return { apiFetch: async () => ({ ok: true, data: { success: true, snapshot } }) };
-    if (id === '../../shells/ViewContext') return { useView: () => ({ goTo: (v) => gone.push(v) }) }; if (id.startsWith('.')) { const p = path.resolve(path.dirname(file), id); return load(fs.existsSync(p + '.js') ? p + '.js' : p); } return orig(id); };
+  m.require = (id) => { if (id.endsWith('.css')) return {}; if (id === '../../auth') return { apiFetch }; if (id === '../../shells/ViewContext') return { useView: () => ({ goTo: (v) => gone.push(v) }) };
+    if (id.startsWith('.')) { const p = path.resolve(path.dirname(file), id); return load(fs.existsSync(p + '.js') ? p + '.js' : p); } return orig(id); };
   m._compile(code, file); return m.exports; };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 4).join(' | ')); process.exitCode = 1; } };
 
-// ── morning scenario ──
+// ── fixtures: a MORNING with real tightness ──
 const TODAY = '2026-10-12';
-const room = (n, typeCode, occ, hk) => ({ roomNumber: n, typeCode, baseCode: typeCode.slice(0, 4), baseLabel: typeCode.slice(0, 4) === 'NQRR' ? 'Double Queen Standard' : 'King Standard', subLabel: 'Standard', occupancyStatus: occ, hkStatus: hk, inventoryStatus: occ, blocked: false });
-const rooms = [room('101', 'NQRR', 'VAC', 'VI'), room('102', 'NQRR', 'VAC', 'D'), room('103', 'NQRR', 'VAC', 'D'), room('104', 'NQRR', 'OCC', 'OC'), room('105', 'NQRR', 'OCC', 'D'),
-  room('201', 'NKRR', 'OCC', 'D'), room('202', 'NKRR', 'OCC', 'D')];
+const room = (n, typeCode, occ, hk, x = {}) => ({ roomNumber: n, typeCode, baseCode: typeCode.slice(0, 4), baseLabel: typeCode.slice(0, 4) === 'NQRR' ? 'Double Queen Standard' : 'King Standard', subLabel: typeCode.length > 4 ? 'Pets' : 'Standard', occupancyStatus: occ, hkStatus: hk, inventoryStatus: occ, blocked: false, status: true, ...x });
+const rooms = [room('101', 'NQRR', 'VAC', 'VI'), room('102', 'NQRR', 'VAC', 'PU'), room('103', 'NQRR', 'VAC', 'D'), room('104', 'NQRR', 'OCC', 'OC'), room('105', 'NQRR', 'OCC', 'D'),
+  room('201', 'NKRR', 'OCC', 'D'), room('202', 'NKRR', 'VAC', 'IP'), room('G28', 'NKRRP', 'OCC', 'OC')];
 let n = 0; const R = (o) => ({ id: 'r' + (++n), guestName: 'Guest ' + n, status: 'RES', typeCode: 'NQRR', baseCode: 'NQRR', roomNumber: null, isPreAssigned: false, source: 'BAR', statusLabel: 'Pending', ...o });
 const reservations = [
-  R({ arrivalDate: TODAY, departureDate: '2026-10-14' }), R({ arrivalDate: TODAY, departureDate: '2026-10-14' }), R({ arrivalDate: TODAY, departureDate: '2026-10-13' }),   // 3 NQRR arriving, only 1 ready
-  R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: TODAY, departureDate: '2026-10-13' }), R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: TODAY, departureDate: '2026-10-13' }),  // 2 NKRR arriving, 0 ready
-  R({ status: 'INH', typeCode: 'NKRR', baseCode: 'NKRR', roomNumber: '201', arrivalDate: '2026-10-10', departureDate: TODAY }),     // frees 201
-  R({ status: 'INH', typeCode: 'NQRR', baseCode: 'NQRR', roomNumber: '104', arrivalDate: '2026-10-10', departureDate: '2026-10-15' }),
-  R({ status: 'INH', typeCode: 'NQRR', baseCode: 'NQRR', roomNumber: '105', arrivalDate: '2026-10-11', departureDate: '2026-10-13' }),
+  R({ arrivalDate: TODAY, departureDate: '2026-10-14' }), R({ arrivalDate: TODAY, departureDate: '2026-10-14' }), R({ arrivalDate: TODAY, departureDate: '2026-10-13' }),
+  R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: TODAY, departureDate: '2026-10-13' }), R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: TODAY, departureDate: '2026-10-13' }),
+  R({ status: 'INH', typeCode: 'NKRR', baseCode: 'NKRR', roomNumber: '201', arrivalDate: '2026-10-10', departureDate: TODAY }),
+  R({ status: 'INH', roomNumber: '104', arrivalDate: '2026-10-10', departureDate: '2026-10-15' }), R({ status: 'INH', roomNumber: '105', arrivalDate: '2026-10-11', departureDate: '2026-10-13' }),
 ];
-const mkSnapshot = (o = {}, scrapedAgoH = 0.2) => ({ scraped_at: new Date(Date.now() - scrapedAgoH * 3600e3).toISOString(), status: 'success', payload: { forecastDate: TODAY, futureWindowDays: 30, perRoomSheet: rooms, reservations, metricsSnapshot: {}, ...o } });
+const mkSnapshot = (o = {}, agoH = 0.2) => ({ scraped_at: new Date(Date.now() - agoH * 3600e3).toISOString(), status: 'success', payload: { forecastDate: TODAY, futureWindowDays: 30, perRoomSheet: rooms, reservations, metricsSnapshot: {}, ...o } });
+const mkLive = (o = {}) => ({ forecastDate: TODAY, fetchedAt: new Date().toISOString(), complete: true, rooms: rooms.map(r => ({ ...r })),
+  remainingArrivals: [{ typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NKRR' }, { typeCode: 'NKRR' }], stillDeparting: [{ roomNumber: '201', typeCode: 'NKRR' }, { roomNumber: '105', typeCode: 'NQRR' }], arrivalsToday: 5, departedToday: 0, ...o });
 
+let intervals;
 async function mount() {
-  const Forecast = load(ROOT + '/src/components/Forecast/index.js').default; const el = document.getElementById('root'); el.innerHTML = ''; const root = createRoot(el);
+  intervals = []; const realSI = w.setInterval; globalThis.setInterval = (fn, ms) => { intervals.push({ fn, ms }); return realSI.call(w, fn, 1e9); };   // capture the page's timers
+  calls.length = 0; const Forecast = load(ROOT + '/src/components/Forecast/index.js').default; const el = document.getElementById('root'); el.innerHTML = ''; const root = createRoot(el);
   await act(async () => { root.render(React.createElement(Forecast)); }); await act(async () => { await sleep(30); });
   const click = async (node) => { await act(async () => { node.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); }); await act(async () => { await sleep(10); }); };
   const rowFor = (code) => [...el.querySelectorAll('tbody tr')].find(tr => (tr.querySelector('code') || {}).textContent === code);
   const cells = (tr) => [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
-  return { el, root, click, rowFor, cells, unmount: () => act(async () => root.unmount()) };
+  const heads = () => [...el.querySelector('.fb-need-table').querySelectorAll('thead th')].map(x => x.textContent);   // the room-type table only
+  const stats = () => Object.fromEntries([...el.querySelectorAll('.fb-stat')].map(s => [s.querySelector('.fb-stat-label').textContent, s.querySelector('.fb-stat-value').textContent]));
+  return { el, root, click, rowFor, cells, heads, stats, unmount: () => act(async () => { root.unmount(); globalThis.setInterval = realSI; }) };
 }
+const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mkSnapshot(o.snap, o.age); liveBoard = mkLive(o.live); };
 
 (async () => {
-  await t('TODAY (morning): NQRR is "Clean first 2", NKRR is "Short 1" even after cleaning; headline stats and notes agree', async () => {
-    sessionStorage.clear(); snapshot = mkSnapshot(); const h = await mount();
-    const head = [...h.el.querySelectorAll('thead th')].map(x => x.textContent); assert(head.includes('Ready now') && head.includes('Clean first') && head.includes('Short'), head.join('|'));
-    const q = h.cells(h.rowFor('NQRR')); // group row for NQRR: [code,label,total,ready,dirty,freeing,arriving,cleanFirst,short,status]
-    assert.deepStrictEqual(q.slice(2), ['5', '1', '2', '0', '3', '2', '0', 'Clean first']);
-    const k = h.cells(h.rowFor('NKRR')); assert.deepStrictEqual(k.slice(2), ['2', '0', '0', '1', '2', '2', '1', 'Short']);   // 2 arriving, 0 ready, 0 dirty, 1 freeing → short 1
-    const stats = Object.fromEntries([...h.el.querySelectorAll('.fb-stat')].map(s => [s.querySelector('.fb-stat-label').textContent, s.querySelector('.fb-stat-value').textContent]));
-    assert.strictEqual(stats['Clean these first'], '4'); assert.strictEqual(stats['Short even after cleaning'], '1'); assert.strictEqual(stats['Clean rooms ready'], '1');
-    const notes = [...h.el.querySelectorAll('.fb-note')].map(x => x.textContent); assert(notes.some(x => /Double Queen Standard: only 1 clean room ready for 3 arriving — clean 2 more first/.test(x)), notes.join(' | ')); assert(notes.some(x => /King Standard: short 1/.test(x)));
+  await t('TODAY (live): VI / PU / dirty split, still-departing, still-arriving, left-to-sell and the sell/close status per type', async () => {
+    fresh(); const h = await mount(); const head = h.heads();
+    for (const c of ['Inspected (VI)', 'Awaiting inspection (PU)', 'Dirty / in progress', 'Still departing', 'Still arriving', 'Left to sell now', 'Status']) assert(head.includes(c), c + ' | ' + head.join('|'));
+    const q = h.cells(h.rowFor('NQRR'));   // [code,label,rooms,VI,PU,dirty,departing,arriving,left,status]
+    assert.deepStrictEqual(q.slice(2), ['5', '1', '1', '1', '1', '3', '0', 'Clean first'], q.join('|'));          // 2 clean rooms for 3 arriving: nothing left now; 1 dirty + 1 departing can still cover
+    const k = h.cells(h.rowFor('NKRR')); assert.deepStrictEqual(k.slice(2), ['3', '0', '0', '1', '1', '2', '0', 'Sold out'], k.join('|'));   // 0 clean; 1 dirty + 1 departing = exactly the 2 arriving → nothing left to sell
     await h.unmount();
   });
-  await t('outlook strip: 14 days, today flagged short, colours/flags; selecting Tomorrow switches the whole page to availability mode', async () => {
-    sessionStorage.clear(); snapshot = mkSnapshot(); const h = await mount();
-    const days = [...h.el.querySelectorAll('.fb-day')]; assert.strictEqual(days.length, 14); assert(days[0].classList.contains('fb-day-short')); assert(/short/.test(days[0].textContent)); assert(days[0].classList.contains('active'));
-    await h.click(days[1]); const head = [...h.el.querySelectorAll('thead th')].map(x => x.textContent);
-    assert(head.includes('Available') && head.includes('Staying over') && !head.includes('Ready now'), head.join('|')); assert(/Need by Room Type · Tue, Oct 13/.test(h.el.textContent));
-    assert([...h.el.querySelectorAll('.fb-stat-label')].map(x => x.textContent).includes('Occupied that night')); assert(/Arrivals · Tue, Oct 13/.test(h.el.textContent));
+  await t('there is NO Sync button and no "Sync arrivals" anywhere; the live badge shows time; header keeps Generate forecast', async () => {
+    fresh(); const h = await mount(); assert(!/Sync arrivals/.test(h.el.textContent), 'no sync text'); assert(![...h.el.querySelectorAll('button')].some(b => /sync/i.test(b.textContent)));
+    assert(/Rooms live/.test(h.el.querySelector('.fb-sync-badge').textContent)); assert([...h.el.querySelectorAll('button')].some(b => /Generate forecast/.test(b.textContent))); await h.unmount();
+  });
+  await t('headline stats + notes + action lists for today: inspect PU rooms; turn dirty rooms first for types the clean rooms can\'t cover', async () => {
+    fresh(); const h = await mount(); const s = h.stats();
+    assert.strictEqual(s['Awaiting inspection (PU)'], '1'); assert.strictEqual(s['Still arriving'], '5'); assert.strictEqual(s['Left to sell now'], '0');
+    const rail = h.el.querySelector('.fb-rail').textContent; assert(/Front desk — inspect now/.test(rail) && /102/.test(rail)); assert(/Housekeeping — turn these first/.test(rail));
+    assert(/waiting for front-desk inspection/.test(rail)); await h.unmount();
+  });
+  await t('statuses reach the page: a type with nothing left (and no way to make more) says "Sold out" + the SiteMinder note', async () => {
+    fresh({ live: { remainingArrivals: [{ typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NKRR' }, { typeCode: 'NKRR' }], arrivalsToday: 6 } });   // NQRR: 4 arriving vs 2 clean + 1 dirty + 1 departing = 4
+    const h = await mount(); assert.strictEqual(h.cells(h.rowFor('NQRR')).pop(), 'Sold out'); assert(/consider closing it on SiteMinder/.test(h.el.querySelector('.fb-rail').textContent)); await h.unmount();
+  });
+  await t('GHOST ROOM: a deactivated room that rGuest still lists as vacant/inspected is not counted (the NKRRP bug)', async () => {
+    const ghost = { ...room('28', 'NKRRP', 'VAC', 'VI'), startDate: '2023-02-26', endDate: '2023-02-28', deactivateDate: '2023-02-28T08:00:00Z' };
+    fresh({ live: { rooms: rooms.map(r => ({ ...r })).concat([ghost]) } }); const h = await mount(); const pets = h.rowFor('NKRRP'); const c = h.cells(pets);
+    assert.strictEqual(c[2], '1', 'only G28 counts'); assert.strictEqual(c[3], '0', 'no phantom inspected pet room'); await h.unmount();
+  });
+  await t('TOMORROW: workload only — Arriving / Departing / Staying over / Rooms to service; no Status column, no short/oversold/sell language', async () => {
+    fresh(); const h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]); const head = h.heads();
+    assert.deepStrictEqual(head.slice(2), ['Rooms', 'Arriving', 'Departing', 'Staying over', 'Rooms to service']); assert(!head.includes('Status') && !head.includes('Left to sell now'));
+    assert(/Housekeeping workload · Tue, Oct 13/.test(h.el.textContent)); assert(!/oversold|sold out|SiteMinder|short/i.test(h.el.querySelector('.fb-rail').textContent + h.el.querySelector('.fb-table-wrap').textContent));
+    const s = h.stats(); assert('Rooms to service' in s && 'Staying over' in s && !('Left to sell now' in s)); assert(!h.el.querySelector('.fb-rail').textContent.includes('inspect now'), 'action list is today-only');
     assert.strictEqual(sessionStorage.getItem('hotelops-fc-day'), '1'); await h.unmount();
   });
-  await t('future day math in the UI: NQRR on Oct 13 → staying over 3, available 2 of 5, arriving 0 → +2', async () => {
-    sessionStorage.clear(); sessionStorage.setItem('hotelops-fc-day', '1'); snapshot = mkSnapshot(); const h = await mount();
-    const q = h.cells(h.rowFor('NQRR')); // [code,label,total,unavail,staying,available,arriving,balance,short,status]
-    // continuing through the night of 10/13: 104 (→10/15) + the two RES arriving today that leave 10/14 = 3. Departing ON 10/13 (free for arrivals): 105 and the RES leaving 10/13.
-    assert.deepStrictEqual(q.slice(2, 9), ['5', '0', '3', '2', '0', '+2', '0'], q.join('|'));
-    await h.unmount();
+  await t('outlook: today shows the live verdict + "to sell"; later days show "to service" and no verdict flags', async () => {
+    fresh(); const h = await mount(); const days = [...h.el.querySelectorAll('.fb-day')]; assert.strictEqual(days.length, 14);
+    assert(/to sell/.test(days[0].textContent) && /clean first|sold out|oversold/.test(days[0].textContent)); assert(days.slice(1).every(d => /to service/.test(d.textContent) && !/clean first|sold out|oversold|short/.test(d.textContent))); await h.unmount();
   });
-  await t('selected day is remembered across a remount', async () => {
-    sessionStorage.clear(); snapshot = mkSnapshot(); let h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[3]); await h.unmount();
-    h = await mount(); assert(h.el.querySelectorAll('.fb-day')[3].classList.contains('active')); await h.unmount();
+  await t('days beyond the reliable data window are disabled and labelled', async () => {
+    fresh({ snap: { futureWindowDays: 5 } }); const h = await mount(); const days = [...h.el.querySelectorAll('.fb-day')]; assert(!days[5].disabled && days[6].disabled && /no data/.test(days[6].textContent)); await h.unmount();
   });
-  await t('days beyond the reliable data window are disabled and labelled (never a confident zero)', async () => {
-    sessionStorage.clear(); snapshot = mkSnapshot({ futureWindowDays: 5 }); const h = await mount(); const days = [...h.el.querySelectorAll('.fb-day')];
-    assert(!days[5].disabled && days[6].disabled && days[13].disabled); assert(days[6].classList.contains('fb-day-nodata')); assert(/no data/.test(days[6].textContent)); await h.unmount();
+  await t('live pull is polled every 2 minutes; the page itself never re-queries the snapshot on that timer', async () => {
+    fresh(); const h = await mount(); const tick = intervals.find(i => i.ms === 120000); assert(tick, 'a 120 s interval exists'); calls.length = 0;
+    await act(async () => { tick.fn(); await sleep(10); }); assert.deepStrictEqual(calls, ['/admin/forecast/live']); await h.unmount();
   });
-  await t('stale snapshot (5 h old) shows a warning with a path to refresh; a fresh one does not', async () => {
-    sessionStorage.clear(); snapshot = mkSnapshot({}, 5); let h = await mount(); assert(h.el.querySelector('.fb-stale') && /5 hours old/.test(h.el.querySelector('.fb-stale').textContent));
-    await h.click(h.el.querySelector('.fb-stale .fb-empty-link')); assert.deepStrictEqual(gone, ['reservations']); await h.unmount();
-    snapshot = mkSnapshot({}, 0.5); h = await mount(); assert(!h.el.querySelector('.fb-stale')); await h.unmount();
+  await t('idle pause: after 30 min without activity polling stops with a notice; any activity resumes and refreshes immediately', async () => {
+    fresh(); const h = await mount(); const tick = intervals.find(i => i.ms === 120000); const realNow = Date.now; Date.now = () => realNow() + 31 * 60 * 1000;
+    calls.length = 0; await act(async () => { tick.fn(); await sleep(10); });
+    assert(/Live updates are paused/.test(h.el.textContent)); assert(/Live paused/.test(h.el.querySelector('.fb-sync-badge').textContent)); assert.strictEqual(calls.length, 0, 'no live call while paused');
+    await act(async () => { window.dispatchEvent(new w.MouseEvent('mousemove')); await sleep(20); }); assert(!/Live updates are paused/.test(h.el.textContent)); assert(calls.includes('/admin/forecast/live'), 'resumed + refreshed'); Date.now = realNow; await h.unmount();
   });
-  await t('out-of-order rooms are excluded: marking 101 OOO turns NQRR from "Clean first" into a bigger shortage', async () => {
-    sessionStorage.clear(); const rs = rooms.map(r => r.roomNumber === '101' ? { ...r, inventoryStatus: 'OOO' } : r); snapshot = mkSnapshot({ perRoomSheet: rs }); const h = await mount();
-    const q = h.cells(h.rowFor('NQRR')); assert.strictEqual(q[2], '5'); assert.strictEqual(q[3], '0', 'ready 0 now'); assert.strictEqual(q[q.length - 1], 'Short'); assert(/out of order \/ blocked/.test(h.el.textContent)); await h.unmount();
+  await t('live failure falls back to the last scrape with a clear notice (no crash, badge turns amber)', async () => {
+    fresh(); liveOk = false; const h = await mount(); assert(/Live room data is unavailable/.test(h.el.textContent)); assert(/Live unavailable/.test(h.el.querySelector('.fb-sync-badge').textContent));
+    assert(h.el.querySelectorAll('.fb-day').length === 14 && h.cells(h.rowFor('NQRR')).length > 5, 'still renders from the snapshot'); await h.unmount();
   });
-  await t('no snapshot yet → friendly empty state; no crash', async () => {
-    sessionStorage.clear(); snapshot = null; const h = await mount(); assert(/No forecast yet/.test(h.el.textContent)); await h.unmount();
+  await t('stale scrape: banner only where it matters (a future day, or when live is down) — not for live "today"', async () => {
+    fresh({ age: 5 }); let h = await mount(); assert(!h.el.querySelector('.fb-stale'), 'today is live → no stale banner');
+    await h.click(h.el.querySelectorAll('.fb-day')[2]); assert(/last scrape, 5 hours ago/.test(h.el.querySelector('.fb-stale').textContent)); await h.click(h.el.querySelector('.fb-stale .fb-empty-link')); assert(gone.includes('reservations')); await h.unmount();
+  });
+  await t('business-date mismatch (scrape from yesterday, rGuest rolled over) is called out', async () => {
+    fresh({ live: { forecastDate: '2026-10-13' } }); const h = await mount(); assert(/rGuest’s business date is now/.test(h.el.textContent)); await h.unmount();
+  });
+  await t('no snapshot yet → friendly empty state without any Sync wording', async () => {
+    fresh(); snapshot = null; const h = await mount(); assert(/No forecast yet/.test(h.el.textContent) && !/Sync/.test(h.el.textContent)); await h.unmount();
   });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();

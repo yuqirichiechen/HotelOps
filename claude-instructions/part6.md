@@ -11,12 +11,68 @@
 |--------|-------|--------|
 | 21.1   | Diagnose why the Room Forecast "isn't working" | **Done** — no crash/data bug found; the model only answered "today" (see entry) |
 | 21.2   | Date-aware forecast model + 14-day outlook + rebuilt page | **Built + tested** (19 tests incl. live rGuest checks) — awaiting user confirmation it fixes what they saw |
-| 21.3   | HK action list (which rooms to clean first), printable sheet for the selected day | Planned |
+| 21.3   | Live room board (today), VI/PU semantics, workload-only future days, sync removed, HK/FD action lists | **Built + tested, NOT yet deployed** (see entry). Printable sheet for the selected day still open |
 | 21.4   | Layout polish | Mostly done in 21.2 (phone + desktop rendered) |
 | 21.5   | Widen stored list-level future window to ~12 months (separate from 30-day detail window) | Planned |
 | 22     | Scraper DB revamp (incremental mirror) + forecast on top | Planned |
 
 ## Sprint logs (newest first)
+
+### 2026-10-11 — Sprint 21.3: live room board, correct VI/PU semantics, workload-only future days
+
+**User feedback that drove it**
+1. Clean rooms did not match rGuest: tonight rGuest shows 2 NQRR available and no NKRRP, we showed NKRRP available.
+2. The 14-day shortage/surplus logic was wrong: whether a room is sellable depends on *that day's* cleaning, which
+   is updated manually after the FD checks the room (**PU = cleaned, not inspected; VI = inspected + cleaned**).
+   Verdict only for **today** (purpose: "do we still have rooms to sell today? if not, close OTA/website on
+   SiteMinder"). Days 2–14 should just show how many rooms need cleaning (workload).
+3. Remove the Sync button — it will auto-sync in Sprint 22.
+
+**Root causes found**
+- **Ghost room "28"**: a deactivated record (start 2023-02-26, end/deactivate 2023-02-28, never occupied) is still
+  returned by rGuest `config/rooms` as VAC/VI NKRRP; the rGuest UI hides it (condition summary totals 99 rooms,
+  VI=2). Fixed with `isActiveRoom()` (isDeleted / status===false / start>today / end<today) in `compute.js`;
+  `computeForecast` reports dropped rooms as `payload.inactiveRooms`.
+- **`listRooms()` was cached 24 h** (Sprint 18.5) although rooms carry live HK/occupancy. Cache removed.
+- rGuest `POST …/availability` could not be decoded (500 NPE "availabilityMode is null" for every body) — dropped.
+  `reservationMetrics(date)` ignores the date (always today) so future days can't be validated against rGuest.
+  RES range `{date:d,endDate:d+1,statuses:['RES']}` = arrivals on d (end exclusive).
+
+**What was built**
+- Server: `client.fetchTodayLive()` (property date, rooms, room types, remaining-arrivals RES slice, in-house
+  departures, metrics; ~1.8 s), `clearLogs()`. `GET /api/admin/forecast/live` — admin-only, **DB-free**, shared
+  client, 20 s cache, in-flight dedupe, generic 502 on failure. The `/api` hard-shift-cap middleware now skips
+  this route so an open Forecast tab can never keep Neon awake (see [[no_db_timers_neon_cost]] rule).
+- Model (`forecastModel.js`): TODAY per type: inspected (VI), awaiting (PU), dirty/in-progress, still departing,
+  still arriving; `leftNow = VI+PU − arrivals`; status open / **tight ("Clean first")** / **full ("Sold out")** /
+  **short ("Oversold")**; group pooling by substitutable room types. FUTURE days: arriving / departing / staying
+  over / **rooms to service** only, no verdict. Beyond the stored window → "no data". `actions` = FD "inspect
+  now" (PU rooms) + HK "turn these first" (dirty rooms, in-progress first, up to what's needed).
+- Page: Sync button removed; snapshot loads on mount + window focus; live board polled every 120 s **only while
+  the tab is visible**, auto-pauses after 30 min idle ("Live paused", resumes on activity); badge "Rooms live
+  HH:MM" (amber when down/paused); outlook strip shows today's verdict + "N to sell", later days "N to service";
+  action-list card; banners for live failure / paused / stale scrape / business-date mismatch.
+- Unchanged / known follow-up: "Generate forecast" ForecastSheet still prints *today from the snapshot*; it
+  should follow the selected day and use the live board.
+
+**Verification (all re-run at the end)**
+- `tests/forecastpage.test.js` 14 ✓ · `tests/forecastmodel.test.js --live` 14 ✓ (12 offline + 2 live) ·
+  `tests/forecast-live-check.js` 5 ✓ (live board vs rGuest: ghost "28" excluded; HK conditions IP/VI/OC/D and
+  99 total match roomConditionSummary; remaining arrivals 1 = rGuest; arrivals 52; departing+departed 63) ·
+  **`tests/forecastlive-route.test.js` 5 ✓** (auth 401/403/200; **zero DB queries** on the route vs a control
+  route that does query; 20 s cache; 8 concurrent requests → 1 rGuest pull; failure → generic 502, recovers) ·
+  `npm run build` clean (only the pre-existing `IconSend` warning).
+- Rendered with the live payload (`tests/fcrender.js`, now also feeds a live board and exits explicitly) at
+  1280 px (today + tomorrow) and 390 px: layout fine; the wide table scrolls inside its card on phones.
+- The 11:58 PM render shows Today = 1 to sell / "clean first" — expected late at night with 14 dirty rooms.
+
+**Deploy:** frontend + server together; **no migration**; old snapshots still render; first Reservations scrape
+refreshes the snapshot used for future-day workload. After deploy, ask the user to compare tonight's/tomorrow's
+numbers against rGuest (Inspected VI, PU, NKRRP/NQRR availability).
+
+**Still open:** printable HK/FD sheet for the selected day; 21.5 (stored list-level window → ~12 months);
+future out-of-order ranges are not visible via the rGuest API; Sprint 22 (auto daily sync replaces the removed
+button).
 
 ### 2026-10-11 — Sprint 21.1–21.2: Room Forecast diagnosis + date-aware rebuild
 

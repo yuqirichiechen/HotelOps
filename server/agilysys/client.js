@@ -221,21 +221,13 @@ function createAgilysysClient(overrides = {}) {
   // housekeepingRoomStatus (D/PU/VI/IP), housekeepingSectionId,
   // reservation (UUID pointer to the active reservation if any).
   async function listRooms() {
-    // Sprint 18.5 — module-level 24h cache (see _refCache at top).
-    const key = _cacheKey(tenantId, propertyId);
-    const slot = _refCache.rooms;
-    if (slot.data && slot.key === key && Date.now() < slot.expiresAt) {
-      log('info', 'agilysys.rooms.cache_hit', { count: slot.data.length, ttlRemainingMs: slot.expiresAt - Date.now() });
-      return slot.data;
-    }
+    // Sprint 21.3: NOT cached. Sprint 18.5 cached this for 24 h, but each room record carries LIVE state
+    // (housekeepingRoomStatus VI/PU/D/IP, occupancy) that housekeeping and the front desk change all day —
+    // in a long-running server every scrape after the first of the day could use hours-old room conditions
+    // (one cause of the Forecast disagreeing with rGuest). One extra call per scrape is cheap.
     const path = `/property-service/tenants/${tenantId}/properties/${propertyId}/config/rooms`;
     const rooms = await call('GET', path);
     log('info', 'agilysys.rooms.fetched', { count: Array.isArray(rooms) ? rooms.length : 0 });
-    if (Array.isArray(rooms)) {
-      slot.data = rooms;
-      slot.key = key;
-      slot.expiresAt = Date.now() + REF_TTL_MS;
-    }
     return rooms;
   }
 
@@ -455,6 +447,77 @@ function createAgilysysClient(overrides = {}) {
       unique: map.size, complete, calls,
     });
     return { items: [...map.values()], complete, calls };
+  }
+
+  // ── Sprint 21.3: LIVE "today board" (no database) ──────────────────────
+  // What the Room Forecast needs RIGHT NOW to answer "do we still have rooms to sell today?": live room
+  // conditions + today's remaining arrivals + guests still due to leave. ~5 small calls, so the page can
+  // refresh it every couple of minutes without a full scrape or touching the DB.
+  //   remaining arrivals  = RES range [today, today+1) — the range's end is exclusive, so this is exactly
+  //                         today's arrivals (a one-day RES range [d,d] returns nothing — see the 20.3 quirk)
+  //   still departing     = INH slice today whose departureDate is today
+  // `rguestRemaining` (reservationMetrics) is returned so callers can cross-check.
+  async function fetchTodayLive() {
+    if (!token) await refreshToken(null);
+    const [propertyDate, rooms, roomTypes] = await Promise.all([getPropertyDate(), listRooms(), listRoomTypes()]);
+    const today = propertyDate;
+    if (!today) throw new Error('rGuest did not return the property date');
+    const typeById = new Map(roomTypes.map(t => [t.id, t]));
+    const roomByNumber = new Map(rooms.map(r => [String(r.roomNumber), r]));
+    const typeCodeOfRoom = (r) => { const t = r && typeById.get(r.roomTypeId); return t ? t.typeCode : null; };
+    const typeCodeOfResn = (x) => {
+      const ref = x && x.roomType;
+      if (!ref) return null;
+      if (typeof ref === 'string') { const t = typeById.get(ref); return t ? t.typeCode : null; }
+      return ref.typeCode || ref.code || null;
+    };
+    const ymd = (v) => (v ? String(v).slice(0, 10) : null);
+
+    const tomorrow = addDaysYmd(today, 1);
+    const [resFirst, inh, dpt, metrics] = await Promise.all([
+      searchRange({ from: today, to: tomorrow, statuses: ['RES'], size: 99 }),
+      sliceExact(today, today, ['INH'], 99),
+      searchRange({ from: today, to: today, statuses: ['DPT'], size: 1 }),
+      getReservationMetrics(today).catch(() => null),
+    ]);
+    let resItems = resFirst.content || [];
+    let complete = true;
+    if (typeof resFirst.totalElements === 'number' && resFirst.totalElements > 99) {
+      const walk = await unionWalk(today, tomorrow, ['RES'], 99);
+      resItems = [...walk.map.values()]; complete = walk.complete;
+    }
+    const inhItems = [...inh.map.values()];
+    if (!inh.complete) complete = false;
+
+    const remainingArrivals = resItems
+      .filter(x => ymd(x.arrivalDateLocalDate || x.arrivalDate) === today)
+      .map(x => ({ typeCode: typeCodeOfResn(x), roomNumber: x.roomNumber || null, isPreAssigned: !!x.roomId }));
+    const stillDeparting = inhItems
+      .filter(x => ymd(x.departureDateLocalDate || x.departureDate) === today)
+      .map(x => ({ roomNumber: x.roomNumber || null, typeCode: typeCodeOfRoom(roomByNumber.get(String(x.roomNumber))) || typeCodeOfResn(x) }));
+    const checkedInToday = inhItems.filter(x => ymd(x.arrivalDateLocalDate || x.arrivalDate) === today).length;
+    const rm = metrics && metrics.remainingArrivalsSummary;
+
+    return {
+      forecastDate: today,
+      fetchedAt: new Date().toISOString(),
+      complete,
+      rooms: rooms.map(r => ({
+        roomNumber: String(r.roomNumber), typeCode: typeCodeOfRoom(r),
+        occupancyStatus: r.currentOccupancyStatus || r.roomInventoryStatus || null,
+        inventoryStatus: r.roomInventoryStatus || null,
+        hkStatus: r.housekeepingRoomStatus || null,
+        blocked: !!r.blocked,
+        // fields needed to ignore deactivated rooms (see compute.isActiveRoom)
+        startDate: r.startDate || null, endDate: r.endDate || null, effectiveDate: r.effectiveDate || null,
+        deactivateDate: r.deactivateDate || null, isDeleted: !!r.isDeleted, status: r.status,
+      })),
+      remainingArrivals,
+      stillDeparting,
+      arrivalsToday: remainingArrivals.length + checkedInToday,
+      departedToday: typeof dpt.totalElements === 'number' ? dpt.totalElements : null,
+      rguestRemaining: rm && typeof rm.remaining === 'number' ? rm.remaining : null,
+    };
   }
 
   // GET /property-service/.../propertyDate
@@ -1007,6 +1070,8 @@ function createAgilysysClient(overrides = {}) {
     searchReservationsByDate,
     searchAllReservationsByDate, // DEPRECATED (unstable pagination) — use fetchReservationsExact
     fetchReservationsExact,
+    fetchTodayLive,
+    clearLogs: () => { logs.length = 0; },
     getReservationMetrics,
     getPropertyDate,
     getVipStatuses,

@@ -257,8 +257,25 @@ function floorLabel(floorId) {
  * @param {string} input.forecastDate      — YYYY-MM-DD
  * @returns {Object} snapshot payload
  */
-function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses, ratePlans, roomTypeMapping, config, forecastDate }) {
+// Sprint 21.3 — a room record is only part of the inventory on `ymd` if it is not deleted/inactive and
+// today falls inside its [startDate, endDate/deactivateDate] window. rGuest's config/rooms keeps
+// returning deactivated rooms: e.g. a room "28" that existed for 2 days in Feb 2023 still came back as
+// "vacant, inspected" and was counted as an available pet room — rGuest's own screens hide it (and its
+// room-condition summary counts 99 rooms, not 100).
+function isActiveRoom(room, ymd) {
+  if (!room || room.isDeleted === true || room.status === false) return false;
+  const day = (v) => (v ? String(v).slice(0, 10) : null);
+  const start = day(room.startDate || room.effectiveDate);
+  const end   = day(room.endDate || room.deactivateDate);
+  if (start && start > ymd) return false;   // not open yet
+  if (end && end < ymd) return false;       // already closed
+  return true;
+}
+
+function computeForecast({ rooms: allRooms, roomTypes, reservations, metrics, vipStatuses, ratePlans, roomTypeMapping, config, forecastDate }) {
   if (!forecastDate) throw new Error('computeForecast: forecastDate required');
+  const rooms = (allRooms || []).filter(r => isActiveRoom(r, forecastDate));
+  const inactiveRooms = (allRooms || []).filter(r => !isActiveRoom(r, forecastDate)).map(r => String(r.roomNumber));
 
   // 1. Build lookups.
   const roomTypeById  = new Map(roomTypes.map(rt => [rt.id, rt]));
@@ -626,6 +643,8 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses,
     reservations: reservationsOut, // Sprint 17.7 — for the per-guest UI
     // Sprint 21: how many days ahead `reservations` is complete for (the forecast outlook greys out days beyond it).
     futureWindowDays,
+    // Sprint 21.3: deactivated rooms rGuest still lists (excluded from every count above).
+    inactiveRooms,
     dispatchSummary,
     scraperOutput,
     newMappings, // caller upserts into room_type_mapping
@@ -765,6 +784,8 @@ module.exports = {
   computeForecast,
   // Exported for tests / re-use.
   deriveMapping,
+  isActiveRoom,
+  resolveReservationTypeCode,
   classifyForDate,
   floorLabel,
   HK_STATUS_LABELS,

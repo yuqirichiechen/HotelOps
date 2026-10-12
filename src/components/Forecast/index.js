@@ -15,7 +15,7 @@
 // occ+hk status). Reuses the shared scrape modals from
 // `../Forecasting/`.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import ForecastSettings from '../Forecasting/ForecastSettings';
@@ -36,7 +36,6 @@ const Icon = ({ d, size = 16, strokeWidth = 2 }) => (
   </svg>
 );
 
-const IconRefresh    = (p) => <Icon {...p} d={<><path d="M21 12a9 9 0 1 1-3.2-6.9" /><polyline points="21 4 21 10 15 10" /></>} />;
 const IconSend       = (p) => <Icon {...p} d={<><path d="M22 2 11 13" /><path d="M22 2 15 22 11 13 2 9z" /></>} />;
 const IconChart      = (p) => <Icon {...p} d={<><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>} />;
 const IconClock      = (p) => <Icon {...p} size={14} d={<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>} />;
@@ -53,10 +52,6 @@ const IconDot        = (p) => <Icon {...p} size={10} d={<circle cx="12" cy="12" 
 
 // ── Formatters ──────────────────────────────────────────────
 
-const fmtTime = (iso) => {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-};
 
 
 // ── Compute helpers ─────────────────────────────────────────
@@ -73,20 +68,20 @@ const MONTHS  = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 
 const ymdParts = (ymd) => { const [y, m, d] = String(ymd).split('-').map(Number); return { y, m, d, dow: new Date(Date.UTC(y, m - 1, d)).getUTCDay() }; };
 const fmtLong = (ymd) => { const p = ymdParts(ymd); return `${WEEKDAYS[p.dow]}, ${MONTHS[p.m - 1]} ${p.d}`; };
 
-// Sprint 21 — 14-day outlook: pick a day; its table below follows. Colour = worst room-type status that day.
+// Sprint 21 — 14-day outlook. TODAY carries the sell/close verdict from the live board; days 2–14 show only
+// housekeeping workload (arrivals ↓, departures ↑, rooms to service) and occupancy — no verdict.
+const TODAY_FLAG = { open: null, tight: 'clean first', full: 'sold out', short: 'oversold' };
 const OutlookStrip = ({ days, selected, onSelect }) => (
   <section className="fb-outlook" aria-label="14-day outlook">
     <div className="fb-outlook-head">
       <h2>14-day outlook</h2>
-      <span className="fb-outlook-legend">
-        <span className="fb-dot fb-dot-ok" /> enough rooms <span className="fb-dot fb-dot-tight" /> clean first <span className="fb-dot fb-dot-short" /> short
-      </span>
+      <span className="fb-outlook-legend">Today = live room board · later days = housekeeping workload</span>
     </div>
     <div className="fb-outlook-row" role="tablist">
       {days.map(d => {
         const p = ymdParts(d.date);
         const label = d.offset === 0 ? 'Today' : d.offset === 1 ? 'Tomorrow' : WEEKDAYS[p.dow];
-        const flag = d.status === 'short' ? `${d.roomsShort} short` : d.status === 'tight' ? `clean ${d.roomsToPrioritize}` : d.status === 'nodata' ? 'no data' : null;
+        const flag = d.offset === 0 ? TODAY_FLAG[d.status] : d.status === 'nodata' ? 'no data' : null;
         return (
           <button
             key={d.date}
@@ -94,7 +89,7 @@ const OutlookStrip = ({ days, selected, onSelect }) => (
             role="tab"
             aria-selected={selected === d.offset}
             disabled={d.outsideWindow}
-            className={`fb-day fb-day-${d.status}${selected === d.offset ? ' active' : ''}`}
+            className={`fb-day fb-day-${d.offset === 0 ? d.status : (d.status === 'nodata' ? 'nodata' : 'workload')}${selected === d.offset ? ' active' : ''}`}
             onClick={() => onSelect(d.offset)}
             title={d.outsideWindow ? 'Reservations are only complete a limited number of days ahead' : `${fmtLong(d.date)} — ${d.arrivals} arriving, ${d.departures} departing, ${d.occupancyPct}% occupied tonight`}
           >
@@ -103,6 +98,9 @@ const OutlookStrip = ({ days, selected, onSelect }) => (
             <span className="fb-day-occ"><span className="fb-day-occ-bar" style={{ width: `${Math.min(100, d.occupancyPct || 0)}%` }} /></span>
             <span className="fb-day-pct">{d.occupancyPct != null ? `${d.occupancyPct}%` : '—'}</span>
             <span className="fb-day-flow">↓{d.arrivals} ↑{d.departures}</span>
+            {d.offset === 0
+              ? <span className="fb-day-svc">{d.leftToSell} to sell</span>
+              : d.roomsToService != null && <span className="fb-day-svc">{d.roomsToService} to service</span>}
             {flag && <span className={`fb-day-flag fb-day-flag-${d.status}`}>{flag}</span>}
           </button>
         );
@@ -124,7 +122,7 @@ const StatBar = ({ label, value, accent, icon }) => (
 );
 
 const StatusPill = ({ status }) => {
-  const labels = { short: 'Short', tight: 'Clean first', ok: 'OK', even: 'Even', surplus: 'OK', nodata: 'No data' };
+  const labels = { open: 'Open', tight: 'Clean first', full: 'Sold out', short: 'Oversold', nodata: 'No data', workload: '' };
   return <span className={`fb-pill fb-pill-${status}`}>{labels[status] || status}</span>;
 };
 
@@ -137,27 +135,26 @@ const StatusPill = ({ status }) => {
 // its current occupancy + HK status. Lets the FD verify questions
 // like "where is that 1 vacant NKRRP coming from?" without leaving
 // the page.
-const fmtNet = (n) => (n > 0 ? `+${n}` : String(n));
-
-// Columns per mode. TODAY answers "is it clean & ready, and if not, what must HK turn first?";
-// a FUTURE day answers "will a room of this type be free that night?" (HK status is irrelevant then).
+// Columns per mode.
+// TODAY answers "do we still have rooms to SELL?" from LIVE room conditions: VI = cleaned + inspected,
+// PU = cleaned but awaiting front-desk inspection, everything else vacant = not ready yet.
+// FUTURE days (2–14) are housekeeping WORKLOAD only — whether rooms are sellable that day depends on that
+// day's cleaning/inspection, which can't be known in advance, so no short/surplus is claimed.
 const COLS_TODAY = [
-  { key: 'total',   label: 'Total',          title: 'Rooms of this type in inventory',                                 get: r => r.totalRooms },
-  { key: 'ready',   label: 'Ready now',      title: 'Vacant and clean (Vacant-Inspected or Pickup) — sellable right now', get: r => r.ready },
-  { key: 'dirty',   label: 'Dirty vacant',   title: 'Vacant but still being cleaned',                                  get: r => r.dirty },
-  { key: 'freeing', label: 'Still departing', title: 'In-house guests due to check out today — their rooms free up',    get: r => r.freeing },
-  { key: 'arr',     label: 'Arriving',       title: 'Guests still to arrive today (not yet checked in)',               get: r => r.arrivals },
-  { key: 'clean',   label: 'Clean first',    title: 'Arrivals the ready rooms can’t cover — housekeeping should turn this many rooms first', get: r => Math.max(0, r.arrivals - r.ready), warn: true },
-  { key: 'short',   label: 'Short',          title: 'Still short even after cleaning every dirty room and counting departures', get: r => Math.max(0, -r.netProjected), warn: true },
+  { key: 'total',   label: 'Rooms',            title: 'Active rooms of this type (deactivated and out-of-order rooms excluded)', get: r => r.totalRooms },
+  { key: 'vi',      label: 'Inspected (VI)',   title: 'Vacant Inspected — cleaned AND inspected, ready to sell',               get: r => r.inspected },
+  { key: 'pu',      label: 'Awaiting inspection (PU)', title: 'Pickup — cleaned but not yet inspected by the front desk (sellable once inspected)', get: r => r.awaiting },
+  { key: 'dirty',   label: 'Dirty / in progress', title: 'Vacant but not cleaned yet',                                       get: r => r.dirty },
+  { key: 'freeing', label: 'Still departing',  title: 'In-house guests due to check out today — their rooms free up',         get: r => r.freeing },
+  { key: 'arr',     label: 'Still arriving',   title: 'Guests booked for today who have not checked in yet',                  get: r => r.arrivals },
+  { key: 'left',    label: 'Left to sell now', title: '(Inspected + Awaiting) − Still arriving. 0 = no clean room left to sell right now', get: r => Math.max(0, r.leftNow), strong: true },
 ];
 const COLS_FUTURE = [
-  { key: 'total', label: 'Total',       title: 'Rooms of this type in inventory',                                  get: r => r.totalRooms },
-  { key: 'unsell', label: 'Unavailable', title: 'Out of order / off the market / on hold / blocked',               get: r => r.unsellable },
-  { key: 'occ',   label: 'Staying over', title: 'Guests whose stay continues through that night (guests leaving that day free their rooms)', get: r => r.occupied },
-  { key: 'avail', label: 'Available',   title: 'Sellable rooms minus guests staying over',                         get: r => r.available },
-  { key: 'arr',   label: 'Arriving',    title: 'Reservations arriving that day',                                   get: r => r.arrivals },
-  { key: 'bal',   label: 'Balance',     title: 'Available − Arriving',                                             get: r => fmtNet(r.net), balance: true },
-  { key: 'short', label: 'Short',       title: 'Arrivals that have no room of this type',                          get: r => Math.max(0, -r.net), warn: true },
+  { key: 'total',  label: 'Rooms',         title: 'Active rooms of this type',                                              get: r => r.totalRooms },
+  { key: 'arr',    label: 'Arriving',      title: 'Reservations arriving that day — each needs a cleaned, ready room',      get: r => r.arrivals },
+  { key: 'dep',    label: 'Departing',     title: 'Check-outs that day — each needs a full clean',                          get: r => r.departures },
+  { key: 'stay',   label: 'Staying over',  title: 'Guests whose stay continues through that night — stayover service',       get: r => r.occupied },
+  { key: 'svc',    label: 'Rooms to service', title: 'Departing (full clean) + staying over (service)',                      get: r => r.toService, strong: true },
 ];
 
 const NeedTable = ({ model, roomsByType }) => {
@@ -174,9 +171,9 @@ const NeedTable = ({ model, roomsByType }) => {
           <div className="fb-detail-grid">
             {rooms.length === 0 && <span className="fb-detail-empty">No rooms of this type in the snapshot.</span>}
             {rooms.map(r => {
-              const cleanish = r.occupancyStatus === 'VAC' && (r.hkStatus === 'VI' || r.hkStatus === 'PU');
+              const cls = r.occupancyStatus === 'VAC' && r.hkStatus === 'VI' ? 'clean' : r.occupancyStatus === 'VAC' && r.hkStatus === 'PU' ? 'awaiting' : 'busy';
               return (
-                <span key={r.roomNumber || r.reservationId} className={`fb-room-chip fb-room-${cleanish ? 'clean' : 'busy'}`}>
+                <span key={r.roomNumber || r.reservationId} className={`fb-room-chip fb-room-${cls}`}>
                   <strong>{r.roomNumber || '?'}</strong>
                   <span className="fb-room-stat">{r.occupancyStatus || '—'}</span>
                   <span className="fb-room-stat">{r.hkStatusLabel || r.hkStatus || '—'}</span>
@@ -190,22 +187,22 @@ const NeedTable = ({ model, roomsByType }) => {
   };
 
   const cell = (c, row, key) => (
-    <td key={key} className={`${c.balance ? `fb-balance fb-balance-${row.status}` : ''}${c.warn && c.get(row) > 0 ? ' fb-emph-warn' : ''}`}>{c.get(row)}</td>
+    <td key={key} className={c.strong ? 'fb-cell-strong' : ''}>{c.get(row)}</td>
   );
 
   return (
     <div className="fb-card">
       <div className="fb-card-head">
-        <h2>Need by Room Type · {model.isToday ? 'today' : fmtLong(model.date)}</h2>
+        <h2>{model.isToday ? 'Rooms to sell today' : `Housekeeping workload · ${fmtLong(model.date)}`}</h2>
         <div className="fb-formula">
           <IconInfo />
           <div>
             {model.isToday ? (
-              <><div><strong>Today:</strong> Ready now + Dirty + Still departing vs Arriving</div>
-              <div className="fb-formula-sub">“Clean first” = arrivals the ready rooms can’t cover yet. “Short” = not enough rooms even after cleaning. Group totals pool subtypes — accessible/pet rooms can fulfil generic bookings.</div></>
+              <><div><strong>Left to sell now</strong> = (Inspected + Awaiting inspection) − still arriving</div>
+              <div className="fb-formula-sub">Live from rGuest. When a type reaches 0 and nothing more can be made ready, close it on SiteMinder (OTA + website). PU rooms count once the front desk inspects them.</div></>
             ) : (
-              <><div><strong>{fmtLong(model.date)}:</strong> Available (rooms − staying over) vs Arriving</div>
-              <div className="fb-formula-sub">Guests checking out that day free their rooms. Housekeeping status isn’t used for future days. Click a row to see the rooms.</div></>
+              <><div><strong>{fmtLong(model.date)}:</strong> rooms housekeeping will need to turn</div>
+              <div className="fb-formula-sub">Whether rooms are sellable that day depends on that day’s cleaning and inspection, so availability is only shown for today.</div></>
             )}
           </div>
         </div>
@@ -217,7 +214,7 @@ const NeedTable = ({ model, roomsByType }) => {
               <th>Room Type Code</th>
               <th>Room Type</th>
               {cols.map(c => <th key={c.key} title={c.title}>{c.label}</th>)}
-              <th>Status</th>
+              {model.isToday && <th>Status</th>}
             </tr>
           </thead>
           <tbody>
@@ -230,7 +227,7 @@ const NeedTable = ({ model, roomsByType }) => {
                   <td><code className="fb-group-code">{g.baseCode || '—'}</code></td>
                   <td><strong>{g.baseLabel}</strong> <span className="fb-group-sub">· all subtypes</span></td>
                   {cols.map(c => cell(c, g.totals, c.key))}
-                  <td><StatusPill status={g.totals.status} /></td>
+                  {model.isToday && <td><StatusPill status={g.totals.status} /></td>}
                 </tr>
                 {g.variants.map(v => {
                   const isOpen = openType === v.typeCode;
@@ -247,7 +244,7 @@ const NeedTable = ({ model, roomsByType }) => {
                         </td>
                         <td className="fb-variant-label">{v.subLabel || 'Standard'}</td>
                         {cols.map(c => cell(c, v, c.key))}
-                        <td><StatusPill status={v.status} /></td>
+                        {model.isToday && <td><StatusPill status={v.status} /></td>}
                       </tr>
                       {isOpen && renderDetailRow(v.typeCode)}
                     </React.Fragment>
@@ -313,58 +310,78 @@ const ArrivalDetailTable = ({ rows, date, isToday }) => {
 // right comparing each group's Vacant Clean vs Arrivals.
 const ForecastSummaryCard = ({ model }) => {
   const groups = model.groups;
-  const avail = (t) => (model.isToday ? t.ready + t.dirty + t.freeing : t.available);
-  const maxVal = Math.max(1, ...groups.flatMap(g => [avail(g.totals), g.totals.arrivals]));
-  const short  = groups.reduce((s, g) => s + Math.max(0, -g.totals.netProjected), 0);
+  const A = (t) => (model.isToday ? t.ready : t.arrivals);         // series A: today = sellable now · future = arriving
+  const B = (t) => (model.isToday ? t.arrivals : t.departures);    // series B: today = still arriving · future = departing
+  const maxVal = Math.max(1, ...groups.flatMap(g => [A(g.totals), B(g.totals)]));
   return (
     <div className="fb-card">
-      <h2>Forecast Summary</h2>
+      <h2>{model.isToday ? 'Sellable vs arriving' : 'Arrivals vs departures'}</h2>
       <div className="fb-summary-grid">
         <ul className="fb-summary-list">
-          {groups.map(g => {
-            const sh = Math.max(0, -g.totals.netProjected);
-            return (
-              <li key={g.baseCode || g.baseLabel}>
-                <span>{g.baseCode || '—'} short</span>
-                <strong className={sh > 0 ? 'fb-emph-warn' : 'fb-emph-ok'}>{sh}</strong>
-              </li>
-            );
-          })}
+          {groups.map(g => (
+            <li key={g.baseCode || g.baseLabel}>
+              <span>{g.baseCode || '—'} {model.isToday ? 'left to sell' : 'to service'}</span>
+              <strong className={model.isToday && g.totals.leftNow <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}>
+                {model.isToday ? Math.max(0, g.totals.leftNow) : g.totals.toService}
+              </strong>
+            </li>
+          ))}
           <li className="fb-summary-total">
-            <span>Total short</span>
-            <strong>{short} rooms</strong>
+            <span>{model.isToday ? 'Total left to sell' : 'Total to service'}</span>
+            <strong>{model.isToday ? model.totals.leftToSell : model.totals.roomsToService} rooms</strong>
           </li>
         </ul>
 
         <div className="fb-chart">
-          <div className="fb-chart-title">{model.isToday ? 'Rooms possible vs Arriving' : 'Available vs Arriving'}</div>
           <div className="fb-chart-legend">
-            <span className="fb-chart-key fb-chart-key-vc">{model.isToday ? 'Ready + dirty + departing' : 'Available'}</span>
-            <span className="fb-chart-key fb-chart-key-ar">Arriving</span>
+            <span className="fb-chart-key fb-chart-key-vc">{model.isToday ? 'Clean rooms (VI + PU)' : 'Arriving'}</span>
+            <span className="fb-chart-key fb-chart-key-ar">{model.isToday ? 'Still arriving' : 'Departing'}</span>
           </div>
-          {groups.map(g => {
-            const vcW = (avail(g.totals) / maxVal) * 100;
-            const arW = (g.totals.arrivals / maxVal) * 100;
-            return (
-              <div className="fb-bar-group" key={`bar-${g.baseCode || g.baseLabel}`}>
-                <div className="fb-bar-label">{g.baseCode || '—'}</div>
-                <div className="fb-bars">
-                  <div className="fb-bar-row">
-                    <div className="fb-bar fb-bar-vc" style={{ width: `${vcW}%` }} />
-                    <span className="fb-bar-val">{avail(g.totals)}</span>
-                  </div>
-                  <div className="fb-bar-row">
-                    <div className="fb-bar fb-bar-ar" style={{ width: `${arW}%` }} />
-                    <span className="fb-bar-val">{g.totals.arrivals}</span>
-                  </div>
-                </div>
+          {groups.map(g => (
+            <div className="fb-bar-group" key={`bar-${g.baseCode || g.baseLabel}`}>
+              <div className="fb-bar-label">{g.baseCode || '—'}</div>
+              <div className="fb-bars">
+                <div className="fb-bar-row"><div className="fb-bar fb-bar-vc" style={{ width: `${(A(g.totals) / maxVal) * 100}%` }} /><span className="fb-bar-val">{A(g.totals)}</span></div>
+                <div className="fb-bar-row"><div className="fb-bar fb-bar-ar" style={{ width: `${(B(g.totals) / maxVal) * 100}%` }} /><span className="fb-bar-val">{B(g.totals)}</span></div>
               </div>
-            );
-          })}
+            </div>
+          ))}
           <div className="fb-chart-axis">
             <span>0</span><span>{Math.round(maxVal / 4)}</span><span>{Math.round(maxVal / 2)}</span><span>{Math.round(3 * maxVal / 4)}</span><span>{maxVal}</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// Sprint 21.3 — action lists for the front desk / housekeeping (today only, from the live room board).
+const ActionLists = ({ model }) => {
+  if (!model.isToday || !model.actions) return null;
+  const { inspect, cleanFirst } = model.actions;
+  const Chips = ({ rows }) => (
+    <div className="fb-action-chips">
+      {rows.map(r => (
+        <span key={r.roomNumber} className={`fb-room-chip fb-room-${r.hkStatus === 'IP' ? 'awaiting' : 'busy'}`} title={`${r.typeCode}${r.hkStatus === 'IP' ? ' — in progress' : ''}`}>
+          <strong>{r.roomNumber}</strong><span className="fb-room-stat">{r.typeCode}</span>
+        </span>
+      ))}
+    </div>
+  );
+  return (
+    <div className="fb-card">
+      <h2>Action list</h2>
+      <div className="fb-action">
+        <h3>Front desk — inspect now <span className="fb-action-count">{inspect.length}</span></h3>
+        {inspect.length === 0
+          ? <p className="fb-muted">No rooms are waiting for inspection.</p>
+          : <><p className="fb-muted">Cleaned (PU) but not inspected — marking them Vacant Inspected confirms them for sale.</p><Chips rows={inspect} /></>}
+      </div>
+      <div className="fb-action">
+        <h3>Housekeeping — turn these first <span className="fb-action-count">{cleanFirst.length}</span></h3>
+        {cleanFirst.length === 0
+          ? <p className="fb-muted">Clean rooms already cover everyone still arriving.</p>
+          : <><p className="fb-muted">Dirty rooms to prioritise so the rest of today’s arrivals have a ready room (in-progress first).</p><Chips rows={cleanFirst} /></>}
       </div>
     </div>
   );
@@ -392,51 +409,69 @@ const OperationalNotes = ({ notes }) => (
 
 // ── Page ────────────────────────────────────────────────────
 
+// Live room board: refresh every 2 min while the tab is visible AND someone is around; pause after 30 min of no
+// interaction (a Forecast page left open on a monitor overnight must not hammer rGuest). The live route is DB-free.
+const LIVE_EVERY_MS = 120 * 1000;
+const IDLE_PAUSE_MS = 30 * 60 * 1000;
+const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+
 const Forecast = () => {
   const { goTo } = useView();
-  const [snapshot, setSnapshot] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);   // reservations as of the last scrape (labels, future days)
   const [loading, setLoading]   = useState(true);
-  // Sprint 17.12: "syncing" replaces "scraping" — this page no
-  // longer triggers a fresh scrape, it just re-reads the latest
-  // snapshot from the DB. The Reservations page is where new
-  // scrapes are kicked off; once that lands, sync here pulls the
-  // updated payload.
-  const [syncing, setSyncing]   = useState(false);
   const [error, setError]       = useState(null);
   const [historyOpen, setHistoryOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen]       = useState(false); // 17.12 — Generate Forecast modal
 
+  // Sprint 21.3 — no manual "Sync": the page loads the latest snapshot on open / when you come back to the tab,
+  // and today's board is a separate LIVE pull. (Sprint 22 makes the snapshot itself sync automatically.)
   const loadLatest = useCallback(async () => {
-    setError(null);
     const { ok, data } = await apiFetch('/admin/forecast/snapshots/latest');
-    if (!ok || !data?.success) {
-      setError(data?.message || 'Could not load latest forecast.');
-      setLoading(false);
-      return;
-    }
+    if (!ok || !data?.success) { setError(data?.message || 'Could not load latest forecast.'); setLoading(false); return; }
+    setError(null);
     setSnapshot(data.snapshot || null);
     setLoading(false);
   }, []);
-  useEffect(() => { loadLatest(); }, [loadLatest]);
+  useEffect(() => {
+    loadLatest();
+    const onFocus = () => loadLatest();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadLatest]);
 
-  // Sprint 17.12 — "Sync arrivals" on this page just re-reads the
-  // latest snapshot. The actual rGuest scrape lives on the
-  // Reservations page so the two pages always show the same
-  // underlying data. (No POST /scrape from here.)
-  const handleSync = async () => {
-    setSyncing(true);
-    setError(null);
-    const { ok, data } = await apiFetch('/admin/forecast/snapshots/latest');
-    setSyncing(false);
-    if (!ok || !data?.success) {
-      setError(data?.message || 'Could not refresh from the latest snapshot.');
-      return;
-    }
-    setSnapshot(data.snapshot || null);
-  };
+  // ── live room board ──
+  const [live, setLive]           = useState(null);
+  const [liveError, setLiveError] = useState(false);
+  const [paused, setPaused]       = useState(false);
+  const lastActivity = useRef(Date.now());
+  const pausedRef    = useRef(false);
+  const fetchLive = useCallback(async () => {
+    const { ok, data } = await apiFetch('/admin/forecast/live');
+    if (ok && data?.success) { setLive(data.live); setLiveError(false); } else setLiveError(true);
+  }, []);
+  useEffect(() => {
+    fetchLive();
+    const tick = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastActivity.current > IDLE_PAUSE_MS) { pausedRef.current = true; setPaused(true); return; }
+      fetchLive();
+    }, LIVE_EVERY_MS);
+    const onActivity = () => {
+      lastActivity.current = Date.now();
+      if (pausedRef.current) { pausedRef.current = false; setPaused(false); fetchLive(); }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') onActivity(); };
+    ACTIVITY_EVENTS.forEach(e => window.addEventListener(e, onActivity, { passive: true }));
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(tick);
+      ACTIVITY_EVENTS.forEach(e => window.removeEventListener(e, onActivity));
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchLive]);
 
-  // Sprint 21 — selected day (0 = today … 13), remembered for the browser session.
+  // Selected day (0 = today … 13), remembered for the browser session.
   const [dayOffset, setDayOffset] = useState(() => {
     try { const n = parseInt(sessionStorage.getItem('hotelops-fc-day'), 10); if (Number.isInteger(n) && n >= 0 && n < 14) return n; } catch { /* ignore */ }
     return 0;
@@ -444,29 +479,30 @@ const Forecast = () => {
   useEffect(() => { try { sessionStorage.setItem('hotelops-fc-day', String(dayOffset)); } catch { /* ignore */ } }, [dayOffset]);
 
   const payload = snapshot?.payload;
-  const outlook = useMemo(() => buildOutlook(payload, 14), [payload]);
+  const today   = live?.forecastDate || payload?.forecastDate;
+  const outlook = useMemo(() => buildOutlook(payload, 14, live), [payload, live]);
   const model   = useMemo(
-    () => (payload && payload.forecastDate ? buildDayModel(payload, addDays(payload.forecastDate, dayOffset)) : null),
-    [payload, dayOffset]);
+    () => (payload && today ? buildDayModel(payload, addDays(today, dayOffset), live) : null),
+    [payload, today, dayOffset, live]);
   const notes   = useMemo(() => (model ? deriveNotes(model) : []), [model]);
-  // Click-to-expand rows list the physical rooms of each typeCode with their current status.
+  // Click-to-expand rows list the physical rooms of each typeCode with their LIVE status (today) or last-scrape status.
   const roomsByType = useMemo(() => {
     const m = new Map();
-    for (const r of payload?.perRoomSheet || []) {
+    const src = live && model?.isToday
+      ? live.rooms.filter(r => !((payload?.inactiveRooms || []).includes(String(r.roomNumber))) && r.status !== false && !(r.endDate && String(r.endDate).slice(0, 10) < live.forecastDate))
+      : (payload?.perRoomSheet || []);
+    for (const r of src) {
       if (!r.typeCode) continue;
       if (!m.has(r.typeCode)) m.set(r.typeCode, []);
-      m.get(r.typeCode).push(r);
+      m.get(r.typeCode).push({ ...r, hkStatusLabel: r.hkStatusLabel || ({ VI: 'Inspected', PU: 'Pickup', D: 'Dirty', IP: 'In progress', OC: 'Occupied clean' }[r.hkStatus]) || r.hkStatus });
     }
     return m;
-  }, [payload]);
+  }, [payload, live, model]);
 
-  // Today's headline numbers prefer rGuest's own metric for "remaining arrivals" (same source as Reservations).
-  const metricRemaining = payload?.metricsSnapshot?.remainingArrivals?.remaining;
-
-  const lastSync = snapshot ? fmtTime(snapshot.scraped_at) : '—';
-  // Room conditions change by the minute; a stale snapshot makes "today" misleading.
+  const fmtT = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—');
   const ageHours = snapshot?.scraped_at ? (Date.now() - new Date(snapshot.scraped_at).getTime()) / 3600000 : 0;
-  const snapshotStale = ageHours > 3;
+  const dateMismatch = !!(live && payload && live.forecastDate && payload.forecastDate && live.forecastDate !== payload.forecastDate);
+  const showStale = ageHours > 3 && (dayOffset > 0 || !live);
 
   return (
     <div className="fb-page">
@@ -479,7 +515,7 @@ const Forecast = () => {
           </div>
           <h1>Room Forecast</h1>
           <p className="fb-subtitle">
-            Will each room type have enough rooms? Pick a day — today shows what’s clean and ready; later days look ahead.
+            Today: do we still have rooms to sell? (live from rGuest) · Next days: how many rooms housekeeping will turn.
           </p>
           <div className="fb-meta-actions">
             <button className="fb-meta-link" onClick={() => setHistoryOpen(true)}>
@@ -496,25 +532,17 @@ const Forecast = () => {
 
         <div className="fb-header-actions">
           <button
-            className="fb-btn fb-btn-secondary"
-            onClick={handleSync}
-            disabled={syncing}
-            title="Re-read the latest snapshot — does NOT trigger a new rGuest scrape (use Reservations for that)"
-          >
-            <IconRefresh /> <span>{syncing ? 'Syncing…' : 'Sync arrivals'}</span>
-          </button>
-          <button
             className="fb-btn fb-btn-primary"
             onClick={() => setSheetOpen(true)}
             disabled={!snapshot}
-            title={!snapshot ? 'Sync first' : 'Open a printable forecast sheet'}
+            title={!snapshot ? 'Nothing to print yet' : 'Open a printable forecast sheet'}
           >
             <IconChart /> <span>Generate forecast</span>
           </button>
-          <div className="fb-sync-badge">
+          <div className={`fb-sync-badge${liveError || paused || !live ? ' is-off' : ''}`} title={paused ? 'Live updates paused after 30 minutes without activity — move the mouse to resume' : liveError ? 'Could not reach rGuest — showing the last scrape' : 'Room conditions refresh from rGuest every 2 minutes'}>
             <span className="fb-sync-dot" />
-            <span>Last sync</span>
-            <strong>{lastSync}</strong>
+            <span>{paused ? 'Live paused' : liveError ? 'Live unavailable' : 'Rooms live'}</span>
+            <strong>{live ? fmtT(live.fetchedAt) : '—'}</strong>
           </div>
         </div>
       </header>
@@ -528,18 +556,27 @@ const Forecast = () => {
           <h2>No forecast yet</h2>
           <p>
             Run the scraper on the <button className="fb-empty-link" onClick={() => goTo('reservations')}>Reservations</button> page first.
-            Once a snapshot exists, click <strong>Sync arrivals</strong> here to pull it in.
+            This page picks up the latest data automatically.
           </p>
         </div>
       )}
 
       {snapshot && model && (
         <>
-          {snapshotStale && (
+          {(liveError && !paused) && (
+            <div className="fb-stale" role="status">Live room data is unavailable right now — today’s numbers use room conditions from the last scrape ({fmtT(snapshot.scraped_at)}).</div>
+          )}
+          {paused && (
+            <div className="fb-stale" role="status">Live updates are paused (no activity for 30 minutes). Move the mouse or tap to resume.</div>
+          )}
+          {showStale && (
             <div className="fb-stale" role="status">
-              This snapshot is {Math.floor(ageHours)} hours old — room conditions and arrivals may have changed.
-              Run the scraper on the <button className="fb-empty-link" onClick={() => goTo('reservations')}>Reservations</button> page, then tap <strong>Sync arrivals</strong>.
+              Reservations are from the last scrape, {Math.floor(ageHours)} hours ago ({fmtT(snapshot.scraped_at)}).
+              {live ? ' Today’s room board is live; later days use this scrape.' : ''} Run the scraper on the <button className="fb-empty-link" onClick={() => goTo('reservations')}>Reservations</button> page to refresh.
             </div>
+          )}
+          {dateMismatch && (
+            <div className="fb-stale" role="status">The last scrape is from {fmtLong(payload.forecastDate)}; rGuest’s business date is now {fmtLong(live.forecastDate)}. Run the scraper for current arrivals.</div>
           )}
 
           <OutlookStrip days={outlook} selected={dayOffset} onSelect={setDayOffset} />
@@ -547,19 +584,19 @@ const Forecast = () => {
           <section className="fb-stats" aria-label="Top stats">
             {model.isToday ? (
               <>
-                <StatBar label="Arrivals still to come" value={Number.isFinite(metricRemaining) ? metricRemaining : model.totals.remainingArrivals} accent="info" icon={<IconBriefcase />} />
-                <StatBar label="Clean rooms ready"      value={model.totals.ready}        accent="success" icon={<IconCheck />} />
-                <StatBar label="Clean these first"      value={model.totals.cleanFirst}   accent="warn"    icon={<IconBed />} />
-                <StatBar label="Short even after cleaning" value={model.totals.roomsShort} accent="warn"   icon={<IconWarn />} />
-                <StatBar label="Occupied tonight"       value={model.totals.occupancyPct != null ? `${model.totals.occupancyPct}%` : '—'} accent="info" icon={<IconTrend />} />
+                <StatBar label="Left to sell now"        value={model.totals.leftToSell}        accent="success" icon={<IconCheck />} />
+                <StatBar label="Awaiting inspection (PU)" value={model.totals.awaiting}         accent="info"    icon={<IconBed />} />
+                <StatBar label="Dirty / in progress"     value={model.totals.dirty}             accent="warn"    icon={<IconBed />} />
+                <StatBar label="Still arriving"          value={model.totals.remainingArrivals} accent="info"    icon={<IconBriefcase />} />
+                <StatBar label="Sold-out room types"     value={model.totals.soldOutGroups}     accent="warn"    icon={<IconWarn />} />
               </>
             ) : (
               <>
-                <StatBar label="Arrivals"          value={model.totals.arrivals}   accent="info"    icon={<IconBriefcase />} />
-                <StatBar label="Departures"        value={model.totals.departures} accent="default" icon={<IconBed />} />
-                <StatBar label="Occupied that night" value={model.totals.occupancyPct != null ? `${model.totals.occupancyPct}%` : '—'} accent="success" icon={<IconTrend />} />
-                <StatBar label="Rooms short"       value={model.totals.roomsShort} accent="warn"    icon={<IconWarn />} />
-                <StatBar label="Room types short"  value={model.totals.shortGroups} accent="warn"   icon={<IconCheck />} />
+                <StatBar label="Arriving"        value={model.totals.arrivals}        accent="info"    icon={<IconBriefcase />} />
+                <StatBar label="Departing"       value={model.totals.departures}      accent="default" icon={<IconBed />} />
+                <StatBar label="Staying over"    value={model.totals.stayovers}       accent="default" icon={<IconBed />} />
+                <StatBar label="Rooms to service" value={model.totals.roomsToService} accent="warn"    icon={<IconTrend />} />
+                <StatBar label="Occupied that night" value={model.totals.occupancyPct != null ? `${model.totals.occupancyPct}%` : '—'} accent="success" icon={<IconCheck />} />
               </>
             )}
           </section>
@@ -570,6 +607,7 @@ const Forecast = () => {
               <ArrivalDetailTable rows={payload.reservations || []} date={model.date} isToday={model.isToday} />
             </main>
             <aside className="fb-rail">
+              <ActionLists model={model} />
               <ForecastSummaryCard model={model} />
               <OperationalNotes notes={notes} />
             </aside>

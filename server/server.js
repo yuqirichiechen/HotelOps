@@ -90,6 +90,10 @@ const CAP_THROTTLE_MS = 5 * 60 * 1000;
 let capLastRunAt = 0;
 let capInFlight  = null;
 app.use('/api', async (req, res, next) => {
+  // Sprint 21.3: the Room Forecast polls /admin/forecast/live every ~2 min while someone watches it. That route is
+  // DB-free (JWT + rGuest only), so it must NOT trigger this DB query either — otherwise a Forecast page left open on
+  // a front-desk monitor would keep Neon awake all day (the 19.1 bug in a new form).
+  if (req.path === '/admin/forecast/live') return next();
   const now = Date.now();
   if (now - capLastRunAt < CAP_THROTTLE_MS) return next();
   if (!capInFlight) {
@@ -4590,6 +4594,31 @@ app.delete('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin
   } catch (err) {
     console.error('[reservation:detail:delete]', err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET /api/admin/forecast/live — Sprint 21.3: the live "today board" for the Room Forecast.
+// Straight from rGuest (rooms + today's remaining arrivals + guests still departing), NO database access,
+// so the page can refresh it every couple of minutes without waking Neon. One shared rGuest client (token
+// reused), a 20 s cache and in-flight de-duplication so several admins/tabs never multiply the calls.
+// A rejected rGuest login is remembered by the client and never retried (account-lockout protection).
+let _liveClient = null;
+const _live = { at: 0, data: null, inflight: null };
+const LIVE_TTL_MS = 20 * 1000;
+app.get('/api/admin/forecast/live', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    if (_live.data && Date.now() - _live.at < LIVE_TTL_MS) return res.json({ success: true, cached: true, live: _live.data });
+    if (!_live.inflight) {
+      _liveClient = _liveClient || createAgilysysClient();
+      _live.inflight = _liveClient.fetchTodayLive()
+        .then(d => { _live.data = d; _live.at = Date.now(); return d; })
+        .finally(() => { _live.inflight = null; _liveClient.clearLogs(); });
+    }
+    const live = await _live.inflight;
+    return res.json({ success: true, cached: false, live });
+  } catch (err) {
+    console.error('[forecast:live]', err && err.message);
+    return res.status(502).json({ success: false, message: 'Could not read live room data from rGuest.' });
   }
 });
 
