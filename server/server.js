@@ -14,7 +14,7 @@ const { runScrape: runForecastScrape } = require('./forecast/runScrape');
 // Sprint 20.2 — background deep-fetch of every reservation's full detail;
 // the Reservations UI reads stored detail (never live) → no more
 // "detail changed since the list scrape" errors.
-const { startDetailJob, getLatestJob, refreshOne } = require('./forecast/detailJob');
+const { startDetailJob, getLatestJob, refreshOne, withinDetailWindow } = require('./forecast/detailJob');
 // Sprint 18.7 — per-reservation detail (on-demand). Used by the
 // Reservations rail panel to surface email / phone / address /
 // folio balance / stay history that bulk scrape doesn't carry.
@@ -3661,6 +3661,12 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
       const n = parseInt(v, 10);
       return n === 0 || (n >= 7 && n <= 3650);
     },
+    // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).
+    // enabled: 'true'|'false'; scale: percent of the calibrated table (25..300, 100 = as calibrated);
+    // min: minimum extra rooms for a room-type group with 4+ booked arrivals (0..10).
+    forecast_allowance_enabled: v => v === 'true' || v === 'false',
+    forecast_allowance_scale_pct: v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 25 && parseInt(v, 10) <= 300,
+    forecast_allowance_min_extra: v => /^\d+$/.test(String(v)) && parseInt(v, 10) >= 0 && parseInt(v, 10) <= 10,
     // Sprint 15.0: weeks of historical data the coverage algorithm
     // (Sprint 15.4) considers when computing the per-(dept × DOW)
     // target hours. Stored as a string for app_settings compat;
@@ -4232,7 +4238,9 @@ app.post('/api/admin/forecast/scrape', requireAuth, requireRole('admin'), async 
     if (wantDetails && Array.isArray(resList) && resList.length) {
       try {
         const out = await startDetailJob({
-          pool, snapshotId: snapshot.snapshot_id, reservations: resList,
+          pool, snapshotId: snapshot.snapshot_id,
+          // Sprint 21.5: the list now reaches ~12 months; guest details are only deep-fetched near term.
+          reservations: withinDetailWindow(resList, snapshot.payload.forecastDate, snapshot.payload.detailWindowDays),
           force: !!(req.body && req.body.forceDetails),
         });
         detailJob = { started: out.started, reused: out.reused, job: out.job };

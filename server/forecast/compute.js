@@ -103,7 +103,11 @@ function isoDate(reservation, field) {
 // matches the typical booking-window the FD actually plans
 // against; rest live in `reservation_history` for occasional
 // long-range lookups.
-const FUTURE_WINDOW_DAYS_DEFAULT = 30;
+const FUTURE_WINDOW_DAYS_DEFAULT = 30;   // DETAIL window: how far ahead the per-reservation deep fetch (guest details) reaches
+// Sprint 21.5 — the LIST window is separate and much wider: bookings up to ~12 months out are stored in the snapshot
+// (and so in reservation_history, the Reservations "Future" tab and the forecast model). The list is cheap (~650 KB raw /
+// ~70 KB gzipped for a full year at Snoqualmie size, vs ~440 KB for 30 days); guest details are the expensive part.
+const FUTURE_LIST_DAYS_DEFAULT = 365;
 
 function addDaysISO(ymd, days) {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -297,9 +301,12 @@ function computeForecast({ rooms: allRooms, roomTypes, reservations, metrics, vi
   //    the reservation doesn't actually intersect today).
   //    Sprint 18.5 — `future_window_days` config option caps the
   //    future RES window so the payload doesn't balloon.
-  const futureWindowDays = Number(config.future_window_days) || FUTURE_WINDOW_DAYS_DEFAULT;
+  // Sprint 21.5: two windows. `detailWindowDays` (config.future_window_days, 30) bounds the deep guest-detail
+  // fetch; `futureListDays` (config.future_list_days, 365) bounds which future bookings are listed/stored at all.
+  const detailWindowDays = Number(config.future_window_days) || FUTURE_WINDOW_DAYS_DEFAULT;
+  const futureListDays = Math.max(detailWindowDays, Number(config.future_list_days) || FUTURE_LIST_DAYS_DEFAULT);
   const classifiedResn = reservations
-    .map(r => ({ ...r, _meta: classifyForDate(r, forecastDate, futureWindowDays) }))
+    .map(r => ({ ...r, _meta: classifyForDate(r, forecastDate, futureListDays) }))
     .filter(r => r._meta !== null);
 
   // 3. Auto-onboard new typeCodes — anything in roomTypes the admin
@@ -642,7 +649,9 @@ function computeForecast({ rooms: allRooms, roomTypes, reservations, metrics, vi
     perRoomSheet,
     reservations: reservationsOut, // Sprint 17.7 — for the per-guest UI
     // Sprint 21: how many days ahead `reservations` is complete for (the forecast outlook greys out days beyond it).
-    futureWindowDays,
+    // Sprint 21.5: this is now the LIST window (365); `detailWindowDays` is how far guest details are deep-fetched.
+    futureWindowDays: futureListDays,
+    detailWindowDays,
     // Sprint 21.3: deactivated rooms rGuest still lists (excluded from every count above).
     inactiveRooms,
     dispatchSummary,

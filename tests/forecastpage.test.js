@@ -6,10 +6,11 @@ Object.defineProperty(globalThis, 'navigator', { value: w.navigator, configurabl
 Object.assign(globalThis, { window: w, document: w.document, sessionStorage: w.sessionStorage, localStorage: w.localStorage, HTMLElement: w.HTMLElement, Node: w.Node, Event: w.Event, IS_REACT_ACT_ENVIRONMENT: true });
 const path = require('path'), fs = require('fs'), Module = require('module'); const babel = require(ROOT + '/node_modules/@babel/core'); const React = require(ROOT + '/node_modules/react');
 const { createRoot } = require(ROOT + '/node_modules/react-dom/client'); const { act } = require(ROOT + '/node_modules/react-dom/test-utils');
-let snapshot, liveBoard, liveOk = true; const calls = [], gone = [];
+let snapshot, liveBoard, liveOk = true, appSettings = {}; const calls = [], gone = [];
 const apiFetch = async (p) => { calls.push(p);
   if (p === '/admin/forecast/snapshots/latest') return { ok: true, data: { success: true, snapshot } };
   if (p === '/admin/forecast/live') return liveOk ? { ok: true, data: { success: true, live: liveBoard } } : { ok: false, status: 502, data: { success: false } };
+  if (p === '/admin/settings') return { ok: true, data: { success: true, settings: appSettings } };
   return { ok: false, data: null }; };
 const load = (file) => { const code = babel.transformFileSync(file, { presets: [[require.resolve(ROOT + '/node_modules/babel-preset-react-app'), { runtime: 'automatic' }]], babelrc: false, configFile: false }).code;
   const m = new Module(file); m.filename = file; m.paths = Module._nodeModulePaths(path.dirname(file)); m.paths.push(ROOT + '/node_modules'); const orig = m.require.bind(m);
@@ -65,28 +66,56 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   await t('headline stats + notes + action lists for today: inspect PU rooms; turn dirty rooms first for types the clean rooms can\'t cover', async () => {
     fresh(); const h = await mount(); const s = h.stats();
     assert.strictEqual(s['Awaiting inspection (PU)'], '1'); assert.strictEqual(s['Still arriving'], '5'); assert.strictEqual(s['Left to sell now'], '0');
-    const rail = h.el.querySelector('.fb-rail').textContent; assert(/Front desk — inspect now/.test(rail) && /102/.test(rail)); assert(/Housekeeping — turn these first/.test(rail));
+    const rail = h.el.querySelector('.fb-body').textContent; assert(/Front desk — inspect now/.test(rail) && /102/.test(rail)); assert(/Housekeeping — turn these first/.test(rail));
     assert(/waiting for front-desk inspection/.test(rail)); await h.unmount();
   });
   await t('statuses reach the page: a type with nothing left (and no way to make more) says "Sold out" + the SiteMinder note', async () => {
     fresh({ live: { remainingArrivals: [{ typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NKRR' }, { typeCode: 'NKRR' }], arrivalsToday: 6 } });   // NQRR: 4 arriving vs 2 clean + 1 dirty + 1 departing = 4
-    const h = await mount(); assert.strictEqual(h.cells(h.rowFor('NQRR')).pop(), 'Sold out'); assert(/consider closing it on SiteMinder/.test(h.el.querySelector('.fb-rail').textContent)); await h.unmount();
+    const h = await mount(); assert.strictEqual(h.cells(h.rowFor('NQRR')).pop(), 'Sold out'); assert(/consider closing it on SiteMinder/.test(h.el.querySelector('.fb-body').textContent)); await h.unmount();
   });
   await t('GHOST ROOM: a deactivated room that rGuest still lists as vacant/inspected is not counted (the NKRRP bug)', async () => {
     const ghost = { ...room('28', 'NKRRP', 'VAC', 'VI'), startDate: '2023-02-26', endDate: '2023-02-28', deactivateDate: '2023-02-28T08:00:00Z' };
     fresh({ live: { rooms: rooms.map(r => ({ ...r })).concat([ghost]) } }); const h = await mount(); const pets = h.rowFor('NKRRP'); const c = h.cells(pets);
     assert.strictEqual(c[2], '1', 'only G28 counts'); assert.strictEqual(c[3], '0', 'no phantom inspected pet room'); await h.unmount();
   });
-  await t('TOMORROW: workload only — Arriving / Departing / Staying over / Rooms to service; no Status column, no short/oversold/sell language', async () => {
+  await t('TOMORROW: cleaning priority table — Booked / Expected / Departing / Staying over / Already empty / Turn first + Priority; no sell/close language; info popover', async () => {
     fresh(); const h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]); const head = h.heads();
-    assert.deepStrictEqual(head.slice(2), ['Rooms', 'Arriving', 'Departing', 'Staying over', 'Rooms to service']); assert(!head.includes('Status') && !head.includes('Left to sell now'));
-    assert(/Housekeeping workload · Tue, Oct 13/.test(h.el.textContent)); assert(!/oversold|sold out|SiteMinder|short/i.test(h.el.querySelector('.fb-rail').textContent + h.el.querySelector('.fb-table-wrap').textContent));
-    const s = h.stats(); assert('Rooms to service' in s && 'Staying over' in s && !('Left to sell now' in s)); assert(!h.el.querySelector('.fb-rail').textContent.includes('inspect now'), 'action list is today-only');
+    assert.deepStrictEqual(head.slice(2), ['Rooms', 'Booked', 'Expected', 'Departing', 'Staying over', 'Already empty', 'Turn first', 'Priority']); assert(!head.includes('Status') && !head.includes('Left to sell now'));
+    assert(/Cleaning priority · Tue, Oct 13/.test(h.el.textContent)); assert(!/oversold|sold out|SiteMinder/i.test(h.el.querySelector('.fb-body').textContent + h.el.querySelector('.fb-table-wrap').textContent));
+    const s = h.stats(); for (const k of ['Booked arrivals', 'Expected arrivals', 'Departing', 'Staying over', 'Rooms to turn first']) assert(k in s, k); assert(!('Left to sell now' in s)); assert(!h.el.querySelector('.fb-body').textContent.includes('inspect now'), 'action list is today-only');
+    assert(h.el.querySelector('.fb-body').textContent.includes('Housekeeping plan'));
+    // methodology is NOT printed on the page — it sits behind the "i" button
+    assert(!/already empty = rooms not occupied/i.test(h.el.textContent), 'method text hidden until the i is opened'); const tip = h.el.querySelector('.fb-need-table').closest('.fb-card').querySelector('.fb-infotip-btn'); assert(tip, 'info button exists');
+    await h.click(tip); assert(/Already empty<\/strong> = rooms not occupied|Already empty.*rooms not occupied/s.test(h.el.querySelector('.fb-infotip-pop').textContent), 'popover explains the method'); await h.click(tip); assert(!h.el.querySelector('.fb-infotip-pop'));
     assert.strictEqual(sessionStorage.getItem('hotelops-fc-day'), '1'); await h.unmount();
+  });
+  await t('TOMORROW with bookings: expected = booked + weekday allowance (capped by free rooms), "May run short" reaches the table, plan card and outlook flag', async () => {
+    const extra = [1, 2, 3].map(() => R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' }));
+    fresh({ snap: { reservations: [...reservations, ...extra] } }); const h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    const q = h.cells(h.rowFor('NQRR'));   // [code,label,rooms,booked,expected,departing,staying,empty,turn,priority]
+    assert.deepStrictEqual(q.slice(2), ['5', '3', '3', '2', '3', '0', '2', 'May run short'], q.join('|'));
+    const rail = h.el.querySelector('.fb-body').textContent; assert(/Housekeeping plan/.test(rail) && /clean every departure early/.test(rail), rail.slice(0, 300));
+    const flag = h.el.querySelectorAll('.fb-day')[1].textContent; assert(/to prioritise/.test(flag), flag); await h.unmount();
+  });
+  await t('settings: a saved allowance reaches the page (disabled → expected = booked; scale applies)', async () => {
+    const extra = [1, 2, 3, 4].map(() => R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: '2026-10-13', departureDate: '2026-10-14' }));
+    const bigger = [...rooms, ...['301', '302', '303', '304', '305', '306'].map(x => room(x, 'NKRR', 'VAC', 'VI'))];
+    appSettings = { forecast_allowance_enabled: 'false' }; fresh({ snap: { perRoomSheet: bigger, reservations: [...reservations, ...extra] } }); let h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    assert.strictEqual(h.cells(h.rowFor('NKRR'))[4], '4', 'no allowance → expected = booked'); await h.unmount();
+    appSettings = { forecast_allowance_enabled: 'true', forecast_allowance_scale_pct: '100', forecast_allowance_min_extra: '2' }; fresh({ snap: { perRoomSheet: bigger, reservations: [...reservations, ...extra] } }); h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    assert(Number(h.cells(h.rowFor('NKRR'))[4]) > 4, 'allowance adds rooms'); appSettings = {}; await h.unmount();
+  });
+  await t('PRINT SHEET follows the selected day (today vs tomorrow) and is built from the same model', async () => {
+    fresh(); const h = await mount(); const open = async () => { await h.click([...h.el.querySelectorAll('button')].find(b => /Generate forecast/.test(b.textContent))); return h.el.querySelector('.fc-sheet'); };
+    let sheet = await open(); assert(/today/i.test(sheet.querySelector('h1').textContent) && /Mon|Monday/.test(sheet.textContent) === false || /October 12, 2026/.test(sheet.textContent), sheet.querySelector('h1').textContent);
+    assert(/Left to sell/.test(sheet.textContent) && /Inspect \(PU\)/.test(sheet.textContent)); assert(/Floor 1|Ground/.test(sheet.textContent), 'rooms grouped by floor');
+    await h.click(h.el.querySelector('.fc-sheet-btn-secondary')); await h.click(h.el.querySelectorAll('.fb-day')[1]); sheet = await open();
+    assert(/Housekeeping plan/.test(sheet.querySelector('h1').textContent) && /October 13, 2026/.test(sheet.textContent), sheet.querySelector('h1').textContent + ' | ' + sheet.textContent.slice(0, 200));
+    assert(/Clean first, by room type/.test(sheet.textContent) && /Expected/.test(sheet.textContent)); assert(!/Left to sell/.test(sheet.textContent)); await h.unmount();
   });
   await t('outlook: today shows the live verdict + "to sell"; later days show "to service" and no verdict flags', async () => {
     fresh(); const h = await mount(); const days = [...h.el.querySelectorAll('.fb-day')]; assert.strictEqual(days.length, 14);
-    assert(/to sell/.test(days[0].textContent) && /clean first|sold out|oversold/.test(days[0].textContent)); assert(days.slice(1).every(d => /to service/.test(d.textContent) && !/clean first|sold out|oversold|short/.test(d.textContent))); await h.unmount();
+    assert(/to sell/.test(days[0].textContent) && /clean first|sold out|oversold/.test(days[0].textContent)); assert(days.slice(1).every(d => /to service/.test(d.textContent) && !/clean first|sold out|oversold/.test(d.textContent))); await h.unmount();
   });
   await t('days beyond the reliable data window are disabled and labelled', async () => {
     fresh({ snap: { futureWindowDays: 5 } }); const h = await mount(); const days = [...h.el.querySelectorAll('.fb-day')]; assert(!days[5].disabled && days[6].disabled && /no data/.test(days[6].textContent)); await h.unmount();

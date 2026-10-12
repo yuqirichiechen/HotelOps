@@ -35,9 +35,12 @@ Point `DATABASE_URL` at `postgres://postgres@127.0.0.1:5439/hoptest`. `server.js
 ## Added in Sprint 21 (in the repo, all runnable)
 | File | What | Run |
 |---|---|---|
-| `forecastmodel.test.js` | Pure forecast model: 8 offline fixture tests; `--live` adds 3 read-only rGuest consistency checks | `node tests/forecastmodel.test.js "$PWD" [--live]` |
-| `forecastpage.test.js` | REAL Forecast page in jsdom with a synthetic morning-shortage payload (8 tests) | `node tests/forecastpage.test.js "$PWD"` |
+| `forecastmodel.test.js` | Pure forecast model (today board, cleaning priority, floors): 20 offline tests; `--live` adds 2 read-only rGuest checks | `node tests/forecastmodel.test.js "$PWD" [--live]` |
+| `forecastpage.test.js` | REAL Forecast page in jsdom (live board, priority table, sheet, info popover, idle pause…) — 17 tests | `node tests/forecastpage.test.js "$PWD"` |
 | `forecast-live-check.js` | Live read-only: live room board vs rGuest (ghost room excluded, HK counts, arrivals) | `node tests/forecast-live-check.js "$PWD"` |
 | `forecastlive-route.test.js` | `/api/admin/forecast/live`: auth, zero DB access, cache, dedupe, 502 handling (rGuest client faked) | `node tests/forecastlive-route.test.js "$PWD"` |
+| `forecast-window.test.js` | Stored list window (365 d) vs guest-detail window (30 d) | `node tests/forecast-window.test.js "$PWD"` |
+| `forecast-allowance-settings.test.js` | Late-booking settings: admin-only + validation (fake DB) | `node tests/forecast-allowance-settings.test.js "$PWD"` |
+| `forecast-probe-fields.js`, `forecast-calibrate-pickup.js` | Live read-only probes: floor/creation-date fields; pickup (late-booking) study | `node tests/<file> "$PWD" [weeks] [perDay] [out]` |
 | `forecast-diagnose.js`, `forecast-futurecheck.js` | Live read-only probes (room conditions vs ours; per-day arrivals/departures) | `node tests/<file> "$PWD"` |
 | `fcrender.js` | Render the Forecast page from a live payload (`DUMP=file.html FC_DAY=1` to capture HTML for screenshots) | `node tests/fcrender.js "$PWD"` |

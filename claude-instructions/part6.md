@@ -12,11 +12,97 @@
 | 21.1   | Diagnose why the Room Forecast "isn't working" | **Done** — no crash/data bug found; the model only answered "today" (see entry) |
 | 21.2   | Date-aware forecast model + 14-day outlook + rebuilt page | **Built + tested** (19 tests incl. live rGuest checks) — awaiting user confirmation it fixes what they saw |
 | 21.3   | Live room board (today), VI/PU semantics, workload-only future days, sync removed, HK/FD action lists | **Built + tested, NOT yet deployed** (see entry). Printable sheet for the selected day still open |
-| 21.4   | Layout polish | Mostly done in 21.2 (phone + desktop rendered) |
-| 21.5   | Widen stored list-level future window to ~12 months (separate from 30-day detail window) | Planned |
+| 21.4   | Day 2–14 cleaning priority (expected arrivals, floor suggestions), selected-day Generate-forecast sheet, info popovers, late-booking settings | **Built + tested, NOT yet deployed** |
+| 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested, NOT yet deployed** (no migration) |
 | 22     | Scraper DB revamp (incremental mirror) + forecast on top | Planned |
 
 ## Sprint logs (newest first)
+
+### 2026-10-12 — Sprint 21.4–21.5: cleaning priority, selected-day sheet, 12-month stored list
+
+**Deploy:** frontend + server together. **No migration** (settings use `app_settings`). After deploy run one scrape
+on Reservations so the snapshot carries the 365-day list (`futureWindowDays: 365`, `detailWindowDays: 30`).
+User verified 21.3 against rGuest ("spot on, perfectly resolved") before this sprint started.
+
+**21.4a — Days 2–14 = cleaning priority (replaces plain workload)** (`forecastModel.js`)
+- Per room-type group (substitutable pool, e.g. NKRR + subtypes): `expected = booked + allowance`;
+  `alreadyEmpty = sellable − staying over − departing`; `needFromTurns = max(0, expected − alreadyEmpty)`;
+  `turnFirst = min(need, departing)`; priority **normal / early / first / short** (short = even turning every
+  departure can't cover it). Variant rows show booked/departing/staying; the verdict lives at group level.
+- Late-booking **allowance** = `LATE_BY_HORIZON[daysAhead] × LATE_BY_WEEKDAY[arrivalWeekday]`, ×scale; at least
+  `minExtra` for groups with 4+ booked; capped by free rooms (`sellable − staying over`); booked is never reduced.
+  Calibrated from 1,111 sampled arrivals (see the entry below): tomorrow ≈ +25% of booked, Tuesdays high, Fridays low.
+  Editable in **Forecast settings → Late bookings** (enable, scale 25–300 %, minimum extra 0–10) — keys
+  `forecast_allowance_enabled|_scale_pct|_min_extra` in `app_settings` (validated in `PUT /admin/settings`).
+- **Floor suggestions**: floors from rGuest `floorId` (normalised "01"→"1", "G"=Ground; `live.rooms` now carries
+  `floorId`). The Housekeeping plan lists each group's *known* departing rooms by floor, fullest floor first,
+  with the first N flagged; unassigned departures are counted (`unplacedFirst`, "no room number yet"), never
+  invented. "Work by floor" lists departing/staying-over per floor. Today's action lists are grouped by floor too.
+- Outlook strip: later days show "N to service" + "N to prioritise" flag; tooltip includes expected arrivals.
+- Stats (future): Booked / Expected arrivals · Departing · Staying over · Rooms to turn first.
+
+**21.4b — Selected-day printable sheet** (`ForecastDaySheet.js`, replaces the snapshot-only sheet on the page):
+follows the selected day; today = status table + per-floor dirty/inspect/departing/stayover; future = priority
+table + per-floor departing (turn-first rooms bold/underlined) + staying-over service. Reuses fc-sheet print CSS.
+The old `Forecasting/ForecastSheet.js` is now unused (left in place).
+
+**21.4c — Methodology behind an "i"** (`InfoTip.js`): formulas/assumptions are in click-to-open popovers
+(card titles), not printed on the page. FD/HK see numbers + short action text only. Settings help text is plain
+(admin-facing).
+
+**21.5 — stored future window**
+- `compute.js`: two windows. `future_window_days` (30) = **detail** window; new `future_list_days` (365) = **list**
+  window for `reservationsOut` / `kind:'future'` / `reservation_history`. Payload: `futureWindowDays: 365`
+  (list completeness, drives the model's "no data" cut-off) + `detailWindowDays: 30`.
+- Cost measured on the live account: 840 reservations total, payload 439 KB → 650 KB raw (48 → 72 KB gzipped).
+  rGuest's RES walk was already unbounded (693 RES out to 2027-10-05), so no extra rGuest calls.
+- `detailJob.withinDetailWindow()` keeps the guest-detail deep fetch to arrivals ≤ today+30 (otherwise the first
+  scrape would queue ~170 extra detail calls). Reservations rows beyond the window say "Guest details load
+  closer to arrival" instead of "Loading…"; "Refresh" still fetches one on demand.
+- Old snapshots (futureWindowDays 30) still render; the Future tab simply shows more rows after the next scrape.
+
+**Tests (all re-run at the end):** `forecastmodel.test.js` 20 (+`--live` 22) · `forecastpage.test.js` 17
+(tomorrow table, allowance reaching the page, info popover hides the method, sheet follows the day) ·
+`forecast-window.test.js` 4 · `forecast-allowance-settings.test.js` 3 · `forecastlive-route.test.js` 5 ·
+`forecast-live-check.js` 5 · build compiles (pre-existing warnings only). Real-data renders at 1280/390 px
+checked: priority table, plan card by floor, sheet. Probes: `forecast-probe-fields.js`,
+`forecast-calibrate-pickup.js` (writes /tmp/pickup.json).
+
+**Known limits / watch after deploy**
+- Allowance is one season of data (Aug–Oct 2026) at hotel level; scale is the tuning knob. Weekly swing +12…+44 %.
+- Stayover/arrival *rooms* are mostly unassigned until check-in, so floor suggestions use departing rooms only.
+- Assumes rooms vacant tonight will be clean; future HK status is unknowable.
+- No-show status code not identified (probe `NS` → 400); no-shows aren't in the allowance.
+- Sprint 22 (typed mirror/daily auto-sync) not started — user wants a GUI-fix + wrap-up sprint next.
+
+### 2026-10-12 — Sprint 21.4 (start): floor check + pickup calibration probe (READ-ONLY)
+
+**User direction:** day 2–14 should suggest which room types/floors to clean first from booked arrivals +
+stayovers (+ an allowance for late bookings); "Generate forecast" must follow the selected day; widen the
+stored future window; explanations of methodology go behind an "i"/dropdown — FD/HK don't need them inline.
+
+**Floors:** rGuest room records carry `floorId` ("G","01","02","03","04", one typo "2" on room 209) and
+`building:"Hotel"`. It always agrees with the first digit of the room number (1xx=01 … 4xx=04, G## = ground).
+Use `floorId` normalized (strip leading zero, "G" = ground); fall back to the first digit.
+
+**Booking creation date:** NOT in the list-search rows. Only in reservation *detail*: `reservationCreateTime`
+(also `createdDateTime`, `createTime`; UTC — convert to America/Los_Angeles), plus `sourceInfo.bookedBy`
+(SiteMinder / rGuest Book / staff name), `sourceInfo.walkIn`, `sourceInterfaceId`. 1,111 detail calls took
+26 s at concurrency 3 (no errors). The list search reaches back ≥12 months (DPT/INH). No-show status code is
+not `NS` (HTTP 400) — find the real code before measuring no-shows.
+
+**Pickup calibration** (`tests/forecast-calibrate-pickup.js`, arrivals 2026-08-16..10-10, 2,254 found,
+1,111 sampled; one season, list search drops ~15% of rows — fine for ratios):
+- Share of final arrivals booked N+ days ahead ("on the books" k days before): k=1 80%, k=2 73%, k=3 69%,
+  k=5 64%, k=7 59%, k=14 48%. → expected final = booked ÷ onBooks(k): +25% (1 day ahead), +38% (2), +44% (3),
+  +57% (5), +69% (7), +109% (14).
+- Strong weekday effect (k=1 allowance): Mon +31%, **Tue +47%**, Wed +29%, Thu +22%, **Fri +9%**, Sat +26%,
+  Sun +17%. Weekly k=1 allowance across 8 weeks: 26, 25, 44, 24, 12, 21, 30, 26 (%). Signal is real but noisy.
+- Channel: SiteMinder (OTA) 19.8% same-day; front-desk "rGuest Book" 2.6%; individual staff 8–39%.
+- Cancellations: 467 CXL with arrival in the window; median cancel lead 25 days, only ~8% within 1 day of
+  arrival → they're mostly already off the books at planning time; the net offset is small (~1–2% of arrivals).
+- A flat 15% would under-allow tomorrow (+25%) and over-allow Fridays. Room-type-level history is too thin;
+  calibrate at hotel level and spread by each type's share of booked arrivals.
 
 ### 2026-10-11 — Sprint 21.3: live room board, correct VI/PU semantics, workload-only future days
 

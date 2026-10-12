@@ -47,6 +47,22 @@ function fingerprintOf(r) {
 
 const isFuture = (r) => r && r.kind === 'future';
 
+const DETAIL_WINDOW_DAYS_DEFAULT = 30;
+const addDaysYmd = (ymd, n) => {
+  const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+
+/**
+ * Sprint 21.5 — the snapshot lists bookings up to ~12 months ahead, but guest details (contact, folio, card) are only
+ * deep-fetched for the near term: anything arriving after today + detailWindowDays is left out of the job. Pure.
+ */
+function withinDetailWindow(reservations, forecastDate, detailWindowDays = DETAIL_WINDOW_DAYS_DEFAULT) {
+  if (!forecastDate) return reservations || [];
+  const cutoff = addDaysYmd(forecastDate, Number(detailWindowDays) || DETAIL_WINDOW_DAYS_DEFAULT);
+  return (reservations || []).filter(r => r && (!r.arrivalDate || String(r.arrivalDate).slice(0, 10) <= cutoff));
+}
+
 // Lower = fetched sooner. Remaining arrivals first (what the desk needs now).
 function priorityOf(r) {
   if (r.kind === 'arrival' && (r.status === 'RES' || r.statusLabel === 'Pending')) return 0;
@@ -328,6 +344,6 @@ async function refreshOne({ pool, reservationId, listItem = null, createClient =
 module.exports = {
   startDetailJob, getLatestJob, refreshOne, loadPrior, pruneGuestDetails, getRetentionDays,
   // exported for tests
-  selectTargets, fingerprintOf, priorityOf,
+  selectTargets, fingerprintOf, priorityOf, withinDetailWindow,
   TTL_ACTIVE_MS, TTL_FUTURE_MS,
 };

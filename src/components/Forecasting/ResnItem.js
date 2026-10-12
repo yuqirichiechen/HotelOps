@@ -121,8 +121,9 @@ const Section = ({ sec }) => (
  * @param {string}  p.statusCls    STATUS_PILL_CLASS key
  * @param {boolean} p.open         in-place details expanded
  * @param {boolean} p.jobRunning   background job still loading details
+ * @param {boolean} p.beyondDetailWindow  booking is further out than the guest-detail window (no details stored yet)
  */
-const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onForget, refreshing, jobRunning, rguestUrl, attention }) => {
+const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onForget, refreshing, jobRunning, beyondDetailWindow, rguestUrl, attention }) => {
   const s = entry && entry.summary && Object.keys(entry.summary).length ? entry.summary : null;
   const g = (s && s.guest) || {};
   const gone = entry && entry.remoteState === 'gone';
@@ -207,7 +208,7 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onFor
         {/* ── money / history / notes chips ── */}
         <div className="rl-chips">
           {s ? chips.map(c => <Chip key={c.key} tone={c.tone}>{c.label}</Chip>)
-            : <span className="rl-loading">{jobRunning ? 'Loading guest details…' : 'Guest details not loaded yet'}</span>}
+            : <span className="rl-loading">{beyondDetailWindow ? 'Guest details load closer to arrival' : jobRunning ? 'Loading guest details…' : 'Guest details not loaded yet'}</span>}
         </div>
       </div>
 

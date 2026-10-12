@@ -18,7 +18,7 @@ import './ForecastSettings.css';
 const BASE_BUCKETS = ['NKRR', 'NKJZ', 'NQRR', 'NQJZ'];
 
 const ForecastSettings = ({ onClose }) => {
-  const [tab, setTab]         = useState('labor'); // 'labor' | 'mapping'
+  const [tab, setTab]         = useState('labor'); // 'labor' | 'late' | 'mapping'
   const [config, setConfig]   = useState(null);
   const [mapping, setMapping] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +38,10 @@ const ForecastSettings = ({ onClose }) => {
   const [retention, setRetention] = useState('90');
   const [savingRetention, setSavingRetention] = useState(false);
 
+  // Sprint 21.4 — late-booking allowance used by the Forecast's cleaning priority (days 2–14). app_settings keys.
+  const [allow, setAllow] = useState({ enabled: true, scalePct: '100', minExtra: '2' });
+  const [savingAllow, setSavingAllow] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -49,6 +53,12 @@ const ForecastSettings = ({ onClose }) => {
       if (cancelled) return;
       const rv = appSettings.data && appSettings.data.settings && appSettings.data.settings.guest_detail_retention_days;
       if (rv != null && rv !== '') setRetention(String(rv));
+      const st = (appSettings.data && appSettings.data.settings) || {};
+      setAllow({
+        enabled: st.forecast_allowance_enabled !== 'false',
+        scalePct: String(st.forecast_allowance_scale_pct || '100'),
+        minExtra: String(st.forecast_allowance_min_extra || '2'),
+      });
       if (!cfg.ok || !cfg.data?.success) {
         setError(cfg.data?.message || 'Could not load config.');
       } else {
@@ -113,6 +123,26 @@ const ForecastSettings = ({ onClose }) => {
     setTimeout(() => setBanner(null), 3500);
   };
 
+  const saveAllow = async () => {
+    const scale = parseInt(allow.scalePct, 10), min = parseInt(allow.minExtra, 10);
+    if (!(scale >= 25 && scale <= 300)) { setError('Scale must be between 25 and 300 (100 = as calibrated).'); return; }
+    if (!(min >= 0 && min <= 10)) { setError('Minimum extra rooms must be between 0 and 10.'); return; }
+    setSavingAllow(true);
+    setError(null);
+    const { ok, data } = await apiFetch('/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        forecast_allowance_enabled: String(!!allow.enabled),
+        forecast_allowance_scale_pct: String(scale),
+        forecast_allowance_min_extra: String(min),
+      }),
+    });
+    setSavingAllow(false);
+    if (!ok || !data?.success) { setError(data?.message || 'Save failed'); return; }
+    setBanner('Late-booking settings saved.');
+    setTimeout(() => setBanner(null), 3000);
+  };
+
   const editRow = (code, patch) => {
     setDraftRows(prev => ({
       ...prev,
@@ -164,6 +194,11 @@ const ForecastSettings = ({ onClose }) => {
             className={tab === 'labor' ? 'active' : ''}
             onClick={() => setTab('labor')}
           >Labor constants</button>
+          <button
+            role="tab" aria-selected={tab === 'late'}
+            className={tab === 'late' ? 'active' : ''}
+            onClick={() => setTab('late')}
+          >Late bookings</button>
           <button
             role="tab" aria-selected={tab === 'mapping'}
             className={tab === 'mapping' ? 'active' : ''}
@@ -271,6 +306,41 @@ const ForecastSettings = ({ onClose }) => {
                   </button>
                 </div>
               </section>
+            </div>
+          )}
+
+          {!loading && tab === 'late' && (
+            <div className="fc-labor-form">
+              <section>
+                <h3>Late-booking allowance</h3>
+                <p className="fc-form-help">
+                  Days 2–14 of the Forecast show how many rooms of each type are <em>expected</em> to be needed:
+                  booked arrivals plus an allowance for bookings that usually come in late. The default table was
+                  measured from the last 8 weeks (tomorrow ≈ +25% of what is booked, Tuesdays higher, Fridays lower).
+                  Use the scale to tune it after you have seen it against real days.
+                </p>
+                <label className="fc-form-row">
+                  <span>Use the allowance</span>
+                  <input type="checkbox" checked={allow.enabled} onChange={e => setAllow(a => ({ ...a, enabled: e.target.checked }))} />
+                </label>
+                <label className="fc-form-row">
+                  <span>Scale (100 = as measured; 150 = 50% more cautious)</span>
+                  <input type="number" min="25" max="300" step="5" value={allow.scalePct}
+                    onChange={e => setAllow(a => ({ ...a, scalePct: e.target.value }))} disabled={!allow.enabled} />
+                  <span>%</span>
+                </label>
+                <label className="fc-form-row">
+                  <span>Minimum extra rooms for a room type with 4+ booked</span>
+                  <input type="number" min="0" max="10" step="1" value={allow.minExtra}
+                    onChange={e => setAllow(a => ({ ...a, minExtra: e.target.value }))} disabled={!allow.enabled} />
+                  <span>rooms</span>
+                </label>
+              </section>
+              <div className="fc-modal-footer">
+                <button className="fc-modal-btn fc-modal-btn-primary" onClick={saveAllow} disabled={savingAllow}>
+                  {savingAllow ? 'Saving…' : 'Save late-booking settings'}
+                </button>
+              </div>
             </div>
           )}
 

@@ -635,3 +635,36 @@
 .fb-action-count { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--bg-surface-alt); font-size: 12px; text-align: center; }
 .fb-action .fb-muted { margin: 0 0 8px; }
 .fb-action-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+
+/* ── Sprint 21.4: info popover, cleaning priority, plan card, floor groups ─────────── */
+.fb-infotip { position: relative; display: inline-flex; vertical-align: middle; margin-left: 6px; }
+.fb-infotip-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); cursor: pointer; }
+.fb-infotip-btn:hover, .fb-infotip-btn[aria-expanded="true"] { background: var(--accent-bg, #ebf8ff); color: #2c5282; }
+.fb-infotip-pop { position: absolute; top: 30px; z-index: 30; width: min(360px, 82vw); padding: 12px 14px; background: #fff; color: var(--text-primary, #1a202c); border: 1px solid var(--border, #e2e8f0); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); font-family: inherit; font-size: 12.5px; font-weight: 400; line-height: 1.45; text-align: left; }
+.fb-infotip-left { left: -8px; }
+.fb-infotip-right { right: -8px; }
+.fb-infotip-title { display: block; margin-bottom: 6px; font-size: 13px; }
+.fb-infotip-body p { margin: 0 0 8px; }
+.fb-infotip-body p:last-child { margin-bottom: 0; }
+
+.fb-pill-prio-normal { background: var(--success-bg, #e6f7ec); color: var(--success-text, #166534); }
+.fb-pill-prio-early  { background: var(--accent-bg, #ebf8ff); color: #2c5282; }
+.fb-pill-prio-first  { background: var(--warn-bg, #fffbeb); color: var(--warn-text, #92400e); }
+.fb-pill-prio-short  { background: var(--danger-bg, #fef2f2); color: var(--danger-text, #b91c1c); }
+.fb-day-flag-prio    { background: var(--warn-bg, #fffbeb); color: var(--warn-text, #92400e); }
+
+.fb-plan { padding: 10px 0 12px; border-top: 1px solid var(--border-light, #edf2f7); }
+.fb-plan:first-of-type { border-top: 0; }
+.fb-plan-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.fb-plan-line { margin: 0 0 8px; font-size: 13px; }
+.fb-plan-note { margin: 6px 0 0; font-size: 12px; }
+.fb-floor-groups { display: flex; flex-direction: column; gap: 6px; }
+.fb-floor-group { display: flex; align-items: flex-start; gap: 10px; }
+.fb-floor-name { flex: 0 0 74px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); padding-top: 5px; }
+.fb-floorwork { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.fb-floorwork li { padding: 3px 0; display: flex; gap: 10px; }
+.fb-floorwork .fb-floor-name { padding-top: 0; }
+.fb-room-first { background: var(--warn-bg, #fffbeb); border-color: #ecc94b; color: var(--warn-text, #92400e); box-shadow: inset 0 0 0 1px #ecc94b; }
+.fb-card h2 .fb-infotip { margin-left: 4px; }
+@media (max-width: 640px) { .fb-floor-name { flex-basis: 60px; } }

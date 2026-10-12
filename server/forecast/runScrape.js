@@ -269,7 +269,7 @@ async function runScrape({ pool, source, triggeredBy = null, forecastDate }) {
     // are operating on. `todayInLA()` is the last-resort fallback
     // only used when both requested date AND propertyDate fail.
     const inputs = await client.fetchForecastInputs(forecastDate || null, {
-      futureWindowDays: Number(config.future_window_days) || 30, // Sprint 20.3: bounds the exact future fetch
+      futureWindowDays: Number(config.future_list_days) || 365, // Sprint 20.3/21.5: logged only — the RES walk is unbounded; the list window is applied in compute
     });
     effectiveDate = inputs.effectiveDate || forecastDate || todayInLA();
 

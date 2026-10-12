@@ -507,6 +507,7 @@ function createAgilysysClient(overrides = {}) {
         occupancyStatus: r.currentOccupancyStatus || r.roomInventoryStatus || null,
         inventoryStatus: r.roomInventoryStatus || null,
         hkStatus: r.housekeepingRoomStatus || null,
+        floorId: r.floorId || null,
         blocked: !!r.blocked,
         // fields needed to ignore deactivated rooms (see compute.isActiveRoom)
         startDate: r.startDate || null, endDate: r.endDate || null, effectiveDate: r.effectiveDate || null,

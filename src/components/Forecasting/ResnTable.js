@@ -199,6 +199,12 @@ const ReservationDetailsTable = ({
   const { get: getSummary, refresh: refreshOne, refreshing, forget, ensure } = useResnSummaries(idsToLoad, jobTick);
 
   const attnOfRow = (r) => attentionOf(r, getSummary(r.id), todayYmd);
+  // Sprint 21.5: the list reaches ~12 months ahead, but guest details are only fetched for the next 30 days.
+  const detailCutoff = (() => {
+    if (!todayYmd) return '9999-12-31';
+    const [y, m, d] = String(todayYmd).slice(0, 10).split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 30)).toISOString().slice(0, 10);
+  })();
   const attnCnt = big ? {} : attentionCounts(baseRows, attnOfRow);
   const attnActive = Object.keys(attnSel).filter(k => attnSel[k]);
   const afterAttn = big ? ordered0 : filterByAttention(ordered0, attnSel, attnOfRow);
@@ -386,6 +392,7 @@ const ReservationDetailsTable = ({
               onForget={() => forget(r.id)}
               refreshing={!!refreshing[r.id]}
               jobRunning={!!jobRunning}
+              beyondDetailWindow={!!(todayYmd && r.kind === 'future' && r.arrivalDate && String(r.arrivalDate).slice(0, 10) > detailCutoff)}
               rguestUrl={RGUEST_RESERVATION_URL(r.id)}
               attention={a.reasons}
             />

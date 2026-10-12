@@ -1,0 +1,16 @@
+/* Sprint 21.4 — selected-day printable sheet (extends the fc-sheet-* styles). */
+.fcd-floor-table th { width: 170px; white-space: nowrap; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #4a5568; text-align: left; vertical-align: top; padding: 7px 8px; border-bottom: 1px solid #edf2f7; }
+.fcd-floor-table td { padding: 6px 8px; border-bottom: 1px solid #edf2f7; }
+.fcd-rooms { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.fcd-room { font-size: 12.5px; white-space: nowrap; font-weight: 400; color: #4a5568; }
+.fcd-room strong { font-weight: 500; color: #1a202c; }
+.fcd-room small { color: #718096; font-size: 10px; }
+.fcd-room-first strong { font-weight: 800; color: #1a365d; text-decoration: underline; }
+.fcd-room-first { color: #1a365d; }
+.fcd-prio-short td { background: #fff5f5; }
+.fcd-prio-first td { background: #fff8f0; }
+.fcd-note { font-size: 12px; color: #718096; margin: 0 0 12px; }
+@media print {
+  .fcd-floor-table th { width: 130px !important; }
+  .fcd-room { font-size: 11px !important; }
+}
