@@ -21,6 +21,7 @@ import { useView } from '../../shells/ViewContext';
 import ForecastSettings from '../Forecasting/ForecastSettings';
 import ForecastHistory from '../Forecasting/ForecastHistory';
 import ForecastSheet   from '../Forecasting/ForecastSheet';
+import { buildDayModel, buildOutlook, deriveNotes, addDays } from './forecastModel';
 import './Forecast.css';
 
 
@@ -59,213 +60,56 @@ const fmtTime = (iso) => {
 
 
 // ── Compute helpers ─────────────────────────────────────────
-
-// Build a grouped tree of room-type need from the snapshot payload.
-//
-// Sprint 17.12 — was a flat list keyed by base code (NKRR/NKJZ/etc.);
-// now we surface every *specific* typeCode (NKRR, NKRRA, NKRRP, …)
-// underneath its base group so the FD can see where the shortage
-// actually lives.
-//
-// Allocation note (substitutability):
-// - A reservation booked as the generic base (e.g. typeCode "NKRR")
-//   can be fulfilled by any room in the base group — including
-//   subtypes (NKRRA, NKRRP, etc.). A guest who didn't ask for
-//   accessible can be placed in an accessible room.
-// - A reservation booked as a specific subtype (typeCode "NKRRA")
-//   *must* go in an NKRRA room — that's why they asked.
-//
-// We surface per-row balance as if each typeCode were independent
-// (useful for spotting "we have 3 short of NKRRA specifically"),
-// and a per-group total that reflects substitutability
-// (= max(0, group demand − group supply)). The two won't always
-// sum the same way; the group total is the operational truth for
-// the FD's "do we have enough rooms tonight?" question.
-function computeNeedTree(payload) {
-  if (!payload) return [];
-
-  // labels stays the source of truth for baseCode → baseLabel and
-  // typeCode → subLabel mappings (taken from whichever object
-  // surfaced the typeCode first).
-  const labels = new Map();
-  function recordLabels(obj) {
-    const code = obj.typeCode;
-    if (!code || labels.has(code)) return;
-    labels.set(code, {
-      baseCode:  obj.baseCode || (code.length >= 4 ? code.slice(0, 4) : '__OTHER__'),
-      baseLabel: obj.baseLabel || code,
-      subLabel:  obj.subLabel  || 'Standard',
-      subSuffix: code.length > 4 ? code.slice(4) : '',
-    });
-  }
-
-  // Per-typeCode total + vacant-clean counts, from perRoomSheet.
-  //
-  // Sprint 17.15:
-  //   • Total = every room of that typeCode in inventory (regardless
-  //     of status). Lets the FD see at a glance whether a "1 vacant
-  //     clean NKRRP" stat is from a 3rd NKRRP they didn't notice in
-  //     rGuest's paginated UI, or from stale data.
-  //   • Vacant-clean now counts BOTH `VI` (Vacant Inspected) AND
-  //     `PU` (Pickup). The user clarified PU means HK has cleaned
-  //     the room and it's waiting for FD inspection — operationally
-  //     ready to sell. Was excluded before in 17.7.
-  const totalByType  = new Map();
-  const vacantByType = new Map();
-  const isVacantClean = (occ, hk) =>
-    occ === 'VAC' && (hk === 'VI' || hk === 'PU');
-  for (const r of payload.perRoomSheet || []) {
-    recordLabels(r);
-    if (!r.typeCode) continue;
-    totalByType.set(r.typeCode, (totalByType.get(r.typeCode) || 0) + 1);
-    if (isVacantClean(r.occupancyStatus, r.hkStatus)) {
-      vacantByType.set(r.typeCode, (vacantByType.get(r.typeCode) || 0) + 1);
-    }
-  }
-
-  // Per-typeCode arrival count, from reservations[].
-  //
-  // Sprint 17.13 — count only **remaining** arrivals (status=RES,
-  // not yet checked in).
-  //
-  // Sprint 17.16 — dedupe by reservation `id` before counting.
-  // The /search/date endpoint occasionally returns the same
-  // reservation under multiple criteria (master + group child,
-  // duplicate join rows, etc.); rGuest's metrics widget already
-  // dedupes so we were over-counting by ~4 vs. their authoritative
-  // number. Defensive: if no id present (shouldn't happen but
-  // safety), include the row.
-  const arrivalsByType = new Map();
-  const seenResIds = new Set();
-  for (const r of payload.reservations || []) {
-    recordLabels(r);
-    if (r.id) {
-      if (seenResIds.has(r.id)) continue;
-      seenResIds.add(r.id);
-    }
-    if (r.typeCode && r.kind === 'arrival' && r.status === 'RES') {
-      arrivalsByType.set(r.typeCode, (arrivalsByType.get(r.typeCode) || 0) + 1);
-    }
-  }
-
-  // Build variant rows (one per typeCode we've seen).
-  const allTypeCodes = new Set([
-    ...vacantByType.keys(), ...arrivalsByType.keys(), ...labels.keys(),
-  ]);
-  const variants = [];
-  for (const code of allTypeCodes) {
-    const meta = labels.get(code) || {
-      baseCode:  code.length >= 4 ? code.slice(0, 4) : '__OTHER__',
-      baseLabel: code,
-      subLabel:  'Standard',
-      subSuffix: code.length > 4 ? code.slice(4) : '',
-    };
-    const vc    = vacantByType.get(code)   || 0;
-    const arr   = arrivalsByType.get(code) || 0;
-    const total = totalByType.get(code)    || 0;
-    const net   = vc - arr;
-    variants.push({
-      typeCode:    code,
-      baseCode:    meta.baseCode,
-      baseLabel:   meta.baseLabel,
-      subLabel:    meta.subLabel,
-      subSuffix:   meta.subSuffix,
-      totalRooms:  total,
-      vacantClean: vc,
-      arrivals:    arr,
-      netBalance:  net,
-      roomsNeeded: Math.max(0, -net),
-      status:      net > 0 ? 'surplus' : net < 0 ? 'short' : 'even',
-    });
-  }
-
-  // Group by baseCode.
-  const groupMap = new Map();
-  for (const v of variants) {
-    const key = v.baseCode || '__OTHER__';
-    if (!groupMap.has(key)) {
-      groupMap.set(key, {
-        baseCode:  v.baseCode,
-        baseLabel: v.baseLabel,
-        variants:  [],
-        totals:    null,
-      });
-    }
-    groupMap.get(key).variants.push(v);
-  }
-
-  // Per-group totals + sort variants (generic first, then alpha).
-  for (const g of groupMap.values()) {
-    const sumTotal = g.variants.reduce((s, v) => s + v.totalRooms,  0);
-    const sumVC    = g.variants.reduce((s, v) => s + v.vacantClean, 0);
-    const sumArr   = g.variants.reduce((s, v) => s + v.arrivals,    0);
-    const net      = sumVC - sumArr;
-    g.totals = {
-      totalRooms:  sumTotal,
-      vacantClean: sumVC,
-      arrivals:    sumArr,
-      netBalance:  net,
-      roomsNeeded: Math.max(0, -net),
-      status:      net > 0 ? 'surplus' : net < 0 ? 'short' : 'even',
-    };
-    g.variants.sort((a, b) => {
-      if (!a.subSuffix && b.subSuffix) return -1;
-      if (a.subSuffix && !b.subSuffix) return 1;
-      return a.typeCode.localeCompare(b.typeCode);
-    });
-  }
-
-  // Stable group order: known 4 bases first, "Other"/unknown last.
-  const KNOWN_ORDER = ['NKRR', 'NKJZ', 'NQRR', 'NQJZ'];
-  return [...groupMap.values()].sort((a, b) => {
-    const ai = KNOWN_ORDER.indexOf(a.baseCode);
-    const bi = KNOWN_ORDER.indexOf(b.baseCode);
-    if (ai >= 0 && bi >= 0) return ai - bi;
-    if (ai >= 0) return -1;
-    if (bi >= 0) return 1;
-    return (a.baseLabel || '').localeCompare(b.baseLabel || '');
-  });
-}
-
-// Sprint 17.12 — operational notes generated from the grouped
-// tree. Groups whose totals net short are urgent; specific
-// subtypes that are short within an otherwise-fine group get
-// called out too (those guests *specifically* asked for the
-// subtype so substitutability doesn't help them).
-function deriveOperationalNotes(groups) {
-  const notes = [];
-  const shortGroups   = groups.filter(g => g.totals.status === 'short')
-                              .sort((a, b) => b.totals.roomsNeeded - a.totals.roomsNeeded);
-  const surplusGroups = groups.filter(g => g.totals.status === 'surplus');
-
-  if (shortGroups.length) {
-    const codes = shortGroups.map(g => `${g.baseCode || '?'} (${g.totals.roomsNeeded})`).join(', ');
-    notes.push({ kind: 'urgent', text: `Category-level shortages: ${codes}. Prioritize clean turns.` });
-  }
-  for (const g of groups) {
-    if (g.totals.status === 'short') continue;
-    for (const v of g.variants) {
-      if (v.status !== 'short') continue;
-      notes.push({
-        kind: 'urgent',
-        text: `${v.typeCode} (${v.subLabel}) is short ${v.roomsNeeded} — can't substitute another type.`,
-      });
-    }
-  }
-  for (const g of surplusGroups) {
-    notes.push({
-      kind: 'info',
-      text: `${g.baseCode || '?'} has ${g.totals.netBalance} surplus vacant-clean room${g.totals.netBalance === 1 ? '' : 's'}.`,
-    });
-  }
-  notes.push({ kind: 'neutral', text: 'Use the arrivals list below to confirm late check-ins.' });
-  return notes;
-}
+// Sprint 21: the supply/demand model moved to ./forecastModel.js (pure + tested): date-aware
+// (today vs any of the next 14 days), excludes unsellable rooms, counts rooms freed by departures.
 
 // Sprint 17.12 — buildHkMessage removed with the HK Message
 // Preview card. If we resurrect it later, the implementation
 // (in git history at this commit) can come back as-is.
 
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS  = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ymdParts = (ymd) => { const [y, m, d] = String(ymd).split('-').map(Number); return { y, m, d, dow: new Date(Date.UTC(y, m - 1, d)).getUTCDay() }; };
+const fmtLong = (ymd) => { const p = ymdParts(ymd); return `${WEEKDAYS[p.dow]}, ${MONTHS[p.m - 1]} ${p.d}`; };
+
+// Sprint 21 — 14-day outlook: pick a day; its table below follows. Colour = worst room-type status that day.
+const OutlookStrip = ({ days, selected, onSelect }) => (
+  <section className="fb-outlook" aria-label="14-day outlook">
+    <div className="fb-outlook-head">
+      <h2>14-day outlook</h2>
+      <span className="fb-outlook-legend">
+        <span className="fb-dot fb-dot-ok" /> enough rooms <span className="fb-dot fb-dot-tight" /> clean first <span className="fb-dot fb-dot-short" /> short
+      </span>
+    </div>
+    <div className="fb-outlook-row" role="tablist">
+      {days.map(d => {
+        const p = ymdParts(d.date);
+        const label = d.offset === 0 ? 'Today' : d.offset === 1 ? 'Tomorrow' : WEEKDAYS[p.dow];
+        const flag = d.status === 'short' ? `${d.roomsShort} short` : d.status === 'tight' ? `clean ${d.roomsToPrioritize}` : d.status === 'nodata' ? 'no data' : null;
+        return (
+          <button
+            key={d.date}
+            type="button"
+            role="tab"
+            aria-selected={selected === d.offset}
+            disabled={d.outsideWindow}
+            className={`fb-day fb-day-${d.status}${selected === d.offset ? ' active' : ''}`}
+            onClick={() => onSelect(d.offset)}
+            title={d.outsideWindow ? 'Reservations are only complete a limited number of days ahead' : `${fmtLong(d.date)} — ${d.arrivals} arriving, ${d.departures} departing, ${d.occupancyPct}% occupied tonight`}
+          >
+            <span className="fb-day-name">{label}</span>
+            <span className="fb-day-date">{MONTHS[p.m - 1]} {p.d}</span>
+            <span className="fb-day-occ"><span className="fb-day-occ-bar" style={{ width: `${Math.min(100, d.occupancyPct || 0)}%` }} /></span>
+            <span className="fb-day-pct">{d.occupancyPct != null ? `${d.occupancyPct}%` : '—'}</span>
+            <span className="fb-day-flow">↓{d.arrivals} ↑{d.departures}</span>
+            {flag && <span className={`fb-day-flag fb-day-flag-${d.status}`}>{flag}</span>}
+          </button>
+        );
+      })}
+    </div>
+  </section>
+);
 
 // ── Sub-components ──────────────────────────────────────────
 
@@ -280,8 +124,8 @@ const StatBar = ({ label, value, accent, icon }) => (
 );
 
 const StatusPill = ({ status }) => {
-  const labels = { short: 'Short', surplus: 'Surplus', even: 'Even' };
-  return <span className={`fb-pill fb-pill-${status}`}>{labels[status]}</span>;
+  const labels = { short: 'Short', tight: 'Clean first', ok: 'OK', even: 'Even', surplus: 'OK', nodata: 'No data' };
+  return <span className={`fb-pill fb-pill-${status}`}>{labels[status] || status}</span>;
 };
 
 // Sprint 17.12 — grouped tree render. Each group has a header row
@@ -293,19 +137,40 @@ const StatusPill = ({ status }) => {
 // its current occupancy + HK status. Lets the FD verify questions
 // like "where is that 1 vacant NKRRP coming from?" without leaving
 // the page.
-const NeedTable = ({ groups, roomsByType }) => {
-  const [openType, setOpenType] = React.useState(null);
+const fmtNet = (n) => (n > 0 ? `+${n}` : String(n));
 
-  const toggle = (typeCode) => {
-    setOpenType(prev => prev === typeCode ? null : typeCode);
-  };
+// Columns per mode. TODAY answers "is it clean & ready, and if not, what must HK turn first?";
+// a FUTURE day answers "will a room of this type be free that night?" (HK status is irrelevant then).
+const COLS_TODAY = [
+  { key: 'total',   label: 'Total',          title: 'Rooms of this type in inventory',                                 get: r => r.totalRooms },
+  { key: 'ready',   label: 'Ready now',      title: 'Vacant and clean (Vacant-Inspected or Pickup) — sellable right now', get: r => r.ready },
+  { key: 'dirty',   label: 'Dirty vacant',   title: 'Vacant but still being cleaned',                                  get: r => r.dirty },
+  { key: 'freeing', label: 'Still departing', title: 'In-house guests due to check out today — their rooms free up',    get: r => r.freeing },
+  { key: 'arr',     label: 'Arriving',       title: 'Guests still to arrive today (not yet checked in)',               get: r => r.arrivals },
+  { key: 'clean',   label: 'Clean first',    title: 'Arrivals the ready rooms can’t cover — housekeeping should turn this many rooms first', get: r => Math.max(0, r.arrivals - r.ready), warn: true },
+  { key: 'short',   label: 'Short',          title: 'Still short even after cleaning every dirty room and counting departures', get: r => Math.max(0, -r.netProjected), warn: true },
+];
+const COLS_FUTURE = [
+  { key: 'total', label: 'Total',       title: 'Rooms of this type in inventory',                                  get: r => r.totalRooms },
+  { key: 'unsell', label: 'Unavailable', title: 'Out of order / off the market / on hold / blocked',               get: r => r.unsellable },
+  { key: 'occ',   label: 'Staying over', title: 'Guests whose stay continues through that night (guests leaving that day free their rooms)', get: r => r.occupied },
+  { key: 'avail', label: 'Available',   title: 'Sellable rooms minus guests staying over',                         get: r => r.available },
+  { key: 'arr',   label: 'Arriving',    title: 'Reservations arriving that day',                                   get: r => r.arrivals },
+  { key: 'bal',   label: 'Balance',     title: 'Available − Arriving',                                             get: r => fmtNet(r.net), balance: true },
+  { key: 'short', label: 'Short',       title: 'Arrivals that have no room of this type',                          get: r => Math.max(0, -r.net), warn: true },
+];
+
+const NeedTable = ({ model, roomsByType }) => {
+  const [openType, setOpenType] = React.useState(null);
+  const cols = model.isToday ? COLS_TODAY : COLS_FUTURE;
+  const toggle = (typeCode) => setOpenType(prev => prev === typeCode ? null : typeCode);
 
   const renderDetailRow = (typeCode) => {
     const rooms = (roomsByType.get(typeCode) || []).slice()
       .sort((a, b) => (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true }));
     return (
       <tr className="fb-detail-row">
-        <td colSpan={8}>
+        <td colSpan={cols.length + 3}>
           <div className="fb-detail-grid">
             {rooms.length === 0 && <span className="fb-detail-empty">No rooms of this type in the snapshot.</span>}
             {rooms.map(r => {
@@ -324,15 +189,24 @@ const NeedTable = ({ groups, roomsByType }) => {
     );
   };
 
+  const cell = (c, row, key) => (
+    <td key={key} className={`${c.balance ? `fb-balance fb-balance-${row.status}` : ''}${c.warn && c.get(row) > 0 ? ' fb-emph-warn' : ''}`}>{c.get(row)}</td>
+  );
+
   return (
     <div className="fb-card">
       <div className="fb-card-head">
-        <h2>Need by Room Type</h2>
-        <div className="fb-formula" title="Vacant Clean − Remaining Arrivals = Net Balance. Click any row to inspect the individual rooms.">
+        <h2>Need by Room Type · {model.isToday ? 'today' : fmtLong(model.date)}</h2>
+        <div className="fb-formula">
           <IconInfo />
           <div>
-            <div><strong>Formula:</strong> Vacant Clean − Remaining Arrivals = Net Balance</div>
-            <div className="fb-formula-sub">Click a row to inspect specific rooms. Group totals roll up subtypes — accessible/pet rooms can fulfil generic bookings.</div>
+            {model.isToday ? (
+              <><div><strong>Today:</strong> Ready now + Dirty + Still departing vs Arriving</div>
+              <div className="fb-formula-sub">“Clean first” = arrivals the ready rooms can’t cover yet. “Short” = not enough rooms even after cleaning. Group totals pool subtypes — accessible/pet rooms can fulfil generic bookings.</div></>
+            ) : (
+              <><div><strong>{fmtLong(model.date)}:</strong> Available (rooms − staying over) vs Arriving</div>
+              <div className="fb-formula-sub">Guests checking out that day free their rooms. Housekeeping status isn’t used for future days. Click a row to see the rooms.</div></>
+            )}
           </div>
         </div>
       </div>
@@ -342,30 +216,20 @@ const NeedTable = ({ groups, roomsByType }) => {
             <tr>
               <th>Room Type Code</th>
               <th>Room Type</th>
-              <th title="Total physical rooms of this type in inventory">Total Rooms</th>
-              <th title="Vacant + (VI Vacant Inspected OR PU Pickup awaiting FD inspection)">Vacant Clean</th>
-              <th title="Guests not yet checked in">Remaining Arrivals</th>
-              <th>Net Balance</th>
-              <th>Rooms Needed</th>
+              {cols.map(c => <th key={c.key} title={c.title}>{c.label}</th>)}
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {groups.length === 0 && (
-              <tr><td colSpan={8} className="fb-table-empty">No room types in the snapshot yet.</td></tr>
+            {model.groups.length === 0 && (
+              <tr><td colSpan={cols.length + 3} className="fb-table-empty">No room types in the snapshot yet.</td></tr>
             )}
-            {groups.map(g => (
+            {model.groups.map(g => (
               <React.Fragment key={g.baseCode || g.baseLabel}>
                 <tr className="fb-group-row">
                   <td><code className="fb-group-code">{g.baseCode || '—'}</code></td>
                   <td><strong>{g.baseLabel}</strong> <span className="fb-group-sub">· all subtypes</span></td>
-                  <td className="fb-cell-total">{g.totals.totalRooms}</td>
-                  <td>{g.totals.vacantClean}</td>
-                  <td>{g.totals.arrivals}</td>
-                  <td className={`fb-balance fb-balance-${g.totals.status}`}>
-                    {g.totals.netBalance > 0 ? `+${g.totals.netBalance}` : g.totals.netBalance}
-                  </td>
-                  <td className={g.totals.roomsNeeded > 0 ? 'fb-emph-warn' : ''}>{g.totals.roomsNeeded}</td>
+                  {cols.map(c => cell(c, g.totals, c.key))}
                   <td><StatusPill status={g.totals.status} /></td>
                 </tr>
                 {g.variants.map(v => {
@@ -382,13 +246,7 @@ const NeedTable = ({ groups, roomsByType }) => {
                           <code>{v.typeCode}</code>
                         </td>
                         <td className="fb-variant-label">{v.subLabel || 'Standard'}</td>
-                        <td className="fb-cell-total">{v.totalRooms}</td>
-                        <td>{v.vacantClean}</td>
-                        <td>{v.arrivals}</td>
-                        <td className={`fb-balance fb-balance-${v.status}`}>
-                          {v.netBalance > 0 ? `+${v.netBalance}` : v.netBalance}
-                        </td>
-                        <td className={v.roomsNeeded > 0 ? 'fb-emph-warn' : ''}>{v.roomsNeeded}</td>
+                        {cols.map(c => cell(c, v, c.key))}
                         <td><StatusPill status={v.status} /></td>
                       </tr>
                       {isOpen && renderDetailRow(v.typeCode)}
@@ -404,18 +262,17 @@ const NeedTable = ({ groups, roomsByType }) => {
   );
 };
 
-const ArrivalDetailTable = ({ rows }) => {
-  // Limit to today's arrivals only (the page's purpose), sort by
-  // guest name for readability.
+const ArrivalDetailTable = ({ rows, date, isToday }) => {
+  // Guests arriving on the selected day (today: both still-to-come and already checked in), by name.
   const arrivals = rows
-    .filter(r => r.kind === 'arrival')
+    .filter(r => r.arrivalDate === date && (r.status === 'RES' || (isToday && r.status === 'INH')))
     .slice()
     .sort((a, b) => (a.guestName || '').localeCompare(b.guestName || ''));
   return (
     <div className="fb-card">
       <div className="fb-card-head">
-        <h2>Arrival Detail Reference</h2>
-        <span className="fb-card-sub">{arrivals.length} arriving today</span>
+        <h2>Arrivals · {isToday ? 'today' : fmtLong(date)}</h2>
+        <span className="fb-card-sub">{arrivals.length} arriving</span>
       </div>
       <div className="fb-table-wrap">
         <table className="fb-table fb-detail-table">
@@ -423,20 +280,20 @@ const ArrivalDetailTable = ({ rows }) => {
             <tr>
               <th>Guest</th>
               <th>Room Type</th>
-              <th>Arrival Date</th>
+              <th>Room</th>
               <th>Source</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {arrivals.length === 0 && (
-              <tr><td colSpan={5} className="fb-table-empty">No arrivals in this snapshot.</td></tr>
+              <tr><td colSpan={5} className="fb-table-empty">No arrivals on this day.</td></tr>
             )}
             {arrivals.slice(0, 30).map(r => (
               <tr key={r.id}>
                 <td className="fb-cell-name">{r.guestName || '(no name)'}</td>
-                <td><code>{r.baseCode || '—'}</code></td>
-                <td>{r.arrivalDate || '—'}</td>
+                <td><code>{r.typeCode || r.baseCode || '—'}</code></td>
+                <td>{r.roomNumber || <span className="fb-muted">not assigned</span>}</td>
                 <td>{r.source || '—'}</td>
                 <td><span className={`fb-pill fb-pill-status-${(r.statusLabel || '').toLowerCase().replace(/[^a-z]/g, '')}`}>{r.statusLabel || '—'}</span></td>
               </tr>
@@ -454,44 +311,47 @@ const ArrivalDetailTable = ({ rows }) => {
 // Right-rail summary card. Sprint 17.12 — takes the grouped tree
 // directly. Per-group totals on the left; SVG bar chart on the
 // right comparing each group's Vacant Clean vs Arrivals.
-const ForecastSummaryCard = ({ groups }) => {
-  const maxVal = Math.max(1, ...groups.flatMap(g => [g.totals.vacantClean, g.totals.arrivals]));
-  const total  = groups.reduce((s, g) => s + g.totals.roomsNeeded, 0);
+const ForecastSummaryCard = ({ model }) => {
+  const groups = model.groups;
+  const avail = (t) => (model.isToday ? t.ready + t.dirty + t.freeing : t.available);
+  const maxVal = Math.max(1, ...groups.flatMap(g => [avail(g.totals), g.totals.arrivals]));
+  const short  = groups.reduce((s, g) => s + Math.max(0, -g.totals.netProjected), 0);
   return (
     <div className="fb-card">
       <h2>Forecast Summary</h2>
       <div className="fb-summary-grid">
         <ul className="fb-summary-list">
-          {groups.map(g => (
-            <li key={g.baseCode || g.baseLabel}>
-              <span>{g.baseCode || '—'} needed</span>
-              <strong className={g.totals.roomsNeeded > 0 ? 'fb-emph-warn' : 'fb-emph-ok'}>
-                {g.totals.roomsNeeded}
-              </strong>
-            </li>
-          ))}
+          {groups.map(g => {
+            const sh = Math.max(0, -g.totals.netProjected);
+            return (
+              <li key={g.baseCode || g.baseLabel}>
+                <span>{g.baseCode || '—'} short</span>
+                <strong className={sh > 0 ? 'fb-emph-warn' : 'fb-emph-ok'}>{sh}</strong>
+              </li>
+            );
+          })}
           <li className="fb-summary-total">
-            <span>Total needed</span>
-            <strong>{total} rooms</strong>
+            <span>Total short</span>
+            <strong>{short} rooms</strong>
           </li>
         </ul>
 
         <div className="fb-chart">
-          <div className="fb-chart-title">Vacant Clean vs Remaining Arrivals</div>
+          <div className="fb-chart-title">{model.isToday ? 'Rooms possible vs Arriving' : 'Available vs Arriving'}</div>
           <div className="fb-chart-legend">
-            <span className="fb-chart-key fb-chart-key-vc">Vacant Clean</span>
-            <span className="fb-chart-key fb-chart-key-ar">Remaining Arrivals</span>
+            <span className="fb-chart-key fb-chart-key-vc">{model.isToday ? 'Ready + dirty + departing' : 'Available'}</span>
+            <span className="fb-chart-key fb-chart-key-ar">Arriving</span>
           </div>
           {groups.map(g => {
-            const vcW = (g.totals.vacantClean / maxVal) * 100;
-            const arW = (g.totals.arrivals    / maxVal) * 100;
+            const vcW = (avail(g.totals) / maxVal) * 100;
+            const arW = (g.totals.arrivals / maxVal) * 100;
             return (
               <div className="fb-bar-group" key={`bar-${g.baseCode || g.baseLabel}`}>
                 <div className="fb-bar-label">{g.baseCode || '—'}</div>
                 <div className="fb-bars">
                   <div className="fb-bar-row">
                     <div className="fb-bar fb-bar-vc" style={{ width: `${vcW}%` }} />
-                    <span className="fb-bar-val">{g.totals.vacantClean}</span>
+                    <span className="fb-bar-val">{avail(g.totals)}</span>
                   </div>
                   <div className="fb-bar-row">
                     <div className="fb-bar fb-bar-ar" style={{ width: `${arW}%` }} />
@@ -576,51 +436,37 @@ const Forecast = () => {
     setSnapshot(data.snapshot || null);
   };
 
-  const needGroups = useMemo(() => computeNeedTree(snapshot?.payload), [snapshot]);
-  const notes      = useMemo(() => deriveOperationalNotes(needGroups), [needGroups]);
-  // Sprint 17.16 — index rooms by typeCode so the click-to-expand
-  // detail rows in NeedTable can list which specific rooms each
-  // typeCode contains + their current statuses.
+  // Sprint 21 — selected day (0 = today … 13), remembered for the browser session.
+  const [dayOffset, setDayOffset] = useState(() => {
+    try { const n = parseInt(sessionStorage.getItem('hotelops-fc-day'), 10); if (Number.isInteger(n) && n >= 0 && n < 14) return n; } catch { /* ignore */ }
+    return 0;
+  });
+  useEffect(() => { try { sessionStorage.setItem('hotelops-fc-day', String(dayOffset)); } catch { /* ignore */ } }, [dayOffset]);
+
+  const payload = snapshot?.payload;
+  const outlook = useMemo(() => buildOutlook(payload, 14), [payload]);
+  const model   = useMemo(
+    () => (payload && payload.forecastDate ? buildDayModel(payload, addDays(payload.forecastDate, dayOffset)) : null),
+    [payload, dayOffset]);
+  const notes   = useMemo(() => (model ? deriveNotes(model) : []), [model]);
+  // Click-to-expand rows list the physical rooms of each typeCode with their current status.
   const roomsByType = useMemo(() => {
     const m = new Map();
-    for (const r of snapshot?.payload?.perRoomSheet || []) {
+    for (const r of payload?.perRoomSheet || []) {
       if (!r.typeCode) continue;
       if (!m.has(r.typeCode)) m.set(r.typeCode, []);
       m.get(r.typeCode).push(r);
     }
     return m;
-  }, [snapshot]);
+  }, [payload]);
 
-  const totals = useMemo(() => {
-    // Sums roll up the group totals (substitutability already
-    // baked in). Deficit/surplus type counts use group status —
-    // we don't separately ding each subtype since the user's
-    // dashboard view is category-level.
-    const totalRoomsNeeded = needGroups.reduce((s, g) => s + g.totals.roomsNeeded, 0);
-    const totalVacantClean = needGroups.reduce((s, g) => s + g.totals.vacantClean, 0);
-    const derivedArrivals  = needGroups.reduce((s, g) => s + g.totals.arrivals,    0);
-    const deficitTypes     = needGroups.filter(g => g.totals.status === 'short').length;
-    const surplusTypes     = needGroups.filter(g => g.totals.status === 'surplus').length;
-    // Sprint 17.15 — for the top "Remaining arrivals" stat use
-    // rGuest's authoritative number when available so the
-    // Forecast page matches the Reservations page's headline. If
-    // the metrics endpoint didn't respond, fall back to our
-    // derived sum. `derivedArrivals` is exposed separately so
-    // the UI can show a small note when the two disagree.
-    const metricRemaining = snapshot?.payload?.metricsSnapshot?.remainingArrivals?.remaining;
-    const totalArrivals   = Number.isFinite(metricRemaining) ? metricRemaining : derivedArrivals;
-    return {
-      totalRoomsNeeded,
-      totalVacantClean,
-      totalArrivals,
-      derivedArrivals,
-      metricRemaining: Number.isFinite(metricRemaining) ? metricRemaining : null,
-      deficitTypes,
-      surplusTypes,
-    };
-  }, [needGroups, snapshot]);
+  // Today's headline numbers prefer rGuest's own metric for "remaining arrivals" (same source as Reservations).
+  const metricRemaining = payload?.metricsSnapshot?.remainingArrivals?.remaining;
 
   const lastSync = snapshot ? fmtTime(snapshot.scraped_at) : '—';
+  // Room conditions change by the minute; a stale snapshot makes "today" misleading.
+  const ageHours = snapshot?.scraped_at ? (Date.now() - new Date(snapshot.scraped_at).getTime()) / 3600000 : 0;
+  const snapshotStale = ageHours > 3;
 
   return (
     <div className="fb-page">
@@ -633,7 +479,7 @@ const Forecast = () => {
           </div>
           <h1>Room Forecast</h1>
           <p className="fb-subtitle">
-            Room-type availability forecast from Agilysys rGuest Stay and housekeeping room conditions.
+            Will each room type have enough rooms? Pick a day — today shows what’s clean and ready; later days look ahead.
           </p>
           <div className="fb-meta-actions">
             <button className="fb-meta-link" onClick={() => setHistoryOpen(true)}>
@@ -687,29 +533,44 @@ const Forecast = () => {
         </div>
       )}
 
-      {snapshot && (
+      {snapshot && model && (
         <>
-          <section className="fb-stats" aria-label="Top stats">
-            <StatBar label="Total rooms needed today" value={totals.totalRoomsNeeded} accent="warn"    icon={<IconBed />} />
-            <StatBar label="Total vacant clean"       value={totals.totalVacantClean} accent="success" icon={<IconCheck />} />
-            <StatBar label="Remaining arrivals"       value={totals.totalArrivals}    accent="info"    icon={<IconBriefcase />} />
-            <StatBar label="Deficit room types"       value={totals.deficitTypes}     accent="warn"    icon={<IconWarn />} />
-            <StatBar label="Surplus room types"       value={totals.surplusTypes}     accent="success" icon={<IconTrend />} />
-          </section>
+          {snapshotStale && (
+            <div className="fb-stale" role="status">
+              This snapshot is {Math.floor(ageHours)} hours old — room conditions and arrivals may have changed.
+              Run the scraper on the <button className="fb-empty-link" onClick={() => goTo('reservations')}>Reservations</button> page, then tap <strong>Sync arrivals</strong>.
+            </div>
+          )}
 
-          {/* Sprint 17.16 — mismatch banner removed per user
-              feedback. The top-stat now uses rGuest's metric (the
-              source of truth) and the per-type breakdown is
-              derived; if a small residual gap persists after
-              17.16's dedup, it's not surfaced visually. */}
+          <OutlookStrip days={outlook} selected={dayOffset} onSelect={setDayOffset} />
+
+          <section className="fb-stats" aria-label="Top stats">
+            {model.isToday ? (
+              <>
+                <StatBar label="Arrivals still to come" value={Number.isFinite(metricRemaining) ? metricRemaining : model.totals.remainingArrivals} accent="info" icon={<IconBriefcase />} />
+                <StatBar label="Clean rooms ready"      value={model.totals.ready}        accent="success" icon={<IconCheck />} />
+                <StatBar label="Clean these first"      value={model.totals.cleanFirst}   accent="warn"    icon={<IconBed />} />
+                <StatBar label="Short even after cleaning" value={model.totals.roomsShort} accent="warn"   icon={<IconWarn />} />
+                <StatBar label="Occupied tonight"       value={model.totals.occupancyPct != null ? `${model.totals.occupancyPct}%` : '—'} accent="info" icon={<IconTrend />} />
+              </>
+            ) : (
+              <>
+                <StatBar label="Arrivals"          value={model.totals.arrivals}   accent="info"    icon={<IconBriefcase />} />
+                <StatBar label="Departures"        value={model.totals.departures} accent="default" icon={<IconBed />} />
+                <StatBar label="Occupied that night" value={model.totals.occupancyPct != null ? `${model.totals.occupancyPct}%` : '—'} accent="success" icon={<IconTrend />} />
+                <StatBar label="Rooms short"       value={model.totals.roomsShort} accent="warn"    icon={<IconWarn />} />
+                <StatBar label="Room types short"  value={model.totals.shortGroups} accent="warn"   icon={<IconCheck />} />
+              </>
+            )}
+          </section>
 
           <div className="fb-body">
             <main className="fb-main">
-              <NeedTable groups={needGroups} roomsByType={roomsByType} />
-              <ArrivalDetailTable rows={snapshot.payload.reservations || []} />
+              <NeedTable model={model} roomsByType={roomsByType} />
+              <ArrivalDetailTable rows={payload.reservations || []} date={model.date} isToday={model.isToday} />
             </main>
             <aside className="fb-rail">
-              <ForecastSummaryCard groups={needGroups} />
+              <ForecastSummaryCard model={model} />
               <OperationalNotes notes={notes} />
             </aside>
           </div>

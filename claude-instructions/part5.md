@@ -1,9 +1,178 @@
 # Claude Instructions — HotelOps (Part 5: Sprint 19+)
 
-> **Read this AND `part1.md` … `part4.md` (same folder) every iteration
-> before you start work.** Part 4 covers Sprints 17.0–18.14. Part 5
+> **Read §0 HANDOFF below first, then this AND `part1.md` … `part4.md` (same folder)
+> every iteration before you start work (part1–3 only if the task touches early sprints).** Part 4 covers Sprints 17.0–18.14. Part 5
 > starts here with Sprint 19 and continues with new entries from 19.1
 > onward. Also read `MEMORY.md` (auto-memory index).
+
+---
+
+## 0. HANDOFF — read this first (written 2026-10-07, end of Sprint 20)
+
+**State of the project.** Sprints 19.1–20.5 are built, tested and (per the user)
+deployed. Sprint 21 = **Room Forecast revamp**.
+
+**Sprint 19 — bug-fix sprint (all done)**
+| # | What | Key facts |
+|---|------|-----------|
+| 19.1 | DB compute-hours blowup | Cause: Sprint 18.13's 5-min server `setInterval` kept Neon awake 24/7. Fix: request-driven throttled cap. **Result 4.6 h/7 days.** Rule: *no timers/polls that touch the DB* (memory `no_db_timers_neon_cost`). |
+| 19.2 | Staff detail UI | Compact profile card, weekly time-entries navigator (Mon–Sun, client-side). |
+| 19.3 | Delete time entry, auth audit | `DELETE /admin/time-entries/:id` (transaction + audit). Migration **026** (`approval_requests` FK cascade). Audit found 21 unauthenticated routes. |
+| 19.4 | Closed the auth gaps | All `/api/admin/*` admin-only (except `GET /admin/departments`, `/shifts/*`, `/directory` = any user); legacy phone-only routes removed; `JWT_SECRET` fallback now random-per-boot; `authFetch` for non-public calls; async-error shim so a DB error can't kill the process. |
+| 19.5 | rGuest login 401 | Root cause: Koyeb env var not updated (not the code). Creds are now trimmed; login is never retried (lockout protection). |
+
+**Sprint 20 — Reservations redesign (all done)**
+| # | What |
+|---|------|
+| 20.1 | Header: title + last-sync + icon-only refresh on one line. |
+| 20.2 | **Scraper v2**: after the list scrape a background job deep-fetches ~25 sections per reservation into `reservation_detail` (raw JSONB + compact `summary` + per-section status). UI reads only stored data. Migration **027**. Files: `server/agilysys/client.js` (`deepFetchReservation`), `server/forecast/{detailJob,summarize}.js`. |
+| 20.3 | **Found + fixed a data-loss bug:** rGuest's `search/date` pagination is unstable → the old scraper dropped ~15–19% of reservations every scrape. New `client.fetchReservationsExact` (memory `rguest_search_quirks`). Status tabs (Remaining arrivals default). Tab counts match rGuest's own numbers 5/5. |
+| 20.4 | Dense inline cards (phone + desktop), expand in place, right rail removed. |
+| 20.5 | Search (name/conf/room instant + phone/email/notes server-side), needs-attention chips + sort, print desk list, CSV export, retention (default 90 days, setting in Forecast settings), delete-saved-details, auto-refresh-on-open, session-remembered view. |
+
+**Migrations to have applied on Koyeb:** 026, 027 (user reports deployed). 024/025 earlier.
+**Env on Koyeb:** `JWT_SECRET` (≥32 chars), `AGILYSYS_USER`/`AGILYSYS_PASS` (+ redeploy after changing), `DATABASE_URL`.
+
+**Open / known follow-ups (not done)**
+- Admin accounts still in plaintext `server/config/admins.json`; no login rate-limit; `/dev` panel gate is client-side `dev`/`dev`. A DB-backed admin table with bcrypt + token invalidation was discussed (own sprint).
+- Old `forecast_snapshot` rows (before 20.3) are incomplete by ~15–19%; not backfilled.
+- Search can't see reservations whose details aren't stored yet; print capped at 500 rows; attention chips only on views ≤ 200 rows.
+- `searchAllReservationsByDate` (client.js) is deprecated/unused — delete.
+- Comments / preferences / loyalty were empty in every probed reservation: `summarize.js` reads them defensively; check how they render once a real one appears.
+- Test scripts written in Sprints 19–20 were lost with the temp folder (see `tests/README.md` for what survives and what to rebuild).
+
+### SPRINT 21 BRIEF — Room Forecast revamp (Forecast page)
+
+**User report (2026-10-07):** "after the reservation revamp, the room forecast is just
+not working at all." Exact symptom not yet captured — **ask for a screenshot / what
+they see / console error first.**
+
+**What I verified at handoff (read-only, no code changed):**
+- The Forecast page (`src/components/Forecast/index.js`, 727 lines; header says it
+  reads `byRoomType` + `perRoomSheet` + `reservations` from `forecast_snapshot.payload`)
+  **renders without crashing** against a payload from a *live* scrape
+  (`tests/fcrender.js`; jsdom; no console errors). So it is probably **wrong/stale
+  numbers or a data-flow problem, not a JS crash.**
+- With that live payload the page showed: *Total rooms needed today **0**, Total vacant
+  clean **24**, Remaining arrivals **10**, Deficit types 0, Surplus types 3* — while
+  `byRoomType` listed 16 arrivals / 10 departures / 15 stayovers for the top type.
+  The page's logic is simply `Vacant Clean − Remaining Arrivals = Net Balance` per
+  room-type group (`buildNeedTree`, lines ~63–230) and it counts only
+  `kind==='arrival' && status==='RES'` (remaining arrivals). It ignores rooms that
+  **will be freed by today's remaining departures**, early/late timing, stayover
+  service, future-day look-ahead, etc. — likely why it feels useless now.
+
+**Suspects to check first (in order)**
+1. **Data it consumes changed in 20.3:** `reservations` now comes from
+   `fetchReservationsExact` (complete list, ~556–609 rows, includes up to 30 days of
+   future RES). Anything on the Forecast page that assumed the old (incomplete) set,
+   or that filters on `kind`/`status`, may now be off. `payload.kpis`, `byRoomType`,
+   `perRoomSheet` come from `server/forecast/compute.js` (`computeForecast`), which was
+   **not** changed in 20.x except `payload.reservationsComplete` — but its *inputs* did.
+2. **"Sync arrivals" button** only re-reads `/admin/forecast/snapshots/latest`; it does
+   not scrape. The empty state / meta link send the user to `goTo('reservations')` —
+   verify that view name still routes (AdminShell) and that users know to scrape on the
+   Reservations page first. The scrape now returns before guest details finish (background
+   job) — harmless for the forecast, but the UX around "latest snapshot" may confuse.
+3. **Stale/deduped snapshots:** `runScrape` dedupes by payload hash within
+   `dedup_window_minutes` (default 60). Since `reservationsComplete` is now part of the
+   payload, hashes changed once; check the "Last sync" the page shows vs reality.
+4. **Room-type mapping:** `room_type_mapping` auto-inserts new typeCodes (15 `newMappings`
+   appeared in the live run with an empty mapping table). If the prod mapping table has
+   `needs_review` rows (`base_code NULL`), those rooms vanish from grouped totals.
+5. **Rooms supply side:** `perRoomSheet` (100 rooms) uses `config/rooms` HK status
+   (D/PU/VI/IP) — 17.15 decided **PU = clean**. Re-verify against the rGuest HK Condition
+   page; also `vacant clean` should probably consider *inspected vs pickup* policy.
+6. Open the browser console on the live page — if there is a runtime error it will
+   only show with the production payload (e.g. a field that is `null` in prod).
+
+**Suggested Sprint 21 shape (propose, then confirm with the user):**
+21.1 reproduce + capture the exact symptom; fix whatever is actually broken.
+21.2 correct the supply/demand model (arrivals still to place **vs** vacant-clean now
+**+ rooms freeing up from remaining departures + stayover rooms that stay**), per room
+type with substitutability (accessible/pet rooms can serve generic bookings — already
+in `buildNeedTree`), hour-by-hour or "by 3 PM check-in" view, tomorrow/next-7-days
+look-ahead using the 30-day future reservations we now fetch completely.
+21.3 actionable output for HK: which rooms to clean first (priority list by arrival
+time / type shortage), printable sheet (reuse the 20.5 print approach — beware the
+17.4 `@media print { body * {visibility:hidden} }` rule), accuracy check against rGuest's
+own room-condition numbers (like the 20.3 tab-count validation).
+21.4 mobile/desktop layout polish using the same dense-card language as Reservations.
+21.5 (small) widen the stored *list-level* future window to ~12 months, separate from the 30-day
+*detail* window — see "ROADMAP after Sprint 21" below.
+Use the same working method as Sprint 20: validate numbers against rGuest's own
+metrics (`reservationMetrics`, `housekeeping/roomconditions`) before building UI.
+
+### ROADMAP after Sprint 21 (agreed with the user 2026-10-11)
+
+**Sprint 21 small addition — widen the *list-level* future window.** The exact fetch
+already pulls every booked (RES) reservation from today onward (~745 rows); `compute.js`
+then trims to `future_window_days` (default 30) so nothing past ~30 days is stored.
+For the Forecast look-ahead (and later analytics) store **list-level** rows for ~12 months
+ahead, but keep the **guest-detail window separate and short** (e.g. 30 days) so the detail
+job doesn't fetch ~750 × 25 calls. i.e. split `list_window_days` (365) from
+`detail_window_days` (30). Verify snapshot payload size and `reservation_history` growth.
+
+**Sprint 22 — Data foundation: incremental mirror (scraper DB revamp) + forecast update.**
+Goal: stop treating each scrape as a new copy; make a typed, merged database the single
+source of truth for the Forecast, Reservations and (later) an AI assistant.
+- *Tables (relational columns for what we filter/count + raw JSONB):* `reservations`
+  (one row per reservation id: confirmation, status, arrival, departure, nights, room
+  type/number, rate plan/source, group id/name, adults/children, booked/cancelled at,
+  totals, `raw` JSONB, `fingerprint`, first_seen / last_seen / last_changed),
+  `reservation_events` (append-only change log: status/room/date changes → cancellations,
+  pace, forecast accuracy), `groups`, `daily_rollups` (per date: arrivals, departures,
+  in-house, rooms sold, ADR-ish — computed after each sync), `sync_runs` (what ran, window
+  covered, completeness, duration). Keep `reservation_detail` (rich guest data) as is.
+- *Sync:* **upsert by reservation id** using the 20.2 fingerprint; never delete — mark
+  cancelled/`gone`. First run = **backfill 12 months back + 12 months ahead** in monthly,
+  resumable, throttled chunks (past via INH/DPT date-range slices that are exact single
+  pages; future via the RES union-walk). Re-check the last 7 days each sync (late changes).
+  Daily **auto-sync** + manual on request. **No in-process timer** (19.1): trigger from an
+  external scheduler (GitHub Actions cron / cron service) calling a secret-protected
+  endpoint once a day; each wake ≈ 10 min of DB time ≈ $0.20/month at $0.04/h.
+- *Storage:* unlimited on the Small plan, so storage is not the constraint. The real limits
+  are (1) **rGuest API load / lockout** — backfill must be throttled, resumable, checkpointed,
+  stop on any rejected login; (2) **query speed on a 0.25 vCPU / 1 GB DB** — typed, indexed
+  columns, not scans of big JSONB; (3) **privacy** — long-term analytics need no names/contact
+  info; guest PII stays under the retention setting (default 90 days after check-out; user may
+  raise it). Optional later: deep detail backfill for history (~17k reservations × ~25 calls ≈
+  hours of throttled calls) only if wanted.
+- *Snapshots:* slim `forecast_snapshot` to KPIs/derived values + audit; stop storing the full
+  reservations array per scrape.
+- *Forecast function:* rebuild `computeForecast`/the Forecast page on the merged tables
+  (look-ahead, pace, rooms freed by departures, rollups) — builds on whatever Sprint 21 fixes.
+- *Acceptance:* counts match rGuest's own metrics (the 20.3 method) after every sync;
+  idempotent re-runs change nothing; backfill resumable after a kill; a sync costs < ~2 min.
+
+**Later (design agreed, not scheduled) — in-app AI assistant ("how many check-ins today?").**
+- *Not* vector-RAG for numbers. **LLM + tool calling**: a hosted model picks from fixed,
+  read-only, admin-only tools (and later flexible *validated-parameter* query tools like
+  `count_reservations(date_range, status, room_type, group_text, source)` — code builds the
+  SQL, the model never writes raw SQL); tools return the numbers, the model only routes and
+  phrases. MCP is optional later (same tools wrapped for Claude Desktop etc.).
+- *Anti-hallucination rules:* every number must come from a tool result in the same turn;
+  **"no data for that range" ≠ 0** (tools return coverage errors, never empty lists, when the
+  range isn't synced); every result carries coverage (min/max synced date, last sync, completeness);
+  validate/refuse unknown filters; a post-check that numbers in the answer ⊆ tool results;
+  show the tool + filters + "as of" under each answer; ask/state definitions for fuzzy terms
+  ("wedding" = group/segment/comment text match — say so); log **unanswerable questions** as a
+  backlog of tools/data to build; keep a ~30-question eval set incl. "should refuse" cases.
+- *Text search / vector index only for unstructured text:* guest comments, group names, the
+  handoff logbook, SOPs.
+- *Privacy:* aggregates by default; names/contact only when the question needs them; check the
+  provider's retention terms before sending guest data.
+- *Prereqs = Sprint 22* (typed data + coverage metadata).
+
+**Working conventions (keep following)**
+- Log each sprint in this file, newest first, before moving on; keep the status table
+  above current. Part files: this is `part5.md`; index is `../claude-instructions.md`.
+- Every non-public API call uses `apiFetch`/`authFetch`; new staff-facing data needs a
+  staff-safe endpoint (memory `api_auth_convention`).
+- No DB-touching timers/polls (memory `no_db_timers_neon_cost`).
+- Verify with real rendering/SQL, not just builds (memory `testing_approach`); never loop
+  live rGuest scripts; never hit Agilysys-backed routes with an admin token in tests.
+- Deploy order for anything schema-related: migration → deploy → scrape once.
 
 ---
 
@@ -14,7 +183,7 @@ sub-sprint list.
 
 | Sub-sprint | Focus                                                        | Status |
 |------------|--------------------------------------------------------------|--------|
-| 19.1       | Koyeb/Neon DB compute hours ballooned (~140 h / ~$30)       | Deployed — user monitoring DB graph |
+| 19.1       | Koyeb/Neon DB compute hours ballooned (~140 h / ~$30)       | **Confirmed fixed** — 4.6 compute-h over 7 days (Oct 1–7) ≈ 0.65 h/day ≈ 20 h/month ≈ **$0.80/month** at $0.04/h (Small plan), ~85% down |
 | 19.2       | Staff detail UI: compact profile card + weekly time entries | Built; layout verified at 390 px + 1280 px (static render) |
 | 19.3       | Delete time entry, entries above PIN, mobile/PC polish, **endpoint auth audit** | Built, not yet run against live DB; audit done |
 | 19.4       | Fix auth gaps found in 19.3 audit (21 unprotected routes)    | Built + route-matrix tested locally (80/80); **deploy as one release, then click-through** |
@@ -941,6 +1110,15 @@ stays open in the DB until the first morning request.
 **Verified.** `node --check server/server.js` passes; no `setInterval`
 remains in `server/` (only explanatory comments). **Not yet verified
 against the live DB** — see checklist.
+
+**RESULT (2026-10-07, user-reported):** after 7 days the Koyeb DB showed **~4.6
+compute-hours** (vs ~140 h the month before; ≈ 0.65 h/day ≈ 20 h/month). **Pricing
+(user-supplied, Koyeb DB Small plan): $0.04 per active hour, capped at $29.76/month
+(= 744 h = always on), unlimited storage; Free plan = 5 h + 1 GB.** So ≈ **$0.80/month
+now**; the old ~140 h was ≈ $5.60 so far and was heading for the $29.76 cap while the
+DB never slept. (An earlier note here said "$4–5/month" using a wrongly inferred rate —
+corrected 2026-10-11.) Fix confirmed. Keep watching: the background
+detail job (20.2), search (20.5) and scrapes wake the DB only when an admin uses them.
 
 **Post-deploy checklist (user).**
 1. Deploy to Koyeb. Watch the Koyeb DB "active time" / compute-hours

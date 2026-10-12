@@ -38,3 +38,4 @@ ALTER TABLE approval_requests
   FOREIGN KEY (entry_id) REFERENCES time_entries(entry_id) ON DELETE CASCADE;
 
 COMMIT;
+

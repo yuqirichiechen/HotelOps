@@ -376,6 +376,11 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses,
       subSuffix:         mapping ? mapping.sub_suffix : '',
       subLabel:          mapping ? mapping.sub_label  : 'Standard',
       occupancyStatus:   room.currentOccupancyStatus || room.roomInventoryStatus || null,
+      // Sprint 21: kept separately so the forecast can exclude unsellable rooms. rGuest's inventory
+      // statuses (catalog /roominventorystatuses): OOO Out of Order, OTM Off the Market, HOLD On Hold;
+      // `blocked` is the room-level block flag. (Today every room is OCC/VAC and unblocked.)
+      inventoryStatus:   room.roomInventoryStatus || null,
+      blocked:           !!room.blocked,
       hkStatus:          room.housekeepingRoomStatus  || null,
       hkStatusLabel:     HK_STATUS_LABELS[room.housekeepingRoomStatus] || room.housekeepingRoomStatus || null,
       action,
@@ -619,6 +624,8 @@ function computeForecast({ rooms, roomTypes, reservations, metrics, vipStatuses,
     byFloor,
     perRoomSheet,
     reservations: reservationsOut, // Sprint 17.7 — for the per-guest UI
+    // Sprint 21: how many days ahead `reservations` is complete for (the forecast outlook greys out days beyond it).
+    futureWindowDays,
     dispatchSummary,
     scraperOutput,
     newMappings, // caller upserts into room_type_mapping

@@ -26,8 +26,13 @@
    (Agilysys rGuest Stay integration) and onward.
 
 5. **[claude-instructions/part5.md](./claude-instructions/part5.md)** —
-   iteration log for **Sprint 19.0+**. Bug-fix sprint, starting with the
-   Koyeb/Neon DB compute-hours blowup (19.1).
+   iteration log for **Sprints 19.1–20.5** (bug-fix sprint + Reservations redesign) and
+   onward. **Starts with a §0 HANDOFF section (current state, open items, and the
+   Sprint 21 Room Forecast brief) — read that first.** Test notes: `tests/README.md`.
+
+6. **[claude-instructions/part6.md](./claude-instructions/part6.md)** —
+   iteration log for **Sprint 21+** (Room Forecast revamp, then the scraper database
+   revamp). The roadmap/brief for it lives in part5 §0.
 
 ## Why split
 
@@ -39,8 +44,8 @@ valid.
 
 ## When to write where
 
-- **New sprint entry**: append to the most recent part file (`part5.md`
-  as of Sprint 19). Never touch older parts.
+- **New sprint entry**: append to the most recent part file (`part6.md`
+  as of Sprint 21). Never touch older parts.
 - **Updating an old entry / fixing a typo**: edit the original part in
   place.
 - **Architectural decision that changes the project shape** (auth
@@ -48,3 +53,5 @@ valid.
   part with a "**Sprint-wide impact**" header.
 - **Don't move sprint entries between parts.** Split points are fixed
   (9.4.1 → 10, 14.3 → 15, 16.9 → 17, 18.14 → 19); respect them.
+- **Part 5 is now large (Sprints 19–20).** Start Sprint 21 in a new `part6.md` (add it to
+  this index) and keep §0-style handoff notes at the top of the newest part.
