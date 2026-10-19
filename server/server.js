@@ -94,6 +94,8 @@ app.use('/api', async (req, res, next) => {
   // DB-free (JWT + rGuest only), so it must NOT trigger this DB query either — otherwise a Forecast page left open on
   // a front-desk monitor would keep Neon awake all day (the 19.1 bug in a new form).
   if (req.path === '/admin/forecast/live') return next();
+  // Sprint 22: the external scheduler pings /sync/tick every ~5 min. A tick with nothing due must stay DB-free too.
+  if (req.path === '/sync/tick') return next();
   const now = Date.now();
   if (now - capLastRunAt < CAP_THROTTLE_MS) return next();
   if (!capInFlight) {
@@ -4611,13 +4613,14 @@ app.delete('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin
 // reused), a 20 s cache and in-flight de-duplication so several admins/tabs never multiply the calls.
 // A rejected rGuest login is remembered by the client and never retried (account-lockout protection).
 let _liveClient = null;
+const getSharedAgilysys = () => (_liveClient = _liveClient || createAgilysysClient());   // ONE client (one login/token) for live board + sync
 const _live = { at: 0, data: null, inflight: null };
 const LIVE_TTL_MS = 20 * 1000;
 app.get('/api/admin/forecast/live', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     if (_live.data && Date.now() - _live.at < LIVE_TTL_MS) return res.json({ success: true, cached: true, live: _live.data });
     if (!_live.inflight) {
-      _liveClient = _liveClient || createAgilysysClient();
+      getSharedAgilysys();
       _live.inflight = _liveClient.fetchTodayLive()
         .then(d => { _live.data = d; _live.at = Date.now(); return d; })
         .finally(() => { _live.inflight = null; _liveClient.clearLogs(); });
@@ -4629,6 +4632,44 @@ app.get('/api/admin/forecast/live', requireAuth, requireRole('admin'), async (re
     return res.status(502).json({ success: false, message: 'Could not read live room data from rGuest.' });
   }
 });
+
+// ── Sprint 22: auto-sync engine ───────────────────────────────────────────────
+// POST /api/sync/tick is pinged every ~5 min by an EXTERNAL scheduler (cron-job.org) with the header
+// `x-sync-secret: <SYNC_TICK_SECRET>`. It is the one non-JWT route besides login: it only decides (in memory) whether a sync is
+// due and starts it in the background. Nothing in the request body is trusted. Skipped by the shift-cap DB middleware above.
+const { createSyncEngine } = require('./sync/engine');
+const syncEngine = createSyncEngine({ getPool: () => pool, getClient: () => getSharedAgilysys() });
+const _secretOk = (given) => {
+  const want = process.env.SYNC_TICK_SECRET || '';
+  if (!want || want.length < 16 || typeof given !== 'string') return false;
+  const a = Buffer.from(given), b = Buffer.from(want);
+  return a.length === b.length && require('crypto').timingSafeEqual(a, b);
+};
+app.post('/api/sync/tick', async (req, res) => {
+  if (!process.env.SYNC_TICK_SECRET || process.env.SYNC_TICK_SECRET.length < 16) return res.status(503).json({ success: false, message: 'Sync is not configured.' });
+  if (!_secretOk(req.get('x-sync-secret'))) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  try { return res.status(202).json({ success: true, ...(await syncEngine.tick()) }); }
+  catch (err) { console.error('[sync:tick]', err && err.message); return res.status(500).json({ success: false, message: 'Sync tick failed.' }); }
+});
+app.get('/api/admin/sync/status', requireAuth, requireRole('admin'), async (req, res) => {
+  try { return res.json({ success: true, status: await syncEngine.getStatus(), tickConfigured: !!(process.env.SYNC_TICK_SECRET && process.env.SYNC_TICK_SECRET.length >= 16) }); }
+  catch (err) { console.error('[sync:status]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.put('/api/admin/sync/settings', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const out = await syncEngine.updateSettings(req.body || {});
+    if (!out.ok) return res.status(400).json({ success: false, message: out.errors.join('; '), errors: out.errors });
+    return res.json({ success: true, settings: out.settings });
+  } catch (err) { console.error('[sync:settings]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.post('/api/admin/sync/run', requireAuth, requireRole('admin'), async (req, res) => {
+  const kind = req.body && req.body.kind;
+  if (!['frequent', 'hourly', 'reconcile', 'backfill', 'full'].includes(kind)) return res.status(400).json({ success: false, message: 'kind must be frequent, hourly, reconcile, backfill or full' });
+  try { return res.status(202).json({ success: true, ...(await syncEngine.trigger(kind)) }); }
+  catch (err) { console.error('[sync:run]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+// Write any buffered scan results before the process exits (best effort; the next tick re-detects anything lost).
+for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { syncEngine.flushNow().catch(() => {}).finally(() => process.exit(0)); });
 
 // GET /api/admin/forecast/jobs/latest — progress of the newest deep-fetch run.
 app.get('/api/admin/forecast/jobs/latest', requireAuth, requireRole('admin'), async (req, res) => {

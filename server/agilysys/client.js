@@ -449,6 +449,49 @@ function createAgilysysClient(overrides = {}) {
     return { items: [...map.values()], complete, calls };
   }
 
+  // ── Sprint 22: building blocks for the incremental sync (server/sync/*) ──
+  // rGuest's search has no modified-since filter and ignores `sort`; result ORDER is non-deterministic (probe:
+  // tests/forecast-probe-incremental.js), so we detect changes ourselves from exact slices and cheap counts.
+
+  // RES range semantics (live-probed 2026-10-19, tests/forecast-probe-incremental.js + part6): a RES range [from, to) returns every
+  // reservation with at least one NIGHT inside it — arrival < to AND departure > from — i.e. a SUPERSET of the arrivals in the range
+  // (stays that began earlier and continue into it are included). The end is EXCLUSIVE. Splitting must therefore use half-open halves
+  // [from,mid) + [mid,to): the inclusive split sliceExact() uses for INH/DPT/CXL would drop 1-night stays that arrive exactly on `mid`
+  // (the Sprint 22 live dry run lost 25 such reservations).
+  const daysBetweenYmd = (a, b) => Math.round((Date.UTC(...b.split('-').map((n, i) => (i === 1 ? n - 1 : n))) - Date.UTC(...a.split('-').map((n, i) => (i === 1 ? n - 1 : n)))) / 86400000);
+  async function resSliceExact(from, to, size) {
+    const first = await searchRange({ from, to, statuses: ['RES'], size });
+    const total = typeof first.totalElements === 'number' ? first.totalElements : (first.content || []).length;
+    const days = daysBetweenYmd(from, to);
+    if (total <= size) {
+      const map = new Map((first.content || []).map(x => [x.id, x]));
+      if (map.size === total) return { map, complete: true, calls: 1 };
+      log('warn', 'agilysys.reservations.res_single_page_mismatch', { from, to, total, unique: map.size });
+    }
+    if (days <= 1) return unionWalk(from, to, ['RES'], size);            // one night with more than a page of stays: repeated walks, unioned
+    const mid = addDaysYmd(from, Math.floor(days / 2));
+    const parts = await Promise.all([resSliceExact(from, mid, size), resSliceExact(mid, to, size)]);
+    const map = new Map(); let complete = true, calls = 1;
+    parts.forEach(pt => { pt.map.forEach((v, k) => map.set(k, v)); complete = complete && pt.complete; calls += pt.calls; });
+    return { map, complete, calls };
+  }
+
+  /**
+   * Exact reservations for ONE status over a date range.
+   *   RES                → every reservation with a night in [from, to)  (end exclusive; includes stays that began earlier)
+   *   INH / DPT / CXL …  → inclusive day range [from, to]
+   */
+  async function fetchSliceExact(from, to, statuses, size = 99) {
+    const r = (statuses && statuses.length === 1 && statuses[0] === 'RES' && from < to) ? await resSliceExact(from, to, size) : await sliceExact(from, to, statuses, size);
+    return { items: [...r.map.values()], complete: r.complete, calls: r.calls };
+  }
+
+  /** totalElements for a slice — one tiny call; used as a change detector (stable between runs). */
+  async function countSlice(from, to, statuses) {
+    const r = await searchRange({ from, to, statuses, size: 1 });
+    return typeof r.totalElements === 'number' ? r.totalElements : (r.content || []).length;
+  }
+
   // ── Sprint 21.3: LIVE "today board" (no database) ──────────────────────
   // What the Room Forecast needs RIGHT NOW to answer "do we still have rooms to sell today?": live room
   // conditions + today's remaining arrivals + guests still due to leave. ~5 small calls, so the page can
@@ -1071,6 +1114,8 @@ function createAgilysysClient(overrides = {}) {
     searchReservationsByDate,
     searchAllReservationsByDate, // DEPRECATED (unstable pagination) — use fetchReservationsExact
     fetchReservationsExact,
+    fetchSliceExact,
+    countSlice,
     fetchTodayLive,
     clearLogs: () => { logs.length = 0; },
     getReservationMetrics,

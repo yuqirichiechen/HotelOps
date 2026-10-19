@@ -42,5 +42,12 @@ Point `DATABASE_URL` at `postgres://postgres@127.0.0.1:5439/hoptest`. `server.js
 | `forecast-window.test.js` | Stored list window (365 d) vs guest-detail window (30 d) | `node tests/forecast-window.test.js "$PWD"` |
 | `forecast-allowance-settings.test.js` | Late-booking settings: admin-only + validation (fake DB) | `node tests/forecast-allowance-settings.test.js "$PWD"` |
 | `forecast-probe-fields.js`, `forecast-calibrate-pickup.js` | Live read-only probes: floor/creation-date fields; pickup (late-booking) study | `node tests/<file> "$PWD" [weeks] [perDay] [out]` |
+| `forecast-probe-incremental.js` | Live read-only: does rGuest search support modified-since filters / sorting? (No — see part6, Sprint 22) | `node tests/forecast-probe-incremental.js "$PWD"` |
+| `sync-pure.test.js` | Sprint 22 pure logic: settings validation, PT windows/DST, scheduler decisions, normalize/diff/events | `node tests/sync-pure.test.js "$PWD"` |
+| `sync-engine.test.js` | Sync engine vs a REAL throwaway Postgres (auto initdb on 5439) with a fake rGuest world — 16 scenarios | `node tests/sync-engine.test.js "$PWD"` |
+| `sync-route.test.js` | `/api/sync/tick` secret + admin sync endpoints (DB and rGuest fully faked) | `node tests/sync-route.test.js "$PWD"` |
+| `agilysys-slices.test.js` | Exact range fetch vs a SIMULATED rGuest (night-overlap RES semantics, shuffled order, dense nights) | `node tests/agilysys-slices.test.js "$PWD"` |
+| `migration-028.test.js` | Migration 028 idempotent; legacy runScrape upsert still valid | `node tests/migration-028.test.js "$PWD"` |
+| `sync-live-dryrun.js` | LIVE read-only rGuest → engine → throwaway local Postgres; validates the mirror against rGuest totals (≈4 min for 12 months, ~1,000 calls — run sparingly) | `node tests/sync-live-dryrun.js "$PWD" [monthsBack]` |
 | `forecast-diagnose.js`, `forecast-futurecheck.js` | Live read-only probes (room conditions vs ours; per-day arrivals/departures) | `node tests/<file> "$PWD"` |
 | `fcrender.js` | Render the Forecast page from a live payload (`DUMP=file.html FC_DAY=1` to capture HTML for screenshots) | `node tests/fcrender.js "$PWD"` |

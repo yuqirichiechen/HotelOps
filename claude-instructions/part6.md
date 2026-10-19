@@ -14,9 +14,97 @@
 | 21.3   | Live room board (today), VI/PU semantics, workload-only future days, sync removed, HK/FD action lists | **Built + tested, NOT yet deployed** (see entry). Printable sheet for the selected day still open |
 | 21.4   | Day 2–14 cleaning priority (expected arrivals, floor suggestions), selected-day Generate-forecast sheet, info popovers, late-booking settings | **Built + tested, NOT yet deployed** |
 | 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested, NOT yet deployed** (no migration) |
-| 22     | Scraper DB revamp (incremental mirror) + forecast on top | Planned |
+| 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
+| 22.2   | Dev-settings panel (schedule, flush, Run now, health) + change-feed UI | Planned |
+| 22.3   | Forecast/Reservations read from the mirror (slim snapshot) + accuracy tracker (`daily_rollups`) | Planned |
 
 ## Sprint logs (newest first)
+
+### 2026-10-19 — Sprint 22.1: sync engine (migration 028, mirror, ticks, endpoints)
+
+**Deploy order:** run `database/migrations/028_sprint22_sync_engine.sql` → set Koyeb env `SYNC_TICK_SECRET` (random, ≥16 chars) →
+deploy → create the scheduler job: cron-job.org, every 5 minutes, `POST https://<app>/api/sync/tick` with header
+`x-sync-secret: <the secret>`. Nothing runs until the secret + job exist. The first tick starts the automatic backfill in the
+background (live dry run: 12 months back + 400 days ahead = **1,007 calls, ~224 s, 17.5 k rows**); later ticks are tiny.
+The pages still read `forecast_snapshot` (22.3 moves them to the mirror), so nothing the staff sees changes yet.
+
+**Design as built** (`server/sync/*`)
+- Mirror = the existing `reservation_history` table, extended (never deleted): `fingerprint`, `gone_at/gone_reason`,
+  `pms_created_at`, `booked_by`, `rate_plan_code`, `raw` (last raw list row), `property_id`, `last_changed_at`; label columns → TEXT.
+  New: `reservation_events` (change feed, no guest PII), `sync_runs`, `sync_state`.
+- Runs (`engine.js`): **frequent** (today + N days RES + in-house, default 12:00–24:00 PT every 5 min), **hourly**
+  (count-gate over fixed 30-day slices; only slices whose count changed are re-fetched + an exact re-fetch of the next 14 days,
+  because edits that keep a count the same are invisible to it), **reconcile** (daily after 04:30 PT: exact fetch of every future
+  RES, baseline counts, vanish detection), **backfill/full** (resumable 30-day chunks × RES/INH/DPT/CXL, silent — no events).
+- Vanished reservations are looked up one by one (`detail.status`): arrived / departed / cancelled / no_show / moved, or 404 →
+  `gone_reason='not_found'`; **never deleted**. Incomplete slice fetches never mark anything gone (run = `partial`).
+- New bookings (first `detailForNewMax` per run) get `reservationCreateTime` + `bookedBy` from the detail endpoint.
+- **Cost design:** the scheduler is EXTERNAL; `POST /api/sync/tick` is secret-header protected, exempt from the shift-cap DB
+  middleware, decides in memory (settings cached; first tick hydrates once) and returns 202 immediately. A frequent scan with no
+  changes touches the database **zero** times (tested). Results are **write-behind**: buffered in memory, flushed in one
+  transaction at most every `flushEveryMinutes` (default 15; hourly/reconcile/backfill flush at their end). Buffer is swapped
+  before the write (nothing added during a flush is lost; a failed write merges back and retries).
+- Safety: ONE shared rGuest client (token reused, no login per run); one run at a time (second ping → "busy"); a failed run stops
+  the chain; **auth failure pauses the engine** (persisted) until an admin sets `paused:false`; never re-login after a 401.
+- Endpoints: `POST /api/sync/tick` (secret), `GET /api/admin/sync/status`, `PUT /api/admin/sync/settings`
+  (validated), `POST /api/admin/sync/run {kind: frequent|hourly|reconcile|backfill|full}`. Settings = JSON in
+  `app_settings.sync_settings` (defaults in `settings.js`: window/everyMinutes/daysAhead, hourly everyMinutes/aheadDays/nearDays,
+  reconcile.at, flushEveryMinutes, backfill monthsBack/chunksPerTick/auto, storeRaw, detail budgets, timezone).
+
+**IMPORTANT rGuest finding (fixed in `client.fetchSliceExact` / `resSliceExact`)** — RES range semantics: `[from, to)` returns every
+reservation with a **night** in the range (`arrival < to && departure > from`): a superset of the arrivals (stays that began earlier
+are included), end exclusive. My earlier note "RES range = arrivals on d exactly" was wrong. The Sprint 20 `sliceExact` splits with
+inclusive halves `[from,mid]+[mid+1,to]`, which is right for INH/DPT/CXL (inclusive day ranges) but **drops 1-night stays arriving on
+the split day** for RES. The first live dry run exposed it (mirror 686 vs rGuest 707; 25 lost). RES now splits half-open
+`[from,mid)+[mid,to)`, a one-night range with >99 stays uses the union-walk. `fetchReservationsExact` (RES via union-walk) was not affected.
+Count-gate counts are night-overlap counts (= rGuest `totalElements`).
+
+**Verification**
+- `sync-pure.test.js` 14 · `sync-engine.test.js` 16 (real Postgres + fake rGuest: backfill, zero-DB frequent tick, write-behind,
+  arrived/departed/cancelled/changed events, count-gate efficiency, reconcile, incomplete fetch, restart/legacy adoption, auth pause,
+  busy, flush failure + in-flight writes) · `sync-route.test.js` 7 · `agilysys-slices.test.js` 7 (simulated rGuest, includes a
+  sensitivity test proving the old split loses rows) · `migration-028.test.js` 3 (idempotent; the legacy runScrape upsert still works).
+  Existing forecast suites re-run: model 20, page 17, window 4, allowance 3, live route 5 — all pass.
+- **Live dry run** (`tests/sync-live-dryrun.js "$PWD" 12`: real rGuest read-only → throwaway local Postgres): complete=true;
+  mirror RES **707 = rGuest `totalElements` 707**, missing 0 / extra 0; in-house 48 = 48; integrity clean (0 untyped, 0 un-fingerprinted,
+  every CXL has `gone_at`); second pass (hourly + frequent + reconcile) = 0 new / 0 changed / 0 gone / 0 events.
+- Probes: `forecast-probe-incremental.js` (no modified-since filter, sort ignored, order non-deterministic).
+- Test-hygiene note: an early version of `sync-route.test.js` let the real client attempt ONE login with fake credentials
+  (user `u`) before its client was fully faked; fixed — all methods are fake now. No real account was involved.
+
+**Known limits / next**
+- First hourly after the backfill re-fetches every slice once (no baseline yet); later hourlies are the cheap count-gate.
+- No-show status code still unknown (`NS` probe → 400); CXL detail `cancellationInfo.isNoShow` is used meanwhile.
+- 22.2: dev-settings panel (schedule, flush interval, Run now, last runs, pause/resume, raw toggle) + change-feed UI.
+- 22.3: build the snapshot/Forecast/Reservations from the mirror (+ live board), `daily_rollups` + forecast-accuracy tracker.
+
+### 2026-10-19 — Sprint 22 (start): incremental-sync probe (READ-ONLY) + agreed design
+
+**User verified 21.4–21.5 in production ("works all good").** GM sees a long-term vision of HotelOps as a sellable HMS
+for other hotels → keep new tables/adapters multi-property-ready. Agreed in this session: external scheduler
+(cron-job.org, 5-min ping to a secret endpoint; server decides in memory whether a run is due), cost of ~$5–15/mo
+accepted but cheaper options wanted, never delete reservations (mark cancelled/gone), dev-settings-configurable
+schedule (frequent window default 12:00–24:00 PT every 5 min, hourly otherwise, full re-sync on demand, raw outputs).
+
+**Probe findings (`tests/forecast-probe-incremental.js`, one login, ~40 calls):**
+- rGuest's search has **no created/modified-since filter** (19 field names × 2 formats: all ignored) and **ignores `sort`**
+  (body or query string). The result order is **non-deterministic** run to run (3 different orderings in 6 identical
+  calls) — this is the cause of the ~15–19 % page drops (20.3). List rows carry no version/updated marker.
+  → Change detection must be ours: id + fingerprint diff.
+- Full exact fetch (`fetchReservationsExact`): 788 reservations, complete, **7 calls, ~20.7 s**.
+- **Count-gate** works: `totalElements` per 30-day RES slice is stable between runs (14 calls, **2.2 s**). Only slices whose
+  count changed need re-fetching; a daily full reconcile catches same-count swaps (a booking + a cancellation in one slice).
+- Today + tomorrow RES slice: 34 rows, one page, **~0.2 s** — ideal for the 5-minute tick.
+- Detail objects expose `reservationCreateTime`, `updateTime`, `version`, `sourceInfo.bookedBy` — these feed the change
+  feed / pickup calibration (detail fetch only for new/changed rows).
+
+**Design (to build):** `reservations` (typed mirror, upsert by id, never delete; `status`, `first_seen_at`, `last_seen_at`,
+`gone_at`, `property_id`), `reservation_events` (new / cancelled / room / dates / status changes), `sync_runs` (kind,
+trigger, counts, duration, error), `daily_rollups` (expected vs actual arrivals per type → accuracy tracker),
+`sync_settings` in `app_settings`. Tick types: **frequent** (today+tomorrow), **hourly** (count-gate over 30-day slices,
+re-fetch changed ones), **daily reconcile + full** (12 months back/forward, resumable monthly chunks). Business date from
+rGuest property date. Cost lever: **write-behind** — keep the 5-minute scan state in memory and flush to the DB at most every
+N minutes (setting), so database awake time follows the flush cadence, not the scan cadence.
 
 ### 2026-10-12 — Sprint 21.4–21.5: cleaning priority, selected-day sheet, 12-month stored list
 
