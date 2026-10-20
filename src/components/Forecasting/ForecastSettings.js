@@ -13,12 +13,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../auth';
+import SyncPanel from './SyncPanel';
 import './ForecastSettings.css';
 
 const BASE_BUCKETS = ['NKRR', 'NKJZ', 'NQRR', 'NQJZ'];
 
 const ForecastSettings = ({ onClose }) => {
-  const [tab, setTab]         = useState('labor'); // 'labor' | 'late' | 'mapping'
+  const [tab, setTab]         = useState('labor'); // 'labor' | 'late' | 'sync' | 'mapping'
   const [config, setConfig]   = useState(null);
   const [mapping, setMapping] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -200,6 +201,11 @@ const ForecastSettings = ({ onClose }) => {
             onClick={() => setTab('late')}
           >Late bookings</button>
           <button
+            role="tab" aria-selected={tab === 'sync'}
+            className={tab === 'sync' ? 'active' : ''}
+            onClick={() => setTab('sync')}
+          >Auto-sync</button>
+          <button
             role="tab" aria-selected={tab === 'mapping'}
             className={tab === 'mapping' ? 'active' : ''}
             onClick={() => setTab('mapping')}
@@ -343,6 +349,8 @@ const ForecastSettings = ({ onClose }) => {
               </div>
             </div>
           )}
+
+          {tab === 'sync' && <SyncPanel />}
 
           {!loading && tab === 'mapping' && (
             <div className="fc-mapping">

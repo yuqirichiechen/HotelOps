@@ -132,6 +132,10 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     await flushing; slowMs = 0; await idle(eng); await eng.flushNow();
     for (const id of [id1, id2]) { assert.strictEqual((await q('SELECT count(*)::int n FROM reservation_history WHERE reservation_id=$1', [id]))[0].n, 1, id); assert.strictEqual((await q("SELECT count(*)::int n FROM reservation_events WHERE reservation_id=$1 AND event_type='new'", [id]))[0].n, 1, 'exactly one new-event for ' + id); }
   });
+  await t('status exposes what the panel needs: last scheduler ping, tick count, boot time, next-due times', async () => {
+    const before = (await eng.getStatus()).tickCount; advance(1); await eng.tick(); await idle(eng); const s = await eng.getStatus();
+    assert.strictEqual(s.tickCount, before + 1); assert.strictEqual(s.lastTickAt, new Date(nowMs).toISOString()); assert(s.bootedAt); assert(s.nextDue.frequent && s.nextDue.hourly && s.nextDue.reconcile, JSON.stringify(s.nextDue));
+  });
   await t('settings: validated, persisted to app_settings, and they change the schedule (flush interval, window)', async () => {
     const bad = await eng.updateSettings({ frequent: { everyMinutes: 0 } }); assert.strictEqual(bad.ok, false);
     const ok = await eng.updateSettings({ frequent: { from: '08:00', to: '20:00', everyMinutes: 10 }, flushEveryMinutes: 30 }); assert.strictEqual(ok.ok, true);

@@ -32,4 +32,24 @@ function decideRuns(now, settings, state) {
   return { kinds, reason: kinds.length ? null : 'nothing due' };
 }
 
-module.exports = { decideRuns, SLACK_MS };
+/**
+ * When will each kind next be due (given pings every `pingMinutes`)? Pure; for the dev-settings panel ("next: 4:35 PM").
+ * @returns {{ frequent: string|null, hourly: string|null, reconcile: string|null, reason: string|null }} ISO instants
+ */
+function nextDue(now, settings, state, pingMinutes = 5) {
+  if (!settings.enabled) return { frequent: null, hourly: null, reconcile: null, reason: 'disabled' };
+  if (settings.paused) return { frequent: null, hourly: null, reconcile: null, reason: 'paused' };
+  const t0 = now.getTime(), step = 60000;
+  const scan = (fromMs, pred) => { for (let t = fromMs, i = 0; i < 2 * 1440 + 1; t += step, i++) if (pred(new Date(t))) return new Date(t).toISOString(); return null; };
+  const roundUp = (ms) => Math.ceil(ms / (pingMinutes * 60000)) * pingMinutes * 60000;      // runs only happen when a ping arrives
+  const f = settings.frequent;
+  const frequent = !f.enabled ? null : scan(Math.max(t0, state.lastFrequentAt ? new Date(state.lastFrequentAt).getTime() + f.everyMinutes * 60000 - SLACK_MS : t0),
+    (d) => inWindow(localClock(d, settings.timezone).minutes, f.from, f.to));
+  const hourly = new Date(Math.max(t0, state.lastHourlyAt ? new Date(state.lastHourlyAt).getTime() + settings.hourly.everyMinutes * 60000 - SLACK_MS : t0)).toISOString();
+  const lastRecDay = state.lastReconcileAt ? localClock(new Date(state.lastReconcileAt), settings.timezone).ymd : null;
+  const reconcile = scan(t0, (d) => { const c = localClock(d, settings.timezone); return c.minutes >= toMinutes(settings.reconcile.at) && c.ymd !== lastRecDay; });
+  const r = (iso) => (iso ? new Date(roundUp(new Date(iso).getTime())).toISOString() : null);
+  return { frequent: r(frequent), hourly: r(hourly), reconcile: r(reconcile), reason: null };
+}
+
+module.exports = { decideRuns, nextDue, SLACK_MS };

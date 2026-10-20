@@ -13,7 +13,7 @@
 // auth failure pauses the engine instead of retrying (the client never re-logs-in after a 401 on credentials).
 'use strict';
 const crypto = require('crypto');
-const { decideRuns } = require('./schedule');
+const { decideRuns, nextDue } = require('./schedule');
 const { loadSettings, saveSettings, validateSettings, localClock } = require('./settings');
 const { normalizeRow, fingerprintOf, pickFp } = require('./normalize');
 const M = require('./mirror');
@@ -32,6 +32,7 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
   let buf = M.createBuffer(), lastFlushAt = null, running = null, authFailure = null;
   let ref = { ctx: null, roomsAt: 0, otherAt: 0, mapping: null, data: {} };
   const recent = [];                       // last 100 run summaries (memory only)
+  const bootedAt = now().toISOString(); let lastTickAt = null, tickCount = 0;
 
   const pool = () => getPool();
   const pendingChanges = () => buf.upserts.size + buf.patches.size + buf.events.length;
@@ -274,6 +275,7 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
   return {
     /** Called by the scheduler ping. Returns fast; work continues in the background. */
     async tick() {
+      lastTickAt = now().toISOString(); tickCount++;
       if (running) return { started: [], reason: `busy (${running.kind})` };
       await ensureHydrated();
       const d = decideRuns(now(), settings, stateForDecision());
@@ -307,7 +309,7 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
       await ensureHydrated();
       return { hydrated, running, settings, authFailure, state: { ...st, backfillDone: !!(st.backfill && st.backfill.done) }, indexSize: index.size, lastFlushAt: lastFlushAt && new Date(lastFlushAt).toISOString(),
         pending: { upserts: buf.upserts.size, patches: buf.patches.size, events: buf.events.length, touch: buf.touch.size, runs: buf.runs.length }, recentRuns: recent.slice(0, 30), now: now().toISOString(),
-        clock: localClock(now(), settings.timezone) };
+        clock: localClock(now(), settings.timezone), lastTickAt, tickCount, bootedAt, nextDue: nextDue(now(), settings, stateForDecision()) };
     },
     async flushNow() { if (!hydrated) return null; return flushBuffer(); },
     // test hooks

@@ -4,11 +4,14 @@ const ROOT = process.argv[2] + '/server'; const assert = require('assert');
 process.env.PORT = '3992'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.DATABASE_URL = 'postgres://u:p@127.0.0.1:1/none';
 const SECRET = 's3cret-'.repeat(4);
 const pg = require(ROOT + '/node_modules/pg'); const jwt = require(ROOT + '/node_modules/jsonwebtoken');
-const sqls = []; const store = {};
+const sqls = []; const store = {}; let lastEventsQuery = null, lastRunsParams = null;
 pg.Pool.prototype.query = async function (sql, params) {
   const q = String(sql).replace(/\s+/g, ' '); sqls.push(q.slice(0, 70));
   if (/SELECT value FROM app_settings WHERE key = \$1/.test(q)) return { rows: store[params[0]] ? [{ value: store[params[0]] }] : [] };
   if (/INSERT INTO app_settings/.test(q)) { store[params[0]] = params[1]; return { rows: [], rowCount: 1 }; }
+  if (/FROM reservation_events e/.test(q)) { lastEventsQuery = { q, params }; return { rows: [{ event_id: '12', event_type: 'new', occurred_at: new Date().toISOString(), changes: {}, info: {}, reservation_id: 'r', guest_name: 'Ann', confirmation_id: 'C1', type_code: 'NQRR' }] }; }
+  if (/FROM reservation_events WHERE occurred_at/.test(q)) return { rows: [{ event_type: 'new', n: 2 }, { event_type: 'cancelled', n: 1 }] };
+  if (/FROM sync_runs ORDER/.test(q)) { lastRunsParams = params; return { rows: [{ run_id: 'x', kind: 'hourly', status: 'success' }] }; }
   if (/FROM reservation_history/.test(q)) return { rows: [] }; if (/FROM sync_state/.test(q)) return { rows: [] }; if (/FROM room_type_mapping/.test(q)) return { rows: [] };
   return { rows: [], rowCount: 0 };
 };
@@ -40,6 +43,17 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('status shows settings, state and recent runs; a failed run (fake rGuest down) is reported, not thrown', async () => {
     await sleep(200); const r = await http('/api/admin/sync/status', { headers: A }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.tickConfigured, true); assert.strictEqual(r.body.status.settings.frequent.from, '12:00');
     assert(r.body.status.recentRuns.some(x => x.status === 'failed' && /fake rGuest down/.test(x.error)), JSON.stringify(r.body.status.recentRuns.map(x => [x.kind, x.status, x.error])));
+  });
+  await t('change feed endpoint: admin-only; validates types / before / limit (parameterised, no injection); returns summary + hasMore', async () => {
+    assert.strictEqual((await http('/api/admin/sync/events')).status, 401); assert.strictEqual((await http('/api/admin/sync/events', { headers: { Authorization: 'Bearer ' + staff } })).status, 403);
+    const ok = await http('/api/admin/sync/events?limit=1&types=new,cancelled', { headers: A }); assert.strictEqual(ok.status, 200); assert.deepStrictEqual(ok.body.summary, { new: 2, cancelled: 1 }); assert.strictEqual(ok.body.events.length, 1); assert.strictEqual(ok.body.hasMore, true, 'a full page means there may be more');
+    assert.deepStrictEqual(lastEventsQuery.params, [['new', 'cancelled'], null, 1]);
+    assert.strictEqual((await http('/api/admin/sync/events?before=1;DROP%20TABLE%20x', { headers: A })).status, 400); assert.strictEqual((await http('/api/admin/sync/events?types=bogus,evil', { headers: A })).status, 400);
+    await http('/api/admin/sync/events?types=new,bogus&before=77&limit=9999', { headers: A }); assert.deepStrictEqual(lastEventsQuery.params, [['new'], '77', 200], 'unknown types dropped, limit capped at 200');
+    assert(!/DROP|bogus/.test(lastEventsQuery.q), 'values only ever travel as parameters');
+  });
+  await t('runs endpoint: admin-only, limit capped', async () => {
+    assert.strictEqual((await http('/api/admin/sync/runs')).status, 401); const r = await http('/api/admin/sync/runs?limit=100000', { headers: A }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastRunsParams, [200]); assert.strictEqual(r.body.runs[0].kind, 'hourly');
   });
   await t('settings PUT: validation errors → 400 with messages; valid patch persisted; secret/JWT-less access impossible', async () => {
     const bad = await http('/api/admin/sync/settings', { method: 'PUT', headers: A, body: { frequent: { everyMinutes: 0 }, timezone: 'Nope/Zone' } }); assert.strictEqual(bad.status, 400); assert(bad.body.errors.length >= 2);

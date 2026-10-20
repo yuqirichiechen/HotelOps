@@ -17,6 +17,7 @@ import ForecastSettings from './ForecastSettings';
 import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
 import ResnTable from './ResnTable';
+import RecentChanges from './RecentChanges';
 import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate } from './resnTabs';
 
 
@@ -985,6 +986,8 @@ const Forecasting = () => {
                   Reservations. The page now always renders the
                   Reservation Details table (view stays 'details'
                   by default). */}
+              {/* Sprint 22.2 — what the auto-sync saw change (new bookings, cancellations, edits). */}
+              <RecentChanges />
               <div className="fc-table-header">
                 <h2>Guest Reservations</h2>
               </div>

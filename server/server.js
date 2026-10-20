@@ -4668,6 +4668,41 @@ app.post('/api/admin/sync/run', requireAuth, requireRole('admin'), async (req, r
   try { return res.status(202).json({ success: true, ...(await syncEngine.trigger(kind)) }); }
   catch (err) { console.error('[sync:run]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
+// GET /api/admin/sync/runs?limit=50 — stored run history (the status endpoint only has this process's recent runs).
+app.get('/api/admin/sync/runs', requireAuth, requireRole('admin'), async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+  try {
+    const { rows } = await pool.query(
+      `SELECT run_id, kind, trigger, status, started_at, finished_at, duration_ms, calls, fetched, new_count, changed, gone, unchanged, complete, error, details
+         FROM sync_runs ORDER BY started_at DESC LIMIT $1`, [limit]);
+    return res.json({ success: true, runs: rows });
+  } catch (err) { console.error('[sync:runs]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
+// GET /api/admin/sync/events?limit=50&types=new,cancelled&before=<event_id> — the change feed (newest first) joined with the
+// mirror row for display (guest name etc. — admin-only, same as the Reservations page). `summary` = counts for the last 24 h.
+const SYNC_EVENT_TYPES = ['new', 'changed', 'arrived', 'departed', 'cancelled', 'no_show', 'moved', 'gone', 'reappeared'];
+app.get('/api/admin/sync/events', requireAuth, requireRole('admin'), async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+  const types = String(req.query.types || 'new,changed,cancelled,no_show,moved,gone,reappeared').split(',').map(x => x.trim()).filter(x => SYNC_EVENT_TYPES.includes(x));
+  const beforeRaw = req.query.before;
+  if (beforeRaw !== undefined && !/^[0-9]{1,18}$/.test(String(beforeRaw))) return res.status(400).json({ success: false, message: 'before must be an event id' });
+  if (!types.length) return res.status(400).json({ success: false, message: 'no valid event types' });
+  try {
+    const [ev, sum] = await Promise.all([
+      pool.query(
+        `SELECT e.event_id, e.event_type, e.occurred_at, e.changes, e.info, e.reservation_id,
+                h.guest_name, h.confirmation_id, h.type_code, h.base_code, to_char(h.arrival_date,'YYYY-MM-DD') AS arrival_date,
+                to_char(h.departure_date,'YYYY-MM-DD') AS departure_date, h.room_number, h.status, h.source, h.booked_by, h.pms_created_at
+           FROM reservation_events e LEFT JOIN reservation_history h ON h.reservation_id = e.reservation_id
+          WHERE e.event_type = ANY($1::text[]) AND ($2::bigint IS NULL OR e.event_id < $2::bigint)
+          ORDER BY e.event_id DESC LIMIT $3`, [types, beforeRaw === undefined ? null : beforeRaw, limit]),
+      pool.query(`SELECT event_type, count(*)::int AS n FROM reservation_events WHERE occurred_at > NOW() - INTERVAL '24 hours' GROUP BY 1`),
+    ]);
+    const summary = Object.fromEntries(sum.rows.map(r => [r.event_type, r.n]));
+    return res.json({ success: true, events: ev.rows, summary, hasMore: ev.rows.length === limit });
+  } catch (err) { console.error('[sync:events]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
 // Write any buffered scan results before the process exits (best effort; the next tick re-detects anything lost).
 for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { syncEngine.flushNow().catch(() => {}).finally(() => process.exit(0)); });
 

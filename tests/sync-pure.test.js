@@ -1,7 +1,7 @@
 // Sprint 22 — pure logic: settings validation, windows (PT, DST, wrap), scheduler decisions, normalize + diff + events.
 // node tests/sync-pure.test.js "$PWD"
 const ROOT = process.argv[2] + '/server'; const assert = require('assert');
-const S = require(ROOT + '/sync/settings'), { decideRuns } = require(ROOT + '/sync/schedule'), N = require(ROOT + '/sync/normalize'), M = require(ROOT + '/sync/mirror'), { sliceGridStart } = require(ROOT + '/sync/engine');
+const S = require(ROOT + '/sync/settings'), { decideRuns, nextDue } = require(ROOT + '/sync/schedule'), N = require(ROOT + '/sync/normalize'), M = require(ROOT + '/sync/mirror'), { sliceGridStart } = require(ROOT + '/sync/engine');
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 3).join(' | ')); process.exitCode = 1; } };
 const PT = (iso) => new Date(iso);   // helper: absolute instants; PDT = UTC−7 until 2026-11-01, PST = UTC−8 after
 
@@ -57,6 +57,13 @@ const PT = (iso) => new Date(iso);   // helper: absolute instants; PDT = UTC−7
     assert.strictEqual(sliceGridStart('2026-10-12'), sliceGridStart('2026-10-13')); assert.notStrictEqual(sliceGridStart('2026-10-12'), sliceGridStart('2027-01-12'));
   });
 
+  await t('nextDue: next quick scan = last + N min inside the window, else the next window start; hourly = last + 60; reconcile = next 04:30 PT; paused/disabled → none', () => {
+    const st = { lastFrequentAt: PT('2026-10-12T19:30:00Z'), lastHourlyAt: PT('2026-10-12T19:00:00Z'), lastReconcileAt: PT('2026-10-12T11:40:00Z') };   // 12:30 PT scan, 12:00 hourly, reconcile done 04:40 PT today
+    let n = nextDue(PT('2026-10-12T19:32:00Z'), S.DEFAULTS, st); assert.strictEqual(n.frequent, '2026-10-12T19:35:00.000Z'); assert.strictEqual(n.hourly, '2026-10-12T20:00:00.000Z'); assert.strictEqual(n.reconcile, '2026-10-13T11:30:00.000Z', 'tomorrow 04:30 PDT');
+    n = nextDue(PT('2026-10-13T07:20:00Z'), S.DEFAULTS, { ...st, lastFrequentAt: PT('2026-10-13T06:55:00Z') }); assert.strictEqual(n.frequent, '2026-10-13T19:00:00.000Z', '00:20 PT → the window reopens at noon PT');
+    assert.deepStrictEqual(nextDue(PT('2026-10-12T19:32:00Z'), { ...S.DEFAULTS, paused: true }, st), { frequent: null, hourly: null, reconcile: null, reason: 'paused' }); assert.strictEqual(nextDue(PT('2026-10-12T19:32:00Z'), { ...S.DEFAULTS, frequent: { ...S.DEFAULTS.frequent, enabled: false } }, st).frequent, null);
+    assert.strictEqual(nextDue(PT('2026-10-12T19:32:00Z'), S.DEFAULTS, { ...st, lastReconcileAt: null }).reconcile, '2026-10-12T19:35:00.000Z', 'reconcile overdue → at the next ping');
+  });
   // ── normalize / diff / events ──
   const ctx = { roomTypeById: new Map([['rt1', { id: 'rt1', typeCode: 'NQRR' }], ['rt2', { id: 'rt2', typeCode: 'NKRRP' }]]), roomById: new Map([['room9', { id: 'room9', floorId: '03' }]]),
     ratePlanByCode: new Map([['BAR', { code: 'BAR', name: 'Best Available Rate' }]]), vipById: new Map(), mappingByCode: new Map() };

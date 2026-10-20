@@ -15,10 +15,45 @@
 | 21.4   | Day 2–14 cleaning priority (expected arrivals, floor suggestions), selected-day Generate-forecast sheet, info popovers, late-booking settings | **Built + tested, NOT yet deployed** |
 | 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested, NOT yet deployed** (no migration) |
 | 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
-| 22.2   | Dev-settings panel (schedule, flush, Run now, health) + change-feed UI | Planned |
+| 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.3   | Forecast/Reservations read from the mirror (slim snapshot) + accuracy tracker (`daily_rollups`) | Planned |
 
 ## Sprint logs (newest first)
+
+### 2026-10-20 — Sprint 22.2: Auto-sync panel + Recent changes feed
+
+User confirmed the scheduler works (cron-job.org kept answering "malformed job" → switched to a **Cloudflare Worker cron trigger**
+`*/5 * * * *` that POSTs `/api/sync/tick` with `x-sync-secret`; Worker → Settings → Triggers; changes can take ~15 min to propagate;
+the Worker throws on a non-2xx so failures show in Trigger Events). The first secret was exposed in a screenshot → rotate
+(`SYNC_TICK_SECRET` in Koyeb + Worker secret `SYNC_SECRET`), delete the cron-job.org job. Production already answered the tick URL
+(401 without the secret), i.e. the 22.1 code was deployed by the user.
+
+**Where:** Forecast settings → new **Auto-sync** tab (admin session; `SyncPanel.js`). I did NOT put it on the narrow `/dev` login-card
+page (needs an admin session anyway). **Recent changes** card at the top of the Reservations page (`RecentChanges.js`).
+
+**SyncPanel:** health pill (Healthy / Running <kind> / Paused / Disabled / Needs attention) with plain-language problems (no secret,
+no ping for >15 min, never pinged since boot, rGuest auth failure, last 3 runs failed); last scheduler ping, next quick scan / hourly /
+reconcile (≈, from the pure `schedule.nextDue`), history-load progress, tracked reservations, last DB write, writes waiting in memory;
+**Run now** (quick scan / hourly / reconcile / backfill; Full re-sync needs a 2-step confirm with the ~4 min / 1,000-call warning);
+Pause/Resume; settings form (window 12:00–24:00 default as 24-h text inputs because `type=time` cannot express 24:00, every N min,
+days ahead, hourly every, near-days, reconcile time, **flush interval = the DB-cost lever**, advanced: history, look-ahead, raw data,
+detail budgets, time zone) with Save/Discard and server validation messages; recent runs table (memory + stored, de-duplicated).
+Polling hits `GET /admin/sync/status`, which is **DB-free once warm**: 4 s while a run is in progress, 30 s otherwise, visible tab only;
+unsaved edits are never overwritten by a refresh.
+
+**RecentChanges:** 24 h summary chips (new / cancelled / changed), filter chips (New, Cancelled+no-show+moved+gone, Changed, Arrived/departed
+off by default — noise), rows with time, type pill, guest, room type, stay dates, room, confirmation, "via SiteMinder", and for edits the
+old→new fields (room first). "Show older" pages with `before=<event_id>`. One GET on open / focus, no timers.
+
+**Server:** `GET /api/admin/sync/events?limit&types&before` (validated, parameterised, limit ≤200, joins the mirror row for display) and
+`GET /api/admin/sync/runs?limit`; engine status now has `lastTickAt`, `tickCount`, `bootedAt`, `nextDue`.
+
+**Tests:** `syncpanel.test.js` 12 (real components in jsdom) · `sync-pure` 15 (+nextDue) · `sync-route` 9 (+events/runs: auth, validation,
+injection attempts, caps) · `sync-engine` 17 (+status fields) · everything else re-run green; build compiles; screenshots at 800/1100/390 px
+checked (`tests/syncrender.js`). No migration.
+
+**Next:** 22.3 — Forecast/Reservations read from the mirror (slim snapshot) and the forecast-accuracy tracker (`daily_rollups`).
+Open question for the user: whether "dev settings" should also be reachable from `/dev`.
 
 ### 2026-10-19 — Sprint 22.1: sync engine (migration 028, mirror, ticks, endpoints)
 
