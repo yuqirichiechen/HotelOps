@@ -22,6 +22,7 @@ import ForecastSettings from '../Forecasting/ForecastSettings';
 import ForecastHistory from '../Forecasting/ForecastHistory';
 import ForecastDaySheet from './ForecastDaySheet';
 import InfoTip from './InfoTip';
+import SimpleRoomTable from './SimpleRoomTable';
 import SyncBadge from '../shared/SyncBadge';
 import { buildDayModel, buildOutlook, deriveNotes, addDays, DEFAULT_ALLOWANCE, PRIORITY_LABEL } from './forecastModel';
 import './Forecast.css';
@@ -604,6 +605,9 @@ const Forecast = ({ mode = 'manager' }) => {
     return 0;
   });
   useEffect(() => { try { sessionStorage.setItem('hotelops-fc-day', String(dayOffset)); } catch { /* ignore */ } }, [dayOffset]);
+  // manager layout: the day selector sits at the bottom, so choosing a day brings the (changed) top of the page back into view
+  const topRef = useRef(null);
+  const selectDay = (i) => { setDayOffset(i); try { if (topRef.current && topRef.current.scrollIntoView) topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* ignore */ } };
 
   const payload = snapshot?.payload;
   const today   = live?.forecastDate || payload?.forecastDate;
@@ -713,40 +717,53 @@ const Forecast = ({ mode = 'manager' }) => {
             <div className="fb-stale" role="status">The last scrape is from {fmtLong(payload.forecastDate)}; rGuest’s business date is now {fmtLong(live.forecastDate)}. Run the scraper for current arrivals.</div>
           )}
 
-          <OutlookStrip days={outlook} selected={dayOffset} onSelect={setDayOffset} />
+          {isDev ? (
+            <>
+            <OutlookStrip days={outlook} selected={dayOffset} onSelect={setDayOffset} />
 
-          <section className="fb-stats" aria-label="Top stats">
-            {model.isToday ? (
-              <>
-                <StatBar label="Left to sell now"        value={model.totals.leftToSell}        accent="success" icon={<IconCheck />} />
-                <StatBar label="Awaiting inspection (PU)" value={model.totals.awaiting}         accent="info"    icon={<IconBed />} />
-                <StatBar label="Dirty / in progress"     value={model.totals.dirty}             accent="warn"    icon={<IconBed />} />
-                <StatBar label="Still arriving"          value={model.totals.remainingArrivals} accent="info"    icon={<IconBriefcase />} />
-                <StatBar label="Sold-out room types"     value={model.totals.soldOutGroups}     accent="warn"    icon={<IconWarn />} />
-              </>
-            ) : (
-              <>
-                <StatBar label="Booked arrivals"   value={model.totals.arrivals}         accent="info"    icon={<IconBriefcase />} />
-                <StatBar label="Expected arrivals" value={model.totals.expectedArrivals} accent="info"    icon={<IconTrend />} />
-                <StatBar label="Departing"         value={model.totals.departures}       accent="default" icon={<IconBed />} />
-                <StatBar label="Staying over"      value={model.totals.stayovers}        accent="default" icon={<IconBed />} />
-                <StatBar label="Rooms to turn first" value={model.totals.turnFirst}      accent="warn"    icon={<IconWarn />} />
-              </>
-            )}
-          </section>
+            <section className="fb-stats" aria-label="Top stats">
+              {model.isToday ? (
+                <>
+                  <StatBar label="Left to sell now"        value={model.totals.leftToSell}        accent="success" icon={<IconCheck />} />
+                  <StatBar label="Awaiting inspection (PU)" value={model.totals.awaiting}         accent="info"    icon={<IconBed />} />
+                  <StatBar label="Dirty / in progress"     value={model.totals.dirty}             accent="warn"    icon={<IconBed />} />
+                  <StatBar label="Still arriving"          value={model.totals.remainingArrivals} accent="info"    icon={<IconBriefcase />} />
+                  <StatBar label="Sold-out room types"     value={model.totals.soldOutGroups}     accent="warn"    icon={<IconWarn />} />
+                </>
+              ) : (
+                <>
+                  <StatBar label="Booked arrivals"   value={model.totals.arrivals}         accent="info"    icon={<IconBriefcase />} />
+                  <StatBar label="Expected arrivals" value={model.totals.expectedArrivals} accent="info"    icon={<IconTrend />} />
+                  <StatBar label="Departing"         value={model.totals.departures}       accent="default" icon={<IconBed />} />
+                  <StatBar label="Staying over"      value={model.totals.stayovers}        accent="default" icon={<IconBed />} />
+                  <StatBar label="Rooms to turn first" value={model.totals.turnFirst}      accent="warn"    icon={<IconWarn />} />
+                </>
+              )}
+            </section>
 
-          <div className="fb-body">
-            <main className="fb-main">
-              <NeedTable model={model} roomsByType={roomsByType} />
-              <ActionLists model={model} />
-              <PlanCard model={model} />
-              <ArrivalDetailTable rows={payload.reservations || []} date={model.date} isToday={model.isToday} />
-            </main>
-            <aside className="fb-rail">
+            <div className="fb-body">
+              <main className="fb-main">
+                <NeedTable model={model} roomsByType={roomsByType} />
+                <ActionLists model={model} />
+                <PlanCard model={model} />
+                <ArrivalDetailTable rows={payload.reservations || []} date={model.date} isToday={model.isToday} />
+              </main>
+              <aside className="fb-rail">
+                <ForecastSummaryCard model={model} />
+                <OperationalNotes notes={notes} />
+              </aside>
+            </div>
+            </>
+          ) : (
+            /* Sprint 22.5 — manager layout: the "sellable vs arriving" summary first, then one simple row per room type (tap for its rooms), then the
+               next-14-days selector. Everything else (stats, action lists, plan, arrivals, notes) lives in the Dev view. */
+            <div className="fb-manager">
+              <div ref={topRef} />
               <ForecastSummaryCard model={model} />
-              <OperationalNotes notes={notes} />
-            </aside>
-          </div>
+              <SimpleRoomTable model={model} roomsByType={roomsByType} dayLabel={fmtLong(model.date)} />
+              <OutlookStrip days={outlook} selected={dayOffset} onSelect={selectDay} />
+            </div>
+          )}
 
         </>
       )}

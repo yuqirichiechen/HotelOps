@@ -17,10 +17,23 @@
 | 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
-| 22.5   | Manager UI: Reservations + Forecast simplified to the basics + the forecast output (dev keeps the full pages) | Planned |
+| 22.5   | Manager UI simplified (dev keeps the full pages) + Dev tenant selection with the admin layout | **In progress** — Forecast (manager) done 2026-10-20; Reservations (manager) + Dev tenant picker/layout next |
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-20 — Sprint 22.5 (part 1): manager Forecast simplified
+
+User's direction for 22.5 (full list): (a) Dev: after sign-in show a **tenant selection** (one tenant today), then the dev pages in the **same layout as the admin shell** (reuse Sidebar etc.); (b) manager Reservations: per guest only **name, stay duration, confirmation code, room type**;
+"Recent changes" becomes dev-only; (c) merge every current function of both tabs into Dev before anything is removed from the manager; (d) manager Forecast: the "Sellable vs arriving" block first, then a simpler "rooms to sell"
+table focused on each room type, with a dropdown for the detailed rooms. **User asked to do (d) first; (a)–(c) follow after review.**
+
+**Manager Forecast (done):** `Forecast mode='manager'` renders, top to bottom: header (Generate forecast, freshness badge, Rooms live) → **Sellable vs arriving** card (unchanged format: "NKRR left to sell 4 … Total 16 rooms" + clean-vs-arriving bars)
+→ **Rooms to sell today** (`SimpleRoomTable.js`): one row per room type — *Clean · Arriving · Left to sell · Status* — tap a row for the dropdown: each subtype's rooms with plain housekeeping states (Inspected / Awaiting inspection / Dirty / In progress / Occupied / Out of service)
+and "Inspect now" / "Clean first" room numbers → **14-day outlook** (choosing a day returns to the top). For later days the same table becomes *Expected · Turn first · Priority* and the dropdown shows booked/expected/already-empty + the departing rooms to clean by floor.
+Removed from the manager view (all still in Dev): stats bar, full table with subtype rows and housekeeping columns, action-list card, housekeeping-plan card, arrivals table, operational notes, snapshot-history / forecast-settings links.
+**Parity guarantee:** `mode='dev'` is the previous page, untouched; a test asserts every old function exists there (outlook, stats, full table + click-to-expand chips, action lists, plan, arrivals, notes, summary, print sheet, links, live badge).
+Verified against the live payload: the top card shows NKRR 4 / NKJZ 5 / NQRR 2 / NQJZ 5, total 16 (matches the user's reference); screenshots at 1200 px (today + tomorrow). Tests: `forecastpage` 22 (17 dev-mode + 5 manager), `devshell` 9.
 
 ### 2026-10-20 — Sprint 22.4: Dev area, manager/dev split, plain freshness badge
 

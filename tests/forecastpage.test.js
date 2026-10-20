@@ -37,10 +37,10 @@ const mkLive = (o = {}) => ({ forecastDate: TODAY, fetchedAt: new Date().toISOSt
   remainingArrivals: [{ typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NQRR' }, { typeCode: 'NKRR' }, { typeCode: 'NKRR' }], stillDeparting: [{ roomNumber: '201', typeCode: 'NKRR' }, { roomNumber: '105', typeCode: 'NQRR' }], arrivalsToday: 5, departedToday: 0, ...o });
 
 let intervals;
-async function mount() {
+async function mount(mode = 'dev') {
   intervals = []; const realSI = w.setInterval; globalThis.setInterval = (fn, ms) => { intervals.push({ fn, ms }); return realSI.call(w, fn, 1e9); };   // capture the page's timers
   calls.length = 0; const Forecast = load(ROOT + '/src/components/Forecast/index.js').default; const el = document.getElementById('root'); el.innerHTML = ''; const root = createRoot(el);
-  await act(async () => { root.render(React.createElement(Forecast)); }); await act(async () => { await sleep(30); });
+  await act(async () => { root.render(React.createElement(Forecast, { mode })); }); await act(async () => { await sleep(30); });
   const click = async (node) => { await act(async () => { node.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); }); await act(async () => { await sleep(10); }); };
   const rowFor = (code) => [...el.querySelectorAll('tbody tr')].find(tr => (tr.querySelector('code') || {}).textContent === code);
   const cells = (tr) => [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
@@ -143,6 +143,47 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   });
   await t('no snapshot yet → friendly empty state without any Sync wording', async () => {
     fresh(); snapshot = null; const h = await mount(); assert(/No forecast yet/.test(h.el.textContent) && !/Sync/.test(h.el.textContent)); await h.unmount();
+  });
+
+  // ── Sprint 22.5: the MANAGER layout (the dev tests above run the full page) ──
+  const order = (el, sels) => sels.map(sel => { const n = [...el.querySelectorAll('h2')].find(h => sel.test(h.textContent)); return n ? [...el.querySelectorAll('*')].indexOf(n) : -1; });
+  await t('MANAGER forecast, top to bottom: "Sellable vs arriving" summary → simple "Rooms to sell today" table → next-14-days selector; nothing else', async () => {
+    fresh(); const h = await mount('manager'); const txt = h.el.textContent;
+    const [sum, tbl] = order(h.el, [/Sellable vs arriving/, /Rooms to sell today/]); const strip = [...h.el.querySelectorAll('*')].indexOf(h.el.querySelector('.fb-outlook'));
+    assert(sum > 0 && tbl > sum && strip > tbl, `order ${sum} < ${tbl} < ${strip}`);
+    assert(/NQRR left to sell/.test(txt) && /NKRR left to sell/.test(txt) && /Total left to sell/.test(txt) && /Clean rooms \(VI \+ PU\)/.test(txt) && /Still arriving/.test(txt), 'the summary block matches the dev layout');
+    for (const gone of ['.fb-stats', '.fb-need-table', '.fb-detail-table']) assert(!h.el.querySelector(gone), gone + ' is dev-only');
+    for (const gone of [/Action list/, /Housekeeping plan/, /Operational Notes/, /Arrivals · /, /Snapshot history/, /Forecast settings/, /Awaiting inspection \(PU\)/, /Dirty \/ in progress/]) assert(!gone.test(txt), String(gone) + ' must not show for managers');
+    assert([...h.el.querySelectorAll('button')].some(b => /Generate forecast/.test(b.textContent)) && /Reservations detail/.test(txt)); await h.unmount();
+  });
+  await t('MANAGER table: ONE row per room type with 5 plain columns; subtype rows and housekeeping columns are not shown', async () => {
+    fresh(); const h = await mount('manager'); const heads = [...h.el.querySelectorAll('.sr-table thead th')].map(x => x.textContent); assert.deepStrictEqual(heads, ['Room type', 'Clean', 'Arriving', 'Left to sell', 'Status']);
+    const rows = [...h.el.querySelectorAll('.sr-row')]; assert.strictEqual(rows.length, 2, 'NQRR + NKRR only'); const cell = (tr) => [...tr.querySelectorAll('td')].map(td => td.textContent.trim().replace(/^[▸▾]\s*/, ''));
+    const q = cell(rows.find(r => /NQRR/.test(r.textContent))), k = cell(rows.find(r => /NKRR/.test(r.textContent)));
+    assert.deepStrictEqual(q.slice(1), ['2', '3', '0', 'Clean first'], q.join('|')); assert.deepStrictEqual(k.slice(1), ['0', '2', '0', 'Sold out'], k.join('|'));
+    assert(!/NKRRP/.test(h.el.querySelector('.sr-table').textContent), 'subtypes only appear in the dropdown'); await h.unmount();
+  });
+  await t('MANAGER dropdown: tap a room type → its rooms with housekeeping state, by subtype, plus "inspect now" / "clean first" room numbers; one open at a time', async () => {
+    fresh(); const h = await mount('manager'); const row = (code) => [...h.el.querySelectorAll('.sr-row')].find(r => new RegExp(code + '\\b').test(r.querySelector('code').textContent) && r.querySelector('code').textContent === code);
+    assert(!h.el.querySelector('.sr-detail')); await h.click(row('NQRR').querySelector('.sr-toggle')); let d = h.el.querySelector('.sr-detail').textContent;
+    for (const w of [/101\s*Inspected/, /102\s*Awaiting inspection/, /103\s*Dirty/, /104\s*Occupied/, /105\s*Occupied/, /Inspect now: 102/, /Clean first: 103/]) assert(w.test(d), String(w) + ' in: ' + d);
+    assert(h.el.querySelector('.sr-row.open') && h.el.querySelector('.sr-toggle[aria-expanded="true"]'));
+    await h.click(row('NKRR').querySelector('.sr-toggle')); d = h.el.querySelector('.sr-detail').textContent; assert.strictEqual(h.el.querySelectorAll('.sr-detail').length, 1, 'only one open'); assert(/NKRR\s*Standard/.test(d) && /NKRRP\s*Pets/.test(d) && /G28\s*Occupied/.test(d) && /202\s*In progress/.test(d), d);
+    await h.click(h.el.querySelector('.sr-row.open')); assert(!h.el.querySelector('.sr-detail'), 'tapping again closes it'); await h.unmount();
+  });
+  await t('MANAGER, a later day: the table becomes Expected / Turn first / Priority; the dropdown lists the departing rooms to clean by floor; choosing a day returns to the top', async () => {
+    fresh({ snap: { reservations: [...reservations, R({ status: 'INH', roomNumber: '103', arrivalDate: '2026-10-11', departureDate: '2026-10-13' }), R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' }), R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' })] } });
+    let scrolled = 0; w.Element.prototype.scrollIntoView = function () { scrolled++; }; const h = await mount('manager');
+    await h.click(h.el.querySelectorAll('.fb-day')[1]); assert(scrolled >= 1, 'scrolled back to the top'); assert(/Rooms needed · Tue, Oct 13/.test(h.el.textContent), h.el.textContent.slice(0, 300));
+    assert.deepStrictEqual([...h.el.querySelectorAll('.sr-table thead th')].map(x => x.textContent), ['Room type', 'Expected', 'Turn first', 'Priority']);
+    const nq = [...h.el.querySelectorAll('.sr-row')].find(r => /NQRR/.test(r.textContent)); assert(/Normal|Turn early|Turn first|May run short/.test(nq.textContent)); await h.click(nq.querySelector('.sr-toggle'));
+    const d = h.el.querySelector('.sr-detail').textContent; assert(/booked · about \d+ expected · \d+ already empty/.test(d), d); assert(/Floor|Ground/.test(d) || /No priority turns needed/.test(d), d); await h.unmount();
+  });
+  await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {
+    fresh(); const h = await mount('dev'); const txt = h.el.textContent;
+    for (const sel of ['.fb-outlook', '.fb-stats', '.fb-need-table', '.fb-card .fb-detail-table', '.fb-rail', '.fb-sync-badge']) assert(h.el.querySelector(sel), sel);
+    for (const w of [/Sellable vs arriving/, /Action list/, /Operational Notes/, /Arrivals · today/, /Snapshot history/, /Forecast settings/, /Generate forecast/, /Reservations detail/, /Awaiting inspection \(PU\)/, /Left to sell now/]) assert(w.test(txt), String(w));
+    assert(h.el.querySelectorAll('.fb-variant-row').length >= 3, 'subtype rows'); await h.click(h.el.querySelector('.fb-variant-row')); assert(h.el.querySelector('.fb-detail-row'), 'click-to-expand room chips'); await h.unmount();
   });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();
