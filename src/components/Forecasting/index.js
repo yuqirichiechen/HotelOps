@@ -226,8 +226,10 @@ const ACTION_LABEL = {
 // `secondary` is the muted "of N" companion (e.g. "of 38"). When
 // primary === 0 (work finished) the card outlines green. Icon
 // renders inside a colored circle — accent picks the bg color.
+const TILE_FILTERS = { arr: ['remainingArrivals', 'arrived'], inh: ['inhouse'], dep: ['remainingDepartures', 'departed'], noroom: ['needsRoom'] };
+const tileForFilter = (f) => Object.keys(TILE_FILTERS).find(k => TILE_FILTERS[k].includes(f)) || null;
+
 const KpiCard = ({ label, primary, secondary, sublabel, accent, icon, onClick, active, ring, ringColor, ringLabel }) => {
-  const done = primary === 0;
   // Sprint 20.3 — like rGuest's top tiles, a KPI card can act as a tab button.
   const clickable = typeof onClick === 'function';
   // Sprint 22.7 — a click (and the first appearance) restarts the count-up + ring fill from zero.
@@ -235,7 +237,7 @@ const KpiCard = ({ label, primary, secondary, sublabel, accent, icon, onClick, a
   const press = () => { setAnimKey(k => k + 1); if (clickable) onClick(); };
   return (
     <div
-      className={`fc-kpi-card fc-kpi-${accent || 'default'}${done ? ' fc-kpi-done' : ''}${clickable ? ' fc-kpi-clickable' : ''}${active ? ' fc-kpi-active' : ''}`}
+      className={`fc-kpi-card fc-kpi-${accent || 'default'}${clickable ? ' fc-kpi-clickable' : ''}${active ? ' fc-kpi-active' : ''}`}
       {...(clickable ? {
         role: 'button', tabIndex: 0, 'aria-pressed': !!active,
         onClick: press,
@@ -353,46 +355,6 @@ const RawOutputModal = ({ snapshot, onClose }) => {
           <pre className="fc-raw-pre">{json}</pre>
         </div>
       </div>
-    </div>
-  );
-};
-
-// Sprint 17.8 — auto-generated handoff message the GM can edit
-// before sending. For now editing is a stub (sends to clipboard).
-const HousekeepingMessagePreview = ({ kpis }) => {
-  const total   = kpis.roomsToCleanToday ?? 0;
-  const dep     = kpis.departures ?? 0;
-  const stay    = kpis.stayovers ?? 0;
-  const hk      = kpis.housekeepersNeeded ?? 0;
-
-  const hourPart = (() => {
-    const h = new Date().getHours();
-    if (h < 12) return 'morning';
-    if (h < 18) return 'afternoon';
-    return 'evening';
-  })();
-
-  const text =
-    `Good ${hourPart}, Housekeeping team — today's forecast shows ${total} rooms to service: ` +
-    `${dep} full cleans (check-outs) and ${stay} stayover touch-ups. ` +
-    `Based on a productivity target of ${kpis.housekeepersNeeded ? Math.ceil(total / hk) : 6} rooms per attendant, ` +
-    `${hk} attendants are recommended. Please review the assigned rooms below.`;
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      /* clipboard may be denied; ignore silently */
-    }
-  };
-
-  return (
-    <div className="fc-msg-card">
-      <div className="fc-msg-head">
-        <h3>Housekeeping Message Preview</h3>
-        <button type="button" className="fc-meta-link" onClick={copy}>Copy</button>
-      </div>
-      <p className="fc-msg-body">{text}</p>
     </div>
   );
 };
@@ -683,7 +645,11 @@ const Forecasting = ({ mode = 'manager' }) => {
   const [scrapePct, setScrapePct]       = useState(0);     // 17.9 progress ring
   // Sprint 20.3 — background guest-detail job (Sprint 20.2): progress shown under the title.
   const [detailJob, setDetailJob]       = useState(null);
-  const [roomPanel, setRoomPanel]       = useState(null);   // Sprint 22.7 — 'left' | 'dirty' | null: which room list is open under the tiles
+  // Sprint 22.8 — which tile is selected. Set on the click itself (so the highlight is instant and never depends on a tab that
+  // may be hidden when its count is 0); a manual tab change in the table re-syncs it.
+  const [tile, setTile] = useState(() => tileForFilter(resnFilter));
+  const roomPanel = tile === 'left' || tile === 'dirty' ? tile : null;   // the room lists replace the table inside the same card
+  const pickFilter = (f) => { setResnFilter(f); setTile(tileForFilter(f)); };
 
   const loadLatest = useCallback(async () => {
     setError(null);
@@ -821,7 +787,7 @@ const Forecasting = ({ mode = 'manager' }) => {
         <ResnTable
           rows={snapshot.payload.reservations || []}
           filter={resnFilter}
-          onFilter={setResnFilter}
+          onFilter={pickFilter}
           sources={detailSources}
           roomTypes={detailRoomTypes}
           sourceFilter={resnSourceFilter}
@@ -965,7 +931,7 @@ const Forecasting = ({ mode = 'manager' }) => {
               const reservations = snapshot.payload.reservations || [];
               // Sprint 20.3: same definition as the "Needs a room" tab.
               const noRoomCount  = reservations.filter(tabPredicate('needsRoom')).length;
-              const goTab = (key) => { setRoomPanel(null); setResnFilter(key); };
+              const goTab = (key, name) => { setResnFilter(key); setTile(name); };
               const cond = condition, cc = cond ? cond.counts : null;
               return (
                 <>
@@ -976,8 +942,8 @@ const Forecasting = ({ mode = 'manager' }) => {
                     primary={arrLeft}
                     sublabel={`${arrived} arrived of ${arrTotal} today`}
                     ring={fraction(arrived, arrTotal)} ringColor="#6b46c1" ringLabel={`${arrived} of ${arrTotal} arrived`}
-                    onClick={() => goTab('remainingArrivals')}
-                    active={!roomPanel && (resnFilter === 'remainingArrivals' || resnFilter === 'arrived')}
+                    onClick={() => goTab('remainingArrivals', 'arr')}
+                    active={tile === 'arr'}
                   />
                   <KpiCard
                     accent="inhouse"
@@ -986,8 +952,8 @@ const Forecasting = ({ mode = 'manager' }) => {
                     primary={kpis.inHouse ?? 0}
                     sublabel="guests currently staying"
                     ring={fraction(kpis.inHouse ?? 0, cond ? cond.sellable : 0)} ringColor="#2b6cb0" ringLabel={cond ? `${kpis.inHouse ?? 0} of ${cond.sellable} rooms occupied` : undefined}
-                    onClick={() => goTab('inhouse')}
-                    active={!roomPanel && resnFilter === 'inhouse'}
+                    onClick={() => goTab('inhouse', 'inh')}
+                    active={tile === 'inh'}
                   />
                   <KpiCard
                     accent="departures"
@@ -996,8 +962,8 @@ const Forecasting = ({ mode = 'manager' }) => {
                     primary={depLeft}
                     sublabel={`${checkedOut} checked out of ${depTotal} today`}
                     ring={fraction(checkedOut, depTotal)} ringColor="#dd6b20" ringLabel={`${checkedOut} of ${depTotal} checked out`}
-                    onClick={() => goTab('remainingDepartures')}
-                    active={!roomPanel && (resnFilter === 'remainingDepartures' || resnFilter === 'departed')}
+                    onClick={() => goTab('remainingDepartures', 'dep')}
+                    active={tile === 'dep'}
                   />
                   {cc && (
                     <KpiCard
@@ -1007,8 +973,8 @@ const Forecasting = ({ mode = 'manager' }) => {
                       primary={cc.leftToSell}
                       sublabel={`${cc.vi} inspected · ${cc.pu} pickup`}
                       ring={fraction(cc.leftToSell, cond.sellable)} ringColor="#2f855a" ringLabel={`${cc.leftToSell} of ${cond.sellable} rooms left to sell`}
-                      onClick={() => setRoomPanel(p => (p === 'left' ? null : 'left'))}
-                      active={roomPanel === 'left'}
+                      onClick={() => setTile(t => (t === 'left' ? tileForFilter(resnFilter) : 'left'))}
+                      active={tile === 'left'}
                     />
                   )}
                   {cc && (
@@ -1019,8 +985,8 @@ const Forecasting = ({ mode = 'manager' }) => {
                       primary={cc.dirtyTotal}
                       sublabel={`${cc.dirty} dirty · ${cc.inProgress} in progress · ${cc.occupiedClean} occupied clean`}
                       ring={fraction(cc.dirtyTotal, cond.total)} ringColor="#c53030" ringLabel={`${cc.dirtyTotal} of ${cond.total} rooms need cleaning`}
-                      onClick={() => setRoomPanel(p => (p === 'dirty' ? null : 'dirty'))}
-                      active={roomPanel === 'dirty'}
+                      onClick={() => setTile(t => (t === 'dirty' ? tileForFilter(resnFilter) : 'dirty'))}
+                      active={tile === 'dirty'}
                     />
                   )}
                   {isDev && (
@@ -1030,42 +996,35 @@ const Forecasting = ({ mode = 'manager' }) => {
                       label="No Room Assigned"
                       primary={noRoomCount}
                       sublabel="needs review"
-                      onClick={() => goTab('needsRoom')}
-                      active={!roomPanel && resnFilter === 'needsRoom'}
+                      onClick={() => goTab('needsRoom', 'noroom')}
+                      active={tile === 'noroom'}
                     />
                   )}
                 </>
               );
             })()}
           </section>
-          {roomPanel && condition && (
-            <RoomConditionPanel kind={roomPanel} condition={condition} mode={mode} onClose={() => setRoomPanel(null)} />
-          )}
-
-          <div className="fc-body">
+          <div className={`fc-body${isDev ? ' fc-body-dev' : ''}`}>
             <main className="fc-main">
-              {/* Sprint 18.3 — legacy view toggle removed. The
-                  Cleaning Type / Room Type / Floor tabs were
-                  forecast-y analytics views from when this page
-                  was the Forecast; they don't belong on
-                  Reservations. The page now always renders the
-                  Reservation Details table (view stays 'details'
-                  by default). */}
-              {/* Sprint 22.2 — what the auto-sync saw change (new bookings, cancellations, edits). */}
-              {isDev && <RecentChanges />}
-              <div className="fc-table-header">
-                <h2>Guest Reservations</h2>
-              </div>
-              {tableEl}
+              {/* Sprint 22.8 — the five tiles all work the same way: they switch what THIS card shows (guest tabs for the first three,
+                  room lists for Left to sell / Dirty rooms). */}
+              {roomPanel && condition ? (
+                <RoomConditionPanel kind={roomPanel} condition={condition} mode={mode} embedded onClose={() => setTile(tileForFilter(resnFilter))} />
+              ) : (
+                <>
+                  <div className="fc-table-header">
+                    <h2>Guest Reservations</h2>
+                  </div>
+                  {tableEl}
+                </>
+              )}
             </main>
-
+            {/* Sprint 22.8 — dev: what the auto-sync saw change, as a small card on the right (like the dev Forecast page). */}
+            {isDev && <aside className="fc-side"><RecentChanges /></aside>}
             {/* Sprint 20.4: the right rail (Today at a glance + Selected reservation) is gone — the KPI tiles above
                 are the glance, and details expand in place on each card. */}
           </div>
 
-          <div className="fc-bottom">
-            <HousekeepingMessagePreview kpis={kpis} />
-          </div>
         </>
       )}
 

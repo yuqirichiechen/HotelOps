@@ -1472,3 +1472,10 @@
 .rcp-muted { color: var(--text-muted); }
 .rcp-two { display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (min-width: 1000px) { .rcp-two.rcp-two-chips { grid-template-columns: 1fr 1fr; } }
+
+/* ── Sprint 22.8 ── */
+.fc-kpi-active { box-shadow: inset 0 0 0 2px var(--accent-alt); background: var(--accent-bg); }
+.rcp.rcp-embedded { border: 0; padding: 0; margin: 0; background: transparent; }
+.fc-body.fc-body-dev { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+.fc-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1100px) { .fc-body.fc-body-dev { grid-template-columns: 1fr; } }

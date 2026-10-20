@@ -75,7 +75,7 @@ const DevOccupiedClean = ({ condition }) => (
   </div>
 );
 
-const RoomConditionPanel = ({ kind, condition, mode, onClose }) => {
+const RoomConditionPanel = ({ kind, condition, mode, onClose, embedded }) => {
   const isDev = mode === 'dev';
   const [lastStays, setLastStays] = useState(undefined);      // dev only: { room: stay|null }
   const vacantDirty = useMemo(() => condition.lists.dirty.filter(r => !r.occupied).map(r => r.roomNumber), [condition]);
@@ -91,7 +91,7 @@ const RoomConditionPanel = ({ kind, condition, mode, onClose }) => {
 
   const c = condition.counts;
   return (
-    <section className="rcp" aria-label={kind === 'left' ? 'Rooms left to sell' : 'Dirty and occupied clean rooms'}>
+    <section className={`rcp${embedded ? ' rcp-embedded' : ''}`} aria-label={kind === 'left' ? 'Rooms left to sell' : 'Dirty and occupied clean rooms'}>
       <div className="rcp-head">
         <h3>{kind === 'left' ? `Left to sell · ${c.leftToSell} room${c.leftToSell === 1 ? '' : 's'}` : 'Dirty rooms and occupied clean rooms'}</h3>
         <button type="button" className="rcp-close" onClick={onClose} aria-label="Close room list">×</button>

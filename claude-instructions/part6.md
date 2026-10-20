@@ -18,11 +18,18 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 22.8   | UI fixes: dark mode, tiles consistent, slower animation, Recent changes card | **Built + tested, NOT yet deployed** (CSS/JS only) |
 | 22.7   | Reservations tiles redo (left-first numbers, rings, count-up, room lists) | **Built + tested, NOT yet deployed** (no migration; new dev route `/api/dev/rooms/last-stays`) |
 | 22.6   | One shell for dev + managers; lean manager Reservations; second-night cleaning plan; room status sheet | **Built + tested, NOT yet deployed** (no migration, no new env) |
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 22.8: UI fixes
+
+1. **Dark mode**: `src/darkFixes.css` (imported in `index.js`) re-colors everything Sprints 20–22 hard-coded for light (room chips, tile icon chips, forecast stat icons / pills / formula box, plan + room-status sheet rows, accuracy button, dev "View as" bar); screen-only so printed sheets stay light. Checked in a dark screenshot (manager + dev).
+2. Reservations page: **Housekeeping Message Preview deleted**. 3. **All five tiles behave the same**: the first three switch the guest tabs, Left to sell / Dirty rooms switch the SAME Guest Reservations card to a room list (no separate panel above); close (×) or any tile returns. 4. **No green "done" tint** on a 0 tile; the selected tile is held in its own state set on the click, so the highlight is immediate (previously derived from the tab, which was lost when a 0-count tab was hidden); stronger selected style. 5. Count-up and ring now 1.6 s (were 0.7 / 0.8). 6. Dev: **Recent changes is a small card on the right** (`.fc-body-dev > .fc-side`); stacks under 1100 px; managers unchanged.
+Tests: `kpi-tiles` 10 (+3), others re-run green; build compiles.
 
 ### 2026-10-21 — Sprint 22.7: Reservations tiles
 

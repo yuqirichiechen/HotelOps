@@ -89,5 +89,23 @@ const K = payload.kpis;
     assert(/Zed Prior/.test(rowOf('104').textContent) && /Oct 16 → Oct 19/.test(rowOf('104').textContent) && /OLD104/.test(rowOf('104').textContent)); assert(/No previous stay on record/.test(rowOf('105').textContent));
     const t108 = rowOf('108').textContent; assert(/guest still in room/.test(t108) && /Cy Young/.test(t108) && /in house now/.test(t108), t108); await h.unmount();
   });
+  // ── Sprint 22.8 ──
+  await t('22.8: no Housekeeping Message Preview; no green "done" background on a 0 tile; the clicked tile is highlighted at once (even when its tab is hidden because the count is 0)', async () => {
+    for (const mode of ['manager', 'dev']) {
+      const h = await mount(mode); assert(!/Housekeeping Message Preview/.test(h.el.textContent) && !h.el.querySelector('.fc-msg-card'), mode); assert(!h.el.querySelector('.fc-kpi-done'));
+      const act = () => [...h.el.querySelectorAll('.fc-kpi-card.fc-kpi-active')].map(c => c.querySelector('.fc-kpi-label').textContent);
+      for (const [re, label] of [[/Check-outs left/, 'Check-outs left'], [/Arrivals left/, 'Arrivals left'], [/In-house/, 'In-house'], [/Dirty rooms/, 'Dirty rooms'], [/Left to sell/, 'Left to sell'], [/Check-outs left/, 'Check-outs left']]) { await h.click(h.tile(re)); assert.deepStrictEqual(act(), [label], mode + ' ' + label); }
+      await h.unmount();
+    }
+  });
+  await t('22.8: ALL five tiles work the same — the room lists open INSIDE the Guest Reservations card (replacing the table), no separate panel above it; closing returns the guest list', async () => {
+    const h = await mount('manager'); await h.click(h.tile(/Dirty rooms/)); const main = h.el.querySelector('.fc-main'); assert(main.querySelector('.rcp'), 'list is inside the card'); assert(!h.el.querySelector('.fc-kpis + .rcp'), 'nothing between tiles and card'); assert(!main.querySelector('.fc-table-header'), 'table hidden');
+    await h.click(main.querySelector('.rcp-close')); assert(!h.el.querySelector('.rcp') && h.el.querySelector('.fc-main .fc-table-header')); await h.click(h.tile(/Arrivals left/)); assert(h.el.querySelector('.fc-main .fc-table-header')); await h.unmount();
+  });
+  await t('22.8: DEV Recent changes is a small card on the RIGHT (aside), manager has none', async () => {
+    const d = await mount('dev'); assert(d.el.querySelector('.fc-body.fc-body-dev > .fc-side .rc'), 'right card'); assert(!d.el.querySelector('.fc-main .rc')); await d.unmount();
+    const m = await mount('manager'); assert(!m.el.querySelector('.rc') && !m.el.querySelector('.fc-body-dev')); await m.unmount();
+  });
+  if (process.env.DUMP_MODE) { const h = await mount(process.env.DUMP_MODE); if (process.env.DUMP_TILE) await h.click(h.tile(new RegExp(process.env.DUMP_TILE))); fs.writeFileSync(process.env.DUMP, h.el.innerHTML); }
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();

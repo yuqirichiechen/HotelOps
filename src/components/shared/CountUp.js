@@ -10,7 +10,7 @@ const nowMs = () => (typeof performance !== 'undefined' && performance.now ? per
 const ease = (x) => 1 - Math.pow(1 - x, 3);
 
 /** The number to display now: 0 → target over `duration` ms, restarted whenever `animKey` changes. */
-export function useCountUp(target, animKey, duration = 700) {
+export function useCountUp(target, animKey, duration = 1600) {
   const isNum = typeof target === 'number' && Number.isFinite(target);
   const [val, setVal] = useState(isNum ? 0 : target);
   const handle = useRef(0);
