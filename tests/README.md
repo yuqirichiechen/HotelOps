@@ -48,6 +48,7 @@ Point `DATABASE_URL` at `postgres://postgres@127.0.0.1:5439/hoptest`. `server.js
 | `syncrender.js` | Renders those components with mock data for screenshots (`DUMP=f.html WHICH=panel\|changes`) | `node tests/syncrender.js "$PWD"` |
 | `sync-payload.test.js` | Sprint 22.3: mirror payload == full-scrape payload (real Postgres, fake rGuest), status override, readiness, flushPending/onFlushed | `node tests/sync-payload.test.js "$PWD"` |
 | `reservations-refresh.test.js` | Real Reservations page: reads /admin/forecast/current; refresh → sync run (mirror) or legacy scrape (fallback) | `node tests/reservations-refresh.test.js "$PWD"` |
+| `kpi-tiles.test.js` | Reservations tiles: left-first numbers, rings, count-up, room lists (manager vs dev) | `node tests/kpi-tiles.test.js "$PWD"` |
 | `roomsheet.test.js` | Room status sheet: builder (floors, available/unavailable/occupied, check-out day, no names, CSV) + printable component | `node tests/roomsheet.test.js "$PWD"` |
 | `reservations-lean.test.js` | Real Reservations page: lean manager rows vs full dev functions | `node tests/reservations-lean.test.js "$PWD"` |
 | `dev-auth.test.js` | Sprint 22.4: dev sign-in (env, rate limit), dev ⊇ admin, dev-only route matrix, manager allowed-set (fake DB + rGuest) | `node tests/dev-auth.test.js "$PWD"` |

@@ -1,0 +1,9 @@
+/* Sprint 22.7 — status ring */
+.sr-ring { position: relative; display: inline-flex; width: 44px; height: 44px; flex: none; }
+.sr-ring svg { position: absolute; inset: 0; }
+.sr-ring-track { fill: none; stroke: var(--border, #e2e8f0); stroke-width: 3.5; }
+.sr-ring-arc { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: var(--circ); stroke-dashoffset: var(--target); animation: sr-ring-fill 0.8s ease-out; }
+.sr-ring-icon { position: absolute; inset: 7px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.sr-ring-icon svg { position: static; width: 16px; height: 16px; }
+@keyframes sr-ring-fill { from { stroke-dashoffset: var(--circ); } to { stroke-dashoffset: var(--target); } }
+@media (prefers-reduced-motion: reduce) { .sr-ring-arc { animation: none; } }

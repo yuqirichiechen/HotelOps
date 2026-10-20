@@ -184,7 +184,7 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
     fresh(); for (const mode of ['manager', 'dev']) {
       const h = await mount(mode); await h.click([...h.el.querySelectorAll('button')].find(b => /Room status sheet/.test(b.textContent))); const sheet = h.el.querySelector('.fc-sheet'); assert(sheet, mode);
       assert(/Room status/.test(sheet.querySelector('h1').textContent) && /Available/.test(sheet.textContent) && /Unavailable/.test(sheet.textContent) && /Occupied/.test(sheet.textContent) && /Checking out/.test(sheet.textContent), sheet.textContent.slice(0, 200));
-      assert(h.el.querySelectorAll('.fc-sheet-floor').length >= 1 && /Today · 11:00 AM|Tomorrow · 11:00 AM|Check-out date unknown/.test(sheet.textContent)); assert(!/Guest \d/.test(sheet.textContent), 'no guest names on the sheet'); await h.unmount();
+      assert(h.el.querySelectorAll('.fc-sheet-floor').length >= 1 && /Today · 12:00 PM|Tomorrow · 12:00 PM|Check-out date unknown/.test(sheet.textContent)); assert(!/Guest \d/.test(sheet.textContent), 'no guest names on the sheet'); await h.unmount();
     }
   });
   await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {

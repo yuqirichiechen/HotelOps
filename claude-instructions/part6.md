@@ -18,10 +18,18 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 22.7   | Reservations tiles redo (left-first numbers, rings, count-up, room lists) | **Built + tested, NOT yet deployed** (no migration; new dev route `/api/dev/rooms/last-stays`) |
 | 22.6   | One shell for dev + managers; lean manager Reservations; second-night cleaning plan; room status sheet | **Built + tested, NOT yet deployed** (no migration, no new env) |
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 22.7: Reservations tiles
+
+User feedback: the tiles showed the wrong way round. Now **Arrivals left** (big) with "N arrived of T today", **Check-outs left** with "N checked out of T today"; **In-house**; "Staying tonight" removed (duplicated In-house); two new room tiles modeled on rGuest's Room Condition:
+**Left to sell** (vacant Inspected + Pickup, sellable only; sub "x inspected · y pickup") and **Dirty rooms** (Dirty + In progress; sub shows dirty / in progress / occupied clean). Every tile has a **status ring** (arrived share, occupied share, checked-out share, left-to-sell share, dirty share) and a **count-up from 0** on first show and on each click (`shared/CountUp.js`; honors reduced motion; rAF with timer fallback).
+Clicking Left to sell / Dirty opens a room list under the tiles (`RoomConditionPanel.js`, numbers from `roomCondition.js` over `payload.perRoomSheet`). **Left to sell**: room numbers + type + Inspected/Pickup for managers and dev. **Dirty + Occupied clean**: managers get room numbers only; dev gets guest details for occupied clean and the
+**last previous stay** for vacant dirty rooms (new dev-only `GET /api/dev/rooms/last-stays?rooms=`, reads `reservation_history`; no lookup is made for managers). Tests: `kpi-tiles` 7 (new); `reservations-lean`, `forecastpage`, `devshell` updated/green. No migration, no new env.
 
 ### 2026-10-21 — Sprint 22.6: one shell, lean Reservations, second-night plan, room status sheet
 
@@ -44,7 +52,7 @@ UI: the summary card says **"NKRR left to sell … Total left to sell N rooms"**
 Verified on live data (Oct 20 plan): NQRR 5 arriving, 2 clean left, 3 dirty rooms cleaned first, 9 check-outs, 17 stay-overs → 12 to clean + 17 to service.
 
 **3. Room status sheet** (replaces "Generate forecast"; `roomSheet.js`, `RoomStatusSheet.js`): every room by floor — **Available** (vacant + inspected / awaiting inspection), **Unavailable** (dirty / being cleaned / out of order / blocked), **Occupied** with its **check-out day**; per-floor and total counts, "arriving today" flag for pre-assigned arrivals,
-**Print** and **Download CSV**; no guest names. rGuest exposes only the check-out DATE (`estimatedTimeDetails` is always empty), so the time shown is the standard **11:00 AM** (constant `STANDARD_CHECKOUT`; footnote on the sheet) — confirm the property's real time. The previous priority-plan sheet stays as a dev-only **"Plan sheet"** button (no function lost).
+**Print** and **Download CSV**; no guest names. rGuest exposes only the check-out DATE (`estimatedTimeDetails` is always empty), so the time shown is the standard **12:00 PM** (noon — confirmed by the user; constant `STANDARD_CHECKOUT`; footnote on the sheet). Housekeeping assigns same-day check-outs in the morning regardless of the time. The previous priority-plan sheet stays as a dev-only **"Plan sheet"** button (no function lost).
 
 **4. Lean manager Reservations.** `ResnTable lean`: each guest = **name · stay (dates + nights) · confirmation code · room type**, nothing else (`ResnItemLean.js`); no summary / contact lookups and no server-side contact search (search = name, confirmation, room type from the list); no Recent changes, no "No Room Assigned" tile, no "Needs a room" tab, no source filter, sort, CSV, attention chips or expand-all; lean Print sheet
 (guest, confirmation, room type, stay). Kept: KPI tiles (arrivals / in-house / departures / staying tonight), status tabs, room-type filter, search, Print, freshness badge, refresh. Dev ('Full') keeps every function (a test lists them).

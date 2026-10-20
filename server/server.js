@@ -4764,6 +4764,24 @@ app.get('/api/admin/forecast/accuracy', requireAuth, requireRole('dev'), async (
   } catch (err) { console.error('[forecast:accuracy]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
+// GET /api/dev/rooms/last-stays?rooms=101,102 — Sprint 22.7 (dev only: guest names): the most recent stay that ended in each room
+// (departed, or leaving today), for the "Dirty rooms" list on the Reservations page.
+app.get('/api/dev/rooms/last-stays', requireAuth, requireRole('dev'), async (req, res) => {
+  const rooms = String(req.query.rooms || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (!rooms.length || rooms.length > 200 || !rooms.every(r => /^[A-Za-z0-9-]{1,8}$/.test(r))) return res.status(400).json({ success: false, message: 'rooms must be 1–200 room numbers' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (room_number) room_number, guest_name, confirmation_id, type_code, status,
+              to_char(arrival_date,'YYYY-MM-DD') AS arrival_date, to_char(departure_date,'YYYY-MM-DD') AS departure_date
+         FROM reservation_history
+        WHERE property_id = $1 AND room_number = ANY($2::text[]) AND status IN ('DPT','INH')
+          AND departure_date <= (NOW() AT TIME ZONE 'America/Los_Angeles')::date
+        ORDER BY room_number, departure_date DESC, arrival_date DESC`, [process.env.SYNC_PROPERTY_KEY || 'default', rooms]);
+    const stays = Object.fromEntries(rooms.map(r => [r, null])); rows.forEach(r => { stays[r.room_number] = r; });
+    return res.json({ success: true, stays });
+  } catch (err) { console.error('[dev:last-stays]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
 // GET /api/dev/jobs?limit=30 — guest-detail deep-fetch job history (dev logs).
 app.get('/api/dev/jobs', requireAuth, requireRole('dev'), async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 200);

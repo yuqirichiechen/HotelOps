@@ -41,7 +41,7 @@ async function mount(mode) { calls.length = 0; sessionStorage.clear(); const el 
   await t('MANAGER: no Recent changes, no "No Room Assigned" tile, no "Needs a room" tab, no source filter / sort / CSV / attention chips / expand-all; the freshness badge and refresh stay', async () => {
     const h = await mount('manager'); const txt = h.el.textContent;
     for (const aux of [/Recent changes/, /No Room Assigned/, /Needs a room/, /Needs attention/, /Sort:/, /Export CSV/, /Expand all/]) assert(!aux.test(txt), String(aux)); assert(![...h.el.querySelectorAll('label span')].some(s => s.textContent === 'Source'), 'source filter gone');
-    assert([...h.el.querySelectorAll('label span')].some(s => s.textContent === 'Room type'), 'room type filter stays'); assert(/Up to date/.test(txt) && h.el.querySelector('button[aria-label^="Refresh"]')); for (const k of ['Arrivals Today', 'In-house', 'Departures Today', 'Staying Tonight']) assert(txt.includes(k), k); await h.unmount();
+    assert([...h.el.querySelectorAll('label span')].some(s => s.textContent === 'Room type'), 'room type filter stays'); assert(/Up to date/.test(txt) && h.el.querySelector('button[aria-label^="Refresh"]')); for (const k of ['Arrivals left', 'In-house', 'Check-outs left']) assert(txt.includes(k), k); await h.unmount();
   });
   await t('MANAGER: no guest-detail or contact lookups at all (no summaries, no server-side search, no change feed)', async () => {
     const h = await mount('manager'); await h.type(h.el.querySelector('input[type=search]'), 'Ann'); await h.click(h.tab(/In-house/)); const bad = calls.filter(c => /reservations\/summaries|reservations\/search|sync\/events/.test(c.p)); assert.deepStrictEqual(bad, [], JSON.stringify(bad)); await h.unmount();

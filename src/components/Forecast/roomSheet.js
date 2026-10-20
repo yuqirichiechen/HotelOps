@@ -4,7 +4,7 @@
 // rGuest exposes a check-out DATE only (estimatedTimeDetails is always empty), so the time shown is the property's standard check-out time.
 import { normFloor, floorLabel, isActiveRoom } from './forecastModel';
 
-export const STANDARD_CHECKOUT = '11:00 AM';
+export const STANDARD_CHECKOUT = '12:00 PM';
 const OFF = ['OOO', 'OTM', 'HOLD', 'NA'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const utc = (ymd) => { const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number); return Date.UTC(y, m - 1, d); };

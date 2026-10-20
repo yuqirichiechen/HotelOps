@@ -1443,3 +1443,32 @@
 /* Sprint 20.4: no right rail — the list gets the full width. */
 .fc-body { grid-template-columns: 1fr; }
 .fc-main { min-width: 0; }
+
+
+/* ── Sprint 22.7: status rings inside the tiles, dirty accent, room panels ───────────────── */
+.fc-kpi-dirty .fc-kpi-icon { background: #fed7d7; color: #c53030; }
+.fc-kpi-icon-in { width: 100%; height: 100%; border-radius: 50%; background: transparent !important; display: inline-flex; align-items: center; justify-content: center; }
+.fc-kpi-arrivals .fc-kpi-icon-in { color: #6b46c1; } .fc-kpi-inhouse .fc-kpi-icon-in { color: #2b6cb0; } .fc-kpi-departures .fc-kpi-icon-in { color: #c05621; }
+.fc-kpi-staying .fc-kpi-icon-in { color: #2f855a; } .fc-kpi-dirty .fc-kpi-icon-in { color: #c53030; }
+.fc-kpi-clickable { cursor: pointer; }
+.fc-kpi-clickable:focus-visible { outline: 2px solid var(--accent, #3182ce); outline-offset: 2px; }
+.rcp { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin: -8px 0 24px; }
+.rcp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.rcp-head h3 { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 16px; color: var(--brand-text); flex: 1; }
+.rcp-close { background: none; border: 0; font-size: 20px; line-height: 1; color: var(--text-muted); cursor: pointer; }
+.rcp-sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 10px; }
+.rcp-group { margin-bottom: 12px; }
+.rcp-group-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.rcp-count { display: inline-block; min-width: 20px; padding: 0 7px; margin-left: 4px; border-radius: 999px; background: var(--bg-raised); font-size: 12px; text-align: center; font-weight: 600; }
+.rcp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rcp-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface-alt, #f7fafc); font-size: 13px; }
+.rcp-chip strong { font-feature-settings: 'tnum'; }
+.rcp-chip small { color: var(--text-muted); font-size: 11px; }
+.rcp-chip.clean { background: #f0fff4; border-color: #9ae6b4; } .rcp-chip.awaiting { background: #fffaf0; border-color: #f6e05e; } .rcp-chip.dirty { background: #fff5f5; border-color: #feb2b2; } .rcp-chip.occ { background: #ebf8ff; border-color: #90cdf4; }
+.rcp-table-wrap { overflow-x: auto; }
+.rcp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rcp-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.rcp-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-light, var(--border)); vertical-align: top; }
+.rcp-muted { color: var(--text-muted); }
+.rcp-two { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 1000px) { .rcp-two.rcp-two-chips { grid-template-columns: 1fr 1fr; } }

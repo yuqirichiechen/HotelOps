@@ -34,7 +34,7 @@ const live = { forecastDate: TODAY, fetchedAt: '2026-10-12T20:30:00Z', rooms };
   });
   await t('occupied rooms show WHEN they check out: today / tomorrow / a later day (with the standard check-out time); unknown stays honest', () => {
     const by = Object.fromEntries(sh.floors.flatMap(f => f.rooms).map(r => [r.roomNumber, r]));
-    assert.strictEqual(by['101'].checkout, 'Today · 11:00 AM'); assert.strictEqual(by['201'].checkout, 'Tomorrow · 11:00 AM'); assert.strictEqual(by['202'].checkout, 'Fri, Oct 16 · 11:00 AM'); assert.strictEqual(by['203'].checkout, 'Check-out date unknown');
+    assert.strictEqual(by['101'].checkout, 'Today · 12:00 PM'); assert.strictEqual(by['201'].checkout, 'Tomorrow · 12:00 PM'); assert.strictEqual(by['202'].checkout, 'Fri, Oct 16 · 12:00 PM'); assert.strictEqual(by['203'].checkout, 'Check-out date unknown');
     assert.strictEqual(by['102'].arrivingToday, true, 'a pre-assigned arrival is flagged on its vacant room'); assert.strictEqual(by['103'].checkout, '');
   });
   await t('no guest names anywhere (the sheet is printed and handed around); room types carry their labels', () => {
@@ -42,7 +42,7 @@ const live = { forecastDate: TODAY, fetchedAt: '2026-10-12T20:30:00Z', rooms };
   });
   await t('without the live board it falls back to the last update\'s rooms and says so', () => { const s2 = RS.buildRoomSheet(payload, undefined); assert.strictEqual(s2.source, 'snapshot'); assert.strictEqual(s2.asOf, null); assert.strictEqual(s2.totals.rooms, 10); assert.strictEqual(sh.source, 'live'); });
   await t('CSV: header + one line per room, quoted where needed, same statuses as the sheet', () => {
-    const csv = RS.roomSheetCsv(sh).trim().split('\n'); assert.strictEqual(csv[0], 'Floor,Room,Room type,Status,Details,Checking out,Arriving today'); assert.strictEqual(csv.length, 11); assert(csv.includes('Floor 1,101,Double Queen Standard,Occupied,,Today · 11:00 AM,'));
+    const csv = RS.roomSheetCsv(sh).trim().split('\n'); assert.strictEqual(csv[0], 'Floor,Room,Room type,Status,Details,Checking out,Arriving today'); assert.strictEqual(csv.length, 11); assert(csv.includes('Floor 1,101,Double Queen Standard,Occupied,,Today · 12:00 PM,'));
     assert(csv.includes('Floor 1,102,Double Queen Standard,Available,Awaiting inspection,,yes')); assert(RS.roomSheetCsv({ floors: [{ label: 'F', rooms: [{ roomNumber: '1', typeLabel: 'A "quoted", type', state: 'available', detail: '', checkout: '' }] }] }).includes('"A ""quoted"", type"'));
   });
 
@@ -50,7 +50,7 @@ const live = { forecastDate: TODAY, fetchedAt: '2026-10-12T20:30:00Z', rooms };
   await t('SHEET: header counts, one section per floor with its own counts, the status words, check-outs, and the footnote about the standard check-out time', async () => {
     const h = await mount({ payload, live, onClose() {} }); const txt = h.el.textContent;
     assert(/Room status/.test(h.el.querySelector('h1').textContent)); assert(/as of \d{1,2}:\d{2}/.test(txt)); assert.strictEqual(h.el.querySelectorAll('.fc-sheet-floor').length, 3); assert(/Floor 1\s*1 available · 3 unavailable · 1 occupied/.test(txt));
-    for (const x of [/Awaiting inspection/, /Out of order/, /Being cleaned/, /Today · 11:00 AM/, /Tomorrow · 11:00 AM/, /arriving today/, /standard time \(11:00 AM\)/]) assert(x.test(txt), String(x)); assert(!/Secret Guest/.test(txt)); await act(async () => { h.root.unmount(); });
+    for (const x of [/Awaiting inspection/, /Out of order/, /Being cleaned/, /Today · 12:00 PM/, /Tomorrow · 12:00 PM/, /arriving today/, /standard time \(12:00 PM\)/]) assert(x.test(txt), String(x)); assert(!/Secret Guest/.test(txt)); await act(async () => { h.root.unmount(); });
   });
   await t('SHEET: Print opens the browser print dialog; Download CSV saves room-status-<date>.csv with every room; Esc / Close dismiss it', async () => {
     let printed = 0, saved = null, closed = 0; w.print = () => { printed++; };

@@ -19,6 +19,9 @@ import './Forecasting.css';
 import ResnTable from './ResnTable';
 import RecentChanges from './RecentChanges';
 import SyncBadge from '../shared/SyncBadge';
+import { CountUp, StatusRing } from '../shared/CountUp';
+import { buildRoomCondition, fraction } from './roomCondition';
+import RoomConditionPanel from './RoomConditionPanel';
 import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate } from './resnTabs';
 
 
@@ -223,24 +226,29 @@ const ACTION_LABEL = {
 // `secondary` is the muted "of N" companion (e.g. "of 38"). When
 // primary === 0 (work finished) the card outlines green. Icon
 // renders inside a colored circle — accent picks the bg color.
-const KpiCard = ({ label, primary, secondary, sublabel, accent, icon, onClick, active }) => {
+const KpiCard = ({ label, primary, secondary, sublabel, accent, icon, onClick, active, ring, ringColor, ringLabel }) => {
   const done = primary === 0;
   // Sprint 20.3 — like rGuest's top tiles, a KPI card can act as a tab button.
   const clickable = typeof onClick === 'function';
+  // Sprint 22.7 — a click (and the first appearance) restarts the count-up + ring fill from zero.
+  const [animKey, setAnimKey] = useState(1);
+  const press = () => { setAnimKey(k => k + 1); if (clickable) onClick(); };
   return (
     <div
       className={`fc-kpi-card fc-kpi-${accent || 'default'}${done ? ' fc-kpi-done' : ''}${clickable ? ' fc-kpi-clickable' : ''}${active ? ' fc-kpi-active' : ''}`}
       {...(clickable ? {
         role: 'button', tabIndex: 0, 'aria-pressed': !!active,
-        onClick,
-        onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } },
+        onClick: press,
+        onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); press(); } },
       } : {})}
     >
-      <div className="fc-kpi-icon" aria-hidden="true">{icon}</div>
+      {ring != null
+        ? <StatusRing fraction={ring} animKey={animKey} color={ringColor} label={ringLabel}><span className="fc-kpi-icon fc-kpi-icon-in" aria-hidden="true">{icon}</span></StatusRing>
+        : <div className="fc-kpi-icon" aria-hidden="true">{icon}</div>}
       <div className="fc-kpi-body">
         <div className="fc-kpi-label">{label}</div>
         <div className="fc-kpi-numbers">
-          <span className="fc-kpi-primary">{primary ?? '—'}</span>
+          <span className="fc-kpi-primary">{typeof primary === 'number' ? <CountUp value={primary} animKey={animKey} /> : (primary ?? '—')}</span>
           {secondary != null && secondary !== '' && (
             <span className="fc-kpi-secondary">{secondary}</span>
           )}
@@ -675,6 +683,7 @@ const Forecasting = ({ mode = 'manager' }) => {
   const [scrapePct, setScrapePct]       = useState(0);     // 17.9 progress ring
   // Sprint 20.3 — background guest-detail job (Sprint 20.2): progress shown under the title.
   const [detailJob, setDetailJob]       = useState(null);
+  const [roomPanel, setRoomPanel]       = useState(null);   // Sprint 22.7 — 'left' | 'dirty' | null: which room list is open under the tiles
 
   const loadLatest = useCallback(async () => {
     setError(null);
@@ -787,6 +796,7 @@ const Forecasting = ({ mode = 'manager' }) => {
   // print stylesheet can guarantee what reaches paper.
   // handleGenerate / generateDisabled removed in 17.12 — see Forecast/.
 
+  const condition = useMemo(() => (snapshot && snapshot.payload ? buildRoomCondition(snapshot.payload) : null), [snapshot]);   // Sprint 22.7
   const lastSync = snapshot ? fmtTime(snapshot.scraped_at) : '—';
   const kpis = snapshot?.payload?.kpis || {};
 
@@ -945,28 +955,29 @@ const Forecasting = ({ mode = 'manager' }) => {
 
       {snapshot && (
         <>
-          <section className="fc-kpis fc-kpis-5" aria-label="Reservations KPIs">
+          <section className={`fc-kpis fc-kpis-${isDev ? 6 : 5}`} aria-label="Reservations KPIs">
             {(() => {
-              // Sprint 18.1 — 5 cards per the new Reservations
-              // mockup. Drops "Rooms to service / Stayover service /
-              // Housekeepers needed" (forecast concerns, moved to
-              // the Forecast page) and adds "No Room Assigned".
-              const remDep         = kpis.remainingDepartures ?? kpis.departures ?? 0;
-              const inHouseTonight = Math.max(0, (kpis.inHouse ?? 0) - remDep);
-              const reservations   = snapshot.payload.reservations || [];
+              // Sprint 22.7 — the tiles lead with what is LEFT to do (arrivals still to check in, check-outs still to leave), each with a status ring
+              // and a count-up animation; "Staying tonight" (it duplicated In-house) is gone; two room tiles (left to sell / dirty + occupied clean) open
+              // room lists underneath. Numbers come from the same payload as the lists below.
+              const arrTotal = kpis.arrivals ?? 0, arrLeft = kpis.remainingArrivals ?? 0, arrived = Math.max(0, arrTotal - arrLeft);
+              const depTotal = kpis.departures ?? 0, depLeft = kpis.remainingDepartures ?? 0, checkedOut = Math.max(0, depTotal - depLeft);
+              const reservations = snapshot.payload.reservations || [];
               // Sprint 20.3: same definition as the "Needs a room" tab.
-              const noRoomCount    = reservations.filter(tabPredicate('needsRoom')).length;
-              const goTab = (key) => { setResnFilter(key); };
+              const noRoomCount  = reservations.filter(tabPredicate('needsRoom')).length;
+              const goTab = (key) => { setRoomPanel(null); setResnFilter(key); };
+              const cond = condition, cc = cond ? cond.counts : null;
               return (
                 <>
                   <KpiCard
                     accent="arrivals"
                     icon={<IconBriefcase />}
-                    label="Arrivals Today"
-                    primary={kpis.arrivals ?? 0}
-                    sublabel={`${kpis.remainingArrivals ?? 0} not arrived`}
+                    label="Arrivals left"
+                    primary={arrLeft}
+                    sublabel={`${arrived} arrived of ${arrTotal} today`}
+                    ring={fraction(arrived, arrTotal)} ringColor="#6b46c1" ringLabel={`${arrived} of ${arrTotal} arrived`}
                     onClick={() => goTab('remainingArrivals')}
-                    active={resnFilter === 'remainingArrivals' || resnFilter === 'arrived'}
+                    active={!roomPanel && (resnFilter === 'remainingArrivals' || resnFilter === 'arrived')}
                   />
                   <KpiCard
                     accent="inhouse"
@@ -974,40 +985,62 @@ const Forecasting = ({ mode = 'manager' }) => {
                     label="In-house"
                     primary={kpis.inHouse ?? 0}
                     sublabel="guests currently staying"
+                    ring={fraction(kpis.inHouse ?? 0, cond ? cond.sellable : 0)} ringColor="#2b6cb0" ringLabel={cond ? `${kpis.inHouse ?? 0} of ${cond.sellable} rooms occupied` : undefined}
                     onClick={() => goTab('inhouse')}
-                    active={resnFilter === 'inhouse'}
+                    active={!roomPanel && resnFilter === 'inhouse'}
                   />
                   <KpiCard
                     accent="departures"
                     icon={<IconExit />}
-                    label="Departures Today"
-                    primary={kpis.departures ?? 0}
-                    sublabel={`${kpis.remainingDepartures ?? 0} not checked out`}
+                    label="Check-outs left"
+                    primary={depLeft}
+                    sublabel={`${checkedOut} checked out of ${depTotal} today`}
+                    ring={fraction(checkedOut, depTotal)} ringColor="#dd6b20" ringLabel={`${checkedOut} of ${depTotal} checked out`}
                     onClick={() => goTab('remainingDepartures')}
-                    active={resnFilter === 'remainingDepartures' || resnFilter === 'departed'}
+                    active={!roomPanel && (resnFilter === 'remainingDepartures' || resnFilter === 'departed')}
                   />
-                  <KpiCard
-                    accent="staying"
-                    icon={<IconMoon />}
-                    label="Staying Tonight"
-                    primary={inHouseTonight}
-                    sublabel="in-house, not departing today"
-                  />
+                  {cc && (
+                    <KpiCard
+                      accent="staying"
+                      icon={<IconSparkle />}
+                      label="Left to sell"
+                      primary={cc.leftToSell}
+                      sublabel={`${cc.vi} inspected · ${cc.pu} pickup`}
+                      ring={fraction(cc.leftToSell, cond.sellable)} ringColor="#2f855a" ringLabel={`${cc.leftToSell} of ${cond.sellable} rooms left to sell`}
+                      onClick={() => setRoomPanel(p => (p === 'left' ? null : 'left'))}
+                      active={roomPanel === 'left'}
+                    />
+                  )}
+                  {cc && (
+                    <KpiCard
+                      accent="dirty"
+                      icon={<IconBroom />}
+                      label="Dirty rooms"
+                      primary={cc.dirtyTotal}
+                      sublabel={`${cc.dirty} dirty · ${cc.inProgress} in progress · ${cc.occupiedClean} occupied clean`}
+                      ring={fraction(cc.dirtyTotal, cond.total)} ringColor="#c53030" ringLabel={`${cc.dirtyTotal} of ${cond.total} rooms need cleaning`}
+                      onClick={() => setRoomPanel(p => (p === 'dirty' ? null : 'dirty'))}
+                      active={roomPanel === 'dirty'}
+                    />
+                  )}
                   {isDev && (
-                  <KpiCard
-                    accent="noroom"
-                    icon={<IconAlertTriangle />}
-                    label="No Room Assigned"
-                    primary={noRoomCount}
-                    sublabel="needs review"
-                    onClick={() => goTab('needsRoom')}
-                    active={resnFilter === 'needsRoom'}
-                  />
+                    <KpiCard
+                      accent="noroom"
+                      icon={<IconAlertTriangle />}
+                      label="No Room Assigned"
+                      primary={noRoomCount}
+                      sublabel="needs review"
+                      onClick={() => goTab('needsRoom')}
+                      active={!roomPanel && resnFilter === 'needsRoom'}
+                    />
                   )}
                 </>
               );
             })()}
           </section>
+          {roomPanel && condition && (
+            <RoomConditionPanel kind={roomPanel} condition={condition} mode={mode} onClose={() => setRoomPanel(null)} />
+          )}
 
           <div className="fc-body">
             <main className="fc-main">
