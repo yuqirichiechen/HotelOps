@@ -522,7 +522,8 @@ const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scr
 
 const Forecast = () => {
   const { goTo } = useView();
-  const [snapshot, setSnapshot] = useState(null);   // reservations as of the last scrape (labels, future days)
+  const [snapshot, setSnapshot] = useState(null);   // reservations as of the last sync (labels, future days)
+  const [dataSource, setDataSource] = useState(null); // 'mirror' (auto-sync) | 'snapshot' (last stored scrape)
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [historyOpen, setHistoryOpen]   = useState(false);
@@ -532,10 +533,11 @@ const Forecast = () => {
   // Sprint 21.3 — no manual "Sync": the page loads the latest snapshot on open / when you come back to the tab,
   // and today's board is a separate LIVE pull. (Sprint 22 makes the snapshot itself sync automatically.)
   const loadLatest = useCallback(async () => {
-    const { ok, data } = await apiFetch('/admin/forecast/snapshots/latest');
+    const { ok, data } = await apiFetch('/admin/forecast/current');     // Sprint 22.3: auto-sync mirror (server falls back to the last snapshot)
     if (!ok || !data?.success) { setError(data?.message || 'Could not load latest forecast.'); setLoading(false); return; }
     setError(null);
     setSnapshot(data.snapshot || null);
+    setDataSource(data.source || null);
     setLoading(false);
   }, []);
   useEffect(() => {
@@ -691,8 +693,10 @@ const Forecast = () => {
           )}
           {showStale && (
             <div className="fb-stale" role="status">
-              Reservations are from the last scrape, {Math.floor(ageHours)} hours ago ({fmtT(snapshot.scraped_at)}).
-              {live ? ' Today’s room board is live; later days use this scrape.' : ''} Run the scraper on the <button className="fb-empty-link" onClick={() => goTo('reservations')}>Reservations</button> page to refresh.
+              {dataSource === 'mirror'
+                ? <>Auto-sync last updated reservations {Math.floor(ageHours)} hours ago ({fmtT(snapshot.scraped_at)}).{live ? ' Today’s room board is live.' : ''} Check Forecast settings → Auto-sync.</>
+                : <>Reservations are from the last scrape, {Math.floor(ageHours)} hours ago ({fmtT(snapshot.scraped_at)}).
+              {live ? ' Today’s room board is live; later days use this scrape.' : ''} Run the scraper on the <button className="fb-empty-link" onClick={() => goTo('reservations')}>Reservations</button> page to refresh.</>}
             </div>
           )}
           {dateMismatch && (

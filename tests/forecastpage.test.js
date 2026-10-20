@@ -8,7 +8,7 @@ const path = require('path'), fs = require('fs'), Module = require('module'); co
 const { createRoot } = require(ROOT + '/node_modules/react-dom/client'); const { act } = require(ROOT + '/node_modules/react-dom/test-utils');
 let snapshot, liveBoard, liveOk = true, appSettings = {}; const calls = [], gone = [];
 const apiFetch = async (p) => { calls.push(p);
-  if (p === '/admin/forecast/snapshots/latest') return { ok: true, data: { success: true, snapshot } };
+  if (p === '/admin/forecast/snapshots/latest' || p === '/admin/forecast/current') return { ok: true, data: { success: true, snapshot, source: process.env.FC_SOURCE || 'snapshot' } };
   if (p === '/admin/forecast/live') return liveOk ? { ok: true, data: { success: true, live: liveBoard } } : { ok: false, status: 502, data: { success: false } };
   if (p === '/admin/settings') return { ok: true, data: { success: true, settings: appSettings } };
   return { ok: false, data: null }; };

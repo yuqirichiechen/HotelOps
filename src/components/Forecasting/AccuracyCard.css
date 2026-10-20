@@ -1,0 +1,10 @@
+.acc { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-light, var(--border)); }
+.acc h3 { margin: 0 0 8px; font-family: 'TiemposHeadline', Georgia, serif; font-size: 15px; color: var(--brand-text); }
+.acc-note { font-size: 13px; color: var(--text-muted); margin: 0 0 10px; }
+.acc-error { color: var(--danger-text, #b91c1c); }
+.acc-table-wrap { overflow-x: auto; }
+.acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.acc-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.acc-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-light, var(--border)); white-space: nowrap; }
+.acc-suggest { margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; background: var(--accent-bg, #ebf8ff); color: #2c5282; font-size: 13px; }
+.acc-apply { margin-left: 6px; font-family: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid #2c5282; background: #fff; color: #2c5282; cursor: pointer; }

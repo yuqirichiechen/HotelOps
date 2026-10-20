@@ -14,6 +14,7 @@ const load = (file) => { const code = babel.transformFileSync(file, { presets: [
   m._compile(code, file); return m.exports; };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms)); let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 4).join(' | ')); process.exitCode = 1; } };
 const F = load(ROOT + '/src/components/Forecasting/syncFormat.js');
+const FM = load(ROOT + '/src/components/Forecast/forecastModel.js');
 
 const settings = (o = {}) => ({ enabled: true, paused: false, timezone: 'America/Los_Angeles', frequent: { enabled: true, from: '12:00', to: '24:00', everyMinutes: 5, daysAhead: 1 }, hourly: { everyMinutes: 60, aheadDays: 400, nearDays: 14 }, reconcile: { at: '04:30' },
   flushEveryMinutes: 15, backfill: { monthsBack: 12, chunksPerTick: 2, auto: true }, storeRaw: true, detailForNewMax: 25, maxDetailChecks: 80, ...o });
@@ -101,6 +102,29 @@ const standard = (st = status(), runs = [run('r3', 'reconcile', { started_at: is
     calls.length = 0; await h.click(h.btn(/Show older/)); assert(/before=/.test(calls[0].p)); assert.strictEqual(h.el.querySelectorAll('.rc-item').length >= 3, true); await h.unmount();
     responses = { 'GET /admin/sync/events': ok({ events: [], summary: {}, hasMore: false }) }; h = await mount(RecentChanges); assert(/none yet/.test(h.el.textContent) && /Nothing here yet/.test(h.el.textContent)); await h.unmount();
     responses = { 'GET /admin/sync/events': { ok: false, status: 500, data: { message: 'Server error' } } }; h = await mount(RecentChanges); assert(/Server error/.test(h.el.querySelector('.rc-error').textContent)); await h.unmount();
+  });
+  // ── accuracy (Sprint 22.3) ──
+  const A = load(ROOT + '/src/components/Forecast/accuracy.js'); const AccuracyCard = load(ROOT + '/src/components/Forecasting/AccuracyCard.js').default;
+  const addDay = (ymd, n) => new Date(Date.parse(ymd + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  // synthetic hotel whose real late-booking pickup is exactly HALF of what the calibrated table assumes
+  const accRows = (factor, nDays = 14) => { const rows = []; for (let d = 0; d < nDays; d++) { const date = addDay('2026-09-01', d); for (const k of [1, 2, 3, 5, 7]) for (const base of ['NQRR', 'NKRR']) { const booked = 12 + (d % 5); rows.push({ target_date: date, base_code: base, horizon_days: k, booked, actual: Math.round(booked * (1 + factor * FM.lateAllowanceRatio(k, new Date(date + 'T12:00:00Z').getUTCDay(), { enabled: true, scalePct: 100 }))) }); } } return rows; };
+  await t('accuracy: prediction = booked + weekday/horizon allowance (+ min extra from 4 booked), disabled = booked', () => {
+    const date = '2026-10-13';   // a Tuesday
+    assert.strictEqual(A.predictedArrivals(10, 1, date, { enabled: true, scalePct: 100, minExtra: 2 }), 10 + Math.round(10 * 0.47)); assert.strictEqual(A.predictedArrivals(10, 1, date, { enabled: false }), 10);
+    assert.strictEqual(A.predictedArrivals(2, 1, '2026-10-16', { enabled: true, scalePct: 100, minExtra: 2 }), 2, 'Friday, 2 booked: no minimum under 4'); assert.strictEqual(A.predictedArrivals(5, 1, '2026-10-16', { enabled: true, scalePct: 100, minExtra: 2 }), 7, 'minimum 2 extra from 4 booked up');
+  });
+  await t('accuracy: needs 7 days of results before suggesting anything; then recovers the true scale from data (50% table → suggests ≈50%)', () => {
+    const few = A.summarizeAccuracy(accRows(0.5, 3), { enabled: true, scalePct: 100, minExtra: 0 }); assert.strictEqual(few.ready, false); assert.strictEqual(few.suggestedScale, null);
+    const s = A.summarizeAccuracy(accRows(0.5, 21), { enabled: true, scalePct: 100, minExtra: 0 }); assert.strictEqual(s.ready, true); assert(Math.abs(s.suggestedScale - 50) <= 10, 'suggested ' + s.suggestedScale);
+    const h1 = s.perHorizon.find(h => h.horizon === 1); assert(h1.measuredPct < h1.modelPct, 'measured pickup is lower than the model assumes'); assert(h1.maeNone > 0);
+    const same = A.summarizeAccuracy(accRows(1, 21), { enabled: true, scalePct: 100, minExtra: 0 }); assert(Math.abs(same.suggestedScale - 100) <= 10, 'a well-calibrated table suggests ~100: ' + same.suggestedScale);
+  });
+  await t('AccuracyCard: collecting-data state, then the table + suggestion with an "Use N%" button that hands the scale back', async () => {
+    responses = { 'GET /admin/forecast/accuracy': ok({ rows: accRows(0.5, 2) }) }; let h = await mount(AccuracyCard, { allowance: { enabled: true, scalePct: 100, minExtra: 0 } }); assert(/Collecting data — 2 days/.test(h.el.textContent)); await h.unmount();
+    responses = { 'GET /admin/forecast/accuracy': ok({ rows: accRows(0.5, 21) }) }; let applied = null; h = await mount(AccuracyCard, { allowance: { enabled: true, scalePct: 100, minExtra: 0 }, onApplyScale: (v) => { applied = v; } });
+    assert(/Tomorrow/.test(h.el.textContent) && /Measured extra/.test(h.el.textContent)); const btn = h.btn(/^Use \d+%/); assert(btn, 'apply button'); await h.click(btn); assert(applied >= 40 && applied <= 60, 'applied ' + applied);
+    responses = { 'GET /admin/forecast/accuracy': ok({ rows: accRows(1, 21) }) }; h = await mount(AccuracyCard, { allowance: { enabled: true, scalePct: 100, minExtra: 0 } }); assert(/matches what your hotel actually does/.test(h.el.textContent)); await h.unmount();
+    responses = { 'GET /admin/forecast/accuracy': { ok: false, status: 500, data: { message: 'Server error' } } }; h = await mount(AccuracyCard, { allowance: {} }); assert(/Server error/.test(h.el.textContent)); await h.unmount();
   });
   await t('RecentChanges: can be collapsed (remembered for the session) and does not poll', async () => {
     sessionStorage.clear(); responses = { 'GET /admin/sync/events': ok({ events: [ev(2, 'new')], summary: { new: 1 }, hasMore: false }) }; const h = await mount(RecentChanges);

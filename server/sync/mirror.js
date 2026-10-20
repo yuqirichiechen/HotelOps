@@ -69,9 +69,9 @@ function vanishedInSlice(index, fetchedIds, from, to, statuses = ['RES']) {
 
 // ── write-behind buffer ──
 function createBuffer() {
-  return { upserts: new Map(), patches: new Map(), events: [], touch: new Set(), runs: [], state: null, sliceCounts: null };
+  return { upserts: new Map(), patches: new Map(), events: [], touch: new Set(), runs: [], rollups: [], actuals: [], state: null, sliceCounts: null };
 }
-const bufferSize = (b) => b.upserts.size + b.patches.size + b.events.length + b.touch.size + b.runs.length;
+const bufferSize = (b) => b.upserts.size + b.patches.size + b.events.length + b.touch.size + b.runs.length + b.rollups.length + b.actuals.length;
 
 function addWrites(buf, writes, runId, nowIso) {
   for (const w of writes) {
@@ -133,6 +133,16 @@ async function flush(pool, buf, { propertyId, state }) {
                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb) ON CONFLICT (run_id) DO NOTHING`,
         [r.run_id, propertyId, r.kind, r.trigger, r.status, r.started_at, r.finished_at, r.duration_ms, r.calls, r.fetched, r.new_count, r.changed, r.gone, r.unchanged, r.complete, r.error || null, JSON.stringify(r.details || {})]);
     }
+    for (const r of buf.rollups) {
+      await db.query(`INSERT INTO daily_rollups (property_id, target_date, base_code, horizon_days, booked, captured_on) VALUES ($1,$2,$3,$4,$5,$6)
+                      ON CONFLICT (property_id, target_date, base_code, horizon_days) DO UPDATE SET booked = EXCLUDED.booked, captured_on = EXCLUDED.captured_on, captured_at = NOW()`,
+        [propertyId, r.target_date, r.base_code, r.horizon_days, r.booked, r.captured_on]);
+    }
+    for (const a of buf.actuals) {
+      await db.query(`INSERT INTO daily_actuals (property_id, arrival_date, base_code, arrivals) VALUES ($1,$2,$3,$4)
+                      ON CONFLICT (property_id, arrival_date, base_code) DO UPDATE SET arrivals = EXCLUDED.arrivals, captured_at = NOW()`,
+        [propertyId, a.arrival_date, a.base_code, a.arrivals]);
+    }
     if (state) {
       await db.query(
         `INSERT INTO sync_state (property_id, initialized, slice_counts, backfill, last_frequent_at, last_hourly_at, last_reconcile_at, last_full_at, updated_at)
@@ -143,8 +153,8 @@ async function flush(pool, buf, { propertyId, state }) {
     }
     await db.query('COMMIT');
   } catch (err) { await db.query('ROLLBACK').catch(() => {}); throw err; } finally { db.release(); }
-  const out = { wrote, events: buf.events.length, runs: buf.runs.length };
-  buf.upserts.clear(); buf.patches.clear(); buf.events.length = 0; buf.touch.clear(); buf.runs.length = 0;
+  const out = { wrote, patches: buf.patches.size, events: buf.events.length, runs: buf.runs.length, rollups: buf.rollups.length };
+  buf.upserts.clear(); buf.patches.clear(); buf.events.length = 0; buf.touch.clear(); buf.runs.length = 0; buf.rollups.length = 0; buf.actuals.length = 0;
   return out;
 }
 
@@ -180,7 +190,7 @@ function mergeBack(target, old) {
   for (const [id, row] of old.upserts) if (!target.upserts.has(id)) target.upserts.set(id, row);
   for (const [id, p] of old.patches) target.patches.set(id, { ...p, ...(target.patches.get(id) || {}) });
   old.touch.forEach(id => { if (!target.upserts.has(id)) target.touch.add(id); });
-  target.events.unshift(...old.events); target.runs.unshift(...old.runs);
+  target.events.unshift(...old.events); target.runs.unshift(...old.runs); target.rollups.unshift(...old.rollups); target.actuals.unshift(...old.actuals);
 }
 
 module.exports = { mergeBack, eventTypeFor, diffRows, vanishedInSlice, createBuffer, bufferSize, addWrites, flush, hydrate, loadMissing, changesBetween };

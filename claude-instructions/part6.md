@@ -16,9 +16,45 @@
 | 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested, NOT yet deployed** (no migration) |
 | 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
-| 22.3   | Forecast/Reservations read from the mirror (slim snapshot) + accuracy tracker (`daily_rollups`) | Planned |
+| 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-20 — Sprint 22.3: pages read the mirror, detail refresh hook, accuracy tracker
+
+User confirmed the Cloudflare Worker cron works (Trigger Events/logs: `outcome: ok`, ~300 ms per ping).
+
+**Deploy:** run `database/migrations/029_sprint22_rollups.sql` (new tables `daily_rollups`, `daily_actuals`; idempotent) → deploy. Needs 22.1's
+migration 028 + a finished first backfill (Auto-sync tab shows "History load complete"); until then the pages silently keep using the last snapshot.
+
+**Pages read the mirror** (`server/sync/payload.js`, `GET /api/admin/forecast/current`)
+- Payload = `computeForecast` over the mirror's raw rows (open RES/INH + today's DPT; the typed `status` column overrides the raw row's status because
+  checkGone patches only the column) + 3 small rGuest calls (property date, rooms for live HK status, reservationMetrics). Same shape as a snapshot, so the pages
+  only changed their URL. Verified equal to a full scrape's payload (offline test with real Postgres; live parity run below).
+- Server flow: hydrate → `isMirrorReady()` (first full load done, `storeRaw` on, a sync in the last 24 h) → `flushPending()` (so the newest scan is visible) → build
+  (30 s cache, in-flight de-dup, invalidated when the sync writes) → `{source:'mirror', snapshot:{scraped_at: last sync time, payload}}`. **Any failure or a not-ready
+  mirror falls back to the latest stored snapshot** (`source:'snapshot'`) — the pages can't break because of the new path.
+- Forecast page + Reservations page now call `/admin/forecast/current`. **Reservations refresh button**: with the mirror = `POST /admin/sync/run {kind:'refresh'}` (quick scan + hourly
+  check), poll `/admin/sync/status` (DB-free) until idle (cap 2 min), re-read; without it = the legacy scrape. Forecast stale banner words adapted ("Auto-sync last updated…").
+- `forecast_snapshot` and the old scrape stay (fallback + history); nothing creates snapshots automatically any more. "Slimming" them is deferred — they only matter as fallback.
+
+**Guest details follow changes:** after every flush that wrote changes the server rebuilds the payload and calls `startDetailJob` for reservations in the 30-day detail window (the job
+itself skips unchanged rows by fingerprint/TTL; shares the single rGuest client) — so new/changed bookings get their guest details minutes later, with no manual scrape.
+
+**Accuracy tracker** (migration 029; `daily_rollups` = bookings on the books each morning for the next 15 days per room-type group, `daily_actuals` = guests that actually arrived
+(INH/DPT) per group, finalised by the next day's reconcile; both idempotent upserts written with the reconcile flush) — `GET /api/admin/forecast/accuracy?days=` (rows booked vs actual).
+`src/components/Forecast/accuracy.js` (pure): prediction = booked + allowance; per horizon measured vs assumed pickup, average miss with/without the allowance; least-squares
+**suggested scale** over 1–3 days ahead (needs ≥7 days of results). UI: Forecast settings → Late bookings → "How accurate has it been?" with an "Use N%" button (fills the scale; the admin still
+presses Save). Data starts accumulating from the first reconcile after deploy (history can't be reconstructed — creation dates only exist in detail for new bookings).
+
+**Tests (all green):** `sync-payload` 6 (mirror payload == scrape payload; status override; legacy rows skipped; readiness rules; flushPending + onFlushed hook) · `sync-engine` 19
+(+accuracy data written/idempotent) · `sync-route` 12 (+current fallback, accuracy, refresh kind) · `syncpanel` 15 (+accuracy maths and card) · `reservations-refresh` 3 (real page: new
+endpoint, mirror refresh flow, legacy fallback) · forecast page/model suites re-run. Build compiles.
+
+**Limits / next**
+- The mirror payload costs one DB read (~700 raw rows) + 3 rGuest calls per page load (30 s cache); not DB-free like the live board, but pages are request-driven (same as before).
+- Accuracy needs a week of data before it suggests anything. Optional later: enrich backfilled rows with creation dates (≈3,500 detail calls) to seed history.
+- Remaining roadmap: the GUI-fix/wrap-up sprint; multi-property groundwork exists (`property_id` everywhere) but isn't exposed.
 
 ### 2026-10-20 — Sprint 22.2: Auto-sync panel + Recent changes feed
 

@@ -650,6 +650,7 @@ const DonutLegend = ({ rows, total }) => (
 const Forecasting = () => {
   const { goTo } = useView(); // Sprint 17.10 — back-to-Home button
   const [snapshot, setSnapshot] = useState(null);
+  const [dataSource, setDataSource] = useState(null);   // Sprint 22.3: 'mirror' (auto-sync) | 'snapshot' (last stored scrape)
   const [loading, setLoading]   = useState(true);
   const [scraping, setScraping] = useState(false);
   const [error, setError]       = useState(null);
@@ -672,13 +673,15 @@ const Forecasting = () => {
 
   const loadLatest = useCallback(async () => {
     setError(null);
-    const { ok, data } = await apiFetch('/admin/forecast/snapshots/latest');
+    // Sprint 22.3: the auto-sync mirror when it is ready (falls back to the last stored snapshot server-side).
+    const { ok, data } = await apiFetch('/admin/forecast/current');
     if (!ok || !data?.success) {
       setError(data?.message || 'Could not load latest forecast.');
       setLoading(false);
       return;
     }
     setSnapshot(data.snapshot || null);
+    setDataSource(data.source || null);
     setLoading(false);
   }, []);
 
@@ -700,10 +703,32 @@ const Forecasting = () => {
     return () => clearInterval(id);
   }, [jobRunning, fetchJob]);
 
+  // Sprint 22.3: with the auto-sync mirror, "refresh" = ask the sync engine for a quick scan + hourly check (seconds, no full scrape),
+  // wait for it (the status endpoint is DB-free), then re-read. Without a ready mirror it is the old full scrape.
+  const refreshFromSync = async () => {
+    const start = await apiFetch('/admin/sync/run', { method: 'POST', body: JSON.stringify({ kind: 'refresh' }) });
+    if (!start.ok || !start.data?.success) throw new Error(start.data?.message || 'Could not start the refresh.');
+    if (start.data.started !== false) {
+      const t0 = Date.now();
+      for (;;) {
+        await new Promise(r => setTimeout(r, 1500));
+        const st = await apiFetch('/admin/sync/status');
+        if (st.ok && st.data?.success && !st.data.status.running) break;
+        if (Date.now() - t0 > 120000) break;           // never wait forever; whatever finished is shown
+      }
+    }
+    await loadLatest();
+  };
+
   const handleScrape = async () => {
     setScraping(true);
     setError(null);
     setScrapePct(2);
+    if (dataSource === 'mirror') {
+      try { await refreshFromSync(); } catch (e) { setError(e.message || 'Refresh failed.'); }
+      setScrapePct(100); setScraping(false);
+      return;
+    }
     const { ok, data } = await apiFetch('/admin/forecast/scrape', {
       method: 'POST',
       body:   JSON.stringify({}),
@@ -832,8 +857,8 @@ const Forecasting = () => {
                 className="fc-btn fc-btn-primary fc-btn-icon"
                 onClick={handleScrape}
                 disabled={scraping}
-                title={scraping ? `Running… ${scrapePct}%` : 'Refresh — run the rGuest scraper'}
-                aria-label={scraping ? `Scraper running, ${scrapePct} percent` : 'Refresh: run the rGuest scraper'}
+                title={scraping ? `Running… ${scrapePct}%` : (dataSource === 'mirror' ? 'Refresh — check rGuest for changes now' : 'Refresh — run the rGuest scraper')}
+                aria-label={scraping ? `Refreshing, ${scrapePct} percent` : (dataSource === 'mirror' ? 'Refresh: check rGuest for changes' : 'Refresh: run the rGuest scraper')}
               >
                 {scraping ? <ProgressRing pct={scrapePct} /> : <IconRefresh />}
               </button>

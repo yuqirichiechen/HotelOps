@@ -6,7 +6,7 @@ const sh = (c) => execSync(c, { stdio: 'pipe' }).toString();
 try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* not running */ } sh(`rm -rf ${DIR}`);
 sh(`${PGBIN}/initdb -D ${DIR} -A trust -U postgres`); sh(`${PGBIN}/pg_ctl -D ${DIR} -o "-p ${PORT} -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" -l /tmp/hopdb_sync.log -w start`);
 const psql = (args) => sh(`${PGBIN}/psql -h 127.0.0.1 -p ${PORT} -U postgres ${args}`);
-psql('-c "CREATE DATABASE hoptest"'); for (const f of ['tests/real-postgres/base.sql', 'database/migrations/025_sprint18_reservation_history.sql', 'database/migrations/028_sprint22_sync_engine.sql']) psql(`-d hoptest -v ON_ERROR_STOP=1 -q -f "${ROOT}/${f}"`);
+psql('-c "CREATE DATABASE hoptest"'); for (const f of ['tests/real-postgres/base.sql', 'database/migrations/025_sprint18_reservation_history.sql', 'database/migrations/028_sprint22_sync_engine.sql', 'database/migrations/029_sprint22_rollups.sql']) psql(`-d hoptest -v ON_ERROR_STOP=1 -q -f "${ROOT}/${f}"`);
 const { Pool } = require(ROOT + '/server/node_modules/pg'); const real = new Pool({ host: '127.0.0.1', port: PORT, user: 'postgres', database: 'hoptest' });
 let queries = 0, connects = 0, failConnect = false, slowMs = 0; const pool = { query: (...a) => { queries++; return real.query(...a); }, connect: async () => { if (failConnect) { failConnect = false; throw new Error('db down'); } if (slowMs) await new Promise(r => setTimeout(r, slowMs)); connects++; const c = await real.connect(); const q = c.query.bind(c); c.query = (...a) => { queries++; return q(...a); }; return c; } };
 const { createSyncEngine } = require(ROOT + '/server/sync/engine');
@@ -62,6 +62,15 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const r = await eng.tick(); assert.deepStrictEqual(r.started, ['frequent', 'hourly', 'reconcile']); const s = await idle(eng);
     assert.strictEqual((await q('SELECT count(*)::int n FROM reservation_events'))[0].n, 0); assert.strictEqual((await q('SELECT count(*)::int n FROM reservation_history WHERE gone_at IS NOT NULL'))[0].n, 8, 'only the 8 cancelled rows are gone');
     assert(s.recentRuns.every(x => x.status === 'success'), JSON.stringify(s.recentRuns.map(x => [x.kind, x.status, x.error])));
+  });
+  await t('ACCURACY DATA: the daily reconcile records bookings on the books for the next 15 days (per room-type group) and yesterday\'s actual arrivals', async () => {
+    const r = await q("SELECT horizon_days, booked, base_code, to_char(target_date,'YYYY-MM-DD') td FROM daily_rollups ORDER BY horizon_days"); assert.strictEqual(r.length, 15, '15 horizons × 1 group');
+    const resOn = (d) => [...world.values()].filter(x => x.status === 'RES' && x.arrivalDateLocalDate === d).length;
+    assert.strictEqual(r[0].booked, resOn(TODAY)); assert.strictEqual(r[1].booked, resOn(addDays(TODAY, 1))); assert.strictEqual(r[1].td, addDays(TODAY, 1)); assert.strictEqual(r[1].base_code, 'NQRR'); assert.strictEqual(r[14].td, addDays(TODAY, 14));
+    const a = await q("SELECT arrivals, to_char(arrival_date,'YYYY-MM-DD') d FROM daily_actuals"); assert.deepStrictEqual(a.map(x => [x.d, x.arrivals]), [[addDays(TODAY, -1), [...world.values()].filter(x => ['INH', 'DPT'].includes(x.status) && x.arrivalDateLocalDate === addDays(TODAY, -1)).length]]);
+  });
+  await t('ACCURACY DATA is idempotent: a second reconcile the same day overwrites, it does not duplicate', async () => {
+    await eng.trigger('reconcile'); await idle(eng); assert.strictEqual((await q('SELECT count(*)::int n FROM daily_rollups'))[0].n, 15); assert.strictEqual((await q('SELECT count(*)::int n FROM daily_actuals'))[0].n, 1);
   });
   await t('a frequent tick with NOTHING changed touches the database zero times (Neon can sleep)', async () => {
     advance(5); const q0 = queries, c0 = connects; const r = await eng.tick(); assert.deepStrictEqual(r.started, ['frequent']); const s = await idle(eng);

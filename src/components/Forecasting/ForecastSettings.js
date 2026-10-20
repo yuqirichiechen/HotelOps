@@ -14,6 +14,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../auth';
 import SyncPanel from './SyncPanel';
+import AccuracyCard from './AccuracyCard';
 import './ForecastSettings.css';
 
 const BASE_BUCKETS = ['NKRR', 'NKJZ', 'NQRR', 'NQJZ'];
@@ -347,6 +348,10 @@ const ForecastSettings = ({ onClose }) => {
                   {savingAllow ? 'Saving…' : 'Save late-booking settings'}
                 </button>
               </div>
+              <AccuracyCard
+                allowance={{ enabled: allow.enabled, scalePct: Number(allow.scalePct) || 100, minExtra: Number(allow.minExtra) || 0 }}
+                onApplyScale={(v) => { setAllow(a => ({ ...a, scalePct: String(v) })); setBanner(`Scale set to ${v}% — press “Save late-booking settings” to keep it.`); setTimeout(() => setBanner(null), 5000); }}
+              />
             </div>
           )}
 

@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { decideRuns, nextDue } = require('./schedule');
 const { loadSettings, saveSettings, validateSettings, localClock } = require('./settings');
 const { normalizeRow, fingerprintOf, pickFp } = require('./normalize');
+const { deriveMapping } = require('../forecast/compute');
 const M = require('./mirror');
 
 const addDays = (ymd, n) => { const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
@@ -31,6 +32,7 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
   let st = { initialized: false, sliceCounts: {}, backfill: {}, lastFrequentAt: null, lastHourlyAt: null, lastReconcileAt: null, lastFullAt: null };
   let buf = M.createBuffer(), lastFlushAt = null, running = null, authFailure = null;
   let ref = { ctx: null, roomsAt: 0, otherAt: 0, mapping: null, data: {} };
+  let onFlushed = null;
   const recent = [];                       // last 100 run summaries (memory only)
   const bootedAt = now().toISOString(); let lastTickAt = null, tickCount = 0;
 
@@ -192,8 +194,24 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
       }
       st.sliceCounts = base;
     }
+    if (r.complete) captureRollups(today);
     run.details.rows = r.items.length;
     st.lastReconcileAt = now();
+  }
+
+  // Forecast-accuracy data (migration 029): bookings on the books THIS morning for each of the next 15 days, and yesterday's actual arrivals.
+  const baseOfType = (code) => { if (!code) return null; const m = ref.mapping && ref.mapping.get(code); return (m && m.base_code) || deriveMapping(code, null).base_code || null; };
+  function captureRollups(today) {
+    const bases = new Set([...(ref.ctx ? ref.ctx.roomTypeById.values() : [])].map(rt => baseOfType(rt.typeCode)).filter(Boolean));
+    const horizon = 14, last = addDays(today, horizon), y = addDays(today, -1);
+    const booked = new Map(), actual = new Map(); const key = (d, b) => d + '|' + b;
+    for (const [, e] of index) {
+      const base = baseOfType(e.vals && e.vals.type_code); if (!base) continue; bases.add(base);
+      if (e.status === 'RES' && !e.gone && e.arrival_date >= today && e.arrival_date <= last) booked.set(key(e.arrival_date, base), (booked.get(key(e.arrival_date, base)) || 0) + 1);
+      if ((e.status === 'INH' || e.status === 'DPT') && e.arrival_date === y) actual.set(key(y, base), (actual.get(key(y, base)) || 0) + 1);
+    }
+    for (let i = 0; i <= horizon; i++) { const d = addDays(today, i); for (const b of bases) buf.rollups.push({ target_date: d, base_code: b, horizon_days: i, booked: booked.get(key(d, b)) || 0, captured_on: today }); }
+    for (const b of bases) buf.actuals.push({ arrival_date: y, base_code: b, arrivals: actual.get(key(y, b)) || 0 });
   }
 
   async function backfillChunk(client, run) {
@@ -230,7 +248,11 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
     while (flushing) await flushing.catch(() => {});
     const old = buf; buf = M.createBuffer();
     flushing = (async () => {
-      try { const out = await M.flush(pool(), old, { propertyId: propertyKey, state: st }); lastFlushAt = now().getTime(); return out; }
+      try {
+        const out = await M.flush(pool(), old, { propertyId: propertyKey, state: st }); lastFlushAt = now().getTime();
+        if (onFlushed) Promise.resolve().then(() => onFlushed(out)).catch(e => logger.error('[sync] onFlushed hook failed:', e && e.message));
+        return out;
+      }
       catch (err) { M.mergeBack(buf, old); throw err; }
     })();
     try { return await flushing; } finally { flushing = null; }
@@ -289,14 +311,25 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
     },
     /** Admin "Run now". kind: frequent | hourly | reconcile | backfill | full */
     async trigger(kind) {
-      if (!KINDS[kind]) throw Object.assign(new Error('unknown kind'), { status: 400 });
+      if (kind !== 'refresh' && !KINDS[kind]) throw Object.assign(new Error('unknown kind'), { status: 400 });
       if (running) return { started: false, reason: `busy (${running.kind})` };
       await ensureHydrated();
       running = { kind, since: now().toISOString() };
-      runChain([kind], 'manual').catch(e => logger.error('[sync] manual run crashed:', e && e.message)).finally(() => { running = null; });
+      // 'refresh' = what the Reservations page's refresh button does: a quick scan, then an hourly check (which also flushes to the database)
+      runChain(kind === 'refresh' ? ['frequent', 'hourly'] : [kind], 'manual').catch(e => logger.error('[sync] manual run crashed:', e && e.message)).finally(() => { running = null; });
       return { started: true, kind };
     },
     async getSettings() { await ensureHydrated(); return settings; },
+    ensureHydrated,
+    /** Reference data (room types, rate plans, VIPs) for building payloads — refreshed on its own TTL. */
+    async getReference(client) { await ensureHydrated(); if (!ref.ctx) await refreshRef(client, { calls: 0 }); return ref.data; },
+    /** When the mirror was last refreshed from rGuest (latest of the three scan kinds). */
+    syncedAt() { const t = [st.lastFrequentAt, st.lastHourlyAt, st.lastReconcileAt].filter(Boolean).map(x => new Date(x).getTime()); return t.length ? new Date(Math.max(...t)).toISOString() : null; },
+    /** The mirror can serve the pages: first full load done, raw rows are being kept, and the sync ran in the last 24 h. */
+    isMirrorReady() { const t = this.syncedAt(); return !!(hydrated && st.initialized && settings.storeRaw && t && now().getTime() - new Date(t).getTime() < 24 * 3600e3); },
+    /** Write scan results that are still only in memory (so a page that is about to read the database sees them). */
+    async flushPending() { if (hydrated && pendingChanges() > 0) return flushBuffer(); return null; },
+    setOnFlushed(fn) { onFlushed = fn; },
     async updateSettings(patch) {
       await ensureHydrated();
       const { settings: next, errors } = validateSettings(patch, settings);

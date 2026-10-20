@@ -6,7 +6,7 @@ const PGBIN = '/opt/homebrew/opt/postgresql@14/bin', DIR = '/tmp/hopdb_live', PO
 try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* not running */ } sh(`rm -rf ${DIR}`); sh(`${PGBIN}/initdb -D ${DIR} -A trust -U postgres`);
 sh(`${PGBIN}/pg_ctl -D ${DIR} -o "-p ${PORT} -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" -l /tmp/hopdb_live.log -w start`);
 const psql = (a) => sh(`${PGBIN}/psql -h 127.0.0.1 -p ${PORT} -U postgres ${a}`); psql('-c "CREATE DATABASE hoptest"');
-for (const f of ['tests/real-postgres/base.sql', 'database/migrations/025_sprint18_reservation_history.sql', 'database/migrations/028_sprint22_sync_engine.sql']) psql(`-d hoptest -v ON_ERROR_STOP=1 -q -f "${ROOT}/${f}"`);
+for (const f of ['tests/real-postgres/base.sql', 'database/migrations/025_sprint18_reservation_history.sql', 'database/migrations/028_sprint22_sync_engine.sql', 'database/migrations/029_sprint22_rollups.sql']) psql(`-d hoptest -v ON_ERROR_STOP=1 -q -f "${ROOT}/${f}"`);
 require(ROOT + '/server/node_modules/dotenv').config({ path: ROOT + '/server/.env', override: true });
 const { Pool } = require(ROOT + '/server/node_modules/pg'); const pool = new Pool({ host: '127.0.0.1', port: PORT, user: 'postgres', database: 'hoptest' });
 const { createAgilysysClient } = require(ROOT + '/server/agilysys/client'); const { createSyncEngine } = require(ROOT + '/server/sync/engine');
@@ -36,7 +36,19 @@ const addDays = (ymd, n) => { const d = new Date(ymd + 'T12:00:00Z'); d.setUTCDa
     // 4) second pass finds (almost) nothing: hourly + frequent + reconcile
     for (const k of ['hourly', 'frequent', 'reconcile']) { await eng.trigger(k); s = await idle(); const r = s.recentRuns.find(x => x.kind === k); console.log(`${k}: status=${r.status} calls=${r.calls} fetched=${r.fetched} new=${r.new_count} changed=${r.changed} gone=${r.gone} unchanged=${r.unchanged} ${r.duration_ms} ms details=${JSON.stringify(r.details).slice(0, 220)}`); }
     await eng.flushNow(); const ev = await q('SELECT event_type, count(*)::int n FROM reservation_events GROUP BY 1'); console.log('events after the second pass:', JSON.stringify(ev));
-    const ok = missing.length === 0 && extra.length === 0 && total === liveIds.size && live.complete && mInh === inh.items.length && nulls.no_type === 0 && nulls.cxl_not_gone === 0;
+    // 5) Sprint 22.3: the payload built from the MIRROR vs the payload a full scrape (the old path) produces from the same live rGuest
+    const { buildMirrorPayload } = require(ROOT + '/server/sync/payload'); const { computeForecast } = require(ROOT + '/server/forecast/compute');
+    const mirrorPayload = await buildMirrorPayload({ pool, client, propertyKey: 'default', reference: await eng.getReference(client) });
+    const inputs = await client.fetchForecastInputs(null, { futureWindowDays: 30 });
+    const direct = computeForecast({ rooms: inputs.rooms, roomTypes: inputs.roomTypes, reservations: inputs.reservations, metrics: inputs.metrics, vipStatuses: inputs.vipStatuses, ratePlans: inputs.ratePlans, roomTypeMapping: [], config: {}, forecastDate: inputs.effectiveDate });
+    const sig = (p) => new Map(p.reservations.map(r => [r.id, [r.kind, r.status, r.typeCode, r.arrivalDate, r.departureDate, r.roomNumber || ''].join('|')]));
+    const a = sig(mirrorPayload), b = sig(direct); const onlyM = [...a.keys()].filter(k => !b.has(k)), onlyD = [...b.keys()].filter(k => !a.has(k)), differ = [...a.keys()].filter(k => b.has(k) && a.get(k) !== b.get(k));
+    console.log(`payload parity: mirror ${a.size} reservations | full scrape ${b.size} | only in mirror ${onlyM.length} | only in scrape ${onlyD.length} | differing fields ${differ.length}`);
+    if (differ.length) console.log('  e.g.', differ.slice(0, 3).map(k => `${k.slice(0, 8)} mirror=${a.get(k)} scrape=${b.get(k)}`).join(' ;; '));
+    console.log('KPIs mirror :', JSON.stringify(mirrorPayload.kpis)); console.log('KPIs scrape :', JSON.stringify(direct.kpis));
+    const roll = (await q('SELECT count(*)::int n, count(DISTINCT base_code)::int bases FROM daily_rollups'))[0], act = (await q('SELECT count(*)::int n, coalesce(sum(arrivals),0)::int total FROM daily_actuals'))[0]; console.log('accuracy data after the reconcile:', JSON.stringify(roll), JSON.stringify(act));
+    const parityOk = onlyM.length + onlyD.length + differ.length <= 3;     // a booking made during the ~1 minute between the two reads is legitimate
+    const ok = parityOk && missing.length === 0 && extra.length === 0 && total === liveIds.size && live.complete && mInh === inh.items.length && nulls.no_type === 0 && nulls.cxl_not_gone === 0;
     console.log(ok ? '\nLIVE DRY RUN: PASS' : '\nLIVE DRY RUN: CHECK THE LINES ABOVE'); process.exitCode = ok ? 0 : 1;
   } catch (e) { console.error('FAILED', e.stack); process.exitCode = 1; }
   await pool.end(); try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* ignore */ } sh(`rm -rf ${DIR}`); process.exit(process.exitCode || 0);

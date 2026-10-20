@@ -4664,10 +4664,73 @@ app.put('/api/admin/sync/settings', requireAuth, requireRole('admin'), async (re
 });
 app.post('/api/admin/sync/run', requireAuth, requireRole('admin'), async (req, res) => {
   const kind = req.body && req.body.kind;
-  if (!['frequent', 'hourly', 'reconcile', 'backfill', 'full'].includes(kind)) return res.status(400).json({ success: false, message: 'kind must be frequent, hourly, reconcile, backfill or full' });
+  if (!['frequent', 'hourly', 'reconcile', 'backfill', 'full', 'refresh'].includes(kind)) return res.status(400).json({ success: false, message: 'kind must be frequent, hourly, reconcile, backfill, full or refresh' });
   try { return res.status(202).json({ success: true, ...(await syncEngine.trigger(kind)) }); }
   catch (err) { console.error('[sync:run]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
+// ── Sprint 22.3: pages read the MIRROR ───────────────────────────────────────
+// GET /api/admin/forecast/current — same response shape as /snapshots/latest ({ snapshot: { scraped_at, payload, … } }) but the payload
+// is built from the reservation mirror + three small rGuest calls (property date, rooms, metrics) instead of a 20-second scrape.
+// Falls back to the latest stored snapshot when the mirror isn't ready (first load not finished, sync stopped >24 h, raw rows off) or
+// when building fails (e.g. rGuest down) — the pages never break because of the new path. Cached 30 s, in-flight de-duplicated,
+// invalidated whenever the sync writes changes.
+const { buildMirrorPayload } = require('./sync/payload');
+const _cur = { at: 0, payload: null, syncedAt: null, inflight: null };
+const CUR_TTL_MS = 30 * 1000;
+async function getMirrorPayload() {
+  if (_cur.payload && Date.now() - _cur.at < CUR_TTL_MS) return _cur;
+  if (!_cur.inflight) {
+    _cur.inflight = (async () => {
+      const client = getSharedAgilysys();
+      const reference = await syncEngine.getReference(client);
+      const payload = await buildMirrorPayload({ pool, client, propertyKey: process.env.SYNC_PROPERTY_KEY || 'default', reference });
+      Object.assign(_cur, { at: Date.now(), payload, syncedAt: syncEngine.syncedAt() });
+      return _cur;
+    })().finally(() => { _cur.inflight = null; client_clear(); });
+  }
+  return _cur.inflight;
+}
+const client_clear = () => { try { getSharedAgilysys().clearLogs(); } catch { /* ignore */ } };
+async function latestSnapshotRow() {
+  const { rows } = await pool.query(`SELECT * FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
+  return rows[0] || null;
+}
+app.get('/api/admin/forecast/current', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    await syncEngine.ensureHydrated();
+    if (syncEngine.isMirrorReady()) {
+      try {
+        await syncEngine.flushPending();              // make the newest scan visible to the query below
+        const cur = await getMirrorPayload();
+        return res.json({ success: true, source: 'mirror', snapshot: { snapshot_id: null, scraped_at: cur.syncedAt || new Date().toISOString(), forecast_date: cur.payload.forecastDate, source: 'mirror', status: 'success', payload: cur.payload } });
+      } catch (err) { console.error('[forecast:current] mirror build failed, falling back to the last snapshot:', err && err.message); }
+    }
+    const row = await latestSnapshotRow();
+    return res.json({ success: true, source: 'snapshot', snapshot: row });
+  } catch (err) { console.error('[forecast:current]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
+// After the sync writes changes: drop the payload cache and (re)load guest details for new/changed reservations in the detail window.
+syncEngine.setOnFlushed(async (out) => {
+  if (!out || !(out.wrote > 0 || out.patches > 0)) return;
+  _cur.at = 0;
+  const cur = await getMirrorPayload();
+  const list = withinDetailWindow(cur.payload.reservations || [], cur.payload.forecastDate, cur.payload.detailWindowDays);
+  if (list.length) await startDetailJob({ pool, snapshotId: null, reservations: list, createClient: () => getSharedAgilysys() });
+});
+
+// GET /api/admin/forecast/accuracy?days=60 — booked-as-of-N-days-ahead vs guests that actually arrived (see migration 029).
+app.get('/api/admin/forecast/accuracy', requireAuth, requireRole('admin'), async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 60, 7), 365);
+  try {
+    const { rows } = await pool.query(
+      `SELECT to_char(r.target_date,'YYYY-MM-DD') AS target_date, r.base_code, r.horizon_days, r.booked, a.arrivals AS actual
+         FROM daily_rollups r JOIN daily_actuals a ON a.property_id = r.property_id AND a.arrival_date = r.target_date AND a.base_code = r.base_code
+        WHERE r.property_id = $1 AND r.target_date >= CURRENT_DATE - $2::int ORDER BY r.target_date`, [process.env.SYNC_PROPERTY_KEY || 'default', days]);
+    return res.json({ success: true, rows, days });
+  } catch (err) { console.error('[forecast:accuracy]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
 // GET /api/admin/sync/runs?limit=50 — stored run history (the status endpoint only has this process's recent runs).
 app.get('/api/admin/sync/runs', requireAuth, requireRole('admin'), async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);

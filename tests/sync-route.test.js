@@ -4,11 +4,13 @@ const ROOT = process.argv[2] + '/server'; const assert = require('assert');
 process.env.PORT = '3992'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.DATABASE_URL = 'postgres://u:p@127.0.0.1:1/none';
 const SECRET = 's3cret-'.repeat(4);
 const pg = require(ROOT + '/node_modules/pg'); const jwt = require(ROOT + '/node_modules/jsonwebtoken');
-const sqls = []; const store = {}; let lastEventsQuery = null, lastRunsParams = null;
+const sqls = []; const store = {}; let lastEventsQuery = null, lastRunsParams = null, lastAccParams = null;
 pg.Pool.prototype.query = async function (sql, params) {
   const q = String(sql).replace(/\s+/g, ' '); sqls.push(q.slice(0, 70));
   if (/SELECT value FROM app_settings WHERE key = \$1/.test(q)) return { rows: store[params[0]] ? [{ value: store[params[0]] }] : [] };
   if (/INSERT INTO app_settings/.test(q)) { store[params[0]] = params[1]; return { rows: [], rowCount: 1 }; }
+  if (/FROM forecast_snapshot/.test(q)) return { rows: [{ snapshot_id: 's1', scraped_at: '2026-10-19T10:00:00Z', forecast_date: '2026-10-19', status: 'success', payload: { forecastDate: '2026-10-19', reservations: [] } }] };
+  if (/FROM daily_rollups r JOIN daily_actuals/.test(q)) { lastAccParams = params; return { rows: [{ target_date: '2026-10-18', base_code: 'NQRR', horizon_days: 1, booked: 10, actual: 12 }] }; }
   if (/FROM reservation_events e/.test(q)) { lastEventsQuery = { q, params }; return { rows: [{ event_id: '12', event_type: 'new', occurred_at: new Date().toISOString(), changes: {}, info: {}, reservation_id: 'r', guest_name: 'Ann', confirmation_id: 'C1', type_code: 'NQRR' }] }; }
   if (/FROM reservation_events WHERE occurred_at/.test(q)) return { rows: [{ event_type: 'new', n: 2 }, { event_type: 'cancelled', n: 1 }] };
   if (/FROM sync_runs ORDER/.test(q)) { lastRunsParams = params; return { rows: [{ run_id: 'x', kind: 'hourly', status: 'success' }] }; }
@@ -55,6 +57,15 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   await t('runs endpoint: admin-only, limit capped', async () => {
     assert.strictEqual((await http('/api/admin/sync/runs')).status, 401); const r = await http('/api/admin/sync/runs?limit=100000', { headers: A }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastRunsParams, [200]); assert.strictEqual(r.body.runs[0].kind, 'hourly');
   });
+  await t('/forecast/current: admin-only; falls back to the last stored snapshot while the mirror is not ready (never breaks the page)', async () => {
+    assert.strictEqual((await http('/api/admin/forecast/current')).status, 401); assert.strictEqual((await http('/api/admin/forecast/current', { headers: { Authorization: 'Bearer ' + staff } })).status, 403);
+    const r = await http('/api/admin/forecast/current', { headers: A }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.source, 'snapshot'); assert.strictEqual(r.body.snapshot.payload.forecastDate, '2026-10-19');
+  });
+  await t('/forecast/accuracy: admin-only; days clamped to 7..365; returns the booked-vs-actual rows', async () => {
+    assert.strictEqual((await http('/api/admin/forecast/accuracy')).status, 401); const r = await http('/api/admin/forecast/accuracy?days=100000', { headers: A }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastAccParams, ['default', 365]); assert.strictEqual(r.body.rows[0].actual, 12);
+    await http('/api/admin/forecast/accuracy?days=1', { headers: A }); assert.deepStrictEqual(lastAccParams, ['default', 7]);
+  });
+  await t('run endpoint accepts "refresh" (the Reservations refresh button)', async () => { const r = await http('/api/admin/sync/run', { method: 'POST', headers: A, body: { kind: 'refresh' } }); assert.strictEqual(r.status, 202); await sleep(150); });
   await t('settings PUT: validation errors → 400 with messages; valid patch persisted; secret/JWT-less access impossible', async () => {
     const bad = await http('/api/admin/sync/settings', { method: 'PUT', headers: A, body: { frequent: { everyMinutes: 0 }, timezone: 'Nope/Zone' } }); assert.strictEqual(bad.status, 400); assert(bad.body.errors.length >= 2);
     const ok = await http('/api/admin/sync/settings', { method: 'PUT', headers: A, body: { frequent: { everyMinutes: 10 }, paused: true } }); assert.strictEqual(ok.status, 200); assert.strictEqual(JSON.parse(store.sync_settings).frequent.everyMinutes, 10);

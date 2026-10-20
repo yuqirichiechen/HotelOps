@@ -6,3 +6,5 @@ CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAM
 CREATE TABLE audit_logs (log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor_id UUID, action VARCHAR(100) NOT NULL, table_name VARCHAR(100), record_id UUID, old_data JSONB, new_data JSONB, ip_address INET, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 CREATE TABLE time_entries (entry_id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID, clock_in_time TIMESTAMPTZ, clock_out_time TIMESTAMPTZ, system_generated BOOLEAN DEFAULT FALSE);
 CREATE TABLE room_type_mapping (type_code TEXT PRIMARY KEY, type_name TEXT, base_code TEXT, base_label TEXT, sub_suffix TEXT, sub_label TEXT, admin_override BOOLEAN DEFAULT FALSE);
+CREATE TABLE forecast_config (config_id INT PRIMARY KEY DEFAULT 1 CHECK (config_id = 1), productivity_target NUMERIC(5,2) NOT NULL DEFAULT 6.00, avg_min_per_clean JSONB NOT NULL DEFAULT '{"NKRR": 28, "NKJZ": 26, "NQRR": 28, "NQJZ": 26, "STAYOVER": 15, "DEFAULT": 25}'::jsonb, dedup_window_minutes INT NOT NULL DEFAULT 60);
+INSERT INTO forecast_config (config_id) VALUES (1);

@@ -46,6 +46,8 @@ Point `DATABASE_URL` at `postgres://postgres@127.0.0.1:5439/hoptest`. `server.js
 | `sync-pure.test.js` | Sprint 22 pure logic: settings validation, PT windows/DST, scheduler decisions, normalize/diff/events | `node tests/sync-pure.test.js "$PWD"` |
 | `syncpanel.test.js` | Sprint 22.2: real SyncPanel + RecentChanges in jsdom, syncFormat helpers | `node tests/syncpanel.test.js "$PWD"` |
 | `syncrender.js` | Renders those components with mock data for screenshots (`DUMP=f.html WHICH=panel\|changes`) | `node tests/syncrender.js "$PWD"` |
+| `sync-payload.test.js` | Sprint 22.3: mirror payload == full-scrape payload (real Postgres, fake rGuest), status override, readiness, flushPending/onFlushed | `node tests/sync-payload.test.js "$PWD"` |
+| `reservations-refresh.test.js` | Real Reservations page: reads /admin/forecast/current; refresh → sync run (mirror) or legacy scrape (fallback) | `node tests/reservations-refresh.test.js "$PWD"` |
 | `sync-engine.test.js` | Sync engine vs a REAL throwaway Postgres (auto initdb on 5439) with a fake rGuest world — 16 scenarios | `node tests/sync-engine.test.js "$PWD"` |
 | `sync-route.test.js` | `/api/sync/tick` secret + admin sync endpoints (DB and rGuest fully faked) | `node tests/sync-route.test.js "$PWD"` |
 | `agilysys-slices.test.js` | Exact range fetch vs a SIMULATED rGuest (night-overlap RES semantics, shuffled order, dense nights) | `node tests/agilysys-slices.test.js "$PWD"` |
