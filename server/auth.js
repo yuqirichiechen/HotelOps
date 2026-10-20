@@ -114,12 +114,22 @@ function recordDevFailure(key, now = Date.now()) { devFails.set(key, [...prune(d
 function clearDevFailures(key) { devFails.delete(key); }
 const _resetDevLimiter = () => { devFails.clear(); devFailsGlobal = []; };
 
-const devConfigured = () => !!(process.env.DEV_PASSWORD_HASH && process.env.DEV_PASSWORD_HASH.startsWith('$2'));
+const BCRYPT_RE = /^\$2[aby]\$\d\d\$.{53}$/;
+const devConfigured = () => !!process.env.DEV_PASSWORD_HASH;
+const sha = (v) => crypto.createHash('sha256').update(String(v)).digest();
+let warnedPlainDev = false;
 async function verifyDevCredentials(username, password) {
-  const hash = process.env.DEV_PASSWORD_HASH;
+  const secret = process.env.DEV_PASSWORD_HASH;
   const wantUser = process.env.DEV_USERNAME || 'dev';
-  // always run bcrypt so a wrong username takes as long as a wrong password
-  const passOk = await bcrypt.compare(String(password || ''), hash);
+  // A bcrypt hash is the intended value. Debug convenience (Sprint 22.4): any other non-empty value is treated as the PLAIN password
+  // (compared in constant time) — replace it with a hash (node server/scripts/hash-password.js "<password>") once setup is done.
+  let passOk;
+  if (BCRYPT_RE.test(secret)) {
+    passOk = await bcrypt.compare(String(password || ''), secret);    // always runs, so a wrong username takes as long as a wrong password
+  } else {
+    if (!warnedPlainDev) { warnedPlainDev = true; console.warn('[auth] !! DEV_PASSWORD_HASH is not a bcrypt hash — treating it as the PLAIN dev password. Replace it with a hash when you are done debugging.'); }
+    passOk = crypto.timingSafeEqual(sha(password || ''), sha(secret));
+  }
   const a = Buffer.from(String(username || '')), b = Buffer.from(wantUser);
   const userOk = a.length === b.length && crypto.timingSafeEqual(a, b);
   return passOk && userOk ? { username: wantUser } : null;

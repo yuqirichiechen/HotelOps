@@ -33,6 +33,13 @@ const login = (u, p, h = {}) => http('/api/auth/dev/login', { method: 'POST', bo
     auth._resetDevLimiter(); const r = await login('dev', DEV_PW); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.user.role, 'dev'); const dev = jwt.verify(r.body.token, process.env.JWT_SECRET); assert.strictEqual(dev.role, 'dev');
     const me = await http('/api/me', { token: r.body.token }); assert.strictEqual(me.body.user.role, 'dev'); assert.strictEqual((await http('/api/admin/settings', { token: r.body.token })).status, 200);
   });
+  await t('DEBUG convenience: a DEV_PASSWORD_HASH that is not a bcrypt hash is treated as the plain password (still rate-limited, still never a default)', async () => {
+    auth._resetDevLimiter(); process.env.DEV_PASSWORD_HASH = 'dev';
+    const ok = await login('dev', 'dev'); assert.strictEqual(ok.status, 200); assert.strictEqual(ok.body.user.role, 'dev'); assert.strictEqual((await login('dev', 'devx')).status, 401); assert.strictEqual((await login('dev', 'DEV')).status, 401); assert.strictEqual((await login('other', 'dev')).status, 401);
+    for (let i = 0; i < 5; i++) await login('dev', 'bad' + i, { 'cf-connecting-ip': '203.0.113.99' }); assert.strictEqual((await login('dev', 'dev', { 'cf-connecting-ip': '203.0.113.99' })).status, 429, 'brute force still blocked');
+    delete process.env.DEV_PASSWORD_HASH; auth._resetDevLimiter(); assert.strictEqual((await login('dev', 'dev')).status, 503, 'unset → disabled, no default'); process.env.DEV_PASSWORD_HASH = HASH; auth._resetDevLimiter();
+    assert.strictEqual((await login('dev', DEV_PW)).status, 200, 'a real bcrypt hash still works');
+  });
   await t('DEV_USERNAME is honoured', async () => { auth._resetDevLimiter(); process.env.DEV_USERNAME = 'richie'; assert.strictEqual((await login('dev', DEV_PW)).status, 401); assert.strictEqual((await login('richie', DEV_PW)).status, 200); delete process.env.DEV_USERNAME; });
   await t('RATE LIMIT: 5 failures from one client → 429 (even with the right password) + Retry-After; other clients unaffected; success clears the count', async () => {
     auth._resetDevLimiter(); const A = { 'cf-connecting-ip': '203.0.113.7' }, B = { 'cf-connecting-ip': '203.0.113.8' };
