@@ -25,7 +25,7 @@
 ### 2026-10-20 — Sprint 22.4: Dev area, manager/dev split, plain freshness badge
 
 **Before deploying — REQUIRED setup (otherwise nobody can open /dev):**
-1. Generate a hash locally: `node server/scripts/hash-password.js "<a long password, 12+ chars>"` (prints a bcrypt hash).
+1. Generate a hash locally: `node server/scripts/hash-password.js "<any password>"` (prints a bcrypt hash). Any non-empty string works — short is fine while debugging (the script only prints a note); replace it with a long one later and redeploy.
 2. Koyeb env: `DEV_PASSWORD_HASH=<that hash>` (and optionally `DEV_USERNAME`, default `dev`). Redeploy.
 3. The old client-side `dev` / `dev` gate is **gone** — it never worked as security (the browser decided). With no hash set, dev sign-in answers 503 ("not set up") and there is no default password.
 Dev sessions share the browser's single token slot: signing into /dev replaces a manager session in that browser (and vice versa) — use another browser/profile for both at once.

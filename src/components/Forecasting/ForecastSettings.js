@@ -174,7 +174,7 @@ const ForecastSettings = ({ onClose, inline = false, showSync = true }) => {
       return rest;
     });
     setBanner(`Saved ${code}.`);
-    setTimeout(() => setBanner(null), 2200);
+    setTimeout(() => setB anner(null), 2200);
   };
 
   const cellValue = (row, field) => {
