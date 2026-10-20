@@ -450,3 +450,6 @@
     to   { transform: translateY(0); }
   }
 }
+
+/* Sprint 22.6 — section heading inside the nav (Dev tools group) */
+.sidebar-section { list-style: none; margin: 14px 14px 4px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.18); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55); }

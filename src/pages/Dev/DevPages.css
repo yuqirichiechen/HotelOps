@@ -1,13 +1,5 @@
+/* Sprint 22.6 — Dev tool pages (inside the admin shell) */
 /* Sprint 22.4 — Dev area shell */
-.dv-shell { min-height: 100vh; background: var(--bg-base); display: flex; flex-direction: column; }
-.dv-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 8px 18px; background: var(--bg-surface); border-bottom: 2px solid #7c3aed; flex-wrap: wrap; }
-.dv-brand { display: flex; align-items: center; gap: 8px; }
-.dv-badge { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 6px; background: #7c3aed; color: #fff; }
-.dv-nav { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
-.dv-nav button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; font-family: inherit; font-size: 14px; color: var(--text-secondary); cursor: pointer; }
-.dv-nav button.on { color: var(--brand-text); border-bottom-color: var(--brand-bg, #1a365d); font-weight: 600; }
-.dv-signout { font-family: inherit; font-size: 13px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; }
-.dv-main { flex: 1; min-height: 0; }
 .dv-page { max-width: 1100px; margin: 0 auto; padding: 22px 18px 60px; }
 .dv-page h1 { margin: 0 0 14px; font-family: 'TiemposHeadline', Georgia, serif; font-size: 24px; color: var(--brand-text); }
 .dv-card { background: var(--bg-surface); border: 1px solid var(--border-light, var(--border)); border-radius: 10px; padding: 16px 18px; max-width: 720px; }
@@ -29,4 +21,9 @@
 .dv-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-light, var(--border)); white-space: nowrap; }
 .dv-row-bad td { background: var(--danger-bg, #fef2f2); }
 .dv-err-cell { white-space: normal; max-width: 320px; }
-@media (max-width: 640px) { .dv-bar { padding: 6px 10px; } .dv-nav button { padding: 8px 8px; font-size: 13px; } }
+.dv-viewbar { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 6px 16px; background: #f5f3ff; border-bottom: 2px solid #7c3aed; font-size: 13px; color: #4c1d95; }
+.dv-viewbar .dv-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 6px; background: #7c3aed; color: #fff; }
+.dv-seg { display: inline-flex; border: 1px solid #7c3aed; border-radius: 8px; overflow: hidden; }
+.dv-seg button { font-family: inherit; font-size: 12.5px; padding: 4px 12px; border: 0; background: #fff; color: #4c1d95; cursor: pointer; }
+.dv-seg button.on { background: #7c3aed; color: #fff; font-weight: 600; }
+.dv-viewbar .dv-link { margin-left: auto; background: none; border: 0; color: #4c1d95; text-decoration: underline; cursor: pointer; font: inherit; }

@@ -21,8 +21,10 @@ import { useView } from '../../shells/ViewContext';
 import ForecastSettings from '../Forecasting/ForecastSettings';
 import ForecastHistory from '../Forecasting/ForecastHistory';
 import ForecastDaySheet from './ForecastDaySheet';
+import RoomStatusSheet from './RoomStatusSheet';
 import InfoTip from './InfoTip';
 import SimpleRoomTable from './SimpleRoomTable';
+import DayTwoDetail from './DayTwoDetail';
 import SyncBadge from '../shared/SyncBadge';
 import { buildDayModel, buildOutlook, deriveNotes, addDays, DEFAULT_ALLOWANCE, PRIORITY_LABEL } from './forecastModel';
 import './Forecast.css';
@@ -210,6 +212,12 @@ const NeedTable = ({ model, roomsByType }) => {
                 <p><strong>Left to sell now</strong> = (Inspected + Awaiting inspection) − guests still arriving.</p>
                 <p>Rooms come live from rGuest. When a type reaches 0 and nothing more can be made ready, close it on SiteMinder (OTA + website). Awaiting-inspection (PU) rooms count once the front desk inspects them.</p>
               </>
+            ) : model.dayTwo ? (
+              <>
+                <p><strong>Tomorrow</strong> is planned from the rooms as they are right now. Tomorrow’s <em>booked</em> arrivals are checked against the rooms that are vacant and clean now (minus tonight’s arrivals).</p>
+                <p>Anything short is cleaned first — dirty rooms (in-progress first), then rooms checking out today, then tomorrow’s check-outs. After that every check-out is cleaned and every room staying over is serviced.</p>
+                <p><strong>Clean now</strong> = clean vacant rooms left after tonight. <strong>Turn first</strong> = rooms that must be cleaned first for the arrivals.</p>
+              </>
             ) : (
               <>
                 <p><strong>Expected</strong> = booked arrivals + an allowance for bookings that usually arrive late. The allowance is based on past weeks and depends on the weekday and how far ahead the day is (Tuesdays book late, Fridays are usually full already). Adjust it in Forecast settings → Late bookings.</p>
@@ -228,7 +236,7 @@ const NeedTable = ({ model, roomsByType }) => {
             <tr>
               <th>Room Type Code</th>
               <th>Room Type</th>
-              {cols.map(c => <th key={c.key} title={c.title}>{c.label}</th>)}
+              {cols.map(c => <th key={c.key} title={c.title}>{c.key === 'empty' && model.dayTwo ? 'Clean now' : c.label}</th>)}
               <th>{model.isToday ? 'Status' : 'Priority'}</th>
             </tr>
           </thead>
@@ -325,32 +333,32 @@ const ArrivalDetailTable = ({ rows, date, isToday }) => {
 // right comparing each group's Vacant Clean vs Arrivals.
 const ForecastSummaryCard = ({ model }) => {
   const groups = model.groups;
-  const A = (t) => (model.isToday ? t.ready : t.expected);         // series A: today = sellable now · future = expected arrivals
-  const B = (t) => (model.isToday ? t.arrivals : t.alreadyEmpty + t.departures);    // series B: today = still arriving · future = rooms that can be ready
+  const A = (t) => (model.isToday ? t.ready : t.expected);         // series A: today = clean rooms now · future = arrivals (booked tomorrow; expected later)
+  const B = (t) => (model.isToday ? t.arrivals : t.potential);     // series B: today = still arriving · future = rooms that COULD be ready (not occupied by a stayover)
   const maxVal = Math.max(1, ...groups.flatMap(g => [A(g.totals), B(g.totals)]));
   return (
     <div className="fb-card">
-      <h2>{model.isToday ? 'Sellable vs arriving' : 'Expected arrivals vs rooms that can be ready'}</h2>
+      <h2>Sellable vs arriving</h2>
       <div className="fb-summary-grid">
         <ul className="fb-summary-list">
           {groups.map(g => (
             <li key={g.baseCode || g.baseLabel}>
-              <span>{g.baseCode || '—'} {model.isToday ? 'left to sell' : 'turn first'}</span>
-              <strong className={(model.isToday ? g.totals.leftNow <= 0 : (g.totals.priority === 'first' || g.totals.priority === 'short')) ? 'fb-emph-warn' : 'fb-emph-ok'}>
-                {model.isToday ? Math.max(0, g.totals.leftNow) : g.totals.turnFirst}
+              <span>{g.baseCode || '—'} left to sell</span>
+              <strong className={(model.isToday ? g.totals.leftNow <= 0 : g.totals.leftToSell <= 0) ? 'fb-emph-warn' : 'fb-emph-ok'}>
+                {model.isToday ? Math.max(0, g.totals.leftNow) : g.totals.leftToSell}
               </strong>
             </li>
           ))}
           <li className="fb-summary-total">
-            <span>{model.isToday ? 'Total left to sell' : 'Total to turn first'}</span>
-            <strong>{model.isToday ? model.totals.leftToSell : model.totals.turnFirst} rooms</strong>
+            <span>Total left to sell</span>
+            <strong>{model.isToday ? model.totals.leftToSell : model.totals.leftToSellFuture} rooms</strong>
           </li>
         </ul>
 
         <div className="fb-chart">
           <div className="fb-chart-legend">
-            <span className="fb-chart-key fb-chart-key-vc">{model.isToday ? 'Clean rooms (VI + PU)' : 'Expected arrivals'}</span>
-            <span className="fb-chart-key fb-chart-key-ar">{model.isToday ? 'Still arriving' : 'Empty + departing'}</span>
+            <span className="fb-chart-key fb-chart-key-vc">{model.isToday ? 'Clean rooms (VI + PU)' : (model.offset === 1 ? 'Arriving (booked)' : 'Arriving (expected)')}</span>
+            <span className="fb-chart-key fb-chart-key-ar">{model.isToday ? 'Still arriving' : 'Rooms that can be ready'}</span>
           </div>
           {groups.map(g => (
             <div className="fb-bar-group" key={`bar-${g.baseCode || g.baseLabel}`}>
@@ -439,6 +447,19 @@ const PlanCard = ({ model }) => {
         </InfoTip></h2>
       </div>
       {model.plan.map(p => {
+        const grp = model.dayTwo ? model.groups.find(x => x.baseCode === p.baseCode) : null;
+        if (grp) {            // Sprint 22.6 — tomorrow: clean first / check-outs / stay-overs for this room type
+          return (
+            <div className={`fb-plan fb-plan-${p.priority}`} key={p.baseCode || p.label}>
+              <div className="fb-plan-head">
+                <code className="fb-group-code">{p.baseCode || '—'}</code>
+                <strong>{p.label}</strong>
+                <PriorityPill priority={p.priority} />
+              </div>
+              <DayTwoDetail group={grp} />
+            </div>
+          );
+        }
         const allFirst = p.turnFirst > 0 && p.turnFirst >= p.departing;   // every departure is a priority → nothing to single out
         return (
         <div className={`fb-plan fb-plan-${p.priority}`} key={p.baseCode || p.label}>
@@ -533,7 +554,8 @@ const Forecast = ({ mode = 'manager' }) => {
   const [error, setError]       = useState(null);
   const [historyOpen, setHistoryOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sheetOpen, setSheetOpen]       = useState(false); // 17.12 — Generate Forecast modal
+  const [sheetOpen, setSheetOpen]       = useState(false); // 17.12 — priority-plan sheet (dev only since 22.6)
+  const [roomSheetOpen, setRoomSheetOpen] = useState(false); // 22.6 — room status sheet (replaces "Generate forecast")
 
   // Sprint 21.3 — no manual "Sync": the page loads the latest snapshot on open / when you come back to the tab,
   // and today's board is a separate LIVE pull. (Sprint 22 makes the snapshot itself sync automatically.)
@@ -668,12 +690,22 @@ const Forecast = ({ mode = 'manager' }) => {
         <div className="fb-header-actions">
           <button
             className="fb-btn fb-btn-primary"
-            onClick={() => setSheetOpen(true)}
+            onClick={() => setRoomSheetOpen(true)}
             disabled={!model}
-            title={!model ? 'Nothing to print yet' : `Open a printable sheet for ${fmtLong(model.date)}`}
+            title={!model ? 'Nothing to print yet' : 'Print or download every room by floor: available, unavailable, occupied and check-out day'}
           >
-            <IconChart /> <span>Generate forecast</span>
+            <IconChart /> <span>Room status sheet</span>
           </button>
+          {isDev && (
+            <button
+              className="fb-btn"
+              onClick={() => setSheetOpen(true)}
+              disabled={!model}
+              title={!model ? 'Nothing to print yet' : `Priority plan sheet for ${fmtLong(model.date)} (what to clean, by floor)`}
+            >
+              <span>Plan sheet</span>
+            </button>
+          )}
           <SyncBadge source={dataSource} syncedAt={snapshot ? snapshot.scraped_at : null} health={syncHealth} label="Reservations" />
           <div className={`fb-sync-badge${liveError || paused || !live ? ' is-off' : ''}`} title={paused ? 'Live updates paused after 30 minutes without activity — move the mouse to resume' : liveError ? 'Could not reach rGuest — showing the last scrape' : 'Room conditions refresh from rGuest every 2 minutes'}>
             <span className="fb-sync-dot" />
@@ -770,7 +802,8 @@ const Forecast = ({ mode = 'manager' }) => {
 
       {isDev && historyOpen  && <ForecastHistory  onClose={() => setHistoryOpen(false)} />}
       {isDev && settingsOpen && <ForecastSettings onClose={() => { setSettingsOpen(false); loadAllowance(); }} />}
-      {sheetOpen    && model && <ForecastDaySheet onClose={() => setSheetOpen(false)} model={model} />}
+      {isDev && sheetOpen && model && <ForecastDaySheet onClose={() => setSheetOpen(false)} model={model} />}
+      {roomSheetOpen && payload && <RoomStatusSheet payload={payload} live={live} onClose={() => setRoomSheetOpen(false)} />}
     </div>
   );
 };

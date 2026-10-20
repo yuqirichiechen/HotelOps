@@ -82,7 +82,7 @@ const Sidebar = ({
     const slug = typeof window !== 'undefined'
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
-    const loginPath = slug ? `/${slug}/login` : '/';
+    const loginPath = user && user.role === 'dev' ? '/login/dev' : (slug ? `/${slug}/login` : '/');   // Sprint 22.6: dev sessions sign out to the dev sign-in
     await logout();
     nav(loginPath, { replace: true });
   };
@@ -132,7 +132,9 @@ const Sidebar = ({
         </div>
         <ul className="sidebar-nav">
           {navItems.map((item) => (
-            <li key={item.view}>
+            <React.Fragment key={item.view}>
+            {item.section && <li className="sidebar-section" aria-hidden="true">{item.section}</li>}
+            <li>
               <button
                 type="button"
                 onClick={handleClick(item.view)}
@@ -157,6 +159,7 @@ const Sidebar = ({
                 {item.live && <span className="live-dot" title="Live" />}
               </button>
             </li>
+            </React.Fragment>
           ))}
         </ul>
         <div className="sidebar-footer">

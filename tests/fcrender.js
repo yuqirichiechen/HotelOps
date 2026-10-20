@@ -23,6 +23,7 @@ const load = (file) => { const code = babel.transformFileSync(file, { presets: [
   const Forecast = load(ROOT + '/src/components/Forecast/index.js').default; const el = document.getElementById('root'); const root = createRoot(el);
   try { await act(async () => { root.render(React.createElement(Forecast, { mode: process.env.FC_MODE || 'dev' })); }); await act(async () => { await new Promise(r => setTimeout(r, 100)); }); console.log('RENDER OK; text length', el.textContent.length); console.log('first 400 chars:', el.textContent.replace(/\s+/g, ' ').slice(0, 400)); }
   catch (e) { console.log('RENDER THREW:', e.message.slice(0, 300)); }
+  if (process.env.FC_CLICK) { const n = el.querySelectorAll(process.env.FC_CLICK)[Number(process.env.FC_CLICK_N || 0)]; if (n) await act(async () => { n.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); }); }
   if (process.env.FC_SHEET) { const b = [...el.querySelectorAll('button')].find(x => /Generate forecast/.test(x.textContent)); await act(async () => { b.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); }); console.log('sheet open:', !!el.querySelector('.fc-sheet')); }
   if (process.env.DUMP) require('fs').writeFileSync(process.env.DUMP, el.innerHTML);
   console.error = origErr; const real = errors.filter(e => !/act\(/.test(e)); console.log('console errors (excluding act warnings):', real.length); real.slice(0, 4).forEach(e => console.log('  -', e));

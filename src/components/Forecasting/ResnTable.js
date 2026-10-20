@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../../auth';
 import ResnItem, { useResnSummaries } from './ResnItem';
+import ResnItemLean from './ResnItemLean';
 import { PrintSheet, downloadCsv } from './ResnPrint';
 import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate, computeTabCounts, sortForTab, EMPTY_COPY } from './resnTabs';
 import {
@@ -124,10 +125,12 @@ const SCAN_LIMIT = 200;   // attention filters / summary-based sorts need every 
 const PRINT_LIMIT = 500;
 
 const ReservationDetailsTable = ({
-  rows, filter, onFilter, sources = [], roomTypes = [],
+  rows, filter: filterProp, onFilter, sources = [], roomTypes = [],
   sourceFilter, onSourceFilter, typeFilter, onTypeFilter,
   jobTick, jobRunning, todayYmd,
+  lean = false,           // Sprint 22.6: manager view — guest name, stay, confirmation code, room type only
 }) => {
+  const filter = lean && filterProp === 'needsRoom' ? 'remainingArrivals' : filterProp;   // the lean view has no "needs a room" tab
   const saved = useRef(loadView()).current;
   const [query, setQuery]       = useState('');
   const [serverIds, setServerIds] = useState(null);
@@ -145,14 +148,14 @@ const ReservationDetailsTable = ({
   // ── server-side search: contact / notes / preferences / group (debounced) ──
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) { setServerIds(null); return undefined; }
+    if (lean || q.length < 2) { setServerIds(null); return undefined; }   // lean (manager) search looks at the list only — not contact details / notes
     let cancelled = false;
     const id = setTimeout(async () => {
       const { ok, data } = await apiFetch(`/admin/reservations/search?q=${encodeURIComponent(q)}`);
       if (!cancelled) setServerIds(ok && data?.success ? new Set(data.ids) : null);
     }, 300);
     return () => { cancelled = true; clearTimeout(id); };
-  }, [query]);
+  }, [query, lean]);
 
   // ── "/" focuses search (when not already typing) ──
   useEffect(() => {
@@ -168,6 +171,7 @@ const ReservationDetailsTable = ({
   }, []);
 
   // ── what is on screen ──
+  const tabs = useMemo(() => (lean ? RESN_TABS.filter(x => x.key !== 'needsRoom') : RESN_TABS), [lean]);
   const counts = useMemo(() => computeTabCounts(rows), [rows]);        // always over ALL rows
   const searching = query.trim().length > 0;
   const effectiveTab = searching ? 'all' : filter;                      // a search looks everywhere
@@ -193,7 +197,7 @@ const ReservationDetailsTable = ({
   // Which summaries to fetch: the whole view when it's ≤ 200 rows (enables attention
   // filters/sorts), otherwise just the visible page.
   const pageA = Math.min(page, Math.max(1, Math.ceil(ordered0.length / pageSize)));
-  const idsToLoad = big
+  const idsToLoad = lean ? [] : big
     ? ordered0.slice((pageA - 1) * pageSize, pageA * pageSize).map(r => r.id)
     : baseRows.map(r => r.id);
   const { get: getSummary, refresh: refreshOne, refreshing, forget, ensure } = useResnSummaries(idsToLoad, jobTick);
@@ -271,7 +275,7 @@ const ReservationDetailsTable = ({
       <div className="fc-detail-controls">
         {/* Status tabs with live counts (rGuest-style). */}
         <div className="fc-tabs" role="tablist" aria-label="Reservation status">
-          {RESN_TABS.map(t => (
+          {tabs.map(t => (
             <button
               key={t.key}
               type="button"
@@ -293,13 +297,13 @@ const ReservationDetailsTable = ({
               {roomTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
-          <label>
+          {!lean && <label>
             <span>Source</span>
             <select value={sourceFilter || ''} onChange={e => onSourceFilter(e.target.value || null)}>
               <option value="">All</option>
               {sources.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-          </label>
+          </label>}
         </div>
       </div>
 
@@ -313,25 +317,25 @@ const ReservationDetailsTable = ({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Escape') { setQuery(''); e.currentTarget.blur(); } }}
-            placeholder="Search guests, rooms, phones, notes…  ( / )"
+            placeholder={lean ? 'Search by guest name or confirmation code…  ( / )' : 'Search guests, rooms, phones, notes…  ( / )'}
             aria-label="Search reservations"
             autoComplete="off"
           />
           {query && <button type="button" className="rl-search-clear" onClick={() => setQuery('')} aria-label="Clear search">×</button>}
         </div>
-        <select className="rl-select" value={sortMode} onChange={e => setSortMode(e.target.value)} aria-label="Sort by">
+        {!lean && <select className="rl-select" value={sortMode} onChange={e => setSortMode(e.target.value)} aria-label="Sort by">
           {SORT_OPTIONS.map(o => (
             <option key={o.key} value={o.key} disabled={big && (o.key === 'attention' || o.key === 'balance')}>
               Sort: {o.label}
             </option>
           ))}
-        </select>
+        </select>}
         <button type="button" className="rl-tool-btn" onClick={onPrint} disabled={!filtered.length || !!busy} title="Print this list for the desk">
           {busy === 'print' ? 'Preparing…' : 'Print'}
         </button>
-        <button type="button" className="rl-tool-btn" onClick={onCsv} disabled={!filtered.length || !!busy} title="Download this list as a spreadsheet (CSV)">
+        {!lean && <button type="button" className="rl-tool-btn" onClick={onCsv} disabled={!filtered.length || !!busy} title="Download this list as a spreadsheet (CSV)">
           {busy === 'csv' ? 'Preparing…' : 'Export CSV'}
-        </button>
+        </button>}
       </div>
 
       {searching && (
@@ -342,7 +346,7 @@ const ReservationDetailsTable = ({
       )}
 
       {/* ── needs-attention filters (counts from the stored guest details) ── */}
-      {!big && baseRows.length > 0 && (
+      {!lean && !big && baseRows.length > 0 && (
         <div className="rl-attn" role="group" aria-label="Needs attention">
           <span className="rl-attn-label">Needs attention</span>
           {ATTENTION_DEFS.filter(d => d.key !== 'stale' && (attnCnt[d.key] || attnSel[d.key])).map(d => (
@@ -362,22 +366,23 @@ const ReservationDetailsTable = ({
           )}
         </div>
       )}
-      {big && (
+      {!lean && big && (
         <div className="rl-notice">Attention filters and “Needs attention / Balance” sorting are available on views of up to {SCAN_LIMIT} reservations (this one has {baseRows.length}). Pick a tab or search to narrow it.</div>
       )}
 
       {filtered.length > 0 && (
         <div className="rl-toolbar">
           <span>{filtered.length} reservation{filtered.length === 1 ? '' : 's'}</span>
-          <button type="button" onClick={() => setAllOpen(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all on this page'}</button>
+          {!lean && <button type="button" onClick={() => setAllOpen(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all on this page'}</button>}
         </div>
       )}
-      <div className="rl-head" aria-hidden="true">
-        <span>Guest</span><span>Stay</span><span>Status &amp; room</span><span>Charges &amp; notes</span>
-      </div>
+      {lean
+        ? <div className="rl-head-lean" aria-hidden="true"><span>Guest</span><span>Stay</span><span>Confirmation</span><span>Room type</span></div>
+        : <div className="rl-head" aria-hidden="true"><span>Guest</span><span>Stay</span><span>Status &amp; room</span><span>Charges &amp; notes</span></div>}
       <ul className="rl-list">
         {filtered.length === 0 && <li className="fc-resn-empty">{emptyEl}</li>}
         {paged.map(r => {
+          if (lean) return <ResnItemLean key={r.id} r={r} />;
           const a = attnOfRow(r);
           return (
             <ResnItem
@@ -422,6 +427,7 @@ const ReservationDetailsTable = ({
           dateLabel={dateLabel}
           rows={filtered.slice(0, PRINT_LIMIT)}
           entryOf={getSummary}
+          lean={lean}
           truncated={filtered.length > PRINT_LIMIT}
         />
       )}

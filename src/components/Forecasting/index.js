@@ -822,6 +822,7 @@ const Forecasting = ({ mode = 'manager' }) => {
           jobTick={`${detailJob?.status || ''}:${Math.floor(((detailJob?.done || 0) + (detailJob?.failed || 0)) / 10)}`}
           todayYmd={snapshot.payload.forecastDate}
           jobRunning={detailJob?.status === 'running'}
+          lean={!isDev}
         />
       );
     }
@@ -829,7 +830,7 @@ const Forecasting = ({ mode = 'manager' }) => {
     if (view === 'room')     return <ByRoomTypeTable rows={snapshot.payload.byRoomType    || []} />;
     if (view === 'floor')    return <ByFloorTable    rows={snapshot.payload.byFloor       || []} />;
     return null;
-  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes, detailJob?.status, detailJob?.done, detailJob?.failed]);
+  }, [snapshot, view, resnFilter, resnSourceFilter, resnTypeFilter, detailSources, detailRoomTypes, detailJob?.status, detailJob?.done, detailJob?.failed, isDev]);
 
   return (
     <div className="fc-page">
@@ -992,6 +993,7 @@ const Forecasting = ({ mode = 'manager' }) => {
                     primary={inHouseTonight}
                     sublabel="in-house, not departing today"
                   />
+                  {isDev && (
                   <KpiCard
                     accent="noroom"
                     icon={<IconAlertTriangle />}
@@ -1001,6 +1003,7 @@ const Forecasting = ({ mode = 'manager' }) => {
                     onClick={() => goTab('needsRoom')}
                     active={resnFilter === 'needsRoom'}
                   />
+                  )}
                 </>
               );
             })()}
@@ -1016,7 +1019,7 @@ const Forecasting = ({ mode = 'manager' }) => {
                   Reservation Details table (view stays 'details'
                   by default). */}
               {/* Sprint 22.2 — what the auto-sync saw change (new bookings, cancellations, edits). */}
-              <RecentChanges />
+              {isDev && <RecentChanges />}
               <div className="fc-table-header">
                 <h2>Guest Reservations</h2>
               </div>

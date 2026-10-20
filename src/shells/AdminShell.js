@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ViewProvider, useView } from './ViewContext';
+import { useAuth } from '../auth';
 import Sidebar from '../components/Layout/Sidebar';
 import AdminHome from '../pages/AdminHome';
 import StaffManager from '../components/AdminPanel/StaffManager';
@@ -11,6 +13,8 @@ import AdminSettings from '../components/AdminPanel/AdminSettings';
 import ShiftSheet from '../pages/ShiftSheet';
 import Forecasting from '../components/Forecasting'; // Sprint 17.3 — reservations overview (renamed in 17.11)
 import Forecast    from '../components/Forecast';    // Sprint 17.11 — room-type availability forecast
+import { DevSync, DevForecastSettings, DevLogsView, DevPlatformView } from '../pages/Dev/DevViews';
+import '../pages/Dev/DevPages.css';
 // Sprint 12.1: NotesPage no longer reachable from the admin shell —
 // handoff notes moved to the Logbook surface (AdminReports). Staff
 // shell still maps view='notes' to NotesPage for the staff calendar
@@ -48,6 +52,15 @@ const NAV = [
   { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
 ];
 
+// Sprint 22.6 — the "Dev tools" group: ONE shell for managers and dev. A dev session sees these extra items (and may switch the pages
+// between the full dev view and what a manager sees); a manager session never gets them, and the server refuses their data routes.
+const DEV_NAV = [
+  { view: 'devsync',     label: 'Auto-sync',         icon: 'settings', section: 'Dev tools' },
+  { view: 'devlogs',     label: 'Logs',              icon: 'logbook' },
+  { view: 'devsettings', label: 'Forecast settings', icon: 'settings' },
+  { view: 'devplatform', label: 'Platform',          icon: 'settings' },
+];
+
 const VIEWS = {
   home:        AdminHome,
   staff:       StaffManager,
@@ -60,6 +73,9 @@ const VIEWS = {
   assistant:   Assistant,
   settings:    AdminSettings,
 };
+const DEV_VIEWS = {
+  devsync: DevSync, devlogs: DevLogsView, devsettings: DevForecastSettings, devplatform: DevPlatformView,
+};
 
 const ACTIVE_PARENT = {
   staffDetail: 'staff',
@@ -69,14 +85,26 @@ const ACTIVE_PARENT = {
   sheet:       'calendar',
 };
 
+// "View as" (dev only): Full = every detail and debug control; Manager = exactly what a manager sees. Remembered for the browser session.
+const VIEW_AS_KEY = 'hotelops-view-as';
+const readViewAs = () => { try { return sessionStorage.getItem(VIEW_AS_KEY) === 'manager' ? 'manager' : 'full'; } catch { return 'full'; } };
+
 const Body = ({ theme, onToggleTheme }) => {
   const { view, goTo } = useView();
-  const Component = VIEWS[view.name] || VIEWS.home;
-  const activeNav = ACTIVE_PARENT[view.name] || view.name;
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const isDev = !!(user && user.role === 'dev');
+  const [viewAs, setViewAsRaw] = useState(readViewAs);
+  const setViewAs = (v) => { setViewAsRaw(v); try { sessionStorage.setItem(VIEW_AS_KEY, v); } catch { /* ignore */ } };
+  const mode = isDev && viewAs === 'full' ? 'dev' : 'manager';
+  const devView = !!DEV_VIEWS[view.name];
+  const Component = (devView && isDev) ? DEV_VIEWS[view.name] : (VIEWS[view.name] || VIEWS.home);
+  const activeNav = ACTIVE_PARENT[view.name] || (devView && !isDev ? 'home' : view.name);
+  const navItems = isDev ? [...NAV, ...DEV_NAV] : NAV;
   return (
     <div className="app-shell">
       <Sidebar
-        navItems={NAV}
+        navItems={navItems}
         currentView={activeNav}
         onNavigate={goTo}
         role="admin"
@@ -84,7 +112,18 @@ const Body = ({ theme, onToggleTheme }) => {
         onToggleTheme={onToggleTheme}
       />
       <main className="app-main">
-        <Component theme={theme} onToggleTheme={onToggleTheme} role="admin" {...view.params} />
+        {isDev && (
+          <div className="dv-viewbar" role="region" aria-label="Dev view controls">
+            <span className="dv-tag">DEV</span>
+            <span>View as</span>
+            <span className="dv-seg" role="group" aria-label="View as">
+              <button type="button" className={viewAs === 'full' ? 'on' : ''} aria-pressed={viewAs === 'full'} onClick={() => setViewAs('full')}>Full</button>
+              <button type="button" className={viewAs === 'manager' ? 'on' : ''} aria-pressed={viewAs === 'manager'} onClick={() => setViewAs('manager')}>Manager</button>
+            </span>
+            <button type="button" className="dv-link" onClick={() => nav('/dev')}>Switch property</button>
+          </div>
+        )}
+        <Component theme={theme} onToggleTheme={onToggleTheme} role="admin" mode={mode} {...view.params} />
       </main>
     </div>
   );

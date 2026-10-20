@@ -1,11 +1,12 @@
 // Sprint 22.5 — the manager's Forecast table: ONE row per room type, few columns, tap a row for the rooms behind the numbers.
 // Today:       Room type · Clean · Arriving · Left to sell · Status      (dropdown: each subtype's rooms with their housekeeping state,
 //                                                                          plus "inspect now" / "clean first" room numbers)
-// Future days: Room type · Expected · Turn first · Priority              (dropdown: booked / expected / already empty and the departing
-//                                                                          rooms to clean, by floor)
+// Future days: Room type · Arriving · Left to sell · Priority            (dropdown: tomorrow = clean first / check-outs / stay-overs to service;
+//                                                                          later days = booked, expected, and the departing rooms to clean)
 // The full table (subtype rows, every housekeeping column) stays in the Dev view.
 import React, { useState } from 'react';
 import { PRIORITY_LABEL } from './forecastModel';
+import DayTwoDetail from './DayTwoDetail';
 
 const STATUS_LABEL = { open: 'Open', tight: 'Clean first', full: 'Sold out', short: 'Oversold' };
 const HK_LABEL = { VI: 'Inspected', PU: 'Awaiting inspection', D: 'Dirty', IP: 'In progress', OC: 'Occupied' };
@@ -55,6 +56,7 @@ const TodayDetail = ({ g, model, roomsByType }) => {
 };
 
 const FutureDetail = ({ g, model }) => {
+  if (g.totals.dayTwo) return <DayTwoDetail group={g} />;
   const p = (model.plan || []).find(x => x.baseCode === g.baseCode);
   if (!p) return <div className="sr-detail-body"><span className="fb-muted">No detail for this day yet.</span></div>;
   const allFirst = p.turnFirst > 0 && p.turnFirst >= p.departing;
@@ -92,7 +94,7 @@ const SimpleRoomTable = ({ model, roomsByType, dayLabel }) => {
   return (
     <div className="fb-card sr">
       <div className="fb-card-head">
-        <h2>{today ? 'Rooms to sell today' : `Rooms needed · ${dayLabel}`}</h2>
+        <h2>{today ? 'Rooms to sell today' : `Rooms to sell · ${dayLabel}`}</h2>
         <span className="fb-card-sub">Tap a room type to see its rooms</span>
       </div>
       <div className="fb-table-wrap">
@@ -100,7 +102,7 @@ const SimpleRoomTable = ({ model, roomsByType, dayLabel }) => {
           <thead>
             <tr>
               <th>Room type</th>
-              {today ? <><th>Clean</th><th>Arriving</th><th>Left to sell</th><th>Status</th></> : <><th>Expected</th><th>Turn first</th><th>Priority</th></>}
+              {today ? <><th>Clean</th><th>Arriving</th><th>Left to sell</th><th>Status</th></> : <><th>{model.offset === 1 ? 'Arriving' : 'Expected arrivals'}</th><th>Left to sell</th><th>Priority</th></>}
             </tr>
           </thead>
           <tbody>
@@ -122,7 +124,7 @@ const SimpleRoomTable = ({ model, roomsByType, dayLabel }) => {
                       </>
                     ) : (
                       <>
-                        <td>{t.expected}</td><td className="fb-cell-strong">{t.turnFirst}</td>
+                        <td>{t.expected}</td><td className="fb-cell-strong">{t.leftToSell}</td>
                         <td><span className={`fb-pill fb-pill-prio-${t.priority}`}>{PRIORITY_LABEL[t.priority] || t.priority}</span></td>
                       </>
                     )}

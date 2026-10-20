@@ -62,9 +62,9 @@ const std = (sync) => { responses = { 'GET /admin/forecast/current': current(syn
     localStorage.setItem('hotelops-token', 't'); meUser = { username: 'mgr', role: 'admin', type: 'admin' }; h = await mount(page('/dev')); assert(/DEV SIGN-IN/.test(h.el.textContent), 'a manager session must not open /dev'); await h.unmount();
     meUser = { username: 'dev', role: 'dev', type: 'dev' }; h = await mount(page('/dev')); assert(/DEV AREA/.test(h.el.textContent)); await h.unmount();
   });
-  await t('a dev session never lands in the manager or staff shells: they redirect to /dev; managers still reach the admin shell', async () => {
+  await t('a dev session opens the admin shell (the one shell) but never the staff shell; login pages send it to the property picker; managers still reach the admin shell', async () => {
     localStorage.setItem('hotelops-token', 't'); const shell = (entry) => R(entry, [route('/x/admin', React.createElement(Auth.RequireRole, { role: 'admin' }, txt('ADMIN SHELL'))), route('/x/staff', React.createElement(Auth.RequireRole, { role: 'staff' }, txt('STAFF SHELL'))), route('/dev', txt('DEV AREA')), route('/login', React.createElement(Auth.RedirectIfAuthed, null, txt('LOGIN PAGE')))]);
-    meUser = { username: 'dev', role: 'dev', type: 'dev' }; for (const e of ['/x/admin', '/x/staff', '/login']) { const h = await mount(shell(e)); assert(/DEV AREA/.test(h.el.textContent), e); await h.unmount(); }
+    meUser = { username: 'dev', role: 'dev', type: 'dev' }; for (const [e, want] of [['/x/admin', /ADMIN SHELL/], ['/x/staff', /DEV AREA/], ['/login', /DEV AREA/]]) { const h = await mount(shell(e)); assert(want.test(h.el.textContent), e + ' → ' + h.el.textContent); await h.unmount(); }
     meUser = { username: 'mgr', role: 'admin', type: 'admin' }; localStorage.setItem('hotelops-tenant-slug', 'x'); const h = await mount(shell('/x/admin')); assert(/ADMIN SHELL/.test(h.el.textContent)); await h.unmount();
   });
 
@@ -88,19 +88,52 @@ const std = (sync) => { responses = { 'GET /admin/forecast/current': current(syn
     h = await mount(React.createElement(Forecast, { mode: 'dev' })); txt = h.el.textContent; assert(/Snapshot history/.test(txt) && /Forecast settings/.test(txt)); await h.unmount();
   });
 
-  // ── the Dev shell ──
-  const DevShell = load(ROOT + '/src/pages/Dev/DevShell.js').default;
-  const shellEl = () => React.createElement(RR.MemoryRouter, { initialEntries: ['/dev'] }, React.createElement(DevShell));
-  await t('DEV SHELL: Auto-sync is home; nav reaches Reservations (full), Forecast (full), Settings (no Auto-sync tab — it has its own page), Logs, Platform; Sign out works', async () => {
+  // ── ONE shell: the admin shell, with the Dev tools group + "view as" for dev sessions ──
+  w.matchMedia = w.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }));
+  const stubs = ['pages/AdminHome', 'components/AdminPanel/StaffManager', 'components/AdminPanel/StaffDetail', 'components/AdminPanel/Calendar', 'pages/AdminReports', 'pages/Assistant', 'components/AdminPanel/AdminSettings', 'pages/ShiftSheet'];
+  const origResolve = Module._resolveFilename; const stubFile = '/tmp/hop_stub_page.js'; fs.writeFileSync(stubFile, "const React=require('react'); module.exports={__esModule:true, default:()=>React.createElement('div',null,'PAGE STUB')};");
+  const shellLoad = () => { const Mod = load; return Mod; };
+  let AdminShell; {
+    const realLoad = load; const stubSet = new Set(stubs.map(x => path.resolve(ROOT, 'src', x)));
+    const origRequireHook = Module.prototype.require; // stub heavy admin pages only while the shell module graph is loaded
+    const code = fs.readFileSync(ROOT + '/src/shells/AdminShell.js', 'utf8');
+    const patched = code.replace(/import (\w+) from '\.\.\/(pages\/AdminHome|components\/AdminPanel\/StaffManager|components\/AdminPanel\/StaffDetail|components\/AdminPanel\/Calendar|pages\/AdminReports|pages\/Assistant|components\/AdminPanel\/AdminSettings|pages\/ShiftSheet)';/g, "const $1 = () => React.createElement('div', null, 'PAGE STUB $2');");
+    const tmp = ROOT + '/src/shells/__AdminShellUnderTest.js'; fs.writeFileSync(tmp, patched); try { AdminShell = realLoad(tmp).default; } finally { fs.unlinkSync(tmp); }
+  }
+  const asUser = (user) => { mockAuth.useAuth = () => ({ logout: async () => {}, user }); return mockAuth; };   // mutate the SAME object the already-loaded modules hold
+  const DEVU = { username: 'dev', role: 'dev', type: 'dev' }, MGR = { username: 'mgr', role: 'admin', type: 'admin' };
+  const shellEl = () => React.createElement(RR.MemoryRouter, { initialEntries: ['/x/admin'] }, React.createElement(RR.Routes, null, React.createElement(RR.Route, { path: '/x/admin', element: React.createElement(AdminShell, { theme: null, onToggleTheme() {} }) }), React.createElement(RR.Route, { path: '/login/dev', element: React.createElement('div', null, 'DEV SIGN-IN PAGE') }), React.createElement(RR.Route, { path: '/dev', element: React.createElement('div', null, 'PROPERTY PICKER') })));
+  // the shell reads `user` through the module-level mock: re-load per user so the mock object is the one the shell sees
+  await t('ONE SHELL: a dev session sees the manager nav PLUS a "Dev tools" group (Auto-sync, Logs, Forecast settings, Platform); a manager never does', async () => {
+    std({ state: 'ok', everyMinutes: 5 }); asUser(DEVU); let h = await mount(shellEl()); const labels = () => [...h.el.querySelectorAll('.sidebar-link .sidebar-nav-label')].map(x => x.textContent);
+    assert.deepStrictEqual(labels(), ['Home', 'Staff', 'Calendar', 'Reservations', 'Forecast', 'Logbook', 'Assistant', 'Settings', 'Auto-sync', 'Logs', 'Forecast settings', 'Platform'], labels().join('|')); assert(/Dev tools/.test(h.el.querySelector('.sidebar-section').textContent)); await h.unmount();
+    asUser(MGR); h = await mount(shellEl()); assert.deepStrictEqual(labels(), ['Home', 'Staff', 'Calendar', 'Reservations', 'Forecast', 'Logbook', 'Assistant', 'Settings']); assert(!h.el.querySelector('.dv-viewbar'), 'no dev bar for managers'); assert(!h.el.querySelector('.sidebar-section')); await h.unmount();
+  });
+  await t('VIEW AS: dev starts in FULL (every function); the switch flips Reservations + Forecast to exactly what a manager sees, and remembers it', async () => {
+    std({ state: 'ok', everyMinutes: 5 }); sessionStorage.clear(); asUser(DEVU); const h = await mount(shellEl()); const nav = (l) => [...h.el.querySelectorAll('.sidebar-link')].find(b => b.textContent.startsWith(l));
+    await h.click(nav('Reservations')); assert(/Raw scraper output/.test(h.el.textContent) && h.el.querySelector('.rl-main') && /Recent changes/.test(h.el.textContent), 'full reservations');
+    await h.click([...h.el.querySelectorAll('.dv-seg button')].find(b => b.textContent === 'Manager')); assert(!/Raw scraper output/.test(h.el.textContent) && h.el.querySelector('.rl-lean') && !/Recent changes/.test(h.el.textContent), 'manager reservations'); assert.strictEqual(sessionStorage.getItem('hotelops-view-as'), 'manager');
+    await h.click(nav('Forecast')); assert(h.el.querySelector('.sr-table') && !h.el.querySelector('.fb-need-table') && !/Snapshot history/.test(h.el.textContent), 'manager forecast');
+    await h.click([...h.el.querySelectorAll('.dv-seg button')].find(b => b.textContent === 'Full')); assert(h.el.querySelector('.fb-need-table') && /Snapshot history/.test(h.el.textContent) && /Plan sheet/.test(h.el.textContent), 'full forecast'); await h.unmount();
+  });
+  await t('DEV TOOLS pages open inside the same layout: Auto-sync, Logs (change feed / snapshots / jobs), Forecast settings (no Auto-sync tab), Platform', async () => {
     std({ state: 'ok', everyMinutes: 5 }); responses['GET /dev/jobs'] = { ok: true, data: { success: true, jobs: [{ job_id: 'j1', status: 'failed', total: 5, done: 3, skipped: 0, failed: 2, gone: 0, error: 'rGuest failing repeatedly', started_at: iso(30), finished_at: iso(29) }] } };
     responses['GET /admin/forecast/config'] = { ok: true, data: { success: true, config: { productivity_target: 6, avg_min_per_clean: {}, dedup_window_minutes: 60 } } }; responses['GET /admin/forecast/mapping'] = { ok: true, data: { success: true, mapping: [] } }; responses['GET /admin/forecast/snapshots'] = { ok: true, data: { success: true, snapshots: [] } };
-    const h = await mount(shellEl()); const nav = (l) => [...h.el.querySelectorAll('.dv-nav button')].find(b => b.textContent === l);
-    assert(/Sync health/.test(h.el.textContent), 'Auto-sync is the landing page'); assert(h.el.querySelector('.dv-badge').textContent === 'DEV');
-    await h.click(nav('Reservations')); assert(/Raw scraper output/.test(h.el.textContent) && /Snapshot history/.test(h.el.textContent), 'dev gets the full Reservations page');
-    await h.click(nav('Forecast')); assert(/Room Forecast/.test(h.el.textContent) && /Forecast settings/.test(h.el.textContent));
-    await h.click(nav('Settings')); const tabs = [...h.el.querySelectorAll('[role=tab]')].map(b => b.textContent.replace(/\d+$/, '')); assert(tabs.includes('Labor constants') && tabs.includes('Late bookings') && tabs.includes('Room-type mapping') && !tabs.includes('Auto-sync'), tabs.join('|'));
+    asUser(DEVU); const h = await mount(shellEl()); const nav = (l) => [...h.el.querySelectorAll('.sidebar-link')].find(b => b.textContent.startsWith(l));
+    await h.click(nav('Auto-sync')); assert(/Sync health/.test(h.el.textContent) && h.el.querySelector('.sidebar-link.active').textContent.startsWith('Auto-sync'), 'sidebar highlights the open tool');
     await h.click(nav('Logs')); assert(/Change feed/.test(h.el.textContent)); await h.click([...h.el.querySelectorAll('.dv-tabs button')].find(b => /Guest-detail jobs/.test(b.textContent))); assert(/rGuest failing repeatedly/.test(h.el.textContent));
+    await h.click(nav('Forecast settings')); const tabs = [...h.el.querySelectorAll('[role=tab]')].map(b => b.textContent.replace(/\d+$/, '')); assert(tabs.includes('Labor constants') && tabs.includes('Late bookings') && tabs.includes('Room-type mapping') && !tabs.includes('Auto-sync'), tabs.join('|'));
     await h.click(nav('Platform')); assert(/Tenant logo/.test(h.el.textContent)); await h.unmount();
+  });
+  await t('"Switch property" returns to the property picker; Sign out of a dev session goes to the DEV sign-in (not a tenant login)', async () => {
+    std({ state: 'ok', everyMinutes: 5 }); asUser(DEVU); let h = await mount(shellEl()); await h.click([...h.el.querySelectorAll('.dv-link')].find(b => /Switch property/.test(b.textContent))); assert(/PROPERTY PICKER/.test(h.el.textContent)); await h.unmount();
+    h = await mount(shellEl()); await h.click(h.el.querySelector('.sidebar-signout')); await act(async () => { await sleep(30); }); assert(/DEV SIGN-IN PAGE/.test(h.el.textContent), h.el.textContent.slice(0, 100)); await h.unmount();
+  });
+  await t('PROPERTY PICKER (dev): one row per property → opens that property\'s admin shell and remembers the slug; no "Dev sign-in" link on it', async () => {
+    const Picker = load(ROOT + '/src/pages/Login/TenantPicker.js', true).default; global.fetch = async () => ({ ok: true, json: async () => ({ success: true, config: {} }) }); localStorage.clear();
+    const el = React.createElement(RR.MemoryRouter, { initialEntries: ['/dev'] }, React.createElement(RR.Routes, null, React.createElement(RR.Route, { path: '/dev', element: React.createElement(Picker, { kind: 'dev' }) }), React.createElement(RR.Route, { path: '/snoqualmieinn/admin', element: React.createElement('div', null, 'ADMIN SHELL OPENED') })));
+    const h = await mount(el); const rows = h.el.querySelectorAll('.tenant-picker-row'); assert.strictEqual(rows.length, 1); assert(/Snoqualmie Inn/.test(rows[0].textContent) && /Select a property/.test(h.el.textContent) && !/Dev sign-in/.test(h.el.textContent));
+    await h.click(rows[0]); assert(/ADMIN SHELL OPENED/.test(h.el.textContent)); assert.strictEqual(localStorage.getItem('hotelops-tenant-slug'), 'snoqualmieinn'); await h.unmount();
   });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();

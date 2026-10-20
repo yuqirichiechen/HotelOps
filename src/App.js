@@ -7,7 +7,6 @@ import ShiftsView from './components/ShiftsView';
 import TenantLogin from './pages/Login/TenantLogin';
 import TenantPicker from './pages/Login/TenantPicker';
 import DevLogin from './pages/Login/DevLogin';
-import DevShell from './pages/Dev/DevShell';
 import SetPin from './pages/SetPin';
 import StaffShell from './shells/StaffShell';
 import AdminShell from './shells/AdminShell';
@@ -109,7 +108,8 @@ const App = () => {
 
           {/* ── Dev sign-in + panel (out-of-band) ───────────────────────── */}
           <Route path="/login/dev" element={<DevLogin />} />
-          <Route path="/dev"       element={<RequireDev><DevShell /></RequireDev>} />
+          {/* Sprint 22.6: dev sign-in → choose a property → the SAME admin shell as managers, plus the Dev tools group. */}
+          <Route path="/dev"       element={<RequireDev><TenantPicker kind="dev" /></RequireDev>} />
 
           {/* ── Set-PIN interstitial (auth required, no shell) ──────────── */}
           <Route path="/set-pin" element={

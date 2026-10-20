@@ -238,13 +238,13 @@ export const RequireRole = ({ role = 'any', children }) => {
     return <Navigate to="/" replace state={{ from: location }} />;
   }
 
-  // Sprint 22.4: the dev role lives in /dev only (it is never a manager or staff session).
-  if (user.role === 'dev' && role !== 'dev' && role !== 'any') return <Navigate to="/dev" replace />;
+  // Sprint 22.6: a dev session uses the SAME admin shell as managers (plus its Dev tools group); it never opens the staff shell.
+  if (user.role === 'dev' && role === 'staff') return <Navigate to="/dev" replace />;
   const isAdmin = user.role === 'admin';
   const ok =
     role === 'any' ||
     (role === 'dev' && user.role === 'dev') ||
-    (role === 'admin' && isAdmin) ||
+    (role === 'admin' && (isAdmin || user.role === 'dev')) ||
     (role === 'staff' && !isAdmin && user.role !== 'dev');
 
   if (!ok) {

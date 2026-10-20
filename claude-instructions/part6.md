@@ -17,10 +17,41 @@
 | 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
-| 22.5   | Manager UI simplified (dev keeps the full pages) + Dev tenant selection with the admin layout | **In progress** — Forecast (manager) done 2026-10-20; Reservations (manager) + Dev tenant picker/layout next |
+| 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 22.6   | One shell for dev + managers; lean manager Reservations; second-night cleaning plan; room status sheet | **Built + tested, NOT yet deployed** (no migration, no new env) |
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 22.6: one shell, lean Reservations, second-night plan, room status sheet
+
+User decisions this sprint: merge dev into the admin shell ("one shell with logins"); second night must also count **stay-overs to service** (they add to a housekeeper's 10-room minimum — the minimum itself, overridable, belongs to the
+coming **Housekeeping page**, not built yet); the second night uses **booked** arrivals; days 3–14 keep the current method (too far to matter for the next two days; a future statistics page will use them); "Generate forecast" becomes a
+printable/downloadable room sheet; wording "left to sell" instead of "turn first".
+
+**1. One shell.** `/login/dev` → `/dev` = **property picker** (`TenantPicker kind="dev"`, one property today) → `/:tenant/admin` = the SAME `AdminShell` managers use. A dev session gets (a) a **"Dev tools" nav group** — Auto-sync, Logs, Forecast settings, Platform
+(`pages/Dev/DevViews.js`, `DevLogs`, `DevPlatform`) — and (b) a slim **"View as: Full | Manager"** bar (remembered per browser session) that flips Reservations + Forecast between the full dev page and exactly what a manager sees, plus "Switch property".
+Managers never get the group or the bar. `RequireRole('admin')` admits dev; dev is still kept out of the staff shell; dev sign-out goes to `/login/dev`. Server: admin-reader checks in `server.js` (`req.auth.type/role === 'admin'`) now also accept dev, so every admin page works for dev.
+`DevShell` (22.4) is deleted — its content moved into the shell. Dev-only data routes remain 403 for managers (22.4 tests unchanged). Browser still has ONE token slot (dev and manager sessions replace each other).
+
+**2. Second night (tomorrow, offset 1) — `buildDayModel`.** Uses tonight's real room state (live board; falls back to the payload's rooms) and BOOKED arrivals (no allowance):
+`carry = clean vacant rooms (VI/PU) − tonight's remaining arrivals (pre-assigned arrivals reserve their own room)`; `shortfall = tomorrow's booked arrivals − carry` per room-type group. The shortfall is covered from **dirty vacant rooms (in-progress first) → rooms checking out today → rooms checking out tomorrow**.
+After that: every remaining check-out gets a full clean, leftover dirty rooms are listed, and **every room staying over is serviced**. Output per group (`totals.dayTwo`): carry, shortfall, unresolved, priority list (with the reason per room), remaining check-outs, dirty leftovers, stay-overs, counts of
+clean / service; model-level `dayTwo = {clean, service, total}`. Priority tiers: normal (no shortfall) / early / first / short (unresolved > 0 → "Not enough rooms"). Days 3–14 unchanged (booked + weekday late-booking allowance; vacant assumed clean).
+For every future night: `potential = sellable − occupied by stay-overs` and **`leftToSell = potential − arrivals`**; totals `leftToSellFuture`, `potentialRooms`. The outlook now gets the live board for day 2 as well.
+UI: the summary card says **"NKRR left to sell … Total left to sell N rooms"** with bars "Arriving (booked/expected)" vs "Rooms that can be ready" (the old "Total to turn first" is gone — it summed a different quantity than the label suggested; I found no arithmetic mismatch, so I treated it as a wording/meaning problem). Manager table (future days):
+*Room type · Arriving · Left to sell · Priority*; the dropdown for tomorrow lists **Clean first (why: dirty now / checks out today / checks out tomorrow) · Check-outs to clean · Also still to clean · Staying over — service**, by floor, with "Rooms to clean N · to service M" (`DayTwoDetail.js`, also shown in the dev plan card; dev table header "Already empty" → "Clean now" for tomorrow).
+Verified on live data (Oct 20 plan): NQRR 5 arriving, 2 clean left, 3 dirty rooms cleaned first, 9 check-outs, 17 stay-overs → 12 to clean + 17 to service.
+
+**3. Room status sheet** (replaces "Generate forecast"; `roomSheet.js`, `RoomStatusSheet.js`): every room by floor — **Available** (vacant + inspected / awaiting inspection), **Unavailable** (dirty / being cleaned / out of order / blocked), **Occupied** with its **check-out day**; per-floor and total counts, "arriving today" flag for pre-assigned arrivals,
+**Print** and **Download CSV**; no guest names. rGuest exposes only the check-out DATE (`estimatedTimeDetails` is always empty), so the time shown is the standard **11:00 AM** (constant `STANDARD_CHECKOUT`; footnote on the sheet) — confirm the property's real time. The previous priority-plan sheet stays as a dev-only **"Plan sheet"** button (no function lost).
+
+**4. Lean manager Reservations.** `ResnTable lean`: each guest = **name · stay (dates + nights) · confirmation code · room type**, nothing else (`ResnItemLean.js`); no summary / contact lookups and no server-side contact search (search = name, confirmation, room type from the list); no Recent changes, no "No Room Assigned" tile, no "Needs a room" tab, no source filter, sort, CSV, attention chips or expand-all; lean Print sheet
+(guest, confirmation, room type, stay). Kept: KPI tiles (arrivals / in-house / departures / staying tonight), status tabs, room-type filter, search, Print, freshness badge, refresh. Dev ('Full') keeps every function (a test lists them).
+
+**Tests:** `forecastmodel` 26 (+6 second-night / left-to-sell; allowance tests moved to the third day) · `forecastpage` 23 (dev layout + manager layout + room sheet + parity) · `roomsheet` 8 · `reservations-lean` 6 · `devshell` 13 (one shell: nav groups, view-as, dev tools pages, property picker, role redirects, sign-out) · `dev-auth` 12 · plus all earlier suites (sync, payload, slices, migration, panel, refresh) re-run green. Build compiles. Screenshots checked (manager forecast tomorrow dropdown on live data).
+
+**Not built yet (next):** the Housekeeping page (assign rooms to housekeepers: 10-room minimum overridable, admin adjusts, printable per-housekeeper sheets; will reuse `dayTwo` clean+service lists); a statistics page using days 3–14.
 
 ### 2026-10-20 — Sprint 22.5 (part 1): manager Forecast simplified
 

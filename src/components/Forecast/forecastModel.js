@@ -218,6 +218,9 @@ export function buildDayModel(payload, dateYmd, live, allowance) {
       t.priority = t.needFromTurns === 0 ? 'normal'
         : t.needFromTurns > t.departures ? 'short'
         : t.spare < Math.max(1, Math.ceil(t.departures * 0.25)) ? 'first' : 'early';
+      // Sprint 22.6: rooms that COULD be ready that night (everything not occupied by a stayover, if all were cleaned) and what is left to sell of them.
+      t.potential = Math.max(0, t.sellable - t.occupied);
+      t.leftToSell = Math.max(0, t.potential - t.expected);
     }
     g.totals = t;
     g.variants.sort((a, b) => (!a.subSuffix && b.subSuffix ? -1 : a.subSuffix && !b.subSuffix ? 1 : a.typeCode.localeCompare(b.typeCode)));
@@ -255,6 +258,7 @@ export function buildDayModel(payload, dateYmd, live, allowance) {
   const baseOfType = (code) => (labels.get(code) || {}).baseCode || baseOf(code);
   const dep = [], stay = [];
   let depUnassigned = 0, stayUnassigned = 0;
+  const depUnBy = new Map(), stayUnBy = new Map(), bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
   if (isToday && useLive) {
     for (const d of live.stillDeparting || []) {
       if (d.roomNumber) dep.push({ roomNumber: String(d.roomNumber), typeCode: typeOfRoomNumber(d.roomNumber, d.typeCode) }); else depUnassigned += 1;
@@ -268,8 +272,8 @@ export function buildDayModel(payload, dateYmd, live, allowance) {
       if (!r.arrivalDate || !r.departureDate || r.departureDate <= r.arrivalDate) continue;
       const num = r.roomNumber ? String(r.roomNumber) : null;
       const item = { roomNumber: num, typeCode: typeOfRoomNumber(num, r.typeCode), floorId: r.floorId };
-      if (r.departureDate === D && !(isToday && useLive) && (!isToday || r.status === 'INH')) { if (num) dep.push(item); else depUnassigned += 1; }
-      if (r.arrivalDate < D && r.departureDate > D) { if (num) stay.push(item); else stayUnassigned += 1; }
+      if (r.departureDate === D && !(isToday && useLive) && (!isToday || r.status === 'INH')) { if (num) dep.push(item); else { depUnassigned += 1; bump(depUnBy, baseOfType(r.typeCode)); } }
+      if (r.arrivalDate < D && r.departureDate > D) { if (num) stay.push(item); else { stayUnassigned += 1; bump(stayUnBy, baseOfType(r.typeCode)); } }
     }
   }
   const floorMap = new Map();
@@ -285,9 +289,67 @@ export function buildDayModel(payload, dateYmd, live, allowance) {
   const floors = [...floorMap.values()].sort((a, b) => floorSort(a.floorId, b.floorId));
   floors.forEach(f => { ['departing', 'stayover', 'dirty', 'inspect'].forEach(k => f[k].sort(byNumber)); });
 
+  // ── Sprint 22.6: the SECOND NIGHT (tomorrow) is planned from tonight's REAL room state ──
+  // Arrivals (the BOOKED ones — no late-booking allowance) are checked against the rooms that are vacant AND clean right now (minus tonight's
+  // remaining arrivals). A shortfall is what must be cleaned first, taken from: dirty vacant rooms (in-progress first) → rooms checking out today
+  // → rooms checking out tomorrow. After that: every remaining check-out gets a full clean and every room staying over gets serviced.
+  let dayTwo = null;
+  if (offset === 1) {
+    const stateRooms = (live && Array.isArray(live.rooms) ? live.rooms : snapRooms).filter(r => isActiveRoom(r, today) && !inactive.has(String(r.roomNumber)));
+    const push = (m, k, x) => { if (!m.has(k)) m.set(k, []); m.get(k).push(x); };
+    const cleanVac = new Map(), dirtyVac = new Map();
+    for (const r of stateRooms) {
+      if (!r.typeCode || !isSellable(r) || r.occupancyStatus !== 'VAC') continue;
+      push(r.hkStatus === 'VI' || r.hkStatus === 'PU' ? cleanVac : dirtyVac, baseOfType(r.typeCode), r);
+    }
+    const tonightArr = live && Array.isArray(live.remainingArrivals)
+      ? live.remainingArrivals.map(a => ({ typeCode: a.typeCode, roomNumber: a.roomNumber ? String(a.roomNumber) : null }))
+      : resns.filter(r => r.status === 'RES' && r.arrivalDate === today).map(r => ({ typeCode: r.typeCode, roomNumber: r.roomNumber ? String(r.roomNumber) : null }));
+    const tonightDep = live && Array.isArray(live.stillDeparting)
+      ? live.stillDeparting.filter(d => d.roomNumber).map(d => ({ roomNumber: String(d.roomNumber), typeCode: typeOfRoomNumber(d.roomNumber, d.typeCode) }))
+      : resns.filter(r => r.status === 'INH' && r.departureDate === today && r.roomNumber).map(r => ({ roomNumber: String(r.roomNumber), typeCode: typeOfRoomNumber(r.roomNumber, r.typeCode) }));
+    const reserved = new Set(), unassignedTonight = new Map();
+    for (const a of tonightArr) { const k = baseOfType(a.typeCode); if (a.roomNumber) reserved.add(a.roomNumber); else bump(unassignedTonight, k); }
+    const byNum = (a, b) => String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
+    const mk = (o, source) => ({ roomNumber: String(o.roomNumber), typeCode: o.typeCode, floorId: floorOfNum(o.roomNumber, o.floorId), source });
+    let sumClean = 0, sumService = 0;
+    for (const g of groups) {
+      const t = g.totals, key = g.baseCode;
+      const carry = Math.max(0, (cleanVac.get(key) || []).filter(r => !reserved.has(String(r.roomNumber))).length - (unassignedTonight.get(key) || 0));
+      const dirty = (dirtyVac.get(key) || []).slice().sort((a, b) => (a.hkStatus === 'IP' ? 0 : 1) - (b.hkStatus === 'IP' ? 0 : 1) || byNum(a, b));
+      const free = tonightDep.filter(d => baseOfType(d.typeCode) === key).sort(byNum);
+      const deps = dep.filter(o => o.typeCode && baseOfType(o.typeCode) === key).sort(byNum), depUn = depUnBy.get(key) || 0;
+      const stays = stay.filter(o => o.typeCode && baseOfType(o.typeCode) === key).sort(byNum), stayUn = stayUnBy.get(key) || 0;
+      const shortfall = Math.max(0, t.arrivals - carry);
+      const k1 = Math.min(shortfall, dirty.length), k2 = Math.min(shortfall - k1, free.length), k3 = Math.min(shortfall - k1 - k2, deps.length), k4 = Math.min(shortfall - k1 - k2 - k3, depUn);
+      const unresolved = shortfall - k1 - k2 - k3 - k4, sources = dirty.length + free.length + deps.length + depUn;
+      const priority = [...dirty.slice(0, k1).map(r => mk(r, 'dirty')), ...free.slice(0, k2).map(r => mk(r, 'tonight')), ...deps.slice(0, k3).map(r => mk(r, 'tomorrow'))];
+      const restDeparts = deps.slice(k3).map(o => mk(o, 'tomorrow'));
+      const restDirty = [...dirty.slice(k1).map(r => mk(r, 'dirty')), ...free.slice(k2).map(r => mk(r, 'tonight'))];
+      Object.assign(t, { expected: t.arrivals, extra: 0, alreadyEmpty: carry, needFromTurns: shortfall, turnFirst: k1 + k2 + k3 + k4, spare: sources - shortfall });
+      t.priority = shortfall === 0 ? 'normal' : unresolved > 0 ? 'short' : t.spare < Math.max(1, Math.ceil(sources * 0.25)) ? 'first' : 'early';
+      t.potential = Math.max(0, t.sellable - t.occupied); t.leftToSell = Math.max(0, t.potential - t.arrivals);
+      const clean = priority.length + k4 + restDeparts.length + (depUn - k4) + restDirty.length, service = stays.length + stayUn;
+      t.dayTwo = { carry, shortfall, unresolved, priority, unplacedPriority: k4, restDeparts, restDirty, stays, depUnassigned: depUn - k4, stayUnassigned: stayUn, clean, service, sources: { dirty: dirty.length, tonight: free.length, tomorrow: deps.length + depUn } };
+      sumClean += clean; sumService += service;
+    }
+    dayTwo = { clean: sumClean, service: sumService, total: sumClean + sumService };
+  }
+
   // Per-group turn suggestion (future days): the first N departing rooms to turn, fullest floors first.
   let plan = null;
-  if (!isToday) {
+  if (!isToday && dayTwo) {
+    plan = groups.map(g => {
+      const t = g.totals, d = t.dayTwo, perFloor = new Map();
+      [...d.priority.map(r => ({ ...r, first: true })), ...d.restDeparts.map(r => ({ ...r, first: false }))].forEach(r => { if (!perFloor.has(r.floorId)) perFloor.set(r.floorId, []); perFloor.get(r.floorId).push(r); });
+      const order = [...perFloor.entries()].sort((a, b) => b[1].length - a[1].length || floorSort(a[0], b[0]));
+      return {
+        baseCode: g.baseCode, label: g.baseLabel, priority: t.priority, booked: t.arrivals, expected: t.expected, extra: 0, alreadyEmpty: t.alreadyEmpty, needFromTurns: t.needFromTurns,
+        departing: t.departures, turnFirst: t.turnFirst, unplacedFirst: d.unplacedPriority,
+        floors: order.map(([f, list]) => ({ floorId: f, label: floorLabel(f), rooms: list.sort((a, b) => (b.first - a.first) || byNumber(a, b)).map(r => ({ roomNumber: r.roomNumber, typeCode: r.typeCode, first: r.first, source: r.source })) })),
+      };
+    }).sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || b.needFromTurns - a.needFromTurns);
+  } else if (!isToday) {
     plan = groups.map(g => {
       const t = g.totals;
       const rooms = dep.filter(o => o.typeCode && baseOfType(o.typeCode) === g.baseCode);
@@ -320,6 +382,9 @@ export function buildDayModel(payload, dateYmd, live, allowance) {
     lateExtra: isToday ? null : sum(GT, 'extra'),
     priorityGroups: isToday ? null : GT.filter(t => t.priority === 'first' || t.priority === 'short').length,
     turnFirst: isToday ? null : sum(GT, 'turnFirst'),
+    // Sprint 22.6 (future days): rooms that could be ready vs what's left to sell of them
+    potentialRooms: isToday ? null : sum(GT, 'potential'),
+    leftToSellFuture: isToday ? null : sum(GT, 'leftToSell'),
     // today
     inspected: sum(GT, 'inspected'), awaiting: sum(GT, 'awaiting'), ready: sum(GT, 'ready'), dirty: sum(GT, 'dirty'), freeing: sum(GT, 'freeing'),
     remainingArrivals: isToday ? sum(GT, 'arrivals') : null,
@@ -335,7 +400,7 @@ export function buildDayModel(payload, dateYmd, live, allowance) {
   const status = outsideWindow ? 'nodata'
     : isToday ? (groups.some(g => g.totals.status === 'short') ? 'short' : groups.some(g => g.totals.status === 'full') ? 'full' : groups.some(g => g.totals.status === 'tight') ? 'tight' : 'open')
     : 'workload';
-  return { date: D, offset, isToday, isLive: useLive, outsideWindow, windowDays, status, groups, totals, actions, plan, floors, unassigned: { departing: depUnassigned, stayover: stayUnassigned }, rooms: rooms.length };
+  return { date: D, offset, isToday, isLive: useLive, outsideWindow, windowDays, status, groups, totals, actions, plan, dayTwo, floors, unassigned: { departing: depUnassigned, stayover: stayUnassigned }, rooms: rooms.length };
 }
 
 /** One summary per day for the outlook strip. Future days: workload only, no verdict. */
@@ -343,7 +408,7 @@ export function buildOutlook(payload, days = 14, live, allowance) {
   const today = (live && live.forecastDate) || (payload && payload.forecastDate);
   if (!today) return [];
   return Array.from({ length: days }, (_, i) => {
-    const m = buildDayModel(payload, addDays(today, i), i === 0 ? live : undefined, allowance);
+    const m = buildDayModel(payload, addDays(today, i), i <= 1 ? live : undefined, allowance);
     return {
       date: m.date, offset: i, status: m.status, outsideWindow: m.outsideWindow, isLive: m.isLive,
       arrivals: m.totals.arrivals, departures: m.totals.departures, occupancyPct: m.totals.occupancyPct,
@@ -389,6 +454,7 @@ export function deriveNotes(model) {
     for (const p of model.plan || []) {
       if (p.priority === 'early') notes.push({ kind: 'info', text: `${p.label}: turn ${p.turnFirst} of ${p.departing} departing room${p.departing === 1 ? '' : 's'} early (${p.expected} arrivals expected, ${p.alreadyEmpty} already empty).` });
     }
+    if (model.dayTwo) notes.push({ kind: 'info', text: `Tomorrow: ${model.dayTwo.clean} room${model.dayTwo.clean === 1 ? '' : 's'} to clean and ${model.dayTwo.service} staying over to service (${model.dayTwo.total} in all).` });
     notes.push({ kind: 'info', text: `${model.totals.arrivals} booked (about ${model.totals.expectedArrivals} expected), ${model.totals.departures} departing, ${model.totals.stayovers} staying over → ${model.totals.roomsToService} room${model.totals.roomsToService === 1 ? '' : 's'} to service.` });
   }
   if (model.totals.unsellableTotal) notes.push({ kind: 'neutral', text: `${model.totals.unsellableTotal} room(s) are out of order / blocked and excluded.` });

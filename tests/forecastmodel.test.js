@@ -85,14 +85,14 @@ const liveBoard = (o = {}) => ({ forecastDate: TODAY, rooms: rooms.map(r => ({ .
   const planRooms = [...['101', '102', '103', '104'].map(n => pr(n, '01')), ...['201', '202', '203', '204', '205', '206'].map(n => pr(n, '02')),
     ...['301', '302', '303', '304'].map(n => pr(n, '03', 'NKRR'))];
   let k = 0; const R = (o) => ({ id: 'p' + (++k), status: 'RES', typeCode: 'NQRR', baseCode: 'NQRR', roomNumber: null, ...o });
-  const D1 = '2026-10-12';   // a Monday, 1 day ahead
+  const D1 = '2026-10-12';   // a Monday, 2 days ahead of the fixture's forecast date (the allowance method applies from the 3rd day)
   const planRes = (booked = 6, extra = []) => [
     R({ status: 'INH', arrivalDate: '2026-10-10', departureDate: '2026-10-14', roomNumber: '101' }), R({ status: 'INH', arrivalDate: '2026-10-10', departureDate: '2026-10-14', roomNumber: '102' }),   // stayovers
     ...['103', '201', '202', '203', '204'].map(n => R({ status: 'INH', arrivalDate: '2026-10-09', departureDate: D1, roomNumber: n })),                                                         // 5 departing (1 on floor 1, 4 on floor 2)
     ...Array.from({ length: booked }, () => R({ arrivalDate: D1, departureDate: '2026-10-14' })),
     R({ arrivalDate: D1, departureDate: '2026-10-13', typeCode: 'NKRR', baseCode: 'NKRR' }),                                                                                                  // 1 NKRR arriving
     ...extra];
-  const planPayload = (booked, extra, o = {}) => ({ forecastDate: TODAY, futureWindowDays: 30, perRoomSheet: planRooms, reservations: planRes(booked, extra), ...o });
+  const planPayload = (booked, extra, o = {}) => ({ forecastDate: '2026-10-10', futureWindowDays: 30, perRoomSheet: planRooms, reservations: planRes(booked, extra), ...o });
   const P = (m, base) => m.plan.find(x => x.baseCode === base);
 
   await t('allowance ratio: calibrated table × weekday (Tue high, Fri low), scale and disable work, never applies to today', () => {
@@ -116,9 +116,9 @@ const liveBoard = (o = {}) => ({ forecastDate: TODAY, rooms: rooms.map(r => ({ .
     const none = M.buildDayModel(planPayload(2), D1); assert.strictEqual(G(none, 'NQRR').totals.priority, 'normal'); assert.strictEqual(G(none, 'NQRR').totals.turnFirst, 0);
   });
   await t('allowance: minimum extra only applies from 4 booked up; scale 200 doubles the proportional part; tiny groups stay proportional', () => {
-    assert.strictEqual(G(M.buildDayModel(planPayload(2), D1), 'NQRR').totals.extra, 1, '2 booked × .31 → 1, no minimum for <4 booked');
+    assert.strictEqual(G(M.buildDayModel(planPayload(2), D1), 'NQRR').totals.extra, 1, '2 booked × .47 → 1, no minimum for <4 booked');
     assert.strictEqual(G(M.buildDayModel(planPayload(4), D1), 'NQRR').totals.extra, 2, 'minExtra 2 applies');
-    assert.strictEqual(G(M.buildDayModel(planPayload(4), D1, undefined, { minExtra: 0 }), 'NQRR').totals.extra, 1);
+    assert.strictEqual(G(M.buildDayModel(planPayload(4), D1, undefined, { minExtra: 0 }), 'NQRR').totals.extra, 2, '4 × 0.47 → 2 without the minimum');
     assert(G(M.buildDayModel(planPayload(4), D1, undefined, { scalePct: 200, minExtra: 0 }), 'NQRR').totals.extra >= 2);
   });
   await t('FLOORS: suggestion lists the known departing rooms by floor, fullest floor first; the first N are flagged', () => {
@@ -144,6 +144,57 @@ const liveBoard = (o = {}) => ({ forecastDate: TODAY, rooms: rooms.map(r => ({ .
     const m = M.buildDayModel({ forecastDate: TODAY, perRoomSheet: rs, reservations: [] }, TODAY, live);
     const f1 = m.floors.find(f => f.floorId === '1'), f2 = m.floors.find(f => f.floorId === '2');
     assert.deepStrictEqual(f1.dirty.map(r => r.roomNumber), ['101', '102']); assert.deepStrictEqual(f2.inspect.map(r => r.roomNumber), ['201']); assert.deepStrictEqual(f2.departing.map(r => r.roomNumber), ['202']);
+  });
+
+  // ── Sprint 22.6: the SECOND NIGHT (tomorrow) from tonight's real room state ──
+  const T0 = TODAY, T1 = '2026-10-12', T2 = '2026-10-13';          // today / tomorrow / the day after
+  const nq = (n, occ, hk, f = '02') => ({ roomNumber: n, typeCode: 'NQRR', baseCode: 'NQRR', baseLabel: 'Double Queen Standard', subLabel: 'Standard', occupancyStatus: occ, hkStatus: hk, inventoryStatus: occ, blocked: false, floorId: f });
+  const dtRooms = [nq('101', 'VAC', 'VI'), nq('102', 'VAC', 'PU'), nq('103', 'VAC', 'D'), nq('104', 'VAC', 'IP', '03'), nq('105', 'OCC', 'OC'), nq('106', 'OCC', 'OC'), nq('107', 'OCC', 'OC', '03'), nq('108', 'OCC', 'OC', '03'), nq('109', 'OCC', 'OC', '04')];
+  let dn = 0; const DR = (o) => ({ id: 'd' + (++dn), status: 'RES', typeCode: 'NQRR', baseCode: 'NQRR', roomNumber: null, ...o });
+  const dtRes = (arriving = 5) => [
+    DR({ status: 'INH', roomNumber: '105', arrivalDate: '2026-10-09', departureDate: T0 }),                                  // leaves TODAY (still in the room)
+    DR({ status: 'INH', roomNumber: '106', arrivalDate: '2026-10-10', departureDate: T2 }),                                  // stays over tomorrow night
+    DR({ status: 'INH', roomNumber: '107', arrivalDate: '2026-10-10', departureDate: T1 }), DR({ status: 'INH', roomNumber: '108', arrivalDate: '2026-10-09', departureDate: T1 }), DR({ status: 'INH', roomNumber: '109', arrivalDate: T0, departureDate: T1 }),   // leave TOMORROW
+    DR({ arrivalDate: T0, departureDate: T2 }),                                                                              // arrives tonight, no room yet → stays over tomorrow
+    ...Array.from({ length: arriving }, () => DR({ arrivalDate: T1, departureDate: '2026-10-14' }))];
+  const dtPayload = (arriving, o = {}) => ({ forecastDate: T0, futureWindowDays: 30, perRoomSheet: dtRooms, reservations: dtRes(arriving), ...o });
+  const dtLive = (o = {}) => ({ forecastDate: T0, rooms: dtRooms.map(r => ({ ...r })), remainingArrivals: [{ typeCode: 'NQRR' }], stillDeparting: [{ roomNumber: '105', typeCode: 'NQRR' }], arrivalsToday: 1, departedToday: 0, ...o });
+
+  await t('SECOND NIGHT: booked arrivals are checked against rooms that are clean+vacant NOW (minus tonight\'s arrivals); the shortfall is taken from dirty rooms → tonight\'s check-outs → tomorrow\'s check-outs', () => {
+    const m = M.buildDayModel(dtPayload(5), T1, dtLive()); const g = G(m, 'NQRR').totals, d = g.dayTwo;
+    assert.strictEqual(g.arrivals, 5); assert.strictEqual(g.expected, 5, 'no late-booking allowance on the second night'); assert.strictEqual(g.extra, 0);
+    assert.strictEqual(d.carry, 1, '2 clean vacant − 1 arriving tonight'); assert.strictEqual(d.shortfall, 4); assert.strictEqual(g.needFromTurns, 4); assert.strictEqual(g.turnFirst, 4);
+    assert.deepStrictEqual(d.priority.map(r => [r.roomNumber, r.source]), [['104', 'dirty'], ['103', 'dirty'], ['105', 'tonight'], ['107', 'tomorrow']], 'in-progress before dirty, then tonight\'s check-out, then tomorrow\'s');
+    assert.deepStrictEqual(d.restDeparts.map(r => r.roomNumber), ['108', '109'], 'the remaining check-outs get a full clean afterwards'); assert.deepStrictEqual(d.restDirty, []); assert.strictEqual(d.unresolved, 0);
+    assert.deepStrictEqual(d.stays.map(r => r.roomNumber), ['106']); assert.strictEqual(d.stayUnassigned, 1, 'tonight\'s arrival (no room yet) stays over too');
+    assert.strictEqual(d.clean, 6); assert.strictEqual(d.service, 2); assert.deepStrictEqual(m.dayTwo, { clean: 6, service: 2, total: 8 });
+    assert.strictEqual(g.priority, 'early', '2 spare sources out of 6'); assert.strictEqual(g.potential, 7); assert.strictEqual(g.leftToSell, 2, '7 rooms can be ready tomorrow night − 5 arriving');
+  });
+  await t('SECOND NIGHT: floors — the priority rooms are flagged, remaining check-outs follow, grouped by floor (fullest first); stay-overs listed for service', () => {
+    const m = M.buildDayModel(dtPayload(5), T1, dtLive()); const p = m.plan.find(x => x.baseCode === 'NQRR');
+    assert.deepStrictEqual(p.floors.map(f => [f.floorId, f.rooms.map(r => r.roomNumber + (r.first ? '*' : ''))]), [['3', ['104*', '107*', '108']], ['2', ['103*', '105*']], ['4', ['109']]]);
+    assert.strictEqual(p.turnFirst, 4); assert.strictEqual(p.alreadyEmpty, 1); assert(M.deriveNotes(m).some(n => /Tomorrow: 6 rooms to clean and 2 staying over to service \(8 in all\)/.test(n.text)), M.deriveNotes(m).map(n => n.text).join(' | '));
+  });
+  await t('SECOND NIGHT without the live board: same answer from the snapshot rooms + reservations (tonight\'s arrivals/check-outs derived from the booking list)', () => {
+    const a = M.buildDayModel(dtPayload(5), T1, dtLive()), b = M.buildDayModel(dtPayload(5), T1);
+    const pick = (m) => { const d = G(m, 'NQRR').totals.dayTwo; return [d.carry, d.shortfall, d.priority.map(r => r.roomNumber), d.restDeparts.map(r => r.roomNumber), d.stays.map(r => r.roomNumber), m.dayTwo]; };
+    assert.deepStrictEqual(pick(b), pick(a));
+  });
+  await t('SECOND NIGHT: a pre-assigned arrival tonight reserves its clean room; nothing short → "normal" and tomorrow is just check-outs + service', () => {
+    const m = M.buildDayModel(dtPayload(1), T1, dtLive({ remainingArrivals: [{ typeCode: 'NQRR', roomNumber: '101', isPreAssigned: true }] })); const d = G(m, 'NQRR').totals.dayTwo;
+    assert.strictEqual(d.carry, 1, '101 is reserved for tonight, 102 stays clean'); assert.strictEqual(d.shortfall, 0); assert.strictEqual(G(m, 'NQRR').totals.priority, 'normal'); assert.deepStrictEqual(d.priority, []);
+    assert.deepStrictEqual(d.restDeparts.map(r => r.roomNumber), ['107', '108', '109']); assert.deepStrictEqual(d.restDirty.map(r => r.roomNumber), ['104', '103', '105'], 'dirty rooms still get cleaned, after the priorities');
+  });
+  await t('SECOND NIGHT: more arrivals than any source can cover → "short" with the unresolved count (nothing invented)', () => {
+    const m = M.buildDayModel(dtPayload(12), T1, dtLive()); const g = G(m, 'NQRR').totals, d = g.dayTwo;
+    assert.strictEqual(d.shortfall, 11); assert.strictEqual(d.priority.length, 6, 'every dirty room, tonight\'s check-out and all 3 of tomorrow\'s check-outs'); assert.strictEqual(d.unresolved, 5); assert.strictEqual(g.priority, 'short'); assert.strictEqual(g.turnFirst, 6);
+    assert(M.deriveNotes(m).some(n => n.kind === 'urgent' && /expected but only/.test(n.text)));
+  });
+  await t('"left to sell" for future nights = rooms that could be ready (sellable − staying over) − arrivals; totals add up; outlook day 2 uses the live board, day 3+ the allowance method', () => {
+    const m1 = M.buildDayModel(dtPayload(5), T1, dtLive()); assert.strictEqual(m1.totals.leftToSellFuture, 2); assert.strictEqual(m1.totals.potentialRooms, 7);
+    const m2 = M.buildDayModel(dtPayload(0, { reservations: [...dtRes(0), DR({ arrivalDate: T2, departureDate: '2026-10-14' }), DR({ arrivalDate: T2, departureDate: '2026-10-14' })] }), T2, dtLive()); const g = G(m2, 'NQRR').totals;
+    assert(g.expected >= 2 && g.dayTwo === undefined, 'the third day keeps the allowance method'); assert.strictEqual(g.leftToSell, Math.max(0, g.potential - g.expected));
+    const o = M.buildOutlook(dtPayload(5), 4, dtLive()); assert.strictEqual(o[1].priorityGroups, 0); assert.strictEqual(M.buildDayModel(dtPayload(5), T0, dtLive()).totals.leftToSellFuture, null);
   });
   await t('unsellable rooms (OOO / OTM / HOLD / blocked / NA) are excluded on every day', () => {
     const rs = rooms.map(r => r.roomNumber === '101' ? { ...r, inventoryStatus: 'OOO' } : r.roomNumber === '102' ? { ...r, blocked: true } : r.roomNumber === '103' ? { ...r, occupancyStatus: 'NA' } : r);

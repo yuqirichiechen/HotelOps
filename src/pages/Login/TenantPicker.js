@@ -26,6 +26,7 @@ import '../../components/shared/HotelOpsLogo.css';
 // kiosk-flavored ("clock in") since that's the dominant path.
 const TenantPicker = ({ kind }) => {
   const tenants = Object.values(KNOWN_TENANTS);
+  const isDevPick = kind === 'dev';          // Sprint 22.6: after dev sign-in — choose the property, then open its admin shell with the Dev tools
 
   // Apply the dev-chosen tenant-logo dark-mode strategy so the picker
   // row thumbnails honor it (and so the strategy is set before the
@@ -57,9 +58,9 @@ const TenantPicker = ({ kind }) => {
           <div className="tenant-picker-header">
             <HotelOpsLogo size="xl" />
           </div>
-          <h1 className="login-title">Select your property</h1>
+          <h1 className="login-title">{isDevPick ? 'Select a property' : 'Select your property'}</h1>
           <p className="login-sub">
-            Choose where you work to {kind === 'admin' ? 'sign in as a manager' : 'clock in'}.
+            {isDevPick ? 'Choose which property to open. You will see its manager layout with the Dev tools added.' : <>Choose where you work to {kind === 'admin' ? 'sign in as a manager' : 'clock in'}.</>}
           </p>
         </div>
 
@@ -67,7 +68,7 @@ const TenantPicker = ({ kind }) => {
           <ul className="tenant-picker-list">
             {tenants.map(t => (
               <li key={t.slug}>
-                <TransitionLink to={`/${t.slug}/login`} className="tenant-picker-row">
+                <TransitionLink to={isDevPick ? `/${t.slug}/admin` : `/${t.slug}/login`} className="tenant-picker-row" onClick={isDevPick ? () => { try { localStorage.setItem('hotelops-tenant-slug', t.slug); } catch { /* ignore */ } } : undefined}>
                   {t.logoUrl ? (
                     <span className="tenant-picker-logo-wrap">
                       {/* Sprint 9.2.2: per-tenant view-transition-name so
@@ -95,9 +96,11 @@ const TenantPicker = ({ kind }) => {
 
           {/* Sprint 9.2.1: only Dev sign-in here. Manager/Staff toggle
               moves to the post-pick login pages where it belongs. */}
-          <div className="login-switch">
-            <TransitionLink to="/login/dev">Dev sign-in →</TransitionLink>
-          </div>
+          {!isDevPick && (
+            <div className="login-switch">
+              <TransitionLink to="/login/dev">Dev sign-in →</TransitionLink>
+            </div>
+          )}
         </div>
       </div>
     </div>

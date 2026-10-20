@@ -383,7 +383,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
   if (req.auth.type === 'dev') {
     return res.json({ success: true, user: { username: req.auth.sub, name: 'Dev', role: 'dev', type: 'dev' } });
   }
-  if (req.auth.type === 'admin') {
+  if ((req.auth.type === 'admin' || req.auth.type === 'dev')) {
     return res.json({
       success: true,
       user: {
@@ -3449,7 +3449,7 @@ app.delete('/api/admin/sheet/cell', requireAuth, requireRole('admin'), async (re
 // supplied ?userId= let any caller pick (or omit) the identity, and
 // omitting it under 'department' visibility returned everyone's
 // schedule. Admins may still pass ?userId= to preview another user's view.
-const scopeUserId = (req) => (req.auth.role === 'admin' ? (req.query.userId || null) : req.auth.sub);
+const scopeUserId = (req) => ((req.auth.role === 'admin' || req.auth.role === 'dev') ? (req.query.userId || null) : req.auth.sub);
 
 // GET /api/shifts/range?from=YYYY-MM-DD&to=YYYY-MM-DD[&userId=UUID]
 // Sprint 10.1: range version of /api/shifts/daily for the staff
@@ -3826,7 +3826,7 @@ app.get('/api/handoff-notes', requireAuth, async (req, res) => {
   // join. For admin: skip the read-state join (admin doesn't track
   // unread state) and emit is_read=TRUE for every row instead.
   // For staff: bind their UUID and compute is_read normally.
-  const isAdminReader = req.auth.type === 'admin';
+  const isAdminReader = (req.auth.type === 'admin' || req.auth.type === 'dev');
   const conditions = [
     `( (n.for_date BETWEEN $1::date AND $2::date)
       OR (n.carry_until IS NOT NULL AND n.carry_until >= $1::date AND n.for_date <= $2::date) )`,
@@ -3959,7 +3959,7 @@ app.post('/api/handoff-notes', requireAuth, async (req, res) => {
   // server/config/admins.json), so we can't FK to user_id. Store
   // author_user_id=NULL + author_label = the admin's display name,
   // matching the audit_logs pattern from Sprint 5.
-  const isAdmin = req.auth.type === 'admin';
+  const isAdmin = (req.auth.type === 'admin' || req.auth.type === 'dev');
   const authorUserId = isAdmin ? null : req.auth.sub;
   const authorLabel  = isAdmin ? (req.auth.name || req.auth.sub || 'Admin') : null;
 
@@ -4006,7 +4006,7 @@ app.patch('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   if (!own.length) return res.status(404).json({ success: false, message: 'note not found' });
 
   const isAuthor = own[0].author_user_id === req.auth.sub;
-  const isAdmin  = req.auth.role === 'admin';
+  const isAdmin  = (req.auth.role === 'admin' || req.auth.role === 'dev');
   if (!isAuthor && !isAdmin) {
     return res.status(403).json({ success: false, message: 'forbidden' });
   }
@@ -4076,7 +4076,7 @@ app.post('/api/handoff-notes/mark-read', requireAuth, async (req, res) => {
   // handoff_note_reads. Return success with marked=0 instead of
   // crashing — the drawer treats admin as already-read for every
   // row (see GET /handoff-notes), so this is consistent.
-  if (req.auth.type === 'admin') {
+  if ((req.auth.type === 'admin' || req.auth.type === 'dev')) {
     return res.json({ success: true, marked: 0 });
   }
   try {
@@ -4108,7 +4108,7 @@ app.get('/api/handoff-notes/unread-count', requireAuth, async (req, res) => {
   // there's nothing to count. Return 0 — the sidebar dot stays
   // hidden for admin viewers, which is the right HCI: admins are
   // *moderators* of handoffs, not the audience.
-  if (req.auth.type === 'admin') {
+  if ((req.auth.type === 'admin' || req.auth.type === 'dev')) {
     return res.json({ success: true, count: 0 });
   }
   try {
@@ -4154,7 +4154,7 @@ app.get('/api/handoff-notes/counts', requireAuth, async (req, res) => {
   // requests (consistent with admin treatment in the GET /handoff-
   // notes and /unread-count endpoints — admin is moderator, not
   // audience).
-  const isAdminReader = req.auth.type === 'admin';
+  const isAdminReader = (req.auth.type === 'admin' || req.auth.type === 'dev');
   const params = [from, to];
   if (!isAdminReader) params.push(req.auth.sub);
   let deptFilter = '';
@@ -4217,7 +4217,7 @@ app.delete('/api/handoff-notes/:id', requireAuth, async (req, res) => {
   if (!own.length) return res.status(404).json({ success: false, message: 'note not found' });
 
   const isAuthor = own[0].author_user_id === req.auth.sub;
-  const isAdmin  = req.auth.role === 'admin';
+  const isAdmin  = (req.auth.role === 'admin' || req.auth.role === 'dev');
   if (!isAuthor && !isAdmin) {
     return res.status(403).json({ success: false, message: 'forbidden' });
   }

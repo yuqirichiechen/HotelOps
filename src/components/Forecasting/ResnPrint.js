@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { printRow } from './resnSearch';
 import { fmtMD } from './resnFormat';
 
-export const PrintSheet = ({ title, dateLabel, rows, entryOf, truncated }) => {
+export const PrintSheet = ({ title, dateLabel, rows, entryOf, truncated, lean = false }) => {
   useEffect(() => {
     document.body.classList.add('is-printing-resn');
     const id = setTimeout(() => window.print(), 80);
@@ -21,13 +21,29 @@ export const PrintSheet = ({ title, dateLabel, rows, entryOf, truncated }) => {
   }, []);
 
   const printed = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  const data = rows.map(r => printRow(r, entryOf(r.id)));
+  const data = rows.map(r => printRow(r, lean ? null : entryOf(r.id)));
 
   return createPortal(
     <div className="rl-printroot">
       <div className="rl-printsheet">
         <h1>{title}</h1>
         <div className="rl-print-meta">{dateLabel} · {data.length} reservation{data.length === 1 ? '' : 's'} · printed {printed}</div>
+        {lean ? (
+          <table>
+            <thead><tr><th style={{ width: 20 }}>✓</th><th>Guest</th><th>Confirmation</th><th>Room type</th><th>Stay</th></tr></thead>
+            <tbody>
+              {data.map((d, i) => (
+                <tr key={rows[i].id}>
+                  <td><span className="rl-print-box" /></td>
+                  <td><strong>{d.guest}</strong></td>
+                  <td>{d.conf || '—'}</td>
+                  <td>{d.type || rows[i].typeCode || '—'}</td>
+                  <td>{fmtMD(d.arrival) || '—'} → {fmtMD(d.departure) || '—'}<div>{d.nights ? `${d.nights} night${d.nights === 1 ? '' : 's'}` : ''}</div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
         <table>
           <thead>
             <tr><th style={{ width: 20 }}>✓</th><th>Guest</th><th>Room &amp; type</th><th>Stay</th><th>Phone</th><th>Charges</th><th>Flags &amp; notes</th></tr>
@@ -49,8 +65,9 @@ export const PrintSheet = ({ title, dateLabel, rows, entryOf, truncated }) => {
             ))}
           </tbody>
         </table>
+        )}
         {truncated && <div className="rl-print-foot">List truncated to the first {data.length} reservations.</div>}
-        <div className="rl-print-foot">Confidential — guest contact and billing information. Shred after use.</div>
+        <div className="rl-print-foot">{lean ? 'Confidential — guest information. Shred after use.' : 'Confidential — guest contact and billing information. Shred after use.'}</div>
       </div>
     </div>,
     document.body,

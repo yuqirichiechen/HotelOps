@@ -59,9 +59,9 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
     const k = h.cells(h.rowFor('NKRR')); assert.deepStrictEqual(k.slice(2), ['3', '0', '0', '1', '1', '2', '0', 'Sold out'], k.join('|'));   // 0 clean; 1 dirty + 1 departing = exactly the 2 arriving → nothing left to sell
     await h.unmount();
   });
-  await t('there is NO Sync button and no "Sync arrivals" anywhere; the live badge shows time; header keeps Generate forecast', async () => {
+  await t('there is NO Sync button and no "Sync arrivals" anywhere; the live badge shows time; header has the Room status sheet button', async () => {
     fresh(); const h = await mount(); assert(!/Sync arrivals/.test(h.el.textContent), 'no sync text'); assert(![...h.el.querySelectorAll('button')].some(b => /sync/i.test(b.textContent)));
-    assert(/Rooms live/.test(h.el.querySelector('.fb-sync-badge').textContent)); assert([...h.el.querySelectorAll('button')].some(b => /Generate forecast/.test(b.textContent))); await h.unmount();
+    assert(/Rooms live/.test(h.el.querySelector('.fb-sync-badge').textContent)); assert([...h.el.querySelectorAll('button')].some(b => /Room status sheet/.test(b.textContent)) && ![...h.el.querySelectorAll('button')].some(b => /Generate forecast/.test(b.textContent)), 'Generate forecast is gone'); await h.unmount();
   });
   await t('headline stats + notes + action lists for today: inspect PU rooms; turn dirty rooms first for types the clean rooms can\'t cover', async () => {
     fresh(); const h = await mount(); const s = h.stats();
@@ -80,33 +80,34 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   });
   await t('TOMORROW: cleaning priority table — Booked / Expected / Departing / Staying over / Already empty / Turn first + Priority; no sell/close language; info popover', async () => {
     fresh(); const h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]); const head = h.heads();
-    assert.deepStrictEqual(head.slice(2), ['Rooms', 'Booked', 'Expected', 'Departing', 'Staying over', 'Already empty', 'Turn first', 'Priority']); assert(!head.includes('Status') && !head.includes('Left to sell now'));
+    assert.deepStrictEqual(head.slice(2), ['Rooms', 'Booked', 'Expected', 'Departing', 'Staying over', 'Clean now', 'Turn first', 'Priority']); assert(!head.includes('Status') && !head.includes('Left to sell now'));
     assert(/Cleaning priority · Tue, Oct 13/.test(h.el.textContent)); assert(!/oversold|sold out|SiteMinder/i.test(h.el.querySelector('.fb-body').textContent + h.el.querySelector('.fb-table-wrap').textContent));
     const s = h.stats(); for (const k of ['Booked arrivals', 'Expected arrivals', 'Departing', 'Staying over', 'Rooms to turn first']) assert(k in s, k); assert(!('Left to sell now' in s)); assert(!h.el.querySelector('.fb-body').textContent.includes('inspect now'), 'action list is today-only');
     assert(h.el.querySelector('.fb-body').textContent.includes('Housekeeping plan'));
     // methodology is NOT printed on the page — it sits behind the "i" button
-    assert(!/already empty = rooms not occupied/i.test(h.el.textContent), 'method text hidden until the i is opened'); const tip = h.el.querySelector('.fb-need-table').closest('.fb-card').querySelector('.fb-infotip-btn'); assert(tip, 'info button exists');
-    await h.click(tip); assert(/Already empty<\/strong> = rooms not occupied|Already empty.*rooms not occupied/s.test(h.el.querySelector('.fb-infotip-pop').textContent), 'popover explains the method'); await h.click(tip); assert(!h.el.querySelector('.fb-infotip-pop'));
+    assert(!/vacant and clean now/i.test(h.el.textContent), 'method text hidden until the i is opened'); const tip = h.el.querySelector('.fb-need-table').closest('.fb-card').querySelector('.fb-infotip-btn'); assert(tip, 'info button exists');
+    await h.click(tip); assert(/vacant and clean now/.test(h.el.querySelector('.fb-infotip-pop').textContent), 'popover explains the second-night method'); await h.click(tip); assert(!h.el.querySelector('.fb-infotip-pop'));
     assert.strictEqual(sessionStorage.getItem('hotelops-fc-day'), '1'); await h.unmount();
   });
-  await t('TOMORROW with bookings: expected = booked + weekday allowance (capped by free rooms), "May run short" reaches the table, plan card and outlook flag', async () => {
-    const extra = [1, 2, 3].map(() => R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' }));
-    fresh({ snap: { reservations: [...reservations, ...extra] } }); const h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
-    const q = h.cells(h.rowFor('NQRR'));   // [code,label,rooms,booked,expected,departing,staying,empty,turn,priority]
-    assert.deepStrictEqual(q.slice(2), ['5', '3', '3', '2', '3', '0', '2', 'May run short'], q.join('|'));
-    const rail = h.el.querySelector('.fb-body').textContent; assert(/Housekeeping plan/.test(rail) && /clean every departure early/.test(rail), rail.slice(0, 300));
-    const flag = h.el.querySelectorAll('.fb-day')[1].textContent; assert(/to prioritise/.test(flag), flag); await h.unmount();
+  await t('TOMORROW (second night): arrivals are checked against rooms clean NOW; the table, the plan card and the outlook say so; when even every dirty room / check-out can\'t cover the arrivals → "May run short"', async () => {
+    const extra = (n) => Array.from({ length: n }, () => R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' }));
+    fresh({ snap: { reservations: [...reservations, ...extra(3)] } }); let h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    let q = h.cells(h.rowFor('NQRR'));   // [code,label,rooms,booked,expected,departing,staying,clean now,turn first,priority]
+    assert.deepStrictEqual(q.slice(2), ['5', '3', '3', '2', '3', '0', '3', 'Turn early'], q.join('|')); const body = h.el.querySelector('.fb-body').textContent; assert(/Clean first — for tomorrow’s arrivals/.test(body) && /Staying over — service/.test(body), body.slice(0, 400)); await h.unmount();
+    fresh({ snap: { reservations: [...reservations, ...extra(8)] } }); h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    q = h.cells(h.rowFor('NQRR')); assert.strictEqual(q[q.length - 1], 'May run short', q.join('|')); assert(/Not enough rooms: \d+ arrivals? can’t be covered/.test(h.el.querySelector('.fb-body').textContent));
+    assert(/to prioritise/.test(h.el.querySelectorAll('.fb-day')[1].textContent), h.el.querySelectorAll('.fb-day')[1].textContent); await h.unmount();
   });
   await t('settings: a saved allowance reaches the page (disabled → expected = booked; scale applies)', async () => {
-    const extra = [1, 2, 3, 4].map(() => R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: '2026-10-13', departureDate: '2026-10-14' }));
+    const extra = [1, 2, 3, 4].map(() => R({ typeCode: 'NKRR', baseCode: 'NKRR', arrivalDate: '2026-10-14', departureDate: '2026-10-15' }));   // the THIRD day: the allowance method (tomorrow uses booked arrivals only)
     const bigger = [...rooms, ...['301', '302', '303', '304', '305', '306'].map(x => room(x, 'NKRR', 'VAC', 'VI'))];
-    appSettings = { forecast_allowance_enabled: 'false' }; fresh({ snap: { perRoomSheet: bigger, reservations: [...reservations, ...extra] } }); let h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    appSettings = { forecast_allowance_enabled: 'false' }; fresh({ snap: { perRoomSheet: bigger, reservations: [...reservations, ...extra] } }); let h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[2]);
     assert.strictEqual(h.cells(h.rowFor('NKRR'))[4], '4', 'no allowance → expected = booked'); await h.unmount();
-    appSettings = { forecast_allowance_enabled: 'true', forecast_allowance_scale_pct: '100', forecast_allowance_min_extra: '2' }; fresh({ snap: { perRoomSheet: bigger, reservations: [...reservations, ...extra] } }); h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[1]);
+    appSettings = { forecast_allowance_enabled: 'true', forecast_allowance_scale_pct: '100', forecast_allowance_min_extra: '2' }; fresh({ snap: { perRoomSheet: bigger, reservations: [...reservations, ...extra] } }); h = await mount(); await h.click(h.el.querySelectorAll('.fb-day')[2]);
     assert(Number(h.cells(h.rowFor('NKRR'))[4]) > 4, 'allowance adds rooms'); appSettings = {}; await h.unmount();
   });
-  await t('PRINT SHEET follows the selected day (today vs tomorrow) and is built from the same model', async () => {
-    fresh(); const h = await mount(); const open = async () => { await h.click([...h.el.querySelectorAll('button')].find(b => /Generate forecast/.test(b.textContent))); return h.el.querySelector('.fc-sheet'); };
+  await t('PLAN SHEET (dev only) follows the selected day (today vs tomorrow) and is built from the same model', async () => {
+    fresh(); const h = await mount(); const open = async () => { await h.click([...h.el.querySelectorAll('button')].find(b => /Plan sheet/.test(b.textContent))); return h.el.querySelector('.fc-sheet'); };
     let sheet = await open(); assert(/today/i.test(sheet.querySelector('h1').textContent) && /Mon|Monday/.test(sheet.textContent) === false || /October 12, 2026/.test(sheet.textContent), sheet.querySelector('h1').textContent);
     assert(/Left to sell/.test(sheet.textContent) && /Inspect \(PU\)/.test(sheet.textContent)); assert(/Floor 1|Ground/.test(sheet.textContent), 'rooms grouped by floor');
     await h.click(h.el.querySelector('.fc-sheet-btn-secondary')); await h.click(h.el.querySelectorAll('.fb-day')[1]); sheet = await open();
@@ -154,7 +155,7 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
     assert(/NQRR left to sell/.test(txt) && /NKRR left to sell/.test(txt) && /Total left to sell/.test(txt) && /Clean rooms \(VI \+ PU\)/.test(txt) && /Still arriving/.test(txt), 'the summary block matches the dev layout');
     for (const gone of ['.fb-stats', '.fb-need-table', '.fb-detail-table']) assert(!h.el.querySelector(gone), gone + ' is dev-only');
     for (const gone of [/Action list/, /Housekeeping plan/, /Operational Notes/, /Arrivals · /, /Snapshot history/, /Forecast settings/, /Awaiting inspection \(PU\)/, /Dirty \/ in progress/]) assert(!gone.test(txt), String(gone) + ' must not show for managers');
-    assert([...h.el.querySelectorAll('button')].some(b => /Generate forecast/.test(b.textContent)) && /Reservations detail/.test(txt)); await h.unmount();
+    assert([...h.el.querySelectorAll('button')].some(b => /Room status sheet/.test(b.textContent)) && /Reservations detail/.test(txt) && !/Plan sheet/.test(txt), 'managers get the room sheet, not the plan sheet'); await h.unmount();
   });
   await t('MANAGER table: ONE row per room type with 5 plain columns; subtype rows and housekeeping columns are not shown', async () => {
     fresh(); const h = await mount('manager'); const heads = [...h.el.querySelectorAll('.sr-table thead th')].map(x => x.textContent); assert.deepStrictEqual(heads, ['Room type', 'Clean', 'Arriving', 'Left to sell', 'Status']);
@@ -174,15 +175,22 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   await t('MANAGER, a later day: the table becomes Expected / Turn first / Priority; the dropdown lists the departing rooms to clean by floor; choosing a day returns to the top', async () => {
     fresh({ snap: { reservations: [...reservations, R({ status: 'INH', roomNumber: '103', arrivalDate: '2026-10-11', departureDate: '2026-10-13' }), R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' }), R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' })] } });
     let scrolled = 0; w.Element.prototype.scrollIntoView = function () { scrolled++; }; const h = await mount('manager');
-    await h.click(h.el.querySelectorAll('.fb-day')[1]); assert(scrolled >= 1, 'scrolled back to the top'); assert(/Rooms needed · Tue, Oct 13/.test(h.el.textContent), h.el.textContent.slice(0, 300));
-    assert.deepStrictEqual([...h.el.querySelectorAll('.sr-table thead th')].map(x => x.textContent), ['Room type', 'Expected', 'Turn first', 'Priority']);
+    await h.click(h.el.querySelectorAll('.fb-day')[1]); assert(scrolled >= 1, 'scrolled back to the top'); assert(/Rooms to sell · Tue, Oct 13/.test(h.el.textContent), h.el.textContent.slice(0, 300)); const card = h.el.querySelector('.fb-card').textContent; assert(/Total left to sell/.test(card) && /NQRR left to sell/.test(card) && /Rooms that can be ready/.test(card) && /Arriving \(booked\)/.test(card) && !/turn first/i.test(card), 'the summary says "left to sell", not "turn first": ' + card.slice(0, 200));
+    assert.deepStrictEqual([...h.el.querySelectorAll('.sr-table thead th')].map(x => x.textContent), ['Room type', 'Arriving', 'Left to sell', 'Priority']);
     const nq = [...h.el.querySelectorAll('.sr-row')].find(r => /NQRR/.test(r.textContent)); assert(/Normal|Turn early|Turn first|May run short/.test(nq.textContent)); await h.click(nq.querySelector('.sr-toggle'));
-    const d = h.el.querySelector('.sr-detail').textContent; assert(/booked · about \d+ expected · \d+ already empty/.test(d), d); assert(/Floor|Ground/.test(d) || /No priority turns needed/.test(d), d); await h.unmount();
+    const d = h.el.querySelector('.sr-detail').textContent; assert(/arriving tomorrow/.test(d) && /clean room/.test(d), d); assert(/Rooms to clean: \d+ · to service: \d+/.test(d) || /Nothing to clean or service/.test(d), d); await h.unmount();
+  });
+  await t('ROOM STATUS SHEET: the header button opens a printable sheet of every room by floor (available / unavailable / occupied + check-out), for managers and dev alike', async () => {
+    fresh(); for (const mode of ['manager', 'dev']) {
+      const h = await mount(mode); await h.click([...h.el.querySelectorAll('button')].find(b => /Room status sheet/.test(b.textContent))); const sheet = h.el.querySelector('.fc-sheet'); assert(sheet, mode);
+      assert(/Room status/.test(sheet.querySelector('h1').textContent) && /Available/.test(sheet.textContent) && /Unavailable/.test(sheet.textContent) && /Occupied/.test(sheet.textContent) && /Checking out/.test(sheet.textContent), sheet.textContent.slice(0, 200));
+      assert(h.el.querySelectorAll('.fc-sheet-floor').length >= 1 && /Today · 11:00 AM|Tomorrow · 11:00 AM|Check-out date unknown/.test(sheet.textContent)); assert(!/Guest \d/.test(sheet.textContent), 'no guest names on the sheet'); await h.unmount();
+    }
   });
   await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {
     fresh(); const h = await mount('dev'); const txt = h.el.textContent;
     for (const sel of ['.fb-outlook', '.fb-stats', '.fb-need-table', '.fb-card .fb-detail-table', '.fb-rail', '.fb-sync-badge']) assert(h.el.querySelector(sel), sel);
-    for (const w of [/Sellable vs arriving/, /Action list/, /Operational Notes/, /Arrivals · today/, /Snapshot history/, /Forecast settings/, /Generate forecast/, /Reservations detail/, /Awaiting inspection \(PU\)/, /Left to sell now/]) assert(w.test(txt), String(w));
+    for (const w of [/Sellable vs arriving/, /Action list/, /Operational Notes/, /Arrivals · today/, /Snapshot history/, /Forecast settings/, /Room status sheet/, /Plan sheet/, /Reservations detail/, /Awaiting inspection \(PU\)/, /Left to sell now/]) assert(w.test(txt), String(w));
     assert(h.el.querySelectorAll('.fb-variant-row').length >= 3, 'subtype rows'); await h.click(h.el.querySelector('.fb-variant-row')); assert(h.el.querySelector('.fb-detail-row'), 'click-to-expand room chips'); await h.unmount();
   });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);

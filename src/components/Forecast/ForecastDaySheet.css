@@ -14,3 +14,10 @@
   .fcd-floor-table th { width: 130px !important; }
   .fcd-room { font-size: 11px !important; }
 }
+
+/* Sprint 22.6 — room status sheet */
+.rs-row.rs-available td { background: #f0fff4; }
+.rs-row.rs-unavailable td { background: #fff8f0; }
+.rs-row.rs-occupied td { background: #f7fafc; }
+.rs-arr { color: #2c5282; font-size: 11px; }
+@media print { .rs-table td, .rs-table th { padding: 3px 6px !important; } .fc-sheet-floor { break-inside: avoid; } }
