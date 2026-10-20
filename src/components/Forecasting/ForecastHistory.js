@@ -62,7 +62,8 @@ const LogEntry = ({ entry }) => {
   );
 };
 
-const ForecastHistory = ({ onClose }) => {
+// Sprint 22.4: `inline` renders it as a page section (Dev → Logs) instead of a modal.
+const ForecastHistory = ({ onClose, inline = false }) => {
   const [snapshots, setSnapshots]   = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail]         = useState(null);
@@ -139,13 +140,13 @@ const ForecastHistory = ({ onClose }) => {
   };
 
   return (
-    <div className="fc-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="fc-modal fc-modal-wide" onClick={(e) => e.stopPropagation()}>
+    <div className={inline ? 'fc-inline-host' : 'fc-modal-backdrop'} onClick={inline ? undefined : onClose} role={inline ? undefined : 'dialog'} aria-modal={inline ? undefined : 'true'}>
+      <div className={inline ? 'fc-modal fc-modal-wide fc-modal-inline' : 'fc-modal fc-modal-wide'} onClick={(e) => e.stopPropagation()}>
         <header className="fc-modal-header">
           <h2>Snapshot history</h2>
           <div className="fc-modal-header-actions">
             <button className="fc-modal-btn fc-modal-btn-small" onClick={loadList}>⟳ Refresh</button>
-            <button className="fc-modal-close" onClick={onClose} aria-label="Close">×</button>
+            {!inline && <button className="fc-modal-close" onClick={onClose} aria-label="Close">×</button>}
           </div>
         </header>
 

@@ -1,7 +1,7 @@
 // Sprint 22 — pure logic: settings validation, windows (PT, DST, wrap), scheduler decisions, normalize + diff + events.
 // node tests/sync-pure.test.js "$PWD"
 const ROOT = process.argv[2] + '/server'; const assert = require('assert');
-const S = require(ROOT + '/sync/settings'), { decideRuns, nextDue } = require(ROOT + '/sync/schedule'), N = require(ROOT + '/sync/normalize'), M = require(ROOT + '/sync/mirror'), { sliceGridStart } = require(ROOT + '/sync/engine');
+const S = require(ROOT + '/sync/settings'), { decideRuns, nextDue, syncHealth } = require(ROOT + '/sync/schedule'), N = require(ROOT + '/sync/normalize'), M = require(ROOT + '/sync/mirror'), { sliceGridStart } = require(ROOT + '/sync/engine');
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 3).join(' | ')); process.exitCode = 1; } };
 const PT = (iso) => new Date(iso);   // helper: absolute instants; PDT = UTC−7 until 2026-11-01, PST = UTC−8 after
 
@@ -63,6 +63,17 @@ const PT = (iso) => new Date(iso);   // helper: absolute instants; PDT = UTC−7
     n = nextDue(PT('2026-10-13T07:20:00Z'), S.DEFAULTS, { ...st, lastFrequentAt: PT('2026-10-13T06:55:00Z') }); assert.strictEqual(n.frequent, '2026-10-13T19:00:00.000Z', '00:20 PT → the window reopens at noon PT');
     assert.deepStrictEqual(nextDue(PT('2026-10-12T19:32:00Z'), { ...S.DEFAULTS, paused: true }, st), { frequent: null, hourly: null, reconcile: null, reason: 'paused' }); assert.strictEqual(nextDue(PT('2026-10-12T19:32:00Z'), { ...S.DEFAULTS, frequent: { ...S.DEFAULTS.frequent, enabled: false } }, st).frequent, null);
     assert.strictEqual(nextDue(PT('2026-10-12T19:32:00Z'), S.DEFAULTS, { ...st, lastReconcileAt: null }).reconcile, '2026-10-12T19:35:00.000Z', 'reconcile overdue → at the next ping');
+  });
+  await t('syncHealth: ok / stale / down / off — thresholds follow the schedule in force (5-min window vs hourly)', () => {
+    const noon = PT('2026-10-12T19:30:00Z'), night = PT('2026-10-12T09:30:00Z');          // 12:30 PT (inside the window) / 02:30 PT (outside)
+    const ago = (now, min) => new Date(now.getTime() - min * 60000).toISOString(); const ok = [{ status: 'success' }];
+    assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, null, ago(noon, 4)).state, 'ok'); assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, null, ago(noon, 14)).state, 'ok', '3 × 5 = 15 min tolerance');
+    assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, null, ago(noon, 20)).state, 'stale'); assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, null, ago(noon, 20)).everyMinutes, 5);
+    assert.strictEqual(syncHealth(night, S.DEFAULTS, ok, null, ago(night, 100)).state, 'ok', 'overnight the expected interval is the hour → 180 min tolerance'); assert.strictEqual(syncHealth(night, S.DEFAULTS, ok, null, ago(night, 200)).state, 'stale');
+    assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, null, null).state, 'stale', 'never synced');
+    assert.strictEqual(syncHealth(noon, { ...S.DEFAULTS, paused: true }, ok, null, ago(noon, 1)).state, 'down'); assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, { message: 'x' }, ago(noon, 1)).state, 'down');
+    const bad = [{ status: 'failed' }, { status: 'failed' }, { status: 'failed' }]; assert.strictEqual(syncHealth(noon, S.DEFAULTS, bad, null, ago(noon, 1)).state, 'down'); assert.strictEqual(syncHealth(noon, S.DEFAULTS, [{ status: 'failed' }, { status: 'success' }, { status: 'failed' }], null, ago(noon, 1)).state, 'ok');
+    assert.strictEqual(syncHealth(noon, { ...S.DEFAULTS, enabled: false }, ok, null, ago(noon, 1)).state, 'off'); assert.strictEqual(syncHealth(noon, S.DEFAULTS, ok, null, ago(noon, 4)).ageMinutes, 4);
   });
   // ── normalize / diff / events ──
   const ctx = { roomTypeById: new Map([['rt1', { id: 'rt1', typeCode: 'NQRR' }], ['rt2', { id: 'rt2', typeCode: 'NKRRP' }]]), roomById: new Map([['room9', { id: 'room9', floorId: '03' }]]),

@@ -99,3 +99,18 @@ export function stayLabel(ev) {
   const md = (x) => { const [y, m, dd] = x.split('-').map(Number); return new Date(Date.UTC(y, m - 1, dd)).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' }); };
   return d ? `${md(a)} → ${md(d)}` : md(a);
 }
+
+/**
+ * Plain-language "is this data fresh?" for managers and front desk (Sprint 22.4) — no technical terms.
+ * @param {{source:'mirror'|'snapshot'|null, syncedAt:string|null, health:{state:string, everyMinutes?:number}|null}} d
+ * @returns {{ tone:'ok'|'warn'|'bad', title:string, sub:string, hint:string }}
+ */
+export function freshnessOf({ source, syncedAt, health }, nowMs = Date.now(), tz = 'America/Los_Angeles') {
+  const when = ago(syncedAt, nowMs), clock = fmtClock(syncedAt, tz);
+  if (!syncedAt) return { tone: 'warn', title: 'Not updated yet', sub: '', hint: 'Tap refresh to load the latest reservations.' };
+  if (source !== 'mirror') return { tone: 'warn', title: 'Manual update', sub: clock, hint: 'Tap refresh to get the latest reservations.' };
+  const st = health && health.state;
+  if (st === 'down' || st === 'off') return { tone: 'bad', title: 'Not updating', sub: `last update ${clock}`, hint: 'Automatic updates have stopped. Please tell the manager.' };
+  if (st === 'stale') return { tone: 'warn', title: 'May be out of date', sub: `updated ${when}`, hint: 'Automatic updates are running late. Tap refresh to update now.' };
+  return { tone: 'ok', title: 'Up to date', sub: when === 'just now' ? 'just now' : when, hint: health && health.everyMinutes ? `Updates automatically about every ${health.everyMinutes} minutes.` : 'Updates automatically.' };
+}

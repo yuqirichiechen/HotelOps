@@ -80,13 +80,50 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
+// Sprint 22.4: the `dev` role (server-verified dev sign-in, see below) can do everything an admin can, plus the dev-only surfaces
+// (auto-sync settings, forecast settings, logs). An admin can NOT use dev-only routes: requireRole('dev').
+const ROLE_IMPLIES = { dev: ['admin'] };
 const requireRole = (...allowed) => (req, res, next) => {
   if (!req.auth) return res.status(401).json({ success: false, message: 'Not authenticated' });
-  if (!allowed.includes(req.auth.role)) {
+  const roles = [req.auth.role, ...(ROLE_IMPLIES[req.auth.role] || [])];
+  if (!allowed.some(a => roles.includes(a))) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   next();
 };
+
+// ── Dev sign-in (Sprint 22.4) ───────────────────────────────────────────────
+// Replaces the client-side dev/dev gate. Credentials come from the environment — never from the repo:
+//   DEV_USERNAME        (default "dev")
+//   DEV_PASSWORD_HASH   bcrypt hash; generate with:  node server/scripts/hash-password.js "<password>"
+// With no hash configured, dev sign-in is disabled (503) — there is no default password.
+const DEV_FAIL_MAX_PER_IP = 5, DEV_FAIL_MAX_GLOBAL = 30, DEV_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const devFails = new Map();           // ip → [timestamps]
+let devFailsGlobal = [];
+const prune = (list, now) => list.filter(t => now - t < DEV_FAIL_WINDOW_MS);
+const devClientKey = (req) => (req.get && (req.get('cf-connecting-ip') || (req.get('x-forwarded-for') || '').split(',')[0].trim())) || req.ip || 'unknown';
+
+/** @returns {{ allowed: boolean, retryAfterSec?: number }} */
+function devLoginAllowed(key, now = Date.now()) {
+  const mine = prune(devFails.get(key) || [], now); devFails.set(key, mine); devFailsGlobal = prune(devFailsGlobal, now);
+  if (mine.length >= DEV_FAIL_MAX_PER_IP) return { allowed: false, retryAfterSec: Math.ceil((DEV_FAIL_WINDOW_MS - (now - mine[0])) / 1000) };
+  if (devFailsGlobal.length >= DEV_FAIL_MAX_GLOBAL) return { allowed: false, retryAfterSec: Math.ceil((DEV_FAIL_WINDOW_MS - (now - devFailsGlobal[0])) / 1000) };
+  return { allowed: true };
+}
+function recordDevFailure(key, now = Date.now()) { devFails.set(key, [...prune(devFails.get(key) || [], now), now]); devFailsGlobal.push(now); }
+function clearDevFailures(key) { devFails.delete(key); }
+const _resetDevLimiter = () => { devFails.clear(); devFailsGlobal = []; };
+
+const devConfigured = () => !!(process.env.DEV_PASSWORD_HASH && process.env.DEV_PASSWORD_HASH.startsWith('$2'));
+async function verifyDevCredentials(username, password) {
+  const hash = process.env.DEV_PASSWORD_HASH;
+  const wantUser = process.env.DEV_USERNAME || 'dev';
+  // always run bcrypt so a wrong username takes as long as a wrong password
+  const passOk = await bcrypt.compare(String(password || ''), hash);
+  const a = Buffer.from(String(username || '')), b = Buffer.from(wantUser);
+  const userOk = a.length === b.length && crypto.timingSafeEqual(a, b);
+  return passOk && userOk ? { username: wantUser } : null;
+}
 
 module.exports = {
   signToken,
@@ -96,4 +133,5 @@ module.exports = {
   findAdmin,
   requireAuth,
   requireRole,
+  devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey, _resetDevLimiter,
 };

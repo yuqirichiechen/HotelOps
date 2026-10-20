@@ -22,6 +22,7 @@ import ForecastSettings from '../Forecasting/ForecastSettings';
 import ForecastHistory from '../Forecasting/ForecastHistory';
 import ForecastDaySheet from './ForecastDaySheet';
 import InfoTip from './InfoTip';
+import SyncBadge from '../shared/SyncBadge';
 import { buildDayModel, buildOutlook, deriveNotes, addDays, DEFAULT_ALLOWANCE, PRIORITY_LABEL } from './forecastModel';
 import './Forecast.css';
 
@@ -520,10 +521,13 @@ const LIVE_EVERY_MS = 120 * 1000;
 const IDLE_PAUSE_MS = 30 * 60 * 1000;
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
 
-const Forecast = () => {
+// Sprint 22.4: `mode` is fixed per surface: managers see the page without the debugging / settings links; the Dev shell passes 'dev'.
+const Forecast = ({ mode = 'manager' }) => {
+  const isDev = mode === 'dev';
   const { goTo } = useView();
   const [snapshot, setSnapshot] = useState(null);   // reservations as of the last sync (labels, future days)
   const [dataSource, setDataSource] = useState(null); // 'mirror' (auto-sync) | 'snapshot' (last stored scrape)
+  const [syncHealth, setSyncHealth] = useState(null); // Sprint 22.4: plain freshness state
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [historyOpen, setHistoryOpen]   = useState(false);
@@ -538,6 +542,7 @@ const Forecast = () => {
     setError(null);
     setSnapshot(data.snapshot || null);
     setDataSource(data.source || null);
+    setSyncHealth(data.sync || null);
     setLoading(false);
   }, []);
   useEffect(() => {
@@ -640,12 +645,16 @@ const Forecast = () => {
             Today: do we still have rooms to sell? (live from rGuest) · Next days: which rooms to clean first.
           </p>
           <div className="fb-meta-actions">
-            <button className="fb-meta-link" onClick={() => setHistoryOpen(true)}>
-              <IconClock /> <span>Snapshot history</span>
-            </button>
-            <button className="fb-meta-link" onClick={() => setSettingsOpen(true)}>
-              <IconGear /> <span>Forecast settings</span>
-            </button>
+            {isDev && (
+              <button className="fb-meta-link" onClick={() => setHistoryOpen(true)}>
+                <IconClock /> <span>Snapshot history</span>
+              </button>
+            )}
+            {isDev && (
+              <button className="fb-meta-link" onClick={() => setSettingsOpen(true)}>
+                <IconGear /> <span>Forecast settings</span>
+              </button>
+            )}
             <button className="fb-meta-link" onClick={() => goTo('reservations')}>
               <IconBriefcase /> <span>Reservations detail</span>
             </button>
@@ -661,6 +670,7 @@ const Forecast = () => {
           >
             <IconChart /> <span>Generate forecast</span>
           </button>
+          <SyncBadge source={dataSource} syncedAt={snapshot ? snapshot.scraped_at : null} health={syncHealth} label="Reservations" />
           <div className={`fb-sync-badge${liveError || paused || !live ? ' is-off' : ''}`} title={paused ? 'Live updates paused after 30 minutes without activity — move the mouse to resume' : liveError ? 'Could not reach rGuest — showing the last scrape' : 'Room conditions refresh from rGuest every 2 minutes'}>
             <span className="fb-sync-dot" />
             <span>{paused ? 'Live paused' : liveError ? 'Live unavailable' : 'Rooms live'}</span>
@@ -741,8 +751,8 @@ const Forecast = () => {
         </>
       )}
 
-      {historyOpen  && <ForecastHistory  onClose={() => setHistoryOpen(false)} />}
-      {settingsOpen && <ForecastSettings onClose={() => { setSettingsOpen(false); loadAllowance(); }} />}
+      {isDev && historyOpen  && <ForecastHistory  onClose={() => setHistoryOpen(false)} />}
+      {isDev && settingsOpen && <ForecastSettings onClose={() => { setSettingsOpen(false); loadAllowance(); }} />}
       {sheetOpen    && model && <ForecastDaySheet onClose={() => setSheetOpen(false)} model={model} />}
     </div>
   );

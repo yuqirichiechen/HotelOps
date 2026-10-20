@@ -148,6 +148,20 @@ export const AuthProvider = ({ children }) => {
     return { success: true, user: data.user };
   };
 
+  // Sprint 22.4: server-verified dev sign-in (replaces the client-side dev/dev gate). Same token slot as other sessions.
+  const loginDev = async (username, password) => {
+    const { ok, status, data } = await apiFetch('/auth/dev/login', {
+      method: 'POST',
+      body:   JSON.stringify({ username, password }),
+    });
+    if (!ok || !data?.success) {
+      return { success: false, status, message: data?.message || 'Login failed' };
+    }
+    localStorage.setItem(TOKEN_KEY, data.token);
+    setUser(data.user);
+    return { success: true, user: data.user };
+  };
+
   const logout = async () => {
     try { await apiFetch('/auth/logout', { method: 'POST' }); } catch {}
     localStorage.removeItem(TOKEN_KEY);
@@ -188,7 +202,7 @@ export const AuthProvider = ({ children }) => {
     return { success: false, message: data?.message || 'Could not change PIN' };
   };
 
-  const value = { user, loading, loginStaff, loginAdmin, logout, setPin, changePin, refresh };
+  const value = { user, loading, loginStaff, loginAdmin, loginDev, logout, setPin, changePin, refresh };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
@@ -224,11 +238,14 @@ export const RequireRole = ({ role = 'any', children }) => {
     return <Navigate to="/" replace state={{ from: location }} />;
   }
 
+  // Sprint 22.4: the dev role lives in /dev only (it is never a manager or staff session).
+  if (user.role === 'dev' && role !== 'dev' && role !== 'any') return <Navigate to="/dev" replace />;
   const isAdmin = user.role === 'admin';
   const ok =
     role === 'any' ||
+    (role === 'dev' && user.role === 'dev') ||
     (role === 'admin' && isAdmin) ||
-    (role === 'staff' && !isAdmin);
+    (role === 'staff' && !isAdmin && user.role !== 'dev');
 
   if (!ok) {
     // Sprint 11.2.1: wrong role for this surface — send them to
@@ -249,9 +266,18 @@ export const RequireRole = ({ role = 'any', children }) => {
 // ── RedirectIfAuthed ────────────────────────────────────────────────────────
 // Wraps a login page so already-authed users don't see it.
 
+// Sprint 22.4: the /dev surface — anyone who is not a signed-in dev goes to the dev sign-in page.
+export const RequireDev = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user || user.role !== 'dev') return <Navigate to="/login/dev" replace />;
+  return children;
+};
+
 export const RedirectIfAuthed = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return null;
+  if (user && user.role === 'dev') return <Navigate to="/dev" replace />;
   if (user) {
     // Sprint 11.2.1: authed users on the login page get bounced to
     // their per-tenant shell.

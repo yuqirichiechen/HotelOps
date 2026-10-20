@@ -19,7 +19,8 @@ import './ForecastSettings.css';
 
 const BASE_BUCKETS = ['NKRR', 'NKJZ', 'NQRR', 'NQJZ'];
 
-const ForecastSettings = ({ onClose }) => {
+// Sprint 22.4: `inline` renders the panel as a page section (Dev area) instead of a modal; `showSync` hides the Auto-sync tab when it has its own page.
+const ForecastSettings = ({ onClose, inline = false, showSync = true }) => {
   const [tab, setTab]         = useState('labor'); // 'labor' | 'late' | 'sync' | 'mapping'
   const [config, setConfig]   = useState(null);
   const [mapping, setMapping] = useState([]);
@@ -183,11 +184,11 @@ const ForecastSettings = ({ onClose }) => {
   };
 
   return (
-    <div className="fc-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="fc-modal" onClick={(e) => e.stopPropagation()}>
+    <div className={inline ? 'fc-inline-host' : 'fc-modal-backdrop'} onClick={inline ? undefined : onClose} role={inline ? undefined : 'dialog'} aria-modal={inline ? undefined : 'true'}>
+      <div className={inline ? 'fc-modal fc-modal-inline' : 'fc-modal'} onClick={(e) => e.stopPropagation()}>
         <header className="fc-modal-header">
           <h2>Forecast settings</h2>
-          <button className="fc-modal-close" onClick={onClose} aria-label="Close">×</button>
+          {!inline && <button className="fc-modal-close" onClick={onClose} aria-label="Close">×</button>}
         </header>
 
         <div className="fc-modal-tabs" role="tablist">
@@ -201,11 +202,13 @@ const ForecastSettings = ({ onClose }) => {
             className={tab === 'late' ? 'active' : ''}
             onClick={() => setTab('late')}
           >Late bookings</button>
-          <button
-            role="tab" aria-selected={tab === 'sync'}
-            className={tab === 'sync' ? 'active' : ''}
-            onClick={() => setTab('sync')}
-          >Auto-sync</button>
+          {showSync && (
+            <button
+              role="tab" aria-selected={tab === 'sync'}
+              className={tab === 'sync' ? 'active' : ''}
+              onClick={() => setTab('sync')}
+            >Auto-sync</button>
+          )}
           <button
             role="tab" aria-selected={tab === 'mapping'}
             className={tab === 'mapping' ? 'active' : ''}
@@ -355,7 +358,7 @@ const ForecastSettings = ({ onClose }) => {
             </div>
           )}
 
-          {tab === 'sync' && <SyncPanel />}
+          {showSync && tab === 'sync' && <SyncPanel />}
 
           {!loading && tab === 'mapping' && (
             <div className="fc-mapping">

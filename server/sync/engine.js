@@ -13,7 +13,7 @@
 // auth failure pauses the engine instead of retrying (the client never re-logs-in after a 401 on credentials).
 'use strict';
 const crypto = require('crypto');
-const { decideRuns, nextDue } = require('./schedule');
+const { decideRuns, nextDue, syncHealth } = require('./schedule');
 const { loadSettings, saveSettings, validateSettings, localClock } = require('./settings');
 const { normalizeRow, fingerprintOf, pickFp } = require('./normalize');
 const { deriveMapping } = require('../forecast/compute');
@@ -330,6 +330,8 @@ function createSyncEngine({ getPool, getClient, now = () => new Date(), logger =
     /** Write scan results that are still only in memory (so a page that is about to read the database sees them). */
     async flushPending() { if (hydrated && pendingChanges() > 0) return flushBuffer(); return null; },
     setOnFlushed(fn) { onFlushed = fn; },
+    /** Plain health summary (state, last sync time, interval) for the badge on the Reservations / Forecast pages. */
+    async health() { await ensureHydrated(); return { ...syncHealth(now(), settings, recent, authFailure, this.syncedAt()), running: !!running }; },
     async updateSettings(patch) {
       await ensureHydrated();
       const { settings: next, errors } = validateSettings(patch, settings);

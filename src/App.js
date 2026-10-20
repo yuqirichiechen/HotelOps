@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, RequireRole, RedirectIfAuthed, useAuth } from './auth';
+import { AuthProvider, RequireRole, RequireDev, RedirectIfAuthed, useAuth } from './auth';
 import { LanguageProvider } from './i18n';
 import { DEFAULT_TENANT_SLUG } from './config/tenant';
 import ShiftsView from './components/ShiftsView';
 import TenantLogin from './pages/Login/TenantLogin';
 import TenantPicker from './pages/Login/TenantPicker';
 import DevLogin from './pages/Login/DevLogin';
-import DevPanel from './pages/Dev/DevPanel';
+import DevShell from './pages/Dev/DevShell';
 import SetPin from './pages/SetPin';
 import StaffShell from './shells/StaffShell';
 import AdminShell from './shells/AdminShell';
@@ -34,6 +34,7 @@ const RootRoute = () => {
     ? localStorage.getItem('hotelops-tenant-slug')
     : null;
   const slug = stored || DEFAULT_TENANT_SLUG;
+  if (user.role === 'dev') return <Navigate to="/dev" replace />;   // Sprint 22.4
   return <Navigate to={user.role === 'admin' ? `/${slug}/admin` : `/${slug}/staff`} replace />;
 };
 
@@ -108,7 +109,7 @@ const App = () => {
 
           {/* ── Dev sign-in + panel (out-of-band) ───────────────────────── */}
           <Route path="/login/dev" element={<DevLogin />} />
-          <Route path="/dev"       element={<DevPanel />} />
+          <Route path="/dev"       element={<RequireDev><DevShell /></RequireDev>} />
 
           {/* ── Set-PIN interstitial (auth required, no shell) ──────────── */}
           <Route path="/set-pin" element={

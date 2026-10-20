@@ -16,9 +16,47 @@
 | 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested, NOT yet deployed** (no migration) |
 | 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
+| 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
+| 22.5   | Manager UI: Reservations + Forecast simplified to the basics + the forecast output (dev keeps the full pages) | Planned |
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-20 — Sprint 22.4: Dev area, manager/dev split, plain freshness badge
+
+**Before deploying — REQUIRED setup (otherwise nobody can open /dev):**
+1. Generate a hash locally: `node server/scripts/hash-password.js "<a long password, 12+ chars>"` (prints a bcrypt hash).
+2. Koyeb env: `DEV_PASSWORD_HASH=<that hash>` (and optionally `DEV_USERNAME`, default `dev`). Redeploy.
+3. The old client-side `dev` / `dev` gate is **gone** — it never worked as security (the browser decided). With no hash set, dev sign-in answers 503 ("not set up") and there is no default password.
+Dev sessions share the browser's single token slot: signing into /dev replaces a manager session in that browser (and vice versa) — use another browser/profile for both at once.
+
+**Server (`auth.js`, `server.js`)**
+- `POST /api/auth/dev/login` → token `role:'dev'`; env credentials, bcrypt, constant-time user check, **5 failures per client / 30 overall per 15 min → 429 + Retry-After**,
+  generic "Invalid credentials" (never says which field). `/api/me` understands dev. `requireRole('admin')` now also admits `dev` (dev ⊇ admin); `requireRole('dev')` excludes managers.
+- **Dev-only (managers get 403):** forecast config + room-type mapping (GET/PUT), snapshot history list/detail/delete, `/admin/sync/status|settings|runs`, `/admin/forecast/accuracy`,
+  `/api/dev/jobs` (guest-detail job log, new), sync runs other than `refresh`, and any `forecast_*` / `sync_*` / `guest_detail_retention_days` key in `PUT /admin/settings`.
+- **Managers keep:** `/admin/forecast/current`, the change feed, `POST /admin/sync/run {kind:'refresh'}`, and the new `GET /admin/sync/health` (state + last-sync time + `running`,
+  no technical detail). `/forecast/current` now also returns `sync` (the same summary) so the pages need no extra call. Refresh button waits on `/sync/health`
+  (an earlier draft polled the now dev-only status endpoint and would have hung for 2 min — caught by the test).
+- `syncHealth` (pure): ok / stale (> 3× the schedule in force, min 15 min) / down (paused, rGuest login rejected, last 3 runs failed) / off.
+- Per-reservation refresh (`latestListItem`) now reads the mirror payload first (the stored snapshot can be days old); `refreshOne` uses the shared rGuest client (no extra login).
+
+**Client**
+- `RequireDev`, `loginDev`; dev users are redirected to `/dev` from the manager/staff shells and login pages; `/dev` = `DevShell`. `DevLogin` is server-backed with clear messages (503 / 429 / 401).
+- **DevShell** (`pages/Dev/*`): Auto-sync (home) · Reservations · Forecast · Settings (labor / late bookings + accuracy / mapping; inline, no Auto-sync tab) · Logs (change feed with every event type,
+  snapshot history + per-run logs inline, guest-detail jobs) · Platform (tenant-logo strategy, moved from the old DevPanel). The old `DevPanel.js` is deleted.
+- **Manager vs dev is a fixed `mode` prop, not a toggle:** `Forecasting` (Reservations) and `Forecast` take `mode='manager'` (default; AdminShell) or `'dev'`. Manager mode drops Snapshot history,
+  Forecast settings, Raw scraper output and the guest-detail job bar; dev mode is the unchanged full page. (No code copy: in 22.5 the manager surface gets its own simplified components and the
+  current full components stay as the dev view, so the two cannot drift into each other.)
+- **Freshness badge** (`shared/SyncBadge`, `freshnessOf`): replaces "Last sync 9:12 AM" on Reservations and joins the Forecast header. Plain words: **Up to date · 3 min ago** (green) /
+  **May be out of date · updated 2 h ago** (amber, "tap refresh") / **Not updating · last update 9:15 AM** (red, "please tell the manager") / **Manual update** (legacy snapshot). Ticks every
+  minute client-side; no requests.
+
+**Tests (all green):** `dev-auth` 11 (env/503, bad creds, rate limits, dev ⊇ admin, every dev-only route × none/staff/admin/dev, manager still-allowed set, settings key guard) ·
+`devshell` 9 (real auth + router: sign-in states, RequireDev, role redirects; manager vs dev pages; freshness states; shell navigation) · `sync-pure` 16 (+syncHealth) ·
+`reservations-refresh` 3 · existing suites re-run (sync-route/forecast-allowance updated to dev tokens). Screenshots checked (manager header at 1200/390 px, dev Auto-sync).
+
+**Not in this sprint:** simplifying what managers see (22.5); the manager Settings page (other admin settings) is untouched; password rotation UI for dev.
 
 ### 2026-10-20 — Sprint 22.3: pages read the mirror, detail refresh hook, accuracy tracker
 

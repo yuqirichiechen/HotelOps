@@ -14,9 +14,10 @@ const FILTERS = [
 const DEFAULT_ON = ['new', 'cancelled', 'changed'];
 const PAGE = 15;
 
-const RecentChanges = () => {
-  const [open, setOpen] = useState(() => { try { return sessionStorage.getItem('hotelops-changes-open') !== '0'; } catch { return true; } });
-  const [on, setOn] = useState(DEFAULT_ON);
+// `initialOn` lets the Dev logs show every kind of event; managers see new / cancelled / changed by default.
+const RecentChanges = ({ initialOn = DEFAULT_ON, persistOpen = true }) => {
+  const [open, setOpen] = useState(() => { if (!persistOpen) return true; try { return sessionStorage.getItem('hotelops-changes-open') !== '0'; } catch { return true; } });
+  const [on, setOn] = useState(initialOn);
   const [events, setEvents] = useState(null);
   const [summary, setSummary] = useState({});
   const [hasMore, setHasMore] = useState(false);

@@ -7,6 +7,7 @@ require('dotenv').config();
 const {
   signToken, hashPin, verifyPin, findAdmin,
   requireAuth, requireRole,
+  devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey,
 } = require('./auth');
 
 // Sprint 17 — Front Desk forecast (Agilysys rGuest Stay).
@@ -340,6 +341,21 @@ app.post('/api/auth/admin/login', (req, res) => {
   });
 });
 
+// POST /api/auth/dev/login — Sprint 22.4: server-verified dev sign-in (replaces the client-side dev/dev gate).
+// 503 until DEV_PASSWORD_HASH is set; 5 failures per client / 30 overall per 15 minutes → 429; a failure never says which field was wrong.
+app.post('/api/auth/dev/login', async (req, res) => {
+  if (!devConfigured()) return res.status(503).json({ success: false, message: 'Dev sign-in is not configured on the server.' });
+  const key = devClientKey(req), gate = devLoginAllowed(key);
+  if (!gate.allowed) { res.set('Retry-After', String(gate.retryAfterSec)); return res.status(429).json({ success: false, message: 'Too many attempts. Try again later.' }); }
+  const { username, password } = req.body || {};
+  if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) return res.status(400).json({ success: false, message: 'Username and password required' });
+  const dev = await verifyDevCredentials(username, password);
+  if (!dev) { recordDevFailure(key); console.warn('[auth] dev sign-in failed'); return res.status(401).json({ success: false, message: 'Invalid credentials' }); }
+  clearDevFailures(key); console.info('[auth] dev sign-in ok');
+  const token = signToken({ sub: dev.username, role: 'dev', name: 'Dev', type: 'dev' });
+  return res.json({ success: true, token, user: { username: dev.username, name: 'Dev', role: 'dev', type: 'dev' } });
+});
+
 app.post('/api/auth/staff/set-pin', requireAuth, async (req, res) => {
   if (req.auth.type !== 'staff') {
     return res.status(403).json({ success: false, message: 'Staff only' });
@@ -364,6 +380,9 @@ app.post('/api/auth/staff/set-pin', requireAuth, async (req, res) => {
 });
 
 app.get('/api/me', requireAuth, async (req, res) => {
+  if (req.auth.type === 'dev') {
+    return res.json({ success: true, user: { username: req.auth.sub, name: 'Dev', role: 'dev', type: 'dev' } });
+  }
   if (req.auth.type === 'admin') {
     return res.json({
       success: true,
@@ -3735,6 +3754,10 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
   // strict on known keys with invalid values — those reject the batch as
   // before because that signals a real bug or attack, not version drift.
   const writes = [];
+  // Sprint 22.4: forecast / sync / guest-data settings live in the Dev area only.
+  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_)/.test(k) || k === 'guest_detail_retention_days')) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
   for (const [k, v] of Object.entries(updates)) {
     if (!(k in ALLOWED)) {
       console.warn(`[settings PUT] ignoring unknown key: ${k}`);
@@ -4261,7 +4284,7 @@ app.post('/api/admin/forecast/scrape', requireAuth, requireRole('admin'), async 
 
 // GET /api/admin/forecast/snapshots?limit=20&offset=0&date=YYYY-MM-DD
 // Lean list (no full payload — just KPIs + meta).
-app.get('/api/admin/forecast/snapshots', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/forecast/snapshots', requireAuth, requireRole('dev'), async (req, res) => {
   const limit  = Math.min(Number(req.query.limit)  || 20, 200);
   const offset = Math.max(Number(req.query.offset) || 0,  0);
   const date   = req.query.date || null;
@@ -4311,7 +4334,7 @@ app.get('/api/admin/forecast/snapshots/latest', requireAuth, requireRole('admin'
 });
 
 // GET /api/admin/forecast/snapshots/:id — full snapshot + logs.
-app.get('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('dev'), async (req, res) => {
   const { id } = req.params;
   if (!UUID_RE.test(id)) return res.status(400).json({ success: false, message: 'bad snapshot id' });
   try {
@@ -4328,7 +4351,7 @@ app.get('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('admin'), 
 
 // DELETE /api/admin/forecast/snapshots/:id — hard delete.
 // Backs the admin "free up space" affordance in the history view.
-app.delete('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('admin'), async (req, res) => {
+app.delete('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('dev'), async (req, res) => {
   const { id } = req.params;
   if (!UUID_RE.test(id)) return res.status(400).json({ success: false, message: 'bad snapshot id' });
   try {
@@ -4342,7 +4365,7 @@ app.delete('/api/admin/forecast/snapshots/:id', requireAuth, requireRole('admin'
 });
 
 // GET /api/admin/forecast/config — read singleton config.
-app.get('/api/admin/forecast/config', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/forecast/config', requireAuth, requireRole('dev'), async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT * FROM forecast_config WHERE config_id = 1`);
     if (!rows.length) return res.status(500).json({ success: false, message: 'config missing — migration not run?' });
@@ -4357,7 +4380,7 @@ app.get('/api/admin/forecast/config', requireAuth, requireRole('admin'), async (
 // Only allow editing: productivity_target, avg_min_per_clean,
 // dedup_window_minutes. cron_schedules + cron_timezone are dormant
 // in v1 (cron deferred — decision §2.2.3 in part4.md).
-app.put('/api/admin/forecast/config', requireAuth, requireRole('admin'), async (req, res) => {
+app.put('/api/admin/forecast/config', requireAuth, requireRole('dev'), async (req, res) => {
   const body = req.body || {};
   const fields = [];
   const values = [];
@@ -4396,7 +4419,7 @@ app.put('/api/admin/forecast/config', requireAuth, requireRole('admin'), async (
 // Sorted by base_code so admin can scan related codes together.
 // Includes a `needs_review` flag for rows where base_code IS NULL
 // (unknown prefix — admin should categorize).
-app.get('/api/admin/forecast/mapping', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/forecast/mapping', requireAuth, requireRole('dev'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT type_code, type_name, base_code, base_label,
@@ -4415,7 +4438,7 @@ app.get('/api/admin/forecast/mapping', requireAuth, requireRole('admin'), async 
 
 // PUT /api/admin/forecast/mapping/:code — override or unpin a mapping.
 // Body: { base_code?, base_label?, sub_suffix?, sub_label?, admin_override? }
-app.put('/api/admin/forecast/mapping/:code', requireAuth, requireRole('admin'), async (req, res) => {
+app.put('/api/admin/forecast/mapping/:code', requireAuth, requireRole('dev'), async (req, res) => {
   const { code } = req.params;
   if (!code || code.length > 20) return res.status(400).json({ success: false, message: 'bad code' });
   const body = req.body || {};
@@ -4465,6 +4488,10 @@ const detailPayload = (row, source) => ({
 });
 
 async function latestListItem(reservationId) {
+  // Sprint 22.4: prefer the live mirror payload (the last stored snapshot can be days old once auto-sync is on)
+  try {
+    if (syncEngine.isMirrorReady()) { const cur = await getMirrorPayload(); const hit = (cur.payload.reservations || []).find(r => r.id === reservationId); if (hit) return hit; }
+  } catch { /* fall back to the snapshot below */ }
   const { rows } = await pool.query(
     `SELECT payload FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
   const list = rows[0] && rows[0].payload && rows[0].payload.reservations;
@@ -4483,7 +4510,7 @@ app.get('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin'),
     if (!rows.length) {
       // Not stored yet (job still running, or outside the snapshot) — fetch
       // once live and store, so the card still works.
-      const state = await refreshOne({ pool, reservationId: id, listItem: await latestListItem(id), createClient: createAgilysysClient });
+      const state = await refreshOne({ pool, reservationId: id, listItem: await latestListItem(id), createClient: () => getSharedAgilysys() });
       ({ rows } = await pool.query('SELECT * FROM reservation_detail WHERE reservation_id = $1', [id]));
       if (!rows.length) {
         return res.status(404).json({ success: false, message: state === 'gone' ? 'Reservation no longer exists in rGuest.' : 'No detail available.' });
@@ -4507,7 +4534,7 @@ app.post('/api/admin/reservations/:id/refresh', requireAuth, requireRole('admin'
   }
   let refreshError = null;
   try {
-    await refreshOne({ pool, reservationId: id, listItem: await latestListItem(id), createClient: createAgilysysClient });
+    await refreshOne({ pool, reservationId: id, listItem: await latestListItem(id), createClient: () => getSharedAgilysys() });
   } catch (err) {
     refreshError = err.message || 'Refresh failed';
     console.error('[reservation:refresh]', id, refreshError);
@@ -4651,11 +4678,11 @@ app.post('/api/sync/tick', async (req, res) => {
   try { return res.status(202).json({ success: true, ...(await syncEngine.tick()) }); }
   catch (err) { console.error('[sync:tick]', err && err.message); return res.status(500).json({ success: false, message: 'Sync tick failed.' }); }
 });
-app.get('/api/admin/sync/status', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/sync/status', requireAuth, requireRole('dev'), async (req, res) => {
   try { return res.json({ success: true, status: await syncEngine.getStatus(), tickConfigured: !!(process.env.SYNC_TICK_SECRET && process.env.SYNC_TICK_SECRET.length >= 16) }); }
   catch (err) { console.error('[sync:status]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
-app.put('/api/admin/sync/settings', requireAuth, requireRole('admin'), async (req, res) => {
+app.put('/api/admin/sync/settings', requireAuth, requireRole('dev'), async (req, res) => {
   try {
     const out = await syncEngine.updateSettings(req.body || {});
     if (!out.ok) return res.status(400).json({ success: false, message: out.errors.join('; '), errors: out.errors });
@@ -4665,6 +4692,7 @@ app.put('/api/admin/sync/settings', requireAuth, requireRole('admin'), async (re
 app.post('/api/admin/sync/run', requireAuth, requireRole('admin'), async (req, res) => {
   const kind = req.body && req.body.kind;
   if (!['frequent', 'hourly', 'reconcile', 'backfill', 'full', 'refresh'].includes(kind)) return res.status(400).json({ success: false, message: 'kind must be frequent, hourly, reconcile, backfill, full or refresh' });
+  if (kind !== 'refresh' && req.auth.role !== 'dev') return res.status(403).json({ success: false, message: 'Forbidden' });   // managers can only ask for a refresh
   try { return res.status(202).json({ success: true, ...(await syncEngine.trigger(kind)) }); }
   catch (err) { console.error('[sync:run]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
@@ -4695,6 +4723,11 @@ async function latestSnapshotRow() {
   const { rows } = await pool.query(`SELECT * FROM forecast_snapshot WHERE status = 'success' ORDER BY scraped_at DESC LIMIT 1`);
   return rows[0] || null;
 }
+// GET /api/admin/sync/health — the plain "is the data fresh?" summary (managers / front desk); the full status is dev-only.
+app.get('/api/admin/sync/health', requireAuth, requireRole('admin'), async (req, res) => {
+  try { return res.json({ success: true, health: await syncEngine.health() }); }
+  catch (err) { console.error('[sync:health]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
 app.get('/api/admin/forecast/current', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     await syncEngine.ensureHydrated();
@@ -4702,11 +4735,11 @@ app.get('/api/admin/forecast/current', requireAuth, requireRole('admin'), async 
       try {
         await syncEngine.flushPending();              // make the newest scan visible to the query below
         const cur = await getMirrorPayload();
-        return res.json({ success: true, source: 'mirror', snapshot: { snapshot_id: null, scraped_at: cur.syncedAt || new Date().toISOString(), forecast_date: cur.payload.forecastDate, source: 'mirror', status: 'success', payload: cur.payload } });
+        return res.json({ success: true, source: 'mirror', sync: await syncEngine.health(), snapshot: { snapshot_id: null, scraped_at: cur.syncedAt || new Date().toISOString(), forecast_date: cur.payload.forecastDate, source: 'mirror', status: 'success', payload: cur.payload } });
       } catch (err) { console.error('[forecast:current] mirror build failed, falling back to the last snapshot:', err && err.message); }
     }
     const row = await latestSnapshotRow();
-    return res.json({ success: true, source: 'snapshot', snapshot: row });
+    return res.json({ success: true, source: 'snapshot', sync: await syncEngine.health().catch(() => null), snapshot: row });
   } catch (err) { console.error('[forecast:current]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
@@ -4720,7 +4753,7 @@ syncEngine.setOnFlushed(async (out) => {
 });
 
 // GET /api/admin/forecast/accuracy?days=60 — booked-as-of-N-days-ahead vs guests that actually arrived (see migration 029).
-app.get('/api/admin/forecast/accuracy', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/forecast/accuracy', requireAuth, requireRole('dev'), async (req, res) => {
   const days = Math.min(Math.max(parseInt(req.query.days, 10) || 60, 7), 365);
   try {
     const { rows } = await pool.query(
@@ -4731,8 +4764,17 @@ app.get('/api/admin/forecast/accuracy', requireAuth, requireRole('admin'), async
   } catch (err) { console.error('[forecast:accuracy]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
+// GET /api/dev/jobs?limit=30 — guest-detail deep-fetch job history (dev logs).
+app.get('/api/dev/jobs', requireAuth, requireRole('dev'), async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 200);
+  try {
+    const { rows } = await pool.query(`SELECT job_id, kind, status, total, skipped, done, failed, gone, error, options, started_at, heartbeat_at, finished_at FROM scrape_job ORDER BY started_at DESC LIMIT $1`, [limit]);
+    return res.json({ success: true, jobs: rows });
+  } catch (err) { console.error('[dev:jobs]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
 // GET /api/admin/sync/runs?limit=50 — stored run history (the status endpoint only has this process's recent runs).
-app.get('/api/admin/sync/runs', requireAuth, requireRole('admin'), async (req, res) => {
+app.get('/api/admin/sync/runs', requireAuth, requireRole('dev'), async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
   try {
     const { rows } = await pool.query(

@@ -52,4 +52,24 @@ function nextDue(now, settings, state, pingMinutes = 5) {
   return { frequent: r(frequent), hourly: r(hourly), reconcile: r(reconcile), reason: null };
 }
 
-module.exports = { decideRuns, nextDue, SLACK_MS };
+/**
+ * One word for the sync's condition, for the badge managers / front desk see (Sprint 22.4). Pure.
+ *   ok    updated recently enough for the schedule in force right now (5-min window vs hourly)
+ *   stale older than 3× the expected interval (min 15 min) — pings late, or the last runs found nothing to update
+ *   down  paused / rGuest login rejected / the last 3 runs all failed
+ *   off   sync disabled in settings
+ */
+function syncHealth(now, settings, recentRuns, authFailure, syncedAt) {
+  const clock = localClock(now, settings.timezone), f = settings.frequent;
+  const inWin = f.enabled && inWindow(clock.minutes, f.from, f.to);
+  const everyMinutes = inWin ? f.everyMinutes : settings.hourly.everyMinutes;
+  const ageMin = syncedAt ? (now.getTime() - new Date(syncedAt).getTime()) / 60000 : null;
+  const last3 = (recentRuns || []).slice(0, 3);
+  let state = 'ok';
+  if (!settings.enabled) state = 'off';
+  else if (settings.paused || authFailure || (last3.length === 3 && last3.every(r => r.status === 'failed'))) state = 'down';
+  else if (ageMin == null || ageMin > Math.max(15, everyMinutes * 3)) state = 'stale';
+  return { state, syncedAt: syncedAt || null, everyMinutes, ageMinutes: ageMin == null ? null : Math.round(ageMin) };
+}
+
+module.exports = { decideRuns, nextDue, syncHealth, SLACK_MS };

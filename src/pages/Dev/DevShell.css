@@ -1,0 +1,32 @@
+/* Sprint 22.4 — Dev area shell */
+.dv-shell { min-height: 100vh; background: var(--bg-base); display: flex; flex-direction: column; }
+.dv-bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 8px 18px; background: var(--bg-surface); border-bottom: 2px solid #7c3aed; flex-wrap: wrap; }
+.dv-brand { display: flex; align-items: center; gap: 8px; }
+.dv-badge { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 6px; background: #7c3aed; color: #fff; }
+.dv-nav { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
+.dv-nav button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; font-family: inherit; font-size: 14px; color: var(--text-secondary); cursor: pointer; }
+.dv-nav button.on { color: var(--brand-text); border-bottom-color: var(--brand-bg, #1a365d); font-weight: 600; }
+.dv-signout { font-family: inherit; font-size: 13px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; }
+.dv-main { flex: 1; min-height: 0; }
+.dv-page { max-width: 1100px; margin: 0 auto; padding: 22px 18px 60px; }
+.dv-page h1 { margin: 0 0 14px; font-family: 'TiemposHeadline', Georgia, serif; font-size: 24px; color: var(--brand-text); }
+.dv-card { background: var(--bg-surface); border: 1px solid var(--border-light, var(--border)); border-radius: 10px; padding: 16px 18px; max-width: 720px; }
+.dv-card h2 { margin: 0 0 6px; font-size: 16px; font-family: 'TiemposHeadline', Georgia, serif; color: var(--brand-text); }
+.dv-muted { color: var(--text-muted); font-size: 13px; }
+.dv-error { color: var(--danger-text, #b91c1c); font-size: 13px; }
+.dv-tabs { display: flex; gap: 4px; margin: 0 0 14px; border-bottom: 1px solid var(--border); }
+.dv-tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 8px 14px; font-family: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+.dv-tabs button.on { color: var(--brand-text); border-bottom-color: var(--brand-bg, #1a365d); font-weight: 600; }
+.dv-radio-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.dv-radio { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.dv-radio.on { border-color: var(--brand-bg, #1a365d); background: var(--bg-surface-alt); }
+.dv-radio small { display: block; color: var(--text-muted); margin-top: 2px; }
+.dv-btn { font-family: inherit; font-size: 13px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-surface); cursor: pointer; }
+.dv-btn-primary { background: var(--brand-bg, #1a365d); border-color: var(--brand-bg, #1a365d); color: #fff; }
+.dv-table-wrap { overflow-x: auto; }
+.dv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dv-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.dv-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-light, var(--border)); white-space: nowrap; }
+.dv-row-bad td { background: var(--danger-bg, #fef2f2); }
+.dv-err-cell { white-space: normal; max-width: 320px; }
+@media (max-width: 640px) { .dv-bar { padding: 6px 10px; } .dv-nav button { padding: 8px 8px; font-size: 13px; } }

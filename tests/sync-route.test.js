@@ -23,7 +23,7 @@ let clientCalls = 0; const clientMod = require(ROOT + '/agilysys/client'); const
 clientMod.createAgilysysClient = () => ({ getPropertyDate: down, listRooms: down, listRoomTypes: down, getRatePlans: down, getVipStatuses: down, fetchSliceExact: down, countSlice: down, getReservationDetail: down, fetchTodayLive: down, clearLogs() {} });
 const http = (p, o = {}) => fetch('http://127.0.0.1:3992' + p, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', ...(o.headers || {}) }, body: o.body ? JSON.stringify(o.body) : undefined }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }));
 const admin = jwt.sign({ sub: 'a', role: 'admin', type: 'admin' }, process.env.JWT_SECRET), staff = jwt.sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff' }, process.env.JWT_SECRET);
-const A = { Authorization: 'Bearer ' + admin }; const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const A = { Authorization: 'Bearer ' + admin }; const D = { Authorization: 'Bearer ' + jwt.sign({ sub: 'dev', role: 'dev', type: 'dev' }, process.env.JWT_SECRET) };  /* Sprint 22.4: auto-sync / accuracy / settings are dev-only */ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 3).join(' | ')); process.exitCode = 1; } };
 (async () => {
   delete process.env.SYNC_TICK_SECRET; require(ROOT + '/server.js'); await sleep(600);
@@ -43,7 +43,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     }
   });
   await t('status shows settings, state and recent runs; a failed run (fake rGuest down) is reported, not thrown', async () => {
-    await sleep(200); const r = await http('/api/admin/sync/status', { headers: A }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.tickConfigured, true); assert.strictEqual(r.body.status.settings.frequent.from, '12:00');
+    await sleep(200); const r = await http('/api/admin/sync/status', { headers: D }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.tickConfigured, true); assert.strictEqual(r.body.status.settings.frequent.from, '12:00');
     assert(r.body.status.recentRuns.some(x => x.status === 'failed' && /fake rGuest down/.test(x.error)), JSON.stringify(r.body.status.recentRuns.map(x => [x.kind, x.status, x.error])));
   });
   await t('change feed endpoint: admin-only; validates types / before / limit (parameterised, no injection); returns summary + hasMore', async () => {
@@ -55,25 +55,25 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert(!/DROP|bogus/.test(lastEventsQuery.q), 'values only ever travel as parameters');
   });
   await t('runs endpoint: admin-only, limit capped', async () => {
-    assert.strictEqual((await http('/api/admin/sync/runs')).status, 401); const r = await http('/api/admin/sync/runs?limit=100000', { headers: A }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastRunsParams, [200]); assert.strictEqual(r.body.runs[0].kind, 'hourly');
+    assert.strictEqual((await http('/api/admin/sync/runs')).status, 401); const r = await http('/api/admin/sync/runs?limit=100000', { headers: D }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastRunsParams, [200]); assert.strictEqual(r.body.runs[0].kind, 'hourly');
   });
   await t('/forecast/current: admin-only; falls back to the last stored snapshot while the mirror is not ready (never breaks the page)', async () => {
     assert.strictEqual((await http('/api/admin/forecast/current')).status, 401); assert.strictEqual((await http('/api/admin/forecast/current', { headers: { Authorization: 'Bearer ' + staff } })).status, 403);
     const r = await http('/api/admin/forecast/current', { headers: A }); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.source, 'snapshot'); assert.strictEqual(r.body.snapshot.payload.forecastDate, '2026-10-19');
   });
   await t('/forecast/accuracy: admin-only; days clamped to 7..365; returns the booked-vs-actual rows', async () => {
-    assert.strictEqual((await http('/api/admin/forecast/accuracy')).status, 401); const r = await http('/api/admin/forecast/accuracy?days=100000', { headers: A }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastAccParams, ['default', 365]); assert.strictEqual(r.body.rows[0].actual, 12);
-    await http('/api/admin/forecast/accuracy?days=1', { headers: A }); assert.deepStrictEqual(lastAccParams, ['default', 7]);
+    assert.strictEqual((await http('/api/admin/forecast/accuracy')).status, 401); const r = await http('/api/admin/forecast/accuracy?days=100000', { headers: D }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(lastAccParams, ['default', 365]); assert.strictEqual(r.body.rows[0].actual, 12);
+    await http('/api/admin/forecast/accuracy?days=1', { headers: D }); assert.deepStrictEqual(lastAccParams, ['default', 7]);
   });
   await t('run endpoint accepts "refresh" (the Reservations refresh button)', async () => { const r = await http('/api/admin/sync/run', { method: 'POST', headers: A, body: { kind: 'refresh' } }); assert.strictEqual(r.status, 202); await sleep(150); });
   await t('settings PUT: validation errors → 400 with messages; valid patch persisted; secret/JWT-less access impossible', async () => {
-    const bad = await http('/api/admin/sync/settings', { method: 'PUT', headers: A, body: { frequent: { everyMinutes: 0 }, timezone: 'Nope/Zone' } }); assert.strictEqual(bad.status, 400); assert(bad.body.errors.length >= 2);
-    const ok = await http('/api/admin/sync/settings', { method: 'PUT', headers: A, body: { frequent: { everyMinutes: 10 }, paused: true } }); assert.strictEqual(ok.status, 200); assert.strictEqual(JSON.parse(store.sync_settings).frequent.everyMinutes, 10);
-    const tick = await http('/api/sync/tick', { method: 'POST', headers: { 'x-sync-secret': SECRET } }); assert.strictEqual(tick.body.reason, 'paused', 'paused (kill switch) stops ticks'); await http('/api/admin/sync/settings', { method: 'PUT', headers: A, body: { paused: false } });
+    const bad = await http('/api/admin/sync/settings', { method: 'PUT', headers: D, body: { frequent: { everyMinutes: 0 }, timezone: 'Nope/Zone' } }); assert.strictEqual(bad.status, 400); assert(bad.body.errors.length >= 2);
+    const ok = await http('/api/admin/sync/settings', { method: 'PUT', headers: D, body: { frequent: { everyMinutes: 10 }, paused: true } }); assert.strictEqual(ok.status, 200); assert.strictEqual(JSON.parse(store.sync_settings).frequent.everyMinutes, 10);
+    const tick = await http('/api/sync/tick', { method: 'POST', headers: { 'x-sync-secret': SECRET } }); assert.strictEqual(tick.body.reason, 'paused', 'paused (kill switch) stops ticks'); await http('/api/admin/sync/settings', { method: 'PUT', headers: D, body: { paused: false } });
   });
   await t('run endpoint: only known kinds; started in the background (202); busy is reported', async () => {
-    assert.strictEqual((await http('/api/admin/sync/run', { method: 'POST', headers: A, body: { kind: 'drop table' } })).status, 400); assert.strictEqual((await http('/api/admin/sync/run', { method: 'POST', headers: A, body: {} })).status, 400);
-    const r = await http('/api/admin/sync/run', { method: 'POST', headers: A, body: { kind: 'hourly' } }); assert.strictEqual(r.status, 202); await sleep(200);
+    assert.strictEqual((await http('/api/admin/sync/run', { method: 'POST', headers: D, body: { kind: 'drop table' } })).status, 400); assert.strictEqual((await http('/api/admin/sync/run', { method: 'POST', headers: D, body: {} })).status, 400);
+    const r = await http('/api/admin/sync/run', { method: 'POST', headers: D, body: { kind: 'hourly' } }); assert.strictEqual(r.status, 202); await sleep(200);
   });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();

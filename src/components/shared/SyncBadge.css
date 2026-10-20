@@ -1,0 +1,10 @@
+/* Sprint 22.4 — freshness badge */
+.sb { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--bg-surface); border: 1px solid var(--border); font-size: 12.5px; line-height: 1.2; }
+.sb-text { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; }
+.sb-label { color: var(--text-muted); }
+.sb-title { color: var(--text-primary); font-weight: 600; }
+.sb-sub { color: var(--text-secondary); }
+.sb-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex: none; }
+.sb-ok .sb-dot { background: var(--success, #2f9e5b); }
+.sb-warn { background: var(--warn-bg, #fffbeb); border-color: #ecc94b; } .sb-warn .sb-dot { background: #d69e2e; }
+.sb-bad { background: var(--danger-bg, #fef2f2); border-color: #f5b5b5; } .sb-bad .sb-dot { background: var(--danger, #c53030); } .sb-bad .sb-title { color: var(--danger-text, #b91c1c); }

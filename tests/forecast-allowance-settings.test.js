@@ -11,7 +11,7 @@ pg.Pool.prototype.query = async function (sql, params) {
   return { rows: [], rowCount: 0 };
 };
 require(ROOT + '/server.js');
-const admin = jwt.sign({ sub: 'a', role: 'admin', type: 'admin' }, process.env.JWT_SECRET), staff = jwt.sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff' }, process.env.JWT_SECRET);
+const admin = jwt.sign({ sub: 'dev', role: 'dev', type: 'dev' }, process.env.JWT_SECRET)   /* Sprint 22.4: forecast_* settings are dev-only */, staff = jwt.sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff' }, process.env.JWT_SECRET);
 const call = async (m, p, tok, body) => { const r = await fetch('http://127.0.0.1:3993' + p, { method: m, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) }; };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 3).join(' | ')); process.exitCode = 1; } };

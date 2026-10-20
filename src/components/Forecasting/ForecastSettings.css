@@ -337,3 +337,7 @@
   .fc-modal { max-height: 100vh; height: 100vh; border-radius: 0; }
   .fc-avg-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Sprint 22.4 — inline (page) variant used by the Dev area */
+.fc-modal-inline { max-width: none; max-height: none; box-shadow: none; border: 1px solid var(--border-light, var(--border)); overflow: visible; }
+.fc-modal-inline .fc-modal-body { overflow: visible; }

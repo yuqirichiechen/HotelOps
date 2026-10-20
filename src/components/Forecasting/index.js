@@ -18,6 +18,7 @@ import ForecastHistory from './ForecastHistory';
 import './Forecasting.css';
 import ResnTable from './ResnTable';
 import RecentChanges from './RecentChanges';
+import SyncBadge from '../shared/SyncBadge';
 import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate } from './resnTabs';
 
 
@@ -647,10 +648,14 @@ const DonutLegend = ({ rows, total }) => (
 
 // ── Page ───────────────────────────────────────────────────
 
-const Forecasting = () => {
+// Sprint 22.4: `mode` is fixed per surface (no toggle): the manager shell renders 'manager' (default), the Dev shell renders 'dev', which keeps
+// every debugging / settings control (snapshot history, forecast settings, raw scraper output, guest-detail job bar).
+const Forecasting = ({ mode = 'manager' }) => {
+  const isDev = mode === 'dev';
   const { goTo } = useView(); // Sprint 17.10 — back-to-Home button
   const [snapshot, setSnapshot] = useState(null);
   const [dataSource, setDataSource] = useState(null);   // Sprint 22.3: 'mirror' (auto-sync) | 'snapshot' (last stored scrape)
+  const [syncHealth, setSyncHealth] = useState(null);   // Sprint 22.4: plain freshness state from the server
   const [loading, setLoading]   = useState(true);
   const [scraping, setScraping] = useState(false);
   const [error, setError]       = useState(null);
@@ -682,6 +687,7 @@ const Forecasting = () => {
     }
     setSnapshot(data.snapshot || null);
     setDataSource(data.source || null);
+    setSyncHealth(data.sync || null);
     setLoading(false);
   }, []);
 
@@ -712,8 +718,8 @@ const Forecasting = () => {
       const t0 = Date.now();
       for (;;) {
         await new Promise(r => setTimeout(r, 1500));
-        const st = await apiFetch('/admin/sync/status');
-        if (st.ok && st.data?.success && !st.data.status.running) break;
+        const st = await apiFetch('/admin/sync/health');      // managers can't read the full sync status (dev-only); health carries `running`
+        if (st.ok && st.data?.success && !st.data.health.running) break;
         if (Date.now() - t0 > 120000) break;           // never wait forever; whatever finished is shown
       }
     }
@@ -847,11 +853,7 @@ const Forecasting = () => {
           <div className="fc-title-row">
             <h1>Reservations</h1>
             <div className="fc-header-actions">
-              <div className={`fc-sync-badge fc-sync-${snapshot?.status || 'idle'}`}>
-                <span className="fc-sync-dot" aria-hidden="true" />
-                <span className="fc-sync-label">Last sync</span>
-                <strong>{lastSync}</strong>
-              </div>
+              <SyncBadge source={dataSource} syncedAt={snapshot ? snapshot.scraped_at : null} health={syncHealth} label="" />
               <button
                 type="button"
                 className="fc-btn fc-btn-primary fc-btn-icon"
@@ -866,6 +868,7 @@ const Forecasting = () => {
           </div>
           {/* Sprint 17.9 — subtitle removed (was descriptive only);
               the three meta links carry the actionable affordances. */}
+          {isDev && (
           <div className="fc-header-meta-actions">
             <button
               type="button"
@@ -894,11 +897,12 @@ const Forecasting = () => {
               <span>Raw scraper output</span>
             </button>
           </div>
+          )}
         </div>
       </header>
 
       {/* Sprint 20.3 — guest-detail job (Sprint 20.2) progress; only while running or when it needs attention. */}
-      {detailJob && (detailJob.status === 'running' || detailJob.status === 'failed' || detailJob.status === 'partial' || detailJob.status === 'interrupted') && (
+      {isDev && detailJob && (detailJob.status === 'running' || detailJob.status === 'failed' || detailJob.status === 'partial' || detailJob.status === 'interrupted') && (
         <div className={`fc-jobbar fc-jobbar-${detailJob.status}`} role="status" aria-live="polite">
           {detailJob.status === 'running' ? (
             <>
@@ -1032,19 +1036,19 @@ const Forecasting = () => {
       {/* Sprint 17.12: ForecastSheet modal moved to the Forecast
           page. The page's SendoutCard is also gone. */}
 
-      {settingsOpen && (
+      {isDev && settingsOpen && (
         <ForecastSettings
           onClose={() => setSettingsOpen(false)}
         />
       )}
 
-      {historyOpen && (
+      {isDev && historyOpen && (
         <ForecastHistory
           onClose={() => setHistoryOpen(false)}
         />
       )}
 
-      {rawOpen && (
+      {isDev && rawOpen && (
         <RawOutputModal
           snapshot={snapshot}
           onClose={() => setRawOpen(false)}

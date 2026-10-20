@@ -15,7 +15,8 @@ const apiFetch = async (p, o = {}) => { calls.push({ p, method: o.method || 'GET
   if (p === '/admin/forecast/current') return { ok: true, data: { success: true, source, snapshot: { snapshot_id: null, scraped_at: new Date().toISOString(), status: 'success', payload: payloadFor(currentVersion) } } };
   if (p === '/admin/forecast/snapshots/latest') throw new Error('page must not call the old endpoint');
   if (p === '/admin/sync/run') return { ok: true, status: 202, data: { success: true, started: true } };
-  if (p === '/admin/sync/status') { const running = statusSeq.length ? statusSeq.shift() : null; if (!running) currentVersion = 1; return { ok: true, data: { success: true, status: { running } } }; }
+  if (p === '/admin/sync/health') { const running = statusSeq.length ? statusSeq.shift() : null; if (!running) currentVersion = 1; return { ok: true, data: { success: true, health: { running: !!running } } }; }
+  if (p === '/admin/sync/status') throw new Error('managers must not poll the dev-only status endpoint');
   if (p === '/admin/forecast/scrape') { currentVersion = 1; return { ok: true, data: { success: true, snapshot: { scraped_at: new Date().toISOString(), status: 'success', payload: payloadFor(1) } } }; }
   if (p.startsWith('/admin/forecast/jobs/latest')) return { ok: true, data: { success: true, job: null } };
   if (p.startsWith('/admin/reservations/summaries')) return { ok: true, data: { success: true, summaries: {} } };
@@ -38,8 +39,8 @@ async function mount() {
   await t('MIRROR: refresh = sync "refresh" run → wait until the engine is idle → re-read current; the 20-second scrape is NOT used', async () => {
     source = 'mirror'; currentVersion = 0; statusSeq = [{ kind: 'frequent' }, null]; const h = await mount(); calls.length = 0;
     await act(async () => { h.refresh().dispatchEvent(new w.MouseEvent('click', { bubbles: true })); }); await act(async () => { await sleep(3600); });
-    const seq = calls.map(c => c.method + ' ' + c.p); assert.strictEqual(seq[0], 'POST /admin/sync/run'); assert.deepStrictEqual(calls[0].body, { kind: 'refresh' }); assert(seq.filter(x => x === 'GET /admin/sync/status').length >= 2, 'polled until idle: ' + seq.join(','));
-    assert(seq.lastIndexOf('GET /admin/forecast/current') > seq.lastIndexOf('GET /admin/sync/status'), 'reloaded AFTER the run finished'); assert(!seq.includes('POST /admin/forecast/scrape'));
+    const seq = calls.map(c => c.method + ' ' + c.p); assert.strictEqual(seq[0], 'POST /admin/sync/run'); assert.deepStrictEqual(calls[0].body, { kind: 'refresh' }); assert(seq.filter(x => x === 'GET /admin/sync/health').length >= 2, 'polled until idle: ' + seq.join(','));
+    assert(seq.lastIndexOf('GET /admin/forecast/current') > seq.lastIndexOf('GET /admin/sync/health'), 'reloaded AFTER the run finished'); assert(!seq.includes('POST /admin/forecast/scrape'));
     await h.unmount();
   });
   await t('SNAPSHOT fallback (mirror not ready): the refresh button still runs the legacy scrape', async () => {
