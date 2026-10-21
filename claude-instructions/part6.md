@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23.4   | Housekeeping: plan by number, print colours (dev), sheet summary | **Built + tested** |
 | 23.3   | Housekeeping: aligned layout, manual-first + Auto-assign/Reset, fixed columns, dev room table | **Built + tested** |
 | 23.2   | Housekeeping: do-not-move rooms, new layout, drag flicker, mobile | **Built + tested** (no new migration) |
 | 23.1   | Housekeeping redesign: history, two cards, draggable cards, auto-balance | **Built + tested** (no new migration) |
@@ -30,6 +31,14 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.4: plan by number, print colours, sheet summary (GM requests)
+
+1. **"Just a number" mode**: a "Plan by [Names | Just a number]" switch above row 2. In number mode the Staff card becomes "How many housekeepers?" (stepper − / number / +, Start/Apply); people are "Housekeeper 1…N" (ids `anon-N`, no × buttons) and the rooms are **shared out automatically** — on Start, on every change of the number (hand-placed cards stay), and when new rooms appear after a refresh; the capacity warning, minimum/maximum, drag, Reset and printing all work as before. Saved as `settings.anonymous` (+ the N housekeepers); reopening a day restores number mode with the saved count; switching modes asks first because it clears the day's assignment.
+2. **Print colours** (`hk_print_colors`, JSON `{dirty, departure, priority, inhouse}`; each `#RRGGBB` or `''` = no colour): defaults **dirty rooms green** (#c6f6d5), **remaining check-outs yellow** (leaving that day, #fefcbf), **priority / pre-assigned (clean first, do-not-move) pink** (#fed7e2), **in-house stay-overs no colour** and they print their **check-in → check-out**. Every work item has a group (`cat`, priority beats the others) and a `stay`; both are saved with the plan (so printing history keeps the colours). **Dev only** can change them: a "Print sheet colours" card in the Full view (colour pickers, "No colour", "Default", live preview, Save, Reset all) → `PUT /api/admin/settings` (the `hk_` prefix is dev-write-only like `forecast_`/`sync_`; managers can READ it so their prints use it; value validated: JSON, known groups, hex only).
+3. **Sheet summary card**: top of every printed page — Rooms to clean · Rooms to service · Workload — plus a small legend of the colours that appear on that page. Verified by printing through headless Chrome (colours exact, one page per housekeeper).
+Tests: `hkwork` 13 (+groups/stay/colour parsing), `housekeeping-server` 8 (+colour setting dev-only/validation, plan keeps cat/stay/anonymous), `housekeeping` 22 (+number mode flow, save/restore, switch confirm, sheet summary + colours + legend, manager uses saved colours, dev colour card); other suites green; build compiles.
+No migration (setting + plan JSON only).
 
 ### 2026-10-21 — Sprint 23.3: Housekeeping alignment, manual-first assignment, dev room table
 

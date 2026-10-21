@@ -91,4 +91,14 @@ t('DO NOT MOVE rooms (rGuest "Do not move" on an arriving reservation): marked o
   const viaServer = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0, lockedRooms: ['102', '105'] }).items; const by = Object.fromEntries(viaServer.map(i => [i.roomNumber, i]));
   assert(by['102'].locked && by['102'].priority, 'dirty arrival room: marked + clean first'); assert(by['105'].locked && !by['105'].priority, 'a stay-over room is marked but is not "clean first"'); assert(!by['103'].locked);
 });
+t('SHEET COLOUR GROUPS: priority (pink) beats everything; dirty rooms (green); remaining check-outs (yellow); in-house stay-overs have NO colour and carry their check-in → check-out; defaults + parsing of the stored setting', () => {
+  assert.deepStrictEqual(HK.PRINT_COLOR_DEFAULTS, { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', inhouse: '' });
+  const w = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }); const by = Object.fromEntries(w.items.map(i => [i.roomNumber, i]));
+  assert.strictEqual(by['102'].cat, 'dirty'); assert.strictEqual(by['103'].cat, 'dirty', 'in progress is still a dirty room'); assert.strictEqual(by['104'].cat, 'departure', 'checking out today'); assert.strictEqual(by['105'].cat, 'inhouse');
+  assert.strictEqual(by['105'].stay, 'Oct 18 → Oct 21'); assert.strictEqual(by['104'].stay, 'Oct 17 → Oct 19'); assert(!by['102'].stay, 'a vacant room has no stay');
+  const pr = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0, lockedRooms: ['102'] }).items.find(i => i.roomNumber === '102'); assert.strictEqual(pr.cat, 'priority', 'a do-not-move / clean-first room is pink even though it is dirty');
+  const out = HK.toAssignments([by['105'], by['104']], { 105: 'a', 104: 'a' }, H('a'), {}); assert.deepStrictEqual(out[0].rooms.map(r => [r.roomNumber, r.cat, r.stay]), [['104', 'departure', 'Oct 17 → Oct 19'], ['105', 'inhouse', 'Oct 18 → Oct 21']]);
+  assert.deepStrictEqual(HK.parseColors(null), HK.PRINT_COLOR_DEFAULTS); assert.deepStrictEqual(HK.parseColors(JSON.stringify({ dirty: '#00ff00', inhouse: '#eeeeee', priority: 'pink', departure: '' })), { dirty: '#00ff00', departure: '', priority: '#fed7e2', inhouse: '#eeeeee' }, 'valid hex kept, "" = no colour, junk → default'); assert.deepStrictEqual(HK.parseColors('{bad'), HK.PRINT_COLOR_DEFAULTS);
+  const tm = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 1 }); assert(tm.items.every(i => HK.CATS.includes(i.cat))); assert(tm.items.filter(i => i.kind === 'service').every(i => i.cat === 'inhouse' || i.cat === 'priority'));
+});
 console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`);

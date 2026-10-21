@@ -3735,6 +3735,14 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
       const n = parseInt(v, 10);
       return n === 0 || (n >= 7 && n <= 3650);
     },
+    // Sprint 23.4: colours of the printed housekeeping sheets — JSON { dirty, departure, priority, inhouse }, each '#RRGGBB' or '' (no colour).
+    // Written from the Dev view only; managers read it (GET) so their prints use it.
+    hk_print_colors: v => {
+      try {
+        const o = JSON.parse(String(v)); const keys = ['dirty', 'departure', 'priority', 'inhouse'];
+        return !!o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).every(k => keys.includes(k)) && keys.every(k => o[k] === undefined || o[k] === '' || /^#[0-9A-Fa-f]{6}$/.test(o[k]));
+      } catch { return false; }
+    },
     // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).
     // enabled: 'true'|'false'; scale: percent of the calibrated table (25..300, 100 = as calibrated);
     // min: minimum extra rooms for a room-type group with 4+ booked arrivals (0..10).
@@ -3808,7 +3816,7 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
   // before because that signals a real bug or attack, not version drift.
   const writes = [];
   // Sprint 22.4: forecast / sync / guest-data settings live in the Dev area only.
-  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_)/.test(k) || k === 'guest_detail_retention_days')) {
+  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_|hk_)/.test(k) || k === 'guest_detail_retention_days')) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   for (const [k, v] of Object.entries(updates)) {

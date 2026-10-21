@@ -11,10 +11,24 @@
 // `min` (10) and at most `max` (15) workload — all adjustable. `balance` hands the rooms out automatically (re-run after every change): same floor →
 // same housekeeper wherever possible; cards a person placed by hand are PINNED and never moved by it.
 import { buildDayModel, addDays, normFloor, floorLabel } from '../Forecast/forecastModel';
-import { buildRoomSheet } from '../Forecast/roomSheet';
+import { buildRoomSheet, shortDate } from '../Forecast/roomSheet';
 
 export const DEFAULT_SETTINGS = { min: 10, max: 15, cleanWeight: 1, serviceWeight: 0.5 };
 export const KIND_LABEL = { clean: 'Clean', service: 'Service' };
+
+// Colour groups of the PRINTED sheet. Defaults (Dev can change them): dirty rooms green · remaining check-outs (leaving today) yellow · priority /
+// pre-assigned rooms pink · in-house (stay-over) rooms no colour, they show check-in → check-out instead.
+export const CATS = ['dirty', 'departure', 'priority', 'inhouse'];
+export const CAT_LABEL = { dirty: 'Dirty rooms', departure: 'Check-outs (leaving that day)', priority: 'Priority rooms (clean first / pre-assigned)', inhouse: 'In-house (stay-over)' };
+export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', inhouse: '' };
+/** Stored setting (JSON string) → a full colour map; anything missing/invalid falls back to the default. '' = no colour. */
+export function parseColors(raw) {
+  let o = {}; try { o = typeof raw === 'string' ? JSON.parse(raw) : (raw || {}); } catch { o = {}; }
+  const out = {}; CATS.forEach(k => { out[k] = (o && Object.prototype.hasOwnProperty.call(o, k) && (o[k] === '' || /^#[0-9A-Fa-f]{6}$/.test(o[k]))) ? o[k] : PRINT_COLOR_DEFAULTS[k]; });
+  return out;
+}
+/** Which colour group a work item belongs to. */
+export const catOf = (it) => (it.priority ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|In progress)/.test(it.why || '') ? 'dirty' : 'departure');
 
 const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byRoom = (a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
@@ -68,6 +82,10 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date) locked.add(String(r.roomNumber)); });
   // every locked room that has work gets the lock mark; clean ones also go first
   items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean') { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
+  // colour group + the stay (check-in → check-out) of whoever is in the room
+  const stayBy = new Map();
+  ((payload && payload.reservations) || []).filter(r => r.status === 'INH' && r.roomNumber).forEach(r => { const k = String(r.roomNumber), prev = stayBy.get(k); if (!prev || String(r.departureDate) > prev.dep) stayBy.set(k, { dep: String(r.departureDate), text: `${shortDate(r.arrivalDate)} → ${shortDate(r.departureDate)}` }); });
+  items.forEach(i => { i.cat = catOf(i); if (!i.tbd && stayBy.has(i.roomNumber)) i.stay = stayBy.get(i.roomNumber).text; });
   const seen = new Set();
   const uniq = items.filter(i => (seen.has(i.roomNumber) ? false : (seen.add(i.roomNumber), true)));   // a room never appears twice (clean wins: it came first)
   uniq.sort(byRoom);
@@ -175,6 +193,8 @@ export function toAssignments(items, assign, hks, pinned = {}) {
         if (i.priority) o.priority = true;
         if (pinned[i.roomNumber] === h.userId) o.pinned = true;
         if (i.typeCode) o.typeCode = i.typeCode;
+        if (i.cat) o.cat = i.cat;
+        if (i.stay) o.stay = i.stay;
         if (i.why) o.why = i.why;
         return o;
       }),

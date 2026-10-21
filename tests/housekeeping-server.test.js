@@ -3,8 +3,10 @@
 const ROOT = process.argv[2]; const SRV = ROOT + '/server'; const assert = require('assert'); const { execSync } = require('child_process'); const fs = require('fs');
 process.env.PORT = '3993'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.DATABASE_URL = 'postgres://u:p@127.0.0.1:1/none';
 const jwt = require(SRV + '/node_modules/jsonwebtoken'); const pg = require(SRV + '/node_modules/pg'); const { sanitizePlan } = require(SRV + '/housekeeping');
-const rows = new Map(); const sqls = [];
+const rows = new Map(); const sqls = []; const settingsStore = {};
 pg.Pool.prototype.query = async function (sql, params) { const q = String(sql).replace(/\s+/g, ' '); sqls.push({ q, params });
+  if (/INSERT INTO app_settings/.test(q)) { settingsStore[params[0]] = params[1]; return { rows: [], rowCount: 1 }; }
+  if (/FROM app_settings/.test(q)) return { rows: Object.entries(settingsStore).map(([key, value]) => ({ key, value })) };
   if (/doNotMoveRoom/.test(q)) return { rows: params[1] === '2026-10-19' ? [{ room_number: '102' }, { room_number: '110' }] : [] };
   if (/BETWEEN \$2 AND \$3/.test(q)) { const out = []; for (const [k, r] of rows) { const [pp, d] = k.split('|'); if (pp === params[0] && d >= params[1] && d <= params[2]) out.push({ date: d, hks: r.assignments.length, rooms: r.assignments.reduce((n, a) => n + a.rooms.length, 0), updated_at: r.at }); } return { rows: out }; }
   if (/FROM hk_plans/.test(q)) { const r = rows.get(params[0] + '|' + params[1]); return { rows: r ? [{ date: params[1], settings: r.settings, assignments: r.assignments, updated_at: r.at }] : [] }; }
@@ -46,6 +48,18 @@ const NOW = new Date('2026-10-19T12:00:00Z'); const good = { date: '2026-10-19',
     assert.strictEqual((await http('/api/admin/housekeeping/locked-rooms?date=2026-10-19')).status, 401); assert.strictEqual((await http('/api/admin/housekeeping/locked-rooms?date=2026-10-19', { token: T.staff })).status, 403);
     const r = await http('/api/admin/housekeeping/locked-rooms?date=2026-10-19', { token: T.admin }); assert.deepStrictEqual(r.body, { success: true, rooms: ['102', '110'] }); assert.deepStrictEqual((await http('/api/admin/housekeeping/locked-rooms?date=2026-10-20', { token: T.dev })).body.rooms, []);
     assert.strictEqual((await http('/api/admin/housekeeping/locked-rooms?date=nope', { token: T.admin })).status, 400);
+  });
+  await t('PRINT COLOURS: setting hk_print_colors — only DEV can write it; managers can READ it (their prints use it); bad JSON / unknown groups / bad hex refused', async () => {
+    const colors = JSON.stringify({ dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', inhouse: '' }); const put = (token, v) => http('/api/admin/settings', { method: 'PUT', token, body: { hk_print_colors: v } });
+    assert.strictEqual((await put(T.admin, colors)).status, 403, 'a manager cannot change the colours'); assert.strictEqual((await put(T.dev, colors)).status, 200);
+    assert.strictEqual((await http('/api/admin/settings', { token: T.admin })).body.settings.hk_print_colors, colors, 'managers read it');
+    for (const bad of ['not json', '[]', JSON.stringify({ dirty: 'green' }), JSON.stringify({ dirty: '#c6f6d5', evil: '#000000' }), JSON.stringify({ dirty: '#12345' }), '"x"']) assert.strictEqual((await put(T.dev, bad)).status, 400, bad);
+    assert.strictEqual((await put(T.dev, JSON.stringify({ dirty: '#00ff00' }))).status, 200, 'a partial map is fine (the rest fall back to defaults in the page)');
+  });
+  await t('plans keep the sheet colour group + stay, and the "by number" flag; junk is dropped', () => {
+    const r = sanitizePlan({ date: '2026-10-19', settings: { anonymous: true, min: 10 }, assignments: [{ userId: 'anon-1', name: 'Housekeeper 1', rooms: [{ roomNumber: '101', kind: 'clean', cat: 'dirty', stay: 'Oct 17 → Oct 21' }, { roomNumber: '102', kind: 'service', cat: 'rainbow', stay: '<b>x</b>' }] }] }, NOW);
+    assert(!r.error, r.error); assert.strictEqual(r.settings.anonymous, true); assert.deepStrictEqual(r.assignments[0].rooms, [{ roomNumber: '101', kind: 'clean', cat: 'dirty', stay: 'Oct 17 → Oct 21' }, { roomNumber: '102', kind: 'service' }]);
+    assert.strictEqual(sanitizePlan({ date: '2026-10-19', settings: { anonymous: 'yes' }, assignments: [] }, NOW).settings.anonymous, undefined);
   });
   await t('routes: bad input → 400 with a reason and NOTHING is written; every query is parameterized and scoped to the property', async () => {
     const n = rows.size; const r = await http('/api/admin/housekeeping/plan', { method: 'PUT', token: T.admin, body: { ...good, assignments: [{ userId: 'u1', name: 'A', rooms: [{ roomNumber: "1'; DROP TABLE users;--", kind: 'clean' }] }] } }); assert.strictEqual(r.status, 400); assert(r.body.message); assert.strictEqual(rows.size, n);

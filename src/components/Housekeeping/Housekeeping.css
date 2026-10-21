@@ -116,6 +116,18 @@
 .hk-rc.just-moved { animation: hk-land .35s ease; }
 @keyframes hk-land { from { transform: scale(.92); } to { transform: none; } }
 
+/* Sprint 23.4: plan by number + print colours */
+.hk-modebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; font-size: 13px; color: var(--text-secondary); }
+.hk-countcard .hk-stepper { display: flex; gap: 8px; align-items: center; } .hk-countcard .hk-stepper .hk-input { width: 84px; text-align: center; font-size: 18px; } .hk-countcard .hk-stepper .hk-btn { width: 40px; font-size: 18px; padding: 6px 0; }
+.hk-countcard .hk-btn-primary { align-self: flex-start; }
+.hk-colors { margin-top: 14px; } .hk-colors-grid { display: grid; gap: 8px; max-width: 620px; }
+.hk-color-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px auto auto; gap: 8px; align-items: center; } .hk-color-label { font-size: 13px; color: var(--text-primary); }
+.hk-color-row input[type=color] { width: 46px; height: 32px; padding: 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface-alt); cursor: pointer; }
+.hk-color-row .hk-btn.on { background: var(--accent-bg); border-color: var(--accent-alt); }
+.hk-colors-preview { border-collapse: collapse; font-size: 12.5px; max-width: 620px; width: 100%; margin: 4px 0 0; border: 1px solid var(--border); color: #111; } .hk-colors-preview td { padding: 6px 10px; border-bottom: 1px solid rgba(0,0,0,.12); background-clip: padding-box; }
+.hk-colors-preview tr:not([style]) { background: #fff; }
+.hk-colors-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .hk-colors-msg.ok { color: var(--success-text); font-size: 13px; } .hk-colors-msg.bad { color: var(--danger-text); font-size: 13px; }
+
 /* dev: every room + who cleans it */
 .hk-roomtable { margin-top: 14px; }
 .hk-roomtable .hk-panel-head { flex-wrap: wrap; gap: 10px; } .hk-tag-dev { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 1px 7px; border-radius: 6px; background: #7c3aed; color: #fff; }
@@ -152,13 +164,17 @@
   .hk-page { page: hk; break-after: page; page-break-after: always; color: #111; background: #fff; font-family: 'TiemposText', Georgia, serif; }
   .hk-page:last-child { break-after: auto; page-break-after: auto; }
   @page hk { size: letter portrait; margin: 0.5in; }
-  .hk-page-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 10px; }
+  .hk-page-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 8px; gap: 12px; }
+  .hk-page-cards { display: flex; gap: 8px; } .hk-page-card { border: 1.5px solid #111; border-radius: 6px; padding: 4px 12px; text-align: center; min-width: 74px; }
+  .hk-page-card strong { display: block; font-size: 20px; line-height: 1.1; } .hk-page-card span { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: #333; }
+  .hk-page-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 8px; font-size: 10.5px; color: #333; } .hk-page-legend span { display: inline-flex; align-items: center; gap: 6px; } .hk-page-legend i { width: 14px; height: 10px; border: 1px solid #888; display: inline-block; }
+  .hk-page-table tr { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .hk-page-table td { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .hk-stay { font-weight: 600; font-size: 11px; margin-left: 6px; }
   .hk-page-head h1 { margin: 0; font-size: 24px; } .hk-page-head p { margin: 2px 0 0; font-size: 12px; color: #444; } .hk-page-tot { font-size: 12px; }
   .hk-page-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .hk-page-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1.5px solid #111; padding: 4px 6px; }
   .hk-page-table td { border-bottom: 1px solid #bbb; padding: 7px 6px; vertical-align: middle; }
   .hk-notes { width: 28%; } .hk-num { font-weight: 700; font-size: 14px; } .hk-why { color: #555; font-size: 10.5px; }
   .hk-box { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #111; border-radius: 2px; }
-  .hk-first td { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .hk-firsttag { font-size: 10px; }
+  .hk-firsttag { font-size: 10px; }
   .hk-page-foot { margin-top: 14px; font-size: 10.5px; color: #444; } .hk-page-empty { font-size: 13px; }
 }
