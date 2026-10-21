@@ -11,24 +11,34 @@
 |--------|-------|--------|
 | 21.1   | Diagnose why the Room Forecast "isn't working" | **Done** — no crash/data bug found; the model only answered "today" (see entry) |
 | 21.2   | Date-aware forecast model + 14-day outlook + rebuilt page | **Built + tested** (19 tests incl. live rGuest checks) — awaiting user confirmation it fixes what they saw |
-| 21.3   | Live room board (today), VI/PU semantics, workload-only future days, sync removed, HK/FD action lists | **Built + tested, NOT yet deployed** (see entry). Printable sheet for the selected day still open |
-| 21.4   | Day 2–14 cleaning priority (expected arrivals, floor suggestions), selected-day Generate-forecast sheet, info popovers, late-booking settings | **Built + tested, NOT yet deployed** |
-| 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested, NOT yet deployed** (no migration) |
+| 21.3   | Live room board (today), VI/PU semantics, workload-only future days, sync removed, HK/FD action lists | **Built + tested** (see entry). Printable sheet for the selected day still open |
+| 21.4   | Day 2–14 cleaning priority (expected arrivals, floor suggestions), selected-day Generate-forecast sheet, info popovers, late-booking settings | **Built + tested** |
+| 21.5   | Stored future list window 30 d → 365 d, separate from the 30 d guest-detail window | **Built + tested** (no migration) |
 | 22.1   | Sync engine: migration 028, mirror, ticks, endpoints, write-behind | **Built + tested (live dry run PASS), NOT yet deployed** |
-| 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
-| 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
+| 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
+| 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
-| 23.2   | Housekeeping: do-not-move rooms, new layout, drag flicker, mobile | **Built + tested, NOT yet deployed** (no new migration) |
-| 23.1   | Housekeeping redesign: history, two cards, draggable cards, auto-balance | **Built + tested, NOT yet deployed** (no new migration) |
-| 23     | Housekeeping page: assign rooms to housekeepers, print one sheet each | **Built + tested, NOT yet deployed** — NEEDS migration 030 |
-| 22.10  | Animations: summary bars, 14-day outlook, room-type dropdowns | **Built + tested, NOT yet deployed** — closes Sprint 22 |
-| 22.9   | Forecast: outlook on top, rooms by floor, colored room sheet with stay dates, print fixed | **Built + tested, NOT yet deployed** (frontend only) |
-| 22.8   | UI fixes: dark mode, tiles consistent, slower animation, Recent changes card | **Built + tested, NOT yet deployed** (CSS/JS only) |
-| 22.7   | Reservations tiles redo (left-first numbers, rings, count-up, room lists) | **Built + tested, NOT yet deployed** (no migration; new dev route `/api/dev/rooms/last-stays`) |
-| 22.6   | One shell for dev + managers; lean manager Reservations; second-night cleaning plan; room status sheet | **Built + tested, NOT yet deployed** (no migration, no new env) |
-| 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
+| 23.3   | Housekeeping: aligned layout, manual-first + Auto-assign/Reset, fixed columns, dev room table | **Built + tested** |
+| 23.2   | Housekeeping: do-not-move rooms, new layout, drag flicker, mobile | **Built + tested** (no new migration) |
+| 23.1   | Housekeeping redesign: history, two cards, draggable cards, auto-balance | **Built + tested** (no new migration) |
+| 23     | Housekeeping page: assign rooms to housekeepers, print one sheet each | **Built + tested** — NEEDS migration 030 |
+| 22.10  | Animations: summary bars, 14-day outlook, room-type dropdowns | **Built + tested** — closes Sprint 22 |
+| 22.9   | Forecast: outlook on top, rooms by floor, colored room sheet with stay dates, print fixed | **Built + tested** (frontend only) |
+| 22.8   | UI fixes: dark mode, tiles consistent, slower animation, Recent changes card | **Built + tested** (CSS/JS only) |
+| 22.7   | Reservations tiles redo (left-first numbers, rings, count-up, room lists) | **Built + tested** (no migration; new dev route `/api/dev/rooms/last-stays`) |
+| 22.6   | One shell for dev + managers; lean manager Reservations; second-night cleaning plan; room status sheet | **Built + tested** (no migration, no new env) |
+| 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.3: Housekeeping alignment, manual-first assignment, dev room table
+
+1. **Row 1**: the five numbers are now small separate cards on the LEFT (wider), the day strip on the RIGHT showing about five days (scroll for the rest).
+2. **Row 2**: Staff is wider and exactly as tall as the stack beside it (the row's height comes from the stack; the staff list scrolls inside); the stack = **Working today** (top, with **Auto-assign** and **Reset** beside the title, then the rules) and **Not assigned** (below). **Nothing is assigned by itself any more**: adding people leaves every room in "Not assigned" (the capacity warning still shows); **Auto-assign** shares the not-hand-placed rooms out (same balancer: floor affinity, min/max) and keeps hand-placed (pinned) cards; **Reset** asks "Put every room back in Not assigned?" (Yes, reset / Cancel) and empties every column incl. hand-placed (people stay). Dragging / tap-and-"Move here" / pin dot unchanged. Removing someone sends their rooms back to the pool. Saved plans now restore the WHOLE assignment (hand-placed → pinned, the rest → auto) via `reconcile` + `resolveAssign`.
+3. **Divider** ("Housekeepers' rooms") between the controls and the columns; each housekeeper's column has a **fixed height** (clamp(340px, 54vh, 540px); 380px on phones) — header, totals and meter stay put, the cards scroll inside.
+4. **Dev table** (`HkRoomTable.js`, "Full" view only, below the cards + balancer line): every room by floor like the Forecast room status sheet — status now, stay (in → out), guest, task + reason, **who cleans it** (marks: ★ clean first, ⚑ do not move, ● hand-placed; "not assigned" highlighted), filter All / Needs work / Not assigned, Download CSV, reservations without a room as a "to be assigned" section; for tomorrow the status/stay are the board as of now (noted).
+Bug found in the screenshot: floors showed twice ("FLOOR 2" and "FLOOR 02") because stay-over rooms carry the reservation's raw floor id — all work-list floors are now normalised (`mkItem` → `normFloor`).
+Tests: `hkwork` 12, `housekeeping-server` 6, `housekeeping` 17 (manual-first, Auto-assign, Reset confirm, layout rows/stack/divider/scrolling body, dev table), all earlier suites green; build compiles; screenshots at 1440px (dark, dev) and 390px.
 
 ### 2026-10-21 — Sprint 23.2: Housekeeping fixes (do-not-move rooms, layout, drag flicker, mobile)
 

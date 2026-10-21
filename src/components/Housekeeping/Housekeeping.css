@@ -17,9 +17,6 @@
 /* day strip */
 
 /* stat bar */
-.hk-statbar { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 10px 16px; margin-bottom: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; }
-.hk-statbar > div { display: flex; flex-direction: column; } .hk-statbar span { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
-.hk-statbar strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 24px; line-height: 1.15; color: var(--text-primary); }
 
 /* two cards: staff (left) · working + rules (right) */
 .hk-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -62,7 +59,7 @@
 /* a room card */
 .hk-rc { position: relative; width: 66px; padding: 5px 7px 4px; border-radius: 8px; border: 1px solid var(--border); border-left-width: 4px; background: var(--bg-surface-alt); color: var(--text-primary); cursor: grab; user-select: none; display: flex; flex-direction: column; gap: 0; }
 .hk-rc:active { cursor: grabbing; }
-.hk-rc.withguest, .hk-board.dev .hk-rc { width: 150px; }
+.hk-rc.withguest, .hk-board.dev .hk-rc { width: 144px; }
 .hk-rc-top { display: flex; align-items: center; justify-content: space-between; } .hk-rc strong { font-size: 15px; line-height: 1.2; } .hk-rc small { font-size: 10.5px; color: var(--text-muted); }
 .hk-rc-clean { border-left-color: #e53e3e; } .hk-rc-service { border-left-color: #3182ce; }
 .hk-rc.prio { box-shadow: 0 0 0 1.5px #ecc94b; } .hk-rc-star { font-style: normal; color: #d69e2e; font-size: 12px; }
@@ -76,46 +73,77 @@
 @media (prefers-reduced-motion: reduce) { .hk-meter span, .hk-col, .hk-switch-track, .hk-switch-knob, .hk-warnbar { transition: none; animation: none; } }
 
 
-/* ── Sprint 23.2 layout ── */
-.hk-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; align-items: stretch; }
+/* ── Sprint 23.3 layout ── */
+/* row 1: numbers (small cards) · days */
+.hk-top { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; align-items: stretch; }
+.hk-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.hk-stat { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.hk-stat span { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.hk-stat strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 28px; line-height: 1.15; color: var(--text-primary); }
 .hk-daycard { padding: 10px 14px 8px; gap: 4px; min-width: 0; }
 .hk-strip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: thin; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
-.hk-day { flex: 0 0 auto; min-width: 92px; font-family: inherit; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; text-align: left; scroll-snap-align: end; }
-.hk-day b { font-size: 13px; } .hk-day span { font-size: 12px; color: var(--text-muted); } .hk-day small { font-size: 10.5px; color: var(--text-muted); min-height: 13px; }
+.hk-day { flex: 0 0 auto; min-width: 96px; font-family: inherit; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; text-align: left; scroll-snap-align: end; }
+.hk-day b { font-size: 13px; } .hk-day span { font-size: 12px; color: var(--text-muted); } .hk-day small { font-size: 10.5px; color: var(--text-muted); min-height: 13px; white-space: nowrap; }
 .hk-day.past { background: transparent; } .hk-day.past:not(.has) { opacity: .6; } .hk-day.has small { color: var(--success-text); font-weight: 600; }
 .hk-day.on { border-color: var(--accent-alt); box-shadow: inset 0 0 0 2px var(--accent-alt); background: var(--accent-bg); }
 .hk-savestate { font-size: 12.5px; color: var(--text-muted); } .hk-savestate .ok { color: var(--success-text); } .hk-savestate .bad { color: var(--danger-text); }
-.hk-statbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px 14px; align-content: center; padding: 12px 16px; margin: 0; flex-direction: row; }
-.hk-statbar > div { display: flex; flex-direction: column; min-width: 0; } .hk-statbar span { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
-.hk-statbar strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 26px; line-height: 1.15; color: var(--text-primary); }
 
-/* row 2: staff (narrow) · working today · not assigned */
-.hk-mid { display: grid; grid-template-columns: 270px minmax(0, 0.9fr) minmax(0, 1.4fr); gap: 12px; margin-bottom: 12px; align-items: start; }
-.hk-mid .hk-staff-list, .hk-mid .hk-working-list { max-height: 210px; }
-.hk-mid .hk-staff-list li, .hk-mid .hk-working-list li { padding: 5px 8px; }
-.hk-mid .hk-pool { border-style: dashed; min-height: 0; max-height: 330px; overflow-y: auto; }
+/* row 2: staff (wide) and a stack — working today / not assigned — of the SAME total height */
+.hk-mid { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: 12px; margin-bottom: 4px; align-items: stretch; }
+.hk-mid > .hk-staff { height: 0; min-height: 100%; }                 /* the row's height comes from the stack; the staff list scrolls inside */
+.hk-staff .hk-staff-list { flex: 1 1 0; min-height: 0; max-height: none; }
+.hk-staff-list .hk-btn { white-space: nowrap; }
+.hk-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.hk-working .hk-panel-head { flex-wrap: wrap; } .hk-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hk-working-list { max-height: 190px; }
+.hk-btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; } .hk-btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+.hk-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--danger-text); background: var(--danger-subtle); border: 1px solid var(--danger-border); border-radius: 8px; padding: 4px 8px; }
+.hk-pool { border-style: dashed; } .hk-pool .hk-col-body { max-height: 190px; }
+.hk-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0 10px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.hk-divider::before, .hk-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); } .hk-divider::before { max-width: 28px; }
+
+/* housekeepers' columns: fixed size, the rooms scroll inside */
 .hk-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px; font-size: 12px; color: var(--text-muted); }
 .hk-legend span { display: inline-flex; align-items: center; gap: 6px; } .lg { width: 4px; height: 14px; border-radius: 2px; display: inline-block; } .lg-clean { background: #e53e3e; } .lg-service { background: #3182ce; }
 .lg-star { color: #d69e2e; font-style: normal; } .lg-lock { color: #dd6b20; font-style: normal; } .lg-pin { color: var(--accent-alt); font-style: normal; font-size: 9px; }
-.hk-board { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.hk-board { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: stretch; }
+.hk-hkcol { display: flex; flex-direction: column; height: clamp(340px, 54vh, 540px); min-height: 0; }
+.hk-hkcol .hk-col-body { flex: 1 1 0; min-height: 0; overflow-y: auto; padding-right: 2px; scrollbar-width: thin; }
+.hk-col-body { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .hk-rc { width: 76px; } .hk-rc small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hk-rc-marks { display: inline-flex; gap: 2px; align-items: center; } .hk-rc-lock { font-style: normal; color: #dd6b20; font-size: 12px; }
-.hk-rc.withguest, .hk-board.dev .hk-rc { width: 150px; }
+.hk-rc.withguest, .hk-board.dev .hk-rc { width: 144px; }
 .hk-rc.just-moved { animation: hk-land .35s ease; }
 @keyframes hk-land { from { transform: scale(.92); } to { transform: none; } }
 
-@media (max-width: 1180px) { .hk-mid { grid-template-columns: 250px minmax(0, 1fr); } .hk-mid .hk-pool { grid-column: 1 / -1; max-height: none; } .hk-top { grid-template-columns: 1fr; } }
+/* dev: every room + who cleans it */
+.hk-roomtable { margin-top: 14px; }
+.hk-roomtable .hk-panel-head { flex-wrap: wrap; gap: 10px; } .hk-tag-dev { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 1px 7px; border-radius: 6px; background: #7c3aed; color: #fff; }
+.hk-rt-count { font-size: 12.5px; color: var(--text-muted); } .hk-rt-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hk-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; } .hk-seg button { font: inherit; font-size: 12px; padding: 5px 11px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; } .hk-seg button.on { background: var(--accent-alt); color: #fff; }
+.hk-rt-wrap { max-height: 620px; overflow: auto; scrollbar-width: thin; }
+.hk-rt-floor h3 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.hk-rt { width: 100%; border-collapse: collapse; font-size: 12.5px; } .hk-rt th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 4px 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-surface); }
+.hk-rt td { padding: 5px 8px; border-bottom: 1px solid var(--border-light, var(--border)); vertical-align: top; } .hk-rt td small { display: block; color: var(--text-muted); font-size: 11px; }
+.hk-rt tr.work td { background: var(--bg-surface-alt); } .hk-rt tr.open td { box-shadow: inset 3px 0 0 #ecc94b; }
+.hk-rt-room { font-weight: 700; white-space: nowrap; } .hk-rt-star { color: #d69e2e; font-style: normal; margin-left: 4px; } .hk-rt-lock { color: #dd6b20; font-style: normal; margin-left: 3px; } .hk-rt-hand { color: var(--accent-alt); font-style: normal; font-size: 9px; margin-left: 5px; }
+.hk-rt-guest { color: var(--text-secondary); } .hk-rt-open { color: var(--warn-text); font-weight: 600; }
+
+@media (max-width: 1280px) { .hk-top { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .hk-mid { grid-template-columns: 1fr; } .hk-mid > .hk-staff { height: auto; min-height: 0; } .hk-staff .hk-staff-list { flex: none; max-height: 220px; }
+}
 @media (max-width: 760px) {
   .hk-page-wrap { padding: 12px 12px 90px; } .hk-header h1 { font-size: 26px; } .hk-sub { display: none; }
   .hk-actions { width: 100%; } .hk-actions .hk-btn { flex: 1 1 auto; text-align: center; padding: 10px 12px; }
-  .hk-mid { grid-template-columns: 1fr; } .hk-mid .hk-staff { order: 2; } .hk-mid .hk-working { order: 1; } .hk-mid .hk-pool { order: 3; }
-  .hk-mid .hk-staff-list { max-height: 190px; }
-  .hk-statbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hk-statbar strong { font-size: 22px; }
-  .hk-board { grid-template-columns: 1fr; }
+  .hk-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hk-stat strong { font-size: 22px; }
+  .hk-mid > .hk-staff { order: 2; } .hk-stack { order: 1; } .hk-stack .hk-pool { order: 3; }
+  .hk-board { grid-template-columns: 1fr; } .hk-hkcol { height: 380px; }
   .hk-rc { width: calc(25% - 6px); min-width: 70px; min-height: 48px; } .hk-board.dev .hk-rc, .hk-rc.withguest { width: calc(50% - 6px); }
   .hk-btn-sm { padding: 8px 12px; } .hk-x { width: 34px; height: 34px; } .hk-num-in { width: 64px; padding: 8px; }
-  .hk-day { min-width: 84px; }
+  .hk-day { min-width: 84px; } .hk-rt th:nth-child(4), .hk-rt td:nth-child(4), .hk-rt th:nth-child(5), .hk-rt td:nth-child(5) { display: none; }
 }
+@media (prefers-reduced-motion: reduce) { .hk-confirm, .hk-warnbar { animation: none; } }
 
 /* ── printable sheets: portaled to <body>, hidden on screen ── */
 .hk-printroot { display: none; }

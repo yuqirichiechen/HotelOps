@@ -57,10 +57,19 @@ t('PINNED cards stay where a person put them (and count toward that person\'s lo
   const gone = HK.balance(items, H('a'), { [first]: 'ghost' }, S); assert.strictEqual(gone[first], 'a', 'a pin to someone no longer working is ignored');
   const all = HK.balance(items, H('a', 'b'), Object.fromEntries(items.map(i => [i.roomNumber, 'a'])), S); assert(Object.values(all).every(u => u === 'a'), 'everything pinned → nothing moves');
 });
-t('RECONCILE a saved plan: housekeepers kept, only HAND-PLACED (pinned) rooms are pinned, rooms that no longer need work drop out', () => {
+t('RECONCILE a saved plan: housekeepers kept, hand-placed rooms are pinned, the rest come back as auto-assigned, rooms that no longer need work drop out', () => {
   const saved = { assignments: [{ userId: 'a', name: 'Ann', rooms: [{ roomNumber: '102', kind: 'clean', pinned: true }, { roomNumber: '103', kind: 'clean' }, { roomNumber: '999', kind: 'clean', pinned: true }] }, { userId: 'b', name: 'Bo', rooms: [{ roomNumber: '105', kind: 'service', pinned: true }] }] };
   const w = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }); const r = HK.reconcile(saved, w.items);
-  assert.deepStrictEqual(r.hks.map(h => h.name), ['Ann', 'Bo']); assert.deepStrictEqual(r.pinned, { 102: 'a', 105: 'b' }); assert.deepStrictEqual(HK.reconcile(null, w.items), { hks: [], pinned: {} });
+  assert.deepStrictEqual(r.hks.map(h => h.name), ['Ann', 'Bo']); assert.deepStrictEqual(r.pinned, { 102: 'a', 105: 'b' }); assert.deepStrictEqual(r.auto, { 103: 'a' }); assert.deepStrictEqual(HK.reconcile(null, w.items), { hks: [], pinned: {}, auto: {} });
+});
+t('RESOLVE what is on screen: hand-placed beats auto; pin to null = held in the pool; people who left are ignored; no auto-assignment unless Auto-assign ran (empty maps → everything in the pool)', () => {
+  const items = [{ roomNumber: '1' }, { roomNumber: '2' }, { roomNumber: '3' }, { roomNumber: '4' }], hks = H('a', 'b');
+  assert.deepStrictEqual(HK.resolveAssign(items, hks, {}, {}), {}, 'nothing assigned by itself');
+  assert.deepStrictEqual(HK.resolveAssign(items, hks, { 1: 'b', 2: null }, { 1: 'a', 2: 'a', 3: 'a', 4: 'ghost' }), { 1: 'b', 3: 'a' }, 'pin beats auto; null pin keeps 2 in the pool; ghost ignored');
+});
+t('FLOORS are normalised: "02" and "2" are ONE floor (the stay-over rooms carry the reservation\'s raw floor id) — no duplicate floor groups', () => {
+  const p4 = JSON.parse(JSON.stringify(payload)); p4.reservations.forEach(r => { if (r.status === 'INH') r.floorId = '0' + (String(r.roomNumber)[0] || '1'); });
+  for (const off of [0, 1]) { const w = HK.buildWorkList({ payload: p4, live: null, allowance: allow, offset: off }); const ids = [...new Set(w.items.map(i => i.floorId))]; assert(ids.every(f => f === 'G' || f === 'unknown' || /^[1-9]\d?$/.test(f)), 'normalised: ' + ids.join(',')); assert.strictEqual(new Set(w.items.map(i => i.floorLabel)).size, ids.length, 'one label per floor'); }
 });
 t('toAssignments (saved/printed): clean-first first, then floor/room; keeps priority, pinned, type and reason', () => {
   const items = [{ roomNumber: '101', floorId: '01', typeCode: 'NQRR', why: 'Dirty', kind: 'clean', priority: false }, { roomNumber: '102', floorId: '01', kind: 'service', priority: false }, { roomNumber: '201', floorId: '02', kind: 'clean', priority: true }];

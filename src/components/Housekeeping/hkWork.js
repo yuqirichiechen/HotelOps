@@ -20,7 +20,11 @@ const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byRoom = (a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
 const WHY_TOMORROW = { dirty: 'Dirty now — needed for a booked arrival', tonight: 'Checks out today — needed for a booked arrival', tomorrow: 'Checks out tomorrow — needed for a booked arrival' };
 
-const mkItem = (roomNumber, typeCode, floorId, kind, why, priority, tbd = false) => ({ roomNumber: String(roomNumber), typeCode: typeCode || '', floorId, floorLabel: floorLabel(floorId), kind, why, priority: !!priority, tbd });
+// floors are always normalised ('02' and '2' are the same floor — the stay-over rooms of the plan carry the reservation's raw floor id)
+const mkItem = (roomNumber, typeCode, floorId, kind, why, priority, tbd = false) => {
+  const f = tbd ? 'unknown' : normFloor(floorId, roomNumber);
+  return { roomNumber: String(roomNumber), typeCode: typeCode || '', floorId: f, floorLabel: floorLabel(f), kind, why, priority: !!priority, tbd };
+};
 
 /** A guest asked NOT to be moved out of the room they were given (rGuest "Do not move", stored as summary.stay.doNotMoveRoom). The server lists those rooms
  *  (`/admin/housekeeping/locked-rooms`); a payload flag is also honoured. */
@@ -137,15 +141,27 @@ export function warnings(sum, totalUnits, s = DEFAULT_SETTINGS) {
   return { overall, perHk };
 }
 
-/** Saved plan → housekeepers + pins for the current work list (rooms that are no longer needed drop out; new rooms are left to the balancer). */
+/** Saved plan → housekeepers + assignments for the current work list. `pinned` = placed by hand, `auto` = handed out by Auto-assign. Rooms that no
+ *  longer need work drop out; rooms the plan never had stay in the "Not assigned" pool. */
 export function reconcile(saved, items) {
   const need = new Set(items.map(i => i.roomNumber));
-  const hks = [], pinned = {};
+  const hks = [], pinned = {}, auto = {};
   for (const a of (saved && saved.assignments) || []) {
     hks.push({ userId: a.userId, name: a.name });
-    for (const r of a.rooms || []) if (need.has(String(r.roomNumber)) && r.pinned) pinned[String(r.roomNumber)] = a.userId;
+    for (const r of a.rooms || []) { const k = String(r.roomNumber); if (!need.has(k)) continue; if (r.pinned) pinned[k] = a.userId; else auto[k] = a.userId; }
   }
-  return { hks, pinned };
+  return { hks, pinned, auto };
+}
+
+/** The assignment that is on screen: hand-placed cards win, then what Auto-assign handed out; everything else is in the pool. */
+export function resolveAssign(items, hks, pinned = {}, auto = {}) {
+  const ids = new Set(hks.map(h => h.userId)), out = {};
+  for (const it of items) {
+    const k = it.roomNumber;
+    if (Object.prototype.hasOwnProperty.call(pinned, k)) { if (pinned[k] && ids.has(pinned[k])) out[k] = pinned[k]; continue; }
+    if (auto[k] && ids.has(auto[k])) out[k] = auto[k];
+  }
+  return out;
 }
 
 /** What gets saved / printed: per housekeeper, priority rooms first, then by floor and room number. */

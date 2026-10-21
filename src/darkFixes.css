@@ -147,3 +147,15 @@
 @media screen {
   :root[data-theme="dark"] .hk-devnote { color:#d6bcfa;border-color:#9f7aea; }
 }
+
+/* 23.3 */
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hk-tag-dev { background:#7c3aed; }
+  :root:not([data-theme="light"]) .hk-rt tr.open td { box-shadow:inset 3px 0 0 #b7791f; }
+  :root:not([data-theme="light"]) .hk-rt-open { color:#f6e05e; }
+}
+@media screen {
+  :root[data-theme="dark"] .hk-tag-dev { background:#7c3aed; }
+  :root[data-theme="dark"] .hk-rt tr.open td { box-shadow:inset 3px 0 0 #b7791f; }
+  :root[data-theme="dark"] .hk-rt-open { color:#f6e05e; }
+}
