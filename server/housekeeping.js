@@ -1,13 +1,13 @@
 // Sprint 23 — validation for a saved housekeeping plan (pure; the route in server.js does the SQL).
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ROOM_RE = /^[A-Za-z0-9-]{1,8}$/;
-const DEFAULTS = { min: 10, cleanWeight: 1, serviceWeight: 0.5 };
+const DEFAULTS = { min: 10, max: 15, cleanWeight: 1, serviceWeight: 0.5 };
 
 const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : d; };
 
 function sanitizeSettings(s) {
   s = s && typeof s === 'object' ? s : {};
-  return { min: num(s.min, 1, 100, DEFAULTS.min), cleanWeight: num(s.cleanWeight, 0.1, 5, DEFAULTS.cleanWeight), serviceWeight: num(s.serviceWeight, 0, 5, DEFAULTS.serviceWeight) };
+  return { min: num(s.min, 1, 100, DEFAULTS.min), max: num(s.max, 1, 200, DEFAULTS.max), cleanWeight: num(s.cleanWeight, 0.1, 5, DEFAULTS.cleanWeight), serviceWeight: num(s.serviceWeight, 0, 5, DEFAULTS.serviceWeight) };
 }
 
 /** @returns {{error: string}|{date, settings, assignments}} */
@@ -32,7 +32,12 @@ function sanitizePlan(body, today = new Date()) {
       if (!r || (r.kind !== 'clean' && r.kind !== 'service')) return { error: 'room kind must be clean or service' };
       if (seenRooms.has(roomNumber)) return { error: `room ${roomNumber} is assigned twice` };
       seenRooms.add(roomNumber);
-      rooms.push(r.priority ? { roomNumber, kind: r.kind, priority: true } : { roomNumber, kind: r.kind });
+      const out = { roomNumber, kind: r.kind };
+      if (r.priority) out.priority = true;
+      if (r.pinned) out.pinned = true;                                   // placed by hand — automatic balancing leaves it alone
+      if (typeof r.typeCode === 'string' && /^[A-Za-z0-9]{1,12}$/.test(r.typeCode)) out.typeCode = r.typeCode;
+      if (typeof r.why === 'string' && r.why.trim()) out.why = r.why.trim().slice(0, 90);
+      rooms.push(out);
     }
     assignments.push({ userId, name, rooms });
   }

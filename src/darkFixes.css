@@ -139,3 +139,11 @@
   :root[data-theme="dark"] .rs-row.rs-off td { background:#253649;color:#a0aec0; }
   :root[data-theme="dark"] .rs-legend { color:#a0aec0; }
 }
+
+/* 23.1 */
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hk-devnote { color:#d6bcfa;border-color:#9f7aea; }
+}
+@media screen {
+  :root[data-theme="dark"] .hk-devnote { color:#d6bcfa;border-color:#9f7aea; }
+}

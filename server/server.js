@@ -1125,6 +1125,19 @@ app.get('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async
     return res.json({ success: true, plan: rows[0] ? { date: rows[0].date, settings: rows[0].settings, assignments: rows[0].assignments, updatedAt: rows[0].updated_at } : null });
   } catch (err) { console.error('[hk:get]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
+// Sprint 23.1 — which days have a saved plan (the day strip + history). One cheap query over at most 60 days.
+app.get('/api/admin/housekeeping/plans', requireAuth, requireRole('admin'), async (req, res) => {
+  const from = String(req.query.from || ''), to = String(req.query.to || '');
+  const ok = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!ok(from) || !ok(to) || Date.parse(to) < Date.parse(from) || Date.parse(to) - Date.parse(from) > 60 * 86400000) return res.status(400).json({ success: false, message: 'from/to must be YYYY-MM-DD, at most 60 days apart' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT to_char(plan_date,'YYYY-MM-DD') AS date, jsonb_array_length(assignments)::int AS hks,
+              (SELECT COALESCE(SUM(jsonb_array_length(a->'rooms')), 0) FROM jsonb_array_elements(assignments) a)::int AS rooms, updated_at
+         FROM hk_plans WHERE property_id = $1 AND plan_date BETWEEN $2 AND $3 ORDER BY plan_date`, [hkProperty(), from, to]);
+    return res.json({ success: true, plans: rows.map(r => ({ date: r.date, hks: r.hks, rooms: r.rooms, updatedAt: r.updated_at })) });
+  } catch (err) { console.error('[hk:list]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
 app.put('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async (req, res) => {
   const plan = sanitizePlan(req.body);
   if (plan.error) return res.status(400).json({ success: false, message: plan.error });

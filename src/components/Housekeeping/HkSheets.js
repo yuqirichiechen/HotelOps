@@ -34,8 +34,8 @@ const HkSheets = ({ dateLabel, sheets, settings, onDone }) => {
                   {sh.rooms.map(r => (
                     <tr key={r.roomNumber} className={r.priority ? 'hk-first' : ''}>
                       <td><span className="hk-box" /></td>
-                      <td className="hk-num">{r.roomNumber}</td>
-                      <td>{r.floorLabel}</td>
+                      <td className="hk-num">{r.tbd ? 'TBD' : r.roomNumber}</td>
+                      <td>{r.floorLabel || ''}</td>
                       <td>{r.typeCode}</td>
                       <td>{KIND_LABEL[r.kind]}{r.kind === 'clean' ? '' : ' (stay-over)'}{r.priority ? <b className="hk-firsttag"> · CLEAN FIRST</b> : null}{r.why && r.kind === 'clean' ? <span className="hk-why"> {r.why}</span> : null}</td>
                       <td className="hk-notes" />

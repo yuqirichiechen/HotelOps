@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23.1   | Housekeeping redesign: history, two cards, draggable cards, auto-balance | **Built + tested, NOT yet deployed** (no new migration) |
 | 23     | Housekeeping page: assign rooms to housekeepers, print one sheet each | **Built + tested, NOT yet deployed** — NEEDS migration 030 |
 | 22.10  | Animations: summary bars, 14-day outlook, room-type dropdowns | **Built + tested, NOT yet deployed** — closes Sprint 22 |
 | 22.9   | Forecast: outlook on top, rooms by floor, colored room sheet with stay dates, print fixed | **Built + tested, NOT yet deployed** (frontend only) |
@@ -27,6 +28,17 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.1: Housekeeping redesign (history, two cards, cards you drag, automatic balancing)
+
+User decisions: past days read-only, dev sees extra detail, "locked room" field to be named by the user (not found in our data), dragged cards stay put.
+1. **History**: a day strip (14 days back, today, tomorrow). Past days show the SAVED assignment read-only (cards, no drag/save/staff panel, printable without writing); days with a plan show "N HK · M rooms"; no plan → "Nothing was saved". New `GET /api/admin/housekeeping/plans?from&to` (≤60 days, counts per day). Saved rooms now keep `typeCode`, `why`, `pinned` (server sanitizes; junk dropped).
+2. **Two cards**: left = all staff (search, scrolling list, Add), right = who is working today/tomorrow (remove ×) + rules (min, **max**, clean/service weights, "Reset hand-placed"). 3. The "Housekeeping only" checkbox is a themed switch. Slimmer stat bar replaces the big tiles.
+4. **No "no room number" note**: reservations without a room still count by ROOM TYPE — each becomes a placeholder card "TBD · NQRR" (clean-first / check-out / stay-over) that is handed out like a room.
+5. **Locked rooms**: plumbing only — `isRoomLocked(res)` (reads `roomLocked` / `roomAssignmentLocked` / `lockedRoom`); a locked arrival room that needs cleaning becomes clean-first with "guest requested this room". The real rGuest field name is still unknown → NOT populated by the scraper yet (needs the user to name it, or one detail probe).
+6. **Automatic balancing** (`balance`, replaces the Auto-suggest button): runs on every add/remove/rule change; all added housekeepers share the work evenly; a floor goes to ONE housekeeper when the cut can move to a floor boundary within 20% of a share and nobody exceeds the max; **warnings**: "Add a housekeeper…", "Too many rooms for 1 housekeeper: about 17.5 each (maximum 15). Add 1 more.", per-person over-max / below-min flags on cards, meters (with a min tick). **Rooms are small cards** grouped by floor, no names/drop-downs; drag between columns / the "Not assigned" pool (HTML5 DnD) or tap a card then "Move here" (touch); a hand-placed card is PINNED (dot; click to release) and ignored by the balancer; cards glide to their new place (FLIP, `shared/useFlip.js`).
+7. **Dev ("Full") view**: guest on every card (current guest · confirmation, or the last stay in a dirty vacant room via /api/dev/rooms/last-stays) + balancer details line; managers see neither and trigger no guest lookups.
+Tests: `hkwork` 10 (balance, adding people, pins, reconcile, saving shape, TBD cards, locked rooms), `housekeeping-server` 5 (+day strip route, real SQL), `housekeeping` 11 (two cards, auto-balance, drag, tap-move, save/restore, history read-only, tomorrow, print, dev vs manager); all other suites green; build compiles; dark-mode screenshot checked. No new migration (030 from Sprint 23).
 
 ### 2026-10-21 — Sprint 23: Housekeeping (assign rooms to housekeepers)
 

@@ -34,24 +34,50 @@ t('weights + summary: clean 1, service 0.5; totals per housekeeper and for the u
   const s = HK.summarize(items, { 1: 'a', 2: 'a', 3: 'b' }, [{ userId: 'a', name: 'Ann' }, { userId: 'b', name: 'Bo' }], { min: 2, cleanWeight: 1, serviceWeight: 0.5 });
   assert.deepStrictEqual(s.hks.map(h => [h.name, h.rooms, h.clean, h.service, h.units, h.belowMin]), [['Ann', 2, 2, 0, 2, false], ['Bo', 1, 0, 1, 0.5, true]]); assert.deepStrictEqual([s.unassigned.rooms, s.unassigned.units], [1, 0.5]);
 });
-t('AUTO-SUGGEST: only as many housekeepers as the minimum allows (no token loads), floor by floor, balanced; everyone gets something when the work is big enough', () => {
-  const mk = (n, kind = 'clean') => Array.from({ length: n }, (_, i) => ({ roomNumber: String(100 + i), floorId: String(1 + Math.floor(i / 10)), kind, priority: false }));
-  const hks = ['a', 'b', 'c', 'd'].map(id => ({ userId: id, name: id })); const S = { min: 10, cleanWeight: 1, serviceWeight: 0.5 };
-  const count = (as) => Object.values(as).reduce((m, id) => (m[id] = (m[id] || 0) + 1, m), {});
-  assert.deepStrictEqual(count(HK.suggest(mk(25), hks, S)), { a: 12, b: 13 }, '25 units / 10 → 2 housekeepers'); assert.deepStrictEqual(Object.keys(count(HK.suggest(mk(8), hks, S))), ['a'], 'under the minimum → one person');
-  assert.deepStrictEqual(Object.values(count(HK.suggest(mk(60), hks, S))).sort(), [15, 15, 15, 15], '60 rooms → all four, even'); assert.deepStrictEqual(HK.suggest(mk(60), [], S), {}); assert.deepStrictEqual(HK.suggest([], hks, S), {});
-  const ov = HK.suggest(mk(25), hks, { ...S, min: 5 }); assert.strictEqual(Object.keys(count(ov)).length, 4, 'the minimum is adjustable (min 5 → all four used)');
-  const as = HK.suggest(mk(20), hks, S); const first = Object.entries(as).filter(([, id]) => id === 'a').map(([r]) => Number(r)); assert(Math.max(...first) - Math.min(...first) === first.length - 1, 'a housekeeper gets a CONTIGUOUS run of rooms');
-  const mixed = [...mk(10, 'clean'), ...mk(10, 'service').map(i => ({ ...i, roomNumber: 'S' + i.roomNumber }))]; assert.deepStrictEqual(Object.keys(count(HK.suggest(mixed, hks, S))), ['a', 'b'].slice(0, 1), '10 clean + 10 service = 15 units → one housekeeper at min 10');
+const mkItems = (spec) => spec.flatMap(([floor, n, kind = 'clean'], fi) => Array.from({ length: n }, (_, i) => ({ roomNumber: `${floor}${String(i + 1).padStart(2, '0')}${fi ? 'x' : ''}`.slice(0, 8), floorId: floor, kind, priority: false })));
+const H = (...ids) => ids.map(id => ({ userId: id, name: id })); const S = { min: 10, max: 15, cleanWeight: 1, serviceWeight: 0.5 };
+const owners = (items, as) => items.reduce((m, i) => { const u = as[i.roomNumber]; (m[u] = m[u] || []).push(i); return m; }, {});
+t('BALANCE: everyone gets about the same workload; a floor goes to ONE housekeeper when the cut can move to the floor boundary; nothing is left over', () => {
+  const items = mkItems([['01', 12], ['02', 12], ['03', 12]]); const as = HK.balance(items, H('a', 'b', 'c'), {}, S); const o = owners(items, as);
+  assert.deepStrictEqual(Object.keys(o).sort(), ['a', 'b', 'c']); for (const id of ['a', 'b', 'c']) { assert.strictEqual(o[id].length, 12); assert.strictEqual(new Set(o[id].map(i => i.floorId)).size, 1, id + ' has ONE floor'); }
+  const items2 = mkItems([['01', 14], ['02', 10]]); const o2 = owners(items2, HK.balance(items2, H('a', 'b'), {}, S)); assert.deepStrictEqual([o2.a.length, o2.b.length], [14, 10], 'cut snapped to the floor boundary (12/12 would split floor 1)'); assert.strictEqual(Object.keys(HK.balance(items2, H('a', 'b'), {}, S)).length, 24);
+  const items3 = mkItems([['01', 20]]); const o3 = owners(items3, HK.balance(items3, H('a', 'b'), {}, S)); assert.deepStrictEqual([o3.a.length, o3.b.length], [10, 10], 'one floor must be split when there is no boundary to use');
 });
-t('RECONCILE a saved plan: rooms that no longer need work drop out, new rooms come back unassigned, housekeepers are kept', () => {
-  const saved = { assignments: [{ userId: 'a', name: 'Ann', rooms: [{ roomNumber: '102', kind: 'clean' }, { roomNumber: '999', kind: 'clean' }] }, { userId: 'b', name: 'Bo', rooms: [{ roomNumber: '105', kind: 'service' }] }] };
+t('BALANCE adapts as housekeepers are added: 1 person → everything (over the max → warning); 2 → halves; 3 → thirds; none → no owners', () => {
+  const items = mkItems([['01', 12], ['02', 12], ['03', 12], ['04', 12]]); const count = (ids) => Object.values(owners(items, HK.balance(items, H(...ids), {}, S))).map(l => l.length).sort((a, b) => a - b);
+  assert.deepStrictEqual(count(['a']), [48]); assert.deepStrictEqual(count(['a', 'b']), [24, 24]); assert.deepStrictEqual(count(['a', 'b', 'c']), [16, 16, 16], 'never a floor-aligned split that pushes someone over the max (12/12/24)'); assert.deepStrictEqual(count(['a', 'b', 'c', 'd']), [12, 12, 12, 12]); assert.deepStrictEqual(HK.balance(items, [], {}, S), {});
+  const sum1 = HK.summarize(items, HK.balance(items, H('a'), {}, S), H('a'), S); const w1 = HK.warnings(sum1, 48, S); assert(/Too many rooms for 1 housekeeper: about 48 each \(maximum 15\)\. Add 3 more\./.test(w1.overall), w1.overall); assert.strictEqual(w1.perHk.a, 'over');
+  const sum4 = HK.summarize(items, HK.balance(items, H('a', 'b', 'c', 'd'), {}, S), H('a', 'b', 'c', 'd'), S); assert.strictEqual(HK.warnings(sum4, 48, S).overall, null); assert.strictEqual(HK.warnings({ hks: [] }, 20, S).overall.startsWith('Add a housekeeper'), true);
+  const few = HK.summarize(items.slice(0, 6), HK.balance(items.slice(0, 6), H('a'), {}, S), H('a'), S); assert.strictEqual(HK.warnings(few, 6, S).perHk.a, 'under');
+});
+t('PINNED cards stay where a person put them (and count toward that person\'s load); null keeps a card in the pool; removing the person frees their pins', () => {
+  const items = mkItems([['01', 10], ['02', 10]]); const first = items[0].roomNumber, last = items[19].roomNumber;
+  const as = HK.balance(items, H('a', 'b'), { [first]: 'b', [last]: null }, S); assert.strictEqual(as[first], 'b'); assert(!(last in as), 'held in the pool'); const o = owners(items.filter(i => i.roomNumber !== last), as);
+  assert(Math.abs(o.a.length - o.b.length) <= 1, 'the rest is balanced around the pins: ' + o.a.length + '/' + o.b.length);
+  const gone = HK.balance(items, H('a'), { [first]: 'ghost' }, S); assert.strictEqual(gone[first], 'a', 'a pin to someone no longer working is ignored');
+  const all = HK.balance(items, H('a', 'b'), Object.fromEntries(items.map(i => [i.roomNumber, 'a'])), S); assert(Object.values(all).every(u => u === 'a'), 'everything pinned → nothing moves');
+});
+t('RECONCILE a saved plan: housekeepers kept, only HAND-PLACED (pinned) rooms are pinned, rooms that no longer need work drop out', () => {
+  const saved = { assignments: [{ userId: 'a', name: 'Ann', rooms: [{ roomNumber: '102', kind: 'clean', pinned: true }, { roomNumber: '103', kind: 'clean' }, { roomNumber: '999', kind: 'clean', pinned: true }] }, { userId: 'b', name: 'Bo', rooms: [{ roomNumber: '105', kind: 'service', pinned: true }] }] };
   const w = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }); const r = HK.reconcile(saved, w.items);
-  assert.deepStrictEqual(r.hks.map(h => h.name), ['Ann', 'Bo']); assert.deepStrictEqual(r.assign, { 102: 'a', 105: 'b' }); assert(!('103' in r.assign)); assert.deepStrictEqual(HK.reconcile(null, w.items), { hks: [], assign: {} });
+  assert.deepStrictEqual(r.hks.map(h => h.name), ['Ann', 'Bo']); assert.deepStrictEqual(r.pinned, { 102: 'a', 105: 'b' }); assert.deepStrictEqual(HK.reconcile(null, w.items), { hks: [], pinned: {} });
 });
-t('toAssignments (what is saved/printed): per housekeeper, clean-first rooms first, then by floor and room; priority kept', () => {
-  const items = [{ roomNumber: '101', floorId: '01', kind: 'clean', priority: false }, { roomNumber: '102', floorId: '01', kind: 'service', priority: false }, { roomNumber: '201', floorId: '02', kind: 'clean', priority: true }];
-  const out = HK.toAssignments(items, { 101: 'a', 102: 'a', 201: 'a' }, [{ userId: 'a', name: 'Ann' }, { userId: 'b', name: 'Bo' }]);
-  assert.deepStrictEqual(out[0].rooms, [{ roomNumber: '201', kind: 'clean', priority: true }, { roomNumber: '101', kind: 'clean' }, { roomNumber: '102', kind: 'service' }]); assert.deepStrictEqual(out[1], { userId: 'b', name: 'Bo', rooms: [] });
+t('toAssignments (saved/printed): clean-first first, then floor/room; keeps priority, pinned, type and reason', () => {
+  const items = [{ roomNumber: '101', floorId: '01', typeCode: 'NQRR', why: 'Dirty', kind: 'clean', priority: false }, { roomNumber: '102', floorId: '01', kind: 'service', priority: false }, { roomNumber: '201', floorId: '02', kind: 'clean', priority: true }];
+  const out = HK.toAssignments(items, { 101: 'a', 102: 'a', 201: 'a' }, H('a', 'b'), { 101: 'a' });
+  assert.deepStrictEqual(out[0].rooms, [{ roomNumber: '201', kind: 'clean', priority: true }, { roomNumber: '101', kind: 'clean', pinned: true, typeCode: 'NQRR', why: 'Dirty' }, { roomNumber: '102', kind: 'service' }]); assert.deepStrictEqual(out[1], { userId: 'b', name: 'b', rooms: [] });
+});
+t('TOMORROW: reservations with no room number yet still count BY ROOM TYPE as placeholder cards (TBD · type) that can be handed out; ids are unique and short enough to save', () => {
+  const noRoom = (id, arr, dep) => ({ id, status: 'RES', roomType: 'rt1', arrivalDateLocalDate: arr, departureDateLocalDate: dep, arrivalDate: arr + 'T07:00:00Z', departureDate: dep + 'T07:00:00Z', confirmationId: id, ratePlanCode: 'BAR', primaryGuestInfo: { firstName: 'N', lastName: id } });
+  const p2 = computeForecast({ rooms, roomTypes, reservations: [...resv, noRoom('n1', TODAY, '2026-10-20'), noRoom('n2', TODAY, '2026-10-20')], metrics: { remainingArrivalsSummary: { total: 1, remaining: 1 }, remainingDeparturesSummary: { total: 1, remaining: 1 }, totalGuestsSummary: { total: 3 }, roomConditionSummary: [] }, vipStatuses: [], ratePlans: [], roomTypeMapping: [], config: {}, forecastDate: TODAY });
+  const w = HK.buildWorkList({ payload: p2, live: null, allowance: allow, offset: 1 }); const tbd = w.items.filter(i => i.tbd);
+  assert(tbd.length >= 2, 'two 1-night bookings checking out tomorrow → two TBD cards, got ' + tbd.length); assert(tbd.every(i => i.typeCode === 'NQRR' && /^[A-Za-z0-9-]{1,8}$/.test(i.roomNumber) && i.floorId === 'unknown')); assert.strictEqual(new Set(w.items.map(i => i.roomNumber)).size, w.items.length);
+});
+t('LOCKED rooms: a guest-locked arrival room that needs cleaning is flagged clean-first with the reason (field read in one place: isRoomLocked)', () => {
+  assert.strictEqual(HK.isRoomLocked({ roomLocked: true }), true); assert.strictEqual(HK.isRoomLocked({}), false);
+  const arr = { id: 'L1', status: 'RES', roomType: 'rt1', roomId: 'room102', roomNumber: '102', arrivalDateLocalDate: TODAY, departureDateLocalDate: '2026-10-21', arrivalDate: TODAY, departureDate: '2026-10-21', confirmationId: 'L1', primaryGuestInfo: { firstName: 'L', lastName: 'K' } };
+  const base = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }).items.find(i => i.roomNumber === '102'); assert.strictEqual(base.priority, false, 'not priority without a lock');
+  const p3 = { ...payload, reservations: [...payload.reservations, { ...arr, arrivalDate: TODAY, departureDate: '2026-10-21', roomLocked: true, guestName: 'L K' }] };
+  const it = HK.buildWorkList({ payload: p3, live: null, allowance: allow, offset: 0 }).items.find(i => i.roomNumber === '102'); assert.strictEqual(it.priority, true); assert(/guest requested this room/.test(it.why));
 });
 console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`);
