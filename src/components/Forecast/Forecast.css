@@ -716,3 +716,12 @@
 .fb-room-dirty { background: var(--bg-surface-alt); }
 .sr-chip-code { font-size: 10px; color: var(--text-muted); margin: 0 4px; }
 .sr-sub-line { margin: 0 0 8px; }
+
+/* Sprint 22.10 — smooth open/close for the room-type dropdowns (height animates 0 ↔ content) */
+.sr-detail td { padding-top: 0; padding-bottom: 0; transition: padding .5s ease; }
+.sr-detail.open td { padding-top: 6px; padding-bottom: 14px; }
+.sr-collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .5s ease, opacity .4s ease; }
+.sr-detail.open .sr-collapse { grid-template-rows: 1fr; opacity: 1; }
+.sr-collapse-in { min-height: 0; overflow: hidden; }
+.sr-caret { display: inline-block; transition: transform .3s ease; }
+@media (prefers-reduced-motion: reduce) { .sr-detail td, .sr-collapse, .sr-caret { transition: none; } }

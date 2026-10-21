@@ -1,10 +1,11 @@
+/* global globalThis */
 // Sprint 22.7 — count-up number + status ring used by the Reservations tiles. Every time `animKey` changes (a click on the tile; also the first
 // appearance) the number runs from 0 to its value and the ring fills from empty. Honors "reduce motion" (no animation, final value at once).
 import React, { useEffect, useRef, useState } from 'react';
 import './CountUp.css';
 
-const reduced = () => { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch { return false; } };
-const raf = (cb) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : setTimeout(() => cb(Date.now()), 16));
+const reduced = () => { try { if (globalThis.__HOTELOPS_NO_ANIM) return true; return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch { return false; } };
+const raf = (cb) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : setTimeout(() => cb(nowMs()), 16));
 const caf = (id) => (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame(id) : clearTimeout(id));
 const nowMs = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 const ease = (x) => 1 - Math.pow(1 - x, 3);
@@ -46,4 +47,22 @@ export const StatusRing = ({ fraction = 0, animKey = 0, color = '#3182ce', label
       <span className="sr-ring-icon">{children}</span>
     </span>
   );
+};
+
+/** Sprint 22.10 — false for a moment, then true: lets a bar start at 0 and grow to its width (CSS transition). Restarts whenever `animKey` changes. */
+export function useGrow(animKey) {
+  const [grown, setGrown] = useState(reduced());
+  useEffect(() => {
+    if (reduced()) { setGrown(true); return undefined; }
+    setGrown(false);
+    const id = setTimeout(() => setGrown(true), 40);
+    return () => clearTimeout(id);
+  }, [animKey]);
+  return grown;
+}
+
+/** A horizontal bar that grows from 0 to `pct` % whenever `animKey` changes. */
+export const GrowBar = ({ pct, animKey, className, style }) => {
+  const grown = useGrow(animKey);
+  return <div className={className} style={{ ...style, width: `${grown ? pct : 0}%`, transition: grown ? 'width 1.6s cubic-bezier(.2,.7,.2,1)' : 'none' }} />;
 };

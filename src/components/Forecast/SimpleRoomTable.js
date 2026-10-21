@@ -15,7 +15,7 @@ const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byNumber = (a, b) => String(a.roomNumber || '').localeCompare(String(b.roomNumber || ''), undefined, { numeric: true });
 const list = (rows) => rows.map(r => r.roomNumber).join(', ');
 
-const Caret = ({ open }) => <span className="sr-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>;
+const Caret = ({ open }) => <span className="sr-caret" aria-hidden="true" style={{ transform: open ? 'rotate(90deg)' : 'none' }}>▸</span>;
 
 const TodayDetail = ({ g, model, roomsByType }) => {
   const inspect = ((model.actions && model.actions.inspect) || []).filter(r => r.baseCode === g.baseCode);
@@ -90,15 +90,19 @@ const FutureDetail = ({ g, model }) => {
 };
 
 const SimpleRoomTable = ({ model, roomsByType, dayLabel }) => {
-  const [open, setOpen] = useState(null);
+  const [open, setOpen] = useState(() => new Set());      // Sprint 22.10: any number of room types can be open
+  const [seen, setSeen] = useState(() => new Set());      // rows that have been opened once stay mounted so closing can animate
   const today = model.isToday;
-  const toggle = (code) => setOpen(prev => (prev === code ? null : code));
+  const toggle = (code) => {
+    setSeen(prev => (prev.has(code) ? prev : new Set(prev).add(code)));
+    setOpen(prev => { const n = new Set(prev); if (n.has(code)) n.delete(code); else n.add(code); return n; });
+  };
   const cols = today ? 5 : 4;
   return (
     <div className="fb-card sr">
       <div className="fb-card-head">
         <h2>{today ? 'Rooms to sell today' : `Rooms to sell · ${dayLabel}`}</h2>
-        <span className="fb-card-sub">Tap a room type to see its rooms</span>
+        <span className="fb-card-sub">Tap a room type to see its rooms — open as many as you like</span>
       </div>
       <div className="fb-table-wrap">
         <table className="sr-table">
@@ -111,7 +115,7 @@ const SimpleRoomTable = ({ model, roomsByType, dayLabel }) => {
           <tbody>
             {model.groups.length === 0 && <tr><td colSpan={cols} className="fb-table-empty">No room types yet.</td></tr>}
             {model.groups.map(g => {
-              const t = g.totals, isOpen = open === g.baseCode;
+              const t = g.totals, isOpen = open.has(g.baseCode);
               return (
                 <React.Fragment key={g.baseCode || g.baseLabel}>
                   <tr className={`sr-row${isOpen ? ' open' : ''}`} onClick={() => toggle(g.baseCode)}>
@@ -132,8 +136,12 @@ const SimpleRoomTable = ({ model, roomsByType, dayLabel }) => {
                       </>
                     )}
                   </tr>
-                  {isOpen && (
-                    <tr className="sr-detail"><td colSpan={cols}>{today ? <TodayDetail g={g} model={model} roomsByType={roomsByType} /> : <FutureDetail g={g} model={model} />}</td></tr>
+                  {(isOpen || seen.has(g.baseCode)) && (
+                    <tr className={`sr-detail${isOpen ? ' open' : ''}`} aria-hidden={!isOpen}>
+                      <td colSpan={cols}>
+                        <div className="sr-collapse"><div className="sr-collapse-in">{today ? <TodayDetail g={g} model={model} roomsByType={roomsByType} /> : <FutureDetail g={g} model={model} />}</div></div>
+                      </td>
+                    </tr>
                   )}
                 </React.Fragment>
               );

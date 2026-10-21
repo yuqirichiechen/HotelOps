@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 22.10  | Animations: summary bars, 14-day outlook, room-type dropdowns | **Built + tested, NOT yet deployed** — closes Sprint 22 |
 | 22.9   | Forecast: outlook on top, rooms by floor, colored room sheet with stay dates, print fixed | **Built + tested, NOT yet deployed** (frontend only) |
 | 22.8   | UI fixes: dark mode, tiles consistent, slower animation, Recent changes card | **Built + tested, NOT yet deployed** (CSS/JS only) |
 | 22.7   | Reservations tiles redo (left-first numbers, rings, count-up, room lists) | **Built + tested, NOT yet deployed** (no migration; new dev route `/api/dev/rooms/last-stays`) |
@@ -25,6 +26,12 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 22.10: animations (closes Sprint 22)
+
+Forecast (dev + manager): the **"Sellable vs arriving" bars grow from 0** and the per-type / total "left to sell" numbers **count up**, on first show and whenever another day is chosen (`GrowBar`, `useGrow`, `CountUp` in `shared/CountUp.js`, 1.6 s). **14-day outlook**: each day's occupancy bar grows and its percentage counts up on first show and when that day is clicked (`OutlookDay`).
+**Rooms to sell (manager)**: the room-type dropdowns now **animate open/closed** (grid-rows 0fr↔1fr + fade, rotating caret) and **any number can be open at once** (previously one). Closed rows stay mounted after the first open so the close can animate. "Reduce motion" skips all of it; a `window.__HOTELOPS_NO_ANIM` flag lets tests read final values. Fixed a bug found by the new test: the timer fallback for browsers without requestAnimationFrame passed the wrong clock (animation finished instantly).
+Tests: `forecastpage` 24 (+animation test, multi-open test); all others green; build compiles.
 
 ### 2026-10-21 — Sprint 22.9: Forecast + room sheet fixes
 

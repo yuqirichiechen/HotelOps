@@ -26,6 +26,7 @@ import InfoTip from './InfoTip';
 import SimpleRoomTable from './SimpleRoomTable';
 import DayTwoDetail from './DayTwoDetail';
 import SyncBadge from '../shared/SyncBadge';
+import { CountUp, GrowBar } from '../shared/CountUp';
 import { buildDayModel, buildOutlook, deriveNotes, addDays, DEFAULT_ALLOWANCE, PRIORITY_LABEL } from './forecastModel';
 import './Forecast.css';
 
@@ -75,6 +76,36 @@ const fmtLong = (ymd) => { const p = ymdParts(ymd); return `${WEEKDAYS[p.dow]}, 
 // Sprint 21 — 14-day outlook. TODAY carries the sell/close verdict from the live board; days 2–14 show only
 // housekeeping workload (arrivals ↓, departures ↑, rooms to service) and occupancy — no verdict.
 const TODAY_FLAG = { open: null, tight: 'clean first', full: 'sold out', short: 'oversold' };
+// Sprint 22.10 — one day card: its bar grows and its percentage counts up on first show and each time the day is clicked.
+const OutlookDay = ({ d, selected, onSelect }) => {
+  const [tick, setTick] = useState(0);
+  const p = ymdParts(d.date);
+  const label = d.offset === 0 ? 'Today' : d.offset === 1 ? 'Tomorrow' : WEEKDAYS[p.dow];
+  const flag = d.offset === 0 ? TODAY_FLAG[d.status] : d.status === 'nodata' ? 'no data' : d.priorityGroups > 0 ? `${d.priorityGroups} to prioritise` : null;
+  const flagKey = d.offset === 0 ? d.status : d.status === 'nodata' ? 'nodata' : 'prio';
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected === d.offset}
+      disabled={d.outsideWindow}
+      className={`fb-day fb-day-${d.offset === 0 ? d.status : (d.status === 'nodata' ? 'nodata' : 'workload')}${selected === d.offset ? ' active' : ''}`}
+      onClick={() => { setTick(t => t + 1); onSelect(d.offset); }}
+      title={d.outsideWindow ? 'Reservations are only complete a limited number of days ahead' : `${fmtLong(d.date)} — ${d.arrivals} booked${d.expectedArrivals != null ? ` (about ${d.expectedArrivals} expected)` : ''}, ${d.departures} departing, ${d.occupancyPct}% occupied tonight`}
+    >
+      <span className="fb-day-name">{label}</span>
+      <span className="fb-day-date">{MONTHS[p.m - 1]} {p.d}</span>
+      <span className="fb-day-occ"><GrowBar className="fb-day-occ-bar" pct={Math.min(100, d.occupancyPct || 0)} animKey={tick} style={{ display: 'block', height: '100%' }} /></span>
+      <span className="fb-day-pct">{d.occupancyPct != null ? <><CountUp value={d.occupancyPct} animKey={tick} />%</> : '—'}</span>
+      <span className="fb-day-flow">↓{d.arrivals} ↑{d.departures}</span>
+      {d.offset === 0
+        ? <span className="fb-day-svc">{d.leftToSell} to sell</span>
+        : d.roomsToService != null && <span className="fb-day-svc">{d.roomsToService} to service</span>}
+      {flag && <span className={`fb-day-flag fb-day-flag-${flagKey}`}>{flag}</span>}
+    </button>
+  );
+};
+
 const OutlookStrip = ({ days, selected, onSelect }) => (
   <section className="fb-outlook" aria-label="14-day outlook">
     <div className="fb-outlook-head">
@@ -82,34 +113,7 @@ const OutlookStrip = ({ days, selected, onSelect }) => (
       <span className="fb-outlook-legend">Today = live room board · later days = what to clean first</span>
     </div>
     <div className="fb-outlook-row" role="tablist">
-      {days.map(d => {
-        const p = ymdParts(d.date);
-        const label = d.offset === 0 ? 'Today' : d.offset === 1 ? 'Tomorrow' : WEEKDAYS[p.dow];
-        const flag = d.offset === 0 ? TODAY_FLAG[d.status] : d.status === 'nodata' ? 'no data' : d.priorityGroups > 0 ? `${d.priorityGroups} to prioritise` : null;
-        const flagKey = d.offset === 0 ? d.status : d.status === 'nodata' ? 'nodata' : 'prio';
-        return (
-          <button
-            key={d.date}
-            type="button"
-            role="tab"
-            aria-selected={selected === d.offset}
-            disabled={d.outsideWindow}
-            className={`fb-day fb-day-${d.offset === 0 ? d.status : (d.status === 'nodata' ? 'nodata' : 'workload')}${selected === d.offset ? ' active' : ''}`}
-            onClick={() => onSelect(d.offset)}
-            title={d.outsideWindow ? 'Reservations are only complete a limited number of days ahead' : `${fmtLong(d.date)} — ${d.arrivals} booked${d.expectedArrivals != null ? ` (about ${d.expectedArrivals} expected)` : ''}, ${d.departures} departing, ${d.occupancyPct}% occupied tonight`}
-          >
-            <span className="fb-day-name">{label}</span>
-            <span className="fb-day-date">{MONTHS[p.m - 1]} {p.d}</span>
-            <span className="fb-day-occ"><span className="fb-day-occ-bar" style={{ width: `${Math.min(100, d.occupancyPct || 0)}%` }} /></span>
-            <span className="fb-day-pct">{d.occupancyPct != null ? `${d.occupancyPct}%` : '—'}</span>
-            <span className="fb-day-flow">↓{d.arrivals} ↑{d.departures}</span>
-            {d.offset === 0
-              ? <span className="fb-day-svc">{d.leftToSell} to sell</span>
-              : d.roomsToService != null && <span className="fb-day-svc">{d.roomsToService} to service</span>}
-            {flag && <span className={`fb-day-flag fb-day-flag-${flagKey}`}>{flag}</span>}
-          </button>
-        );
-      })}
+      {days.map(d => <OutlookDay key={d.date} d={d} selected={selected} onSelect={onSelect} />)}
     </div>
   </section>
 );
@@ -333,6 +337,7 @@ const ArrivalDetailTable = ({ rows, date, isToday }) => {
 // right comparing each group's Vacant Clean vs Arrivals.
 const ForecastSummaryCard = ({ model }) => {
   const groups = model.groups;
+  const animKey = model.date;   // Sprint 22.10: bars grow + numbers count up on first show and whenever another day is chosen
   const A = (t) => (model.isToday ? t.ready : t.expected);         // series A: today = clean rooms now · future = arrivals (booked tomorrow; expected later)
   const B = (t) => (model.isToday ? t.arrivals : t.potential);     // series B: today = still arriving · future = rooms that COULD be ready (not occupied by a stayover)
   const maxVal = Math.max(1, ...groups.flatMap(g => [A(g.totals), B(g.totals)]));
@@ -345,13 +350,13 @@ const ForecastSummaryCard = ({ model }) => {
             <li key={g.baseCode || g.baseLabel}>
               <span>{g.baseCode || '—'} left to sell</span>
               <strong className={(model.isToday ? g.totals.leftNow <= 0 : g.totals.leftToSell <= 0) ? 'fb-emph-warn' : 'fb-emph-ok'}>
-                {model.isToday ? Math.max(0, g.totals.leftNow) : g.totals.leftToSell}
+                <CountUp value={model.isToday ? Math.max(0, g.totals.leftNow) : g.totals.leftToSell} animKey={animKey} />
               </strong>
             </li>
           ))}
           <li className="fb-summary-total">
             <span>Total left to sell</span>
-            <strong>{model.isToday ? model.totals.leftToSell : model.totals.leftToSellFuture} rooms</strong>
+            <strong><CountUp value={model.isToday ? model.totals.leftToSell : model.totals.leftToSellFuture} animKey={animKey} /> rooms</strong>
           </li>
         </ul>
 
@@ -364,8 +369,8 @@ const ForecastSummaryCard = ({ model }) => {
             <div className="fb-bar-group" key={`bar-${g.baseCode || g.baseLabel}`}>
               <div className="fb-bar-label">{g.baseCode || '—'}</div>
               <div className="fb-bars">
-                <div className="fb-bar-row"><div className="fb-bar fb-bar-vc" style={{ width: `${(A(g.totals) / maxVal) * 100}%` }} /><span className="fb-bar-val">{A(g.totals)}</span></div>
-                <div className="fb-bar-row"><div className="fb-bar fb-bar-ar" style={{ width: `${(B(g.totals) / maxVal) * 100}%` }} /><span className="fb-bar-val">{B(g.totals)}</span></div>
+                <div className="fb-bar-row"><GrowBar className="fb-bar fb-bar-vc" pct={(A(g.totals) / maxVal) * 100} animKey={animKey} /><span className="fb-bar-val">{A(g.totals)}</span></div>
+                <div className="fb-bar-row"><GrowBar className="fb-bar fb-bar-ar" pct={(B(g.totals) / maxVal) * 100} animKey={animKey} /><span className="fb-bar-val">{B(g.totals)}</span></div>
               </div>
             </div>
           ))}

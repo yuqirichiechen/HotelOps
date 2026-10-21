@@ -1,6 +1,6 @@
 // The REAL Forecast page in jsdom (Sprint 21.3): live board, no Sync, PU/VI split, action lists, workload-only future days,
 // ghost room, live-failure fallback, idle pause.   node tests/forecastpage.test.js "$PWD"
-const ROOT = process.argv[2]; process.env.NODE_ENV = 'test'; const assert = require('assert');
+const ROOT = process.argv[2]; process.env.NODE_ENV = 'test'; globalThis.__HOTELOPS_NO_ANIM = true; const assert = require('assert');
 const { JSDOM } = require(ROOT + '/node_modules/jsdom'); const dom = new JSDOM('<!doctype html><body><div id="root"></div></body>', { url: 'http://localhost/', pretendToBeVisual: true }); const w = dom.window;
 Object.defineProperty(globalThis, 'navigator', { value: w.navigator, configurable: true });
 Object.assign(globalThis, { window: w, document: w.document, sessionStorage: w.sessionStorage, localStorage: w.localStorage, HTMLElement: w.HTMLElement, Node: w.Node, Event: w.Event, IS_REACT_ACT_ENVIRONMENT: true });
@@ -166,12 +166,12 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   });
   await t('MANAGER dropdown: tap a room type → its rooms with housekeeping state, by subtype, plus "inspect now" / "clean first" room numbers; one open at a time', async () => {
     fresh(); const h = await mount('manager'); const row = (code) => [...h.el.querySelectorAll('.sr-row')].find(r => new RegExp(code + '\\b').test(r.querySelector('code').textContent) && r.querySelector('code').textContent === code);
-    assert(!h.el.querySelector('.sr-detail')); await h.click(row('NQRR').querySelector('.sr-toggle')); let d = h.el.querySelector('.sr-detail').textContent;
+    assert(!h.el.querySelector('.sr-detail')); await h.click(row('NQRR').querySelector('.sr-toggle')); let d = h.el.querySelector('.sr-detail.open').textContent;
     assert(/Floor 1\s*5 rooms/.test(d), 'rooms are grouped by FLOOR: ' + d); assert(h.el.querySelector('.sr-detail .fb-room-inspected') && h.el.querySelector('.sr-detail .fb-room-pickup') && h.el.querySelector('.sr-detail .fb-room-occupied'), 'green / yellow / red chips');
     for (const w of [/101\s*Vacant · inspected/, /102\s*Pickup/, /103\s*Dirty/, /104\s*Occupied/, /105\s*Occupied/, /Inspect now: 102/, /Clean first: 103/]) assert(w.test(d), String(w) + ' in: ' + d);
     assert(h.el.querySelector('.sr-row.open') && h.el.querySelector('.sr-toggle[aria-expanded="true"]'));
-    await h.click(row('NKRR').querySelector('.sr-toggle')); d = h.el.querySelector('.sr-detail').textContent; assert.strictEqual(h.el.querySelectorAll('.sr-detail').length, 1, 'only one open'); assert(/NKRR\s*Standard/.test(d) && /NKRRP\s*Pets/.test(d) && /G28\s*(NKRR\w*)?\s*Occupied/.test(d) && /202\s*(NKRR\w*)?\s*In progress/.test(d) && h.el.querySelector('.sr-detail .fb-room-progress'), d);
-    await h.click(h.el.querySelector('.sr-row.open')); assert(!h.el.querySelector('.sr-detail'), 'tapping again closes it'); await h.unmount();
+    await h.click(row('NKRR').querySelector('.sr-toggle')); d = [...h.el.querySelectorAll('.sr-detail.open')].map(x => x.textContent).find(x => /NKRRP/.test(x)); assert.strictEqual(h.el.querySelectorAll('.sr-detail.open').length, 2, 'Sprint 22.10: several room types can be open at once'); assert(/NKRR\s*Standard/.test(d) && /NKRRP\s*Pets/.test(d) && /G28\s*(NKRR\w*)?\s*Occupied/.test(d) && /202\s*(NKRR\w*)?\s*In progress/.test(d) && h.el.querySelector('.sr-detail .fb-room-progress'), d);
+    await h.click(h.el.querySelector('.sr-row.open')); assert.strictEqual(h.el.querySelectorAll('.sr-detail.open').length, 1, 'tapping one closes only that one'); assert(h.el.querySelector('.sr-detail:not(.open)'), 'closed row stays mounted so the close can animate'); await h.click(h.el.querySelector('.sr-row.open')); assert(!h.el.querySelector('.sr-detail.open'), 'all closed'); await h.unmount();
   });
   await t('MANAGER, a later day: the table becomes Expected / Turn first / Priority; the dropdown lists the departing rooms to clean by floor; choosing a day returns to the top', async () => {
     fresh({ snap: { reservations: [...reservations, R({ status: 'INH', roomNumber: '103', arrivalDate: '2026-10-11', departureDate: '2026-10-13' }), R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' }), R({ arrivalDate: '2026-10-13', departureDate: '2026-10-14' })] } });
@@ -179,7 +179,7 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
     await h.click(h.el.querySelectorAll('.fb-day')[1]); assert(scrolled >= 1, 'scrolled back to the top'); assert(/Rooms to sell · Tue, Oct 13/.test(h.el.textContent), h.el.textContent.slice(0, 300)); const card = h.el.querySelector('.fb-card').textContent; assert(/Total left to sell/.test(card) && /NQRR left to sell/.test(card) && /Rooms that can be ready/.test(card) && /Arriving \(booked\)/.test(card) && !/turn first/i.test(card), 'the summary says "left to sell", not "turn first": ' + card.slice(0, 200));
     assert.deepStrictEqual([...h.el.querySelectorAll('.sr-table thead th')].map(x => x.textContent), ['Room type', 'Arriving', 'Left to sell', 'Priority']);
     const nq = [...h.el.querySelectorAll('.sr-row')].find(r => /NQRR/.test(r.textContent)); assert(/Normal|Turn early|Turn first|May run short/.test(nq.textContent)); await h.click(nq.querySelector('.sr-toggle'));
-    const d = h.el.querySelector('.sr-detail').textContent; assert(/arriving tomorrow/.test(d) && /clean room/.test(d), d); assert(/Rooms to clean: \d+ · to service: \d+/.test(d) || /Nothing to clean or service/.test(d), d); await h.unmount();
+    const d = h.el.querySelector('.sr-detail.open').textContent; assert(/arriving tomorrow/.test(d) && /clean room/.test(d), d); assert(/Rooms to clean: \d+ · to service: \d+/.test(d) || /Nothing to clean or service/.test(d), d); await h.unmount();
   });
   await t('ROOM STATUS SHEET: the header button opens a printable sheet of every room by floor (available / unavailable / occupied + check-out), for managers and dev alike', async () => {
     fresh(); for (const mode of ['manager', 'dev']) {
@@ -187,6 +187,15 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
       assert(/Room status/.test(sheet.querySelector('h1').textContent) && /Available/.test(sheet.textContent) && /Unavailable/.test(sheet.textContent) && /Occupied/.test(sheet.textContent) && /check-in → check-out/.test(sheet.textContent), sheet.textContent.slice(0, 200));
       assert(document.querySelectorAll('.fc-sheet-floor').length >= 1 && /[A-Z][a-z]{2} \d+ → [A-Z][a-z]{2} \d+|Stay dates unknown/.test(sheet.textContent) && !/12:00 PM|11:00 AM/.test(sheet.textContent), 'dates not times'); assert(sheet.closest('.fc-print-root').parentNode === document.body, 'portaled to body so print hides everything else'); assert(!/Guest \d/.test(sheet.textContent), 'no guest names on the sheet'); await h.unmount();
     }
+  });
+  await t('22.10 ANIMATION: the outlook bars + percentages and the summary bars + numbers start at 0 and grow / count up to the real values; clicking a day replays it', async () => {
+    globalThis.__HOTELOPS_NO_ANIM = false; try {
+      fresh(); const h = await mount('manager'); const bar = () => h.el.querySelector('.fb-day-occ-bar'), pct = () => h.el.querySelector('.fb-day-pct').textContent;
+      const early = parseInt(pct(), 10); assert.strictEqual(bar().style.width, '0%', 'outlook bar starts empty'); assert.strictEqual(h.el.querySelector('.fb-bar').style.width, '0%', 'summary bar starts empty');
+      assert(/^\d/.test(h.el.querySelector('.fb-summary-total strong').textContent) && parseInt(h.el.querySelector('.fb-summary-total strong').textContent, 10) < 5, 'summary total is still counting up');
+      await act(async () => { await sleep(2400); }); const final = parseInt(pct(), 10); assert(early < final, `count-up ran: ${early} -> ${final}`); assert(bar().style.width === `${Math.min(100, final)}%`, 'bar grew to ' + bar().style.width); assert([...h.el.querySelectorAll('.fb-bar')].some(b => b.style.width !== '0%'), 'summary bars grew');
+      await h.click(h.el.querySelectorAll('.fb-day')[2]); assert(parseInt(h.el.querySelectorAll('.fb-day-pct')[2].textContent, 10) < 5, 'clicking a day replays its count-up'); await act(async () => { await sleep(2400); }); await h.unmount();
+    } finally { globalThis.__HOTELOPS_NO_ANIM = true; }
   });
   await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {
     fresh(); const h = await mount('dev'); const txt = h.el.textContent;
