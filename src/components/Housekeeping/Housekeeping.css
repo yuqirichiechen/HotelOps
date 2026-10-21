@@ -90,15 +90,16 @@
 
 /* row 2: staff (wide) and a stack — working today / not assigned — of the SAME total height */
 .hk-mid { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: 12px; margin-bottom: 4px; align-items: stretch; }
-.hk-mid > .hk-staff { height: 0; min-height: 100%; }                 /* the row's height comes from the stack; the staff list scrolls inside */
+.hk-mid > .hk-staff { height: 0; min-height: 100%; }                 /* the row's height comes from the Working card; the staff list scrolls inside */
+.hk-mid:not(.anon) { grid-template-rows: minmax(300px, auto) auto; }   /* names mode: room for the staff list even before anyone is added */
+.hk-mid.anon > .hk-staff { height: auto; min-height: 0; }
 .hk-staff .hk-staff-list { flex: 1 1 0; min-height: 0; max-height: none; }
 .hk-staff-list .hk-btn { white-space: nowrap; }
-.hk-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .hk-working .hk-panel-head { flex-wrap: wrap; } .hk-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .hk-working-list { max-height: 190px; }
 .hk-btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; } .hk-btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
 .hk-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--danger-text); background: var(--danger-subtle); border: 1px solid var(--danger-border); border-radius: 8px; padding: 4px 8px; }
-.hk-pool { border-style: dashed; } .hk-pool .hk-col-body { max-height: 190px; }
+.hk-pool { border-style: dashed; } .hk-mid .hk-pool { grid-column: 1 / -1; min-height: 0; } .hk-pool .hk-col-body { max-height: 300px; }
 .hk-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0 10px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .hk-divider::before, .hk-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); } .hk-divider::before { max-width: 28px; }
 
@@ -118,7 +119,7 @@
 
 /* Sprint 23.4: plan by number + print colours */
 .hk-modebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; font-size: 13px; color: var(--text-secondary); }
-.hk-countcard .hk-stepper { display: flex; gap: 8px; align-items: center; } .hk-countcard .hk-stepper .hk-input { width: 84px; text-align: center; font-size: 18px; } .hk-countcard .hk-stepper .hk-btn { width: 40px; font-size: 18px; padding: 6px 0; }
+.hk-countcard .hk-stepper { display: flex; gap: 8px; align-items: center; } .hk-countcard .hk-stepper .hk-input { width: 84px; text-align: center; font-size: 18px; } .hk-countcard .hk-stepper .hk-btn:not(.hk-btn-primary) { width: 40px; font-size: 18px; padding: 6px 0; }
 .hk-countcard .hk-btn-primary { align-self: flex-start; }
 .hk-colors { margin-top: 14px; } .hk-colors-grid { display: grid; gap: 8px; max-width: 620px; }
 .hk-color-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px auto auto; gap: 8px; align-items: center; } .hk-color-label { font-size: 13px; color: var(--text-primary); }
@@ -127,6 +128,10 @@
 .hk-colors-preview { border-collapse: collapse; font-size: 12.5px; max-width: 620px; width: 100%; margin: 4px 0 0; border: 1px solid var(--border); color: #111; } .hk-colors-preview td { padding: 6px 10px; border-bottom: 1px solid rgba(0,0,0,.12); background-clip: padding-box; }
 .hk-colors-preview tr:not([style]) { background: #fff; }
 .hk-colors-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .hk-colors-msg.ok { color: var(--success-text); font-size: 13px; } .hk-colors-msg.bad { color: var(--danger-text); font-size: 13px; }
+
+/* Sprint 23.5: count card */
+.hk-countcard { justify-content: flex-start; gap: 14px; } .hk-countcard .hk-stepper { flex-wrap: wrap; } .hk-countcard .hk-stepper .hk-btn-primary { margin-left: 6px; }
+.hk-suggest { margin: 0; font-size: 12.5px; color: var(--text-secondary); padding: 8px 10px; border-radius: 8px; background: var(--bg-surface-alt); border: 1px dashed var(--border); }
 
 /* dev: every room + who cleans it */
 .hk-roomtable { margin-top: 14px; }
@@ -149,7 +154,7 @@
   .hk-page-wrap { padding: 12px 12px 90px; } .hk-header h1 { font-size: 26px; } .hk-sub { display: none; }
   .hk-actions { width: 100%; } .hk-actions .hk-btn { flex: 1 1 auto; text-align: center; padding: 10px 12px; }
   .hk-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hk-stat strong { font-size: 22px; }
-  .hk-mid > .hk-staff { order: 2; } .hk-stack { order: 1; } .hk-stack .hk-pool { order: 3; }
+  .hk-mid > .hk-working { order: 1; } .hk-mid > .hk-staff { order: 2; } .hk-mid > .hk-pool { order: 3; }
   .hk-board { grid-template-columns: 1fr; } .hk-hkcol { height: 380px; }
   .hk-rc { width: calc(25% - 6px); min-width: 70px; min-height: 48px; } .hk-board.dev .hk-rc, .hk-rc.withguest { width: calc(50% - 6px); }
   .hk-btn-sm { padding: 8px 12px; } .hk-x { width: 34px; height: 34px; } .hk-num-in { width: 64px; padding: 8px; }

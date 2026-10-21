@@ -72,19 +72,25 @@ const StaffCard = ({ staff, chosen, onAdd, disabled }) => {
   );
 };
 
-/** "Just a number" mode: ask how many housekeepers are working (no names). */
-const CountCard = ({ count, draft, setDraft, onApply, disabled }) => (
-  <section className="hk-panel hk-staff hk-countcard" aria-label="How many housekeepers">
-    <div className="hk-panel-head"><h2>How many housekeepers?</h2></div>
-    <p className="hk-help">{count ? 'Change the number and the rooms are shared out again (hand-placed cards stay).' : 'No names needed — say how many are working and the rooms are shared out automatically.'}</p>
-    <div className="hk-stepper">
-      <button type="button" className="hk-btn" aria-label="One fewer" disabled={disabled || !count || count <= 1} onClick={() => onApply(count - 1)}>−</button>
-      <input className="hk-input" type="number" min="1" max="40" step="1" aria-label="Number of housekeepers" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onApply(draft); }} />
-      <button type="button" className="hk-btn" aria-label="One more" disabled={disabled || !count || count >= 40} onClick={() => onApply(count + 1)}>+</button>
-    </div>
-    <button type="button" className="hk-btn hk-btn-primary" onClick={() => onApply(draft)} disabled={disabled}>{count ? 'Apply' : 'Start'}</button>
-  </section>
-);
+/** "Just a number" mode: ask how many housekeepers are working (no names). − / + only change the number in the box; Start / Update shares the rooms out. */
+const clampCount = (v) => Math.max(1, Math.min(40, Math.floor(Number(v)) || 1));
+const CountCard = ({ count, draft, setDraft, onApply, disabled, totalUnits, settings }) => {
+  const n = clampCount(draft), started = !!count;
+  const lo = totalUnits > 0 ? Math.max(1, Math.ceil(totalUnits / settings.max)) : null, hi = totalUnits > 0 ? Math.max(lo, Math.floor(totalUnits / Math.max(1, settings.min))) : null;
+  return (
+    <section className="hk-panel hk-staff hk-countcard" aria-label="How many housekeepers">
+      <div className="hk-panel-head"><h2>How many housekeepers?</h2></div>
+      <p className="hk-help">{started ? 'Change the number, then press Update — the rooms are shared out again (hand-placed cards stay).' : 'No names needed — say how many are working, then press Start and the rooms are shared out automatically.'}</p>
+      <div className="hk-stepper">
+        <button type="button" className="hk-btn" aria-label="One fewer" disabled={disabled || n <= 1} onClick={() => setDraft(String(clampCount(n - 1)))}>−</button>
+        <input className="hk-input" type="number" min="1" max="40" step="1" aria-label="Number of housekeepers" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onApply(draft); }} />
+        <button type="button" className="hk-btn" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}>+</button>
+        <button type="button" className="hk-btn hk-btn-primary" onClick={() => onApply(draft)} disabled={disabled || (started && n === count)}>{started ? 'Update' : 'Start'}</button>
+      </div>
+      {lo != null && <p className="hk-suggest">Workload {fmt(totalUnits)} → {lo === hi ? `about ${lo}` : `${lo}–${hi}`} housekeeper{hi === 1 ? '' : 's'} keeps everyone between {settings.min} and {settings.max}.</p>}
+    </section>
+  );
+};
 
 const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
   <label className="hk-field">{label}<input className="hk-input hk-num-in" type="number" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} /></label>
@@ -396,9 +402,8 @@ const Housekeeping = ({ mode = 'manager' }) => {
             </div>
           )}
           {!readOnly && (
-            <div className="hk-mid">
-              {anon ? <CountCard count={anonCount} draft={countDraft} setDraft={setCountDraft} onApply={applyCount} disabled={readOnly} /> : <StaffCard staff={staff} chosen={hks} onAdd={addHk} disabled={readOnly} />}
-              <div className="hk-stack">
+            <div className={`hk-mid${anon ? ' anon' : ''}`}>
+              {anon ? <CountCard count={anonCount} draft={countDraft} setDraft={setCountDraft} onApply={applyCount} disabled={readOnly} totalUnits={totalUnits} settings={settings} /> : <StaffCard staff={staff} chosen={hks} onAdd={addHk} disabled={readOnly} />}
                 <section className="hk-panel hk-working" aria-label="Working">
                   <div className="hk-panel-head">
                     <h2>Working {offset === 0 ? 'today' : 'tomorrow'}</h2><span className="hk-count">{hks.length}</span>
@@ -440,7 +445,6 @@ const Housekeeping = ({ mode = 'manager' }) => {
                     {poolCards.length === 0 ? <p className="hk-muted">{items.length === 0 ? 'No rooms.' : hks.length === 0 ? (anon ? 'Enter how many housekeepers are working.' : 'Add a housekeeper, then Auto-assign or drag the cards.') : 'Everything is assigned.'}</p> : renderCards(poolCards)}
                   </div>
                 </section>
-              </div>
             </div>
           )}
 

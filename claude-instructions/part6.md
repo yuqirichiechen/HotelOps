@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23.5   | Housekeeping: count-card/stepper fixes, wider Not assigned, evenOut balancing | **Built + tested** |
 | 23.4   | Housekeeping: plan by number, print colours (dev), sheet summary | **Built + tested** |
 | 23.3   | Housekeeping: aligned layout, manual-first + Auto-assign/Reset, fixed columns, dev room table | **Built + tested** |
 | 23.2   | Housekeeping: do-not-move rooms, new layout, drag flicker, mobile | **Built + tested** (no new migration) |
@@ -31,6 +32,13 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.5: number-mode card fixes, wider "Not assigned", smarter balancing
+
+1. **Layout (both modes)**: row 2 is now [Staff or "How many housekeepers?"] + [Working today] side by side, and **Not assigned spans the full width below both** (same widths for the two cards, the pool just gets more room and shows more cards per row; slim when empty). The old stack wrapper is gone; names mode keeps a 300px minimum row so the staff list is usable even before anyone is added; number mode has no empty space (the count card also shows "Workload 43.5 → about 3–4 housekeepers keeps everyone between 10 and 15").
+2. **Stepper**: − and + now work from the start and ONLY change the number in the box (previously they were disabled until Start and then applied instantly); the button is **Start** at first and **Update** afterwards (disabled while the number equals the applied count); Enter applies; capped 1–40; the − / + width rule no longer squeezes the Update button.
+3. **Balancing — `evenOut` (new, runs at the end of `balance`)**: after the floor-by-floor split, repeatedly take the lightest housekeeper and the heaviest who has something movable and move a small group until the gap is ≤ 1 workload (and nobody stays under the minimum while the donor stays above it). What moves: stay-over **services first** (cleans only if there are no services, and only for a gap > 40% of an average load so floors of cleans stay whole); **one floor at a time** — a floor the light person already works, otherwise the donor's smallest leftover floor (so the busy one keeps their main floors and the light one gets a compact block, e.g. 311 + 312); pinned cards never move; nobody is pushed over the maximum. The reported case (HK1: 8 ground cleans + 3 services = 9.5, HK2: 23 rooms = 12) → 311 and 312 go to HK1 (10.5 / 11 / 11 / 11).
+Tests: `hkwork` 16 (+exact reported case, rules, end-to-end), `housekeeping` 22 (stepper behaviour, layout rows), other suites green; build compiles; laptop screenshot checked.
 
 ### 2026-10-21 — Sprint 23.4: plan by number, print colours, sheet summary (GM requests)
 

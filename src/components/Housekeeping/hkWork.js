@@ -107,6 +107,55 @@ export function summarize(items, assign, hks, s = DEFAULT_SETTINGS) {
 }
 
 /**
+ * Even the loads out after the floor-by-floor split. The split keeps floors together, but a housekeeper whose floors are all quick (or who is the
+ * first/last in line) can end up well below the others — or below the minimum. So, repeatedly: take the LIGHTEST housekeeper and the HEAVIEST one who
+ * has something movable, and move a small group of rooms from heavy to light until the gap is within `tolerance` (and nobody is left under the minimum
+ * while the donor stays above it). Rules for WHAT moves (the point of Sprint 23.5):
+ *   · stay-over services go first (cheap, 0.5), cleans only if the donor has no services left to give;
+ *   · rooms move in groups from ONE floor — the floor the light person already works on if there is one, otherwise the donor's smallest leftover floor
+ *     (so the donor's main floors stay whole and the light person gets a compact little block, e.g. two rooms on one floor);
+ *   · hand-placed (pinned) cards never move; nobody is pushed over the maximum.
+ * Mutates and returns `assign` ({ room: userId }).
+ */
+export function evenOut(items, assign, hks, pinned = {}, s = DEFAULT_SETTINGS, tolerance = 1) {
+  if (hks.length < 2) return assign;
+  const byRoomNo = new Map(items.map(i => [i.roomNumber, i]));
+  const load = new Map(hks.map(h => [h.userId, 0]));
+  Object.keys(assign).forEach(r => { const it = byRoomNo.get(r); if (it && load.has(assign[r])) load.set(assign[r], load.get(assign[r]) + weightOf(it, s)); });
+  const movable = (r) => !Object.prototype.hasOwnProperty.call(pinned, r);
+  const avg = [...load.values()].reduce((a, b) => a + b, 0) / hks.length;
+  for (let guard = 0; guard < 400; guard += 1) {
+    const order = hks.map(h => h.userId).sort((a, b) => load.get(a) - load.get(b));
+    const light = order[0];
+    // heaviest housekeeper that still has something to give
+    const donorIds = order.slice().reverse().filter(id => id !== light && Object.keys(assign).some(r => assign[r] === id && movable(r)));
+    if (!donorIds.length) break;
+    const donor = donorIds[0], gap = load.get(donor) - load.get(light);
+    const mine = Object.keys(assign).filter(r => assign[r] === donor && movable(r)).map(r => byRoomNo.get(r)).filter(Boolean);
+    const services = mine.filter(i => i.kind === 'service'), pool = services.length ? services : mine;
+    const w = weightOf(pool[0], s);
+    // cleans are heavy and keep a floor whole when possible: only even them out for a clearly bigger gap (40% of an average load)
+    const tol = services.length ? tolerance : Math.max(tolerance, 0.4 * avg);
+    const wantsMore = gap > tol + 1e-9 || (load.get(light) < s.min - 1e-9 && load.get(donor) - w >= s.min - 1e-9);
+    if (!wantsMore || load.get(light) + w > s.max + 1e-9) break;
+    // one floor: the light person's own floors first, else the donor's smallest floor
+    const lightFloors = new Set(Object.keys(assign).filter(r => assign[r] === light).map(r => (byRoomNo.get(r) || {}).floorId));
+    const groups = new Map(); pool.forEach(i => { if (!groups.has(i.floorId)) groups.set(i.floorId, []); groups.get(i.floorId).push(i); });
+    const ranked = [...groups.entries()].sort((a, b) => ((lightFloors.has(b[0]) ? 1 : 0) - (lightFloors.has(a[0]) ? 1 : 0)) || (a[1].length - b[1].length) || (floorRank(a[0]) - floorRank(b[0])));
+    const group = ranked[0][1].sort(byRoom);
+    let moved = 0;
+    for (const it of group) {
+      const wi = weightOf(it, s), g = load.get(donor) - load.get(light);
+      const need = g > tol + 1e-9 || (load.get(light) < s.min - 1e-9 && load.get(donor) - wi >= s.min - 1e-9);
+      if (!need || load.get(light) + wi > s.max + 1e-9) break;
+      assign[it.roomNumber] = light; load.set(donor, load.get(donor) - wi); load.set(light, load.get(light) + wi); moved += 1;
+    }
+    if (!moved) break;
+  }
+  return assign;
+}
+
+/**
  * Hand the work out. Cards in `pinned` ({ room: userId | null }) were placed by a person and stay where they are (null = deliberately left in the
  * pool). Everything else is spread so each housekeeper ends up with about the same workload (pinned cards count), and — wherever it costs little —
  * a whole floor goes to ONE housekeeper: the cuts between people are moved to the nearest floor boundary when that is within 20% of a share and nobody goes over the maximum because of it.
@@ -146,7 +195,7 @@ export function balance(items, hks, pinned = {}, s = DEFAULT_SETTINGS) {
   // keep a floor together only if nobody ends up over the maximum because of it (or it is no worse than the plain split)
   const plain = run(cuts), tidy = run(snapped);
   Object.assign(assign, tidy.peak <= Math.max(s.max, plain.peak) + 1e-9 ? tidy.out : plain.out);
-  return assign;
+  return evenOut(items, assign, hks, pinned, s);
 }
 
 /** Plain-language warnings: one overall line + a flag per housekeeper ('over' | 'under'). */

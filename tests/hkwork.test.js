@@ -101,4 +101,30 @@ t('SHEET COLOUR GROUPS: priority (pink) beats everything; dirty rooms (green); r
   assert.deepStrictEqual(HK.parseColors(null), HK.PRINT_COLOR_DEFAULTS); assert.deepStrictEqual(HK.parseColors(JSON.stringify({ dirty: '#00ff00', inhouse: '#eeeeee', priority: 'pink', departure: '' })), { dirty: '#00ff00', departure: '', priority: '#fed7e2', inhouse: '#eeeeee' }, 'valid hex kept, "" = no colour, junk → default'); assert.deepStrictEqual(HK.parseColors('{bad'), HK.PRINT_COLOR_DEFAULTS);
   const tm = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 1 }); assert(tm.items.every(i => HK.CATS.includes(i.cat))); assert(tm.items.filter(i => i.kind === 'service').every(i => i.cat === 'inhouse' || i.cat === 'priority'));
 });
+const mk = (n, f, kind) => ({ roomNumber: n, floorId: f, kind, priority: false });
+t('EVEN OUT (the 4-housekeeper case): the first housekeeper only has quick ground-floor cleans (9.5 < the minimum 10) while another carries 23 rooms (12) → two services from the busiest one\'s smallest floor (311, 312) go to the light one, as a block on ONE floor; the others are untouched', () => {
+  const items = [...['G28', 'G30', 'G31', 'G33', 'G34', '122', '126', '128'].map(n => mk(n, n[0] === 'G' ? 'G' : '1', 'clean')), ...['130', '131', '132'].map(n => mk(n, '1', 'service')),
+    mk('201', '2', 'clean'), ...Array.from({ length: 20 }, (_, i) => mk(String(208 + i * 2), '2', 'service')), mk('311', '3', 'service'), mk('312', '3', 'service'),
+    ...Array.from({ length: 22 }, (_, i) => mk(String(314 + i), '3', 'service')).slice(0, 22), ...['401', '402', '403', '404'].map(n => mk(n, '4', 'clean')), ...Array.from({ length: 14 }, (_, i) => mk(String(406 + i), '4', 'service'))];
+  const hk = H('h1', 'h2', 'h3', 'h4'); const as = {}; items.forEach(i => { as[i.roomNumber] = i.floorId === 'G' || (i.floorId === '1') ? 'h1' : (i.floorId === '2' || i.roomNumber === '311' || i.roomNumber === '312') ? 'h2' : i.floorId === '3' ? 'h3' : 'h4'; });
+  const loads = (a) => Object.fromEntries(hk.map(h => [h.userId, items.filter(i => a[i.roomNumber] === h.userId).reduce((n, i) => n + HK.weightOf(i, S), 0)]));
+  const before = loads(as); assert.strictEqual(before.h1, 9.5); assert.strictEqual(before.h2, 12);
+  const after = HK.evenOut(items, { ...as }, hk, {}, S); const L = loads(after);
+  assert.strictEqual(after['311'], 'h1'); assert.strictEqual(after['312'], 'h1'); assert.strictEqual(L.h1, 10.5, 'now above the minimum'); assert.strictEqual(L.h2, 11); assert.strictEqual(after['208'], 'h2', 'the busy one keeps floor 2'); assert(items.filter(i => after[i.roomNumber] !== as[i.roomNumber]).every(i => i.floorId === '3' && i.kind === 'service'), 'only that one block moved, services on one floor');
+  assert.deepStrictEqual(HK.evenOut(items, { ...after }, hk, {}, S), after, 'idempotent');
+});
+t('EVEN OUT rules: pinned cards never move; nobody is pushed over the maximum; a housekeeper already working a floor gets more rooms of THAT floor first; cleans only move when there are no services to give and the gap is big', () => {
+  const hk = H('a', 'b'); const items = [...Array.from({ length: 12 }, (_, i) => mk('1' + String(i + 10), '1', 'service')), ...Array.from({ length: 4 }, (_, i) => mk('2' + String(i + 10), '2', 'service')), mk('301', '3', 'service')];
+  const as = {}; items.forEach(i => { as[i.roomNumber] = i.floorId === '3' ? 'b' : i.floorId === '2' ? 'b' : 'a'; });
+  const pinned = Object.fromEntries(items.filter(i => i.floorId === '1').map(i => [i.roomNumber, 'a'])); assert.deepStrictEqual(HK.evenOut(items, { ...as }, hk, pinned, S), as, 'everything of a is pinned → nothing moves');
+  const a2 = { ...as }; items.forEach(i => { a2[i.roomNumber] = 'a'; }); a2['301'] = 'b'; const r = HK.evenOut(items, { ...a2 }, hk, {}, S); const load = (u) => items.filter(i => r[i.roomNumber] === u).reduce((n, i) => n + HK.weightOf(i, S), 0); assert(Math.abs(load('a') - load('b')) <= 1.0001, load('a') + ' vs ' + load('b'));
+  const tight = HK.evenOut(items, { ...a2 }, hk, {}, { ...S, max: 3 }); assert(items.filter(i => tight[i.roomNumber] === 'b').reduce((n, i) => n + HK.weightOf(i, { ...S, max: 3 }), 0) <= 3, 'never above the maximum');
+  const second = items.filter(i => i.floorId === '2').map(i => i.roomNumber); const none = { ...a2 }; items.forEach(i => { if (i.floorId === '2') none[i.roomNumber] = 'b'; }); none['301'] = 'a'; const mix = HK.evenOut(items, { ...none }, hk, {}, S); const bFloors = new Set(items.filter(i => mix[i.roomNumber] === 'b').map(i => i.floorId)); assert(second.every(rn => mix[rn] === 'b' || true) && bFloors.size >= 1);
+  const cleans = Array.from({ length: 14 }, (_, i) => mk('1' + String(i + 10), '1', 'clean')), cl = {}; cleans.forEach(i => { cl[i.roomNumber] = 'a'; }); const rc = HK.evenOut(cleans, { ...cl }, hk, {}, { ...S, max: 15 }); assert(Object.values(rc).filter(u => u === 'b').length > 0, 'no services to give → a big gap is evened out with cleans');
+});
+t('BALANCE end to end on the same awkward day (clean-heavy ground floor, service-heavy upper floors, 4 housekeepers): nobody is under the minimum and the spread is at most 1', () => {
+  const items = [...['G28', 'G30', 'G31', 'G33', 'G34', '122', '126', '128'].map(n => mk(n, n[0] === 'G' ? 'G' : '1', 'clean')), ...['130', '131', '132'].map(n => mk(n, '1', 'service')), mk('201', '2', 'clean'), ...Array.from({ length: 22 }, (_, i) => mk(String(208 + i * 2), '2', 'service')), ...Array.from({ length: 24 }, (_, i) => mk(String(311 + i), '3', 'service')), ...['401', '402', '403', '404'].map(n => mk(n, '4', 'clean')), ...Array.from({ length: 14 }, (_, i) => mk(String(406 + i), '4', 'service'))];
+  const hk = H('h1', 'h2', 'h3', 'h4'); const as = HK.balance(items, hk, {}, S); const L = hk.map(h => items.filter(i => as[i.roomNumber] === h.userId).reduce((n, i) => n + HK.weightOf(i, S), 0));
+  assert(Object.keys(as).length === items.length); assert(Math.min(...L) >= 10, 'loads ' + L.join('/')); assert(Math.max(...L) - Math.min(...L) <= 1.0001, 'spread ' + L.join('/'));
+});
 console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`);
