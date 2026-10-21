@@ -1,0 +1,72 @@
+/* Sprint 23 — Housekeeping page */
+.hk-page-wrap { padding: 24px 32px 80px; max-width: 1400px; }
+.hk-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.hk-header h1 { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 34px; color: var(--brand-text); }
+.hk-sub { margin: 4px 0 0; color: var(--text-muted); font-size: 14px; }
+.hk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hk-btn { font-family: inherit; font-size: 13.5px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); cursor: pointer; }
+.hk-btn:hover:not(:disabled) { background: var(--bg-raised); }
+.hk-btn:disabled { opacity: .5; cursor: default; }
+.hk-btn-primary { background: var(--accent-alt); border-color: var(--accent-alt); color: #fff; } .hk-btn-primary:hover:not(:disabled) { background: var(--accent-alt); filter: brightness(1.08); }
+.hk-btn-dark { background: var(--brand-bg); border-color: var(--brand-bg); color: #fff; } .hk-btn-dark:hover:not(:disabled) { background: var(--brand-hover); }
+.hk-btn-sm { padding: 4px 10px; font-size: 12px; }
+.hk-days { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.hk-day { font-family: inherit; display: flex; flex-direction: column; align-items: flex-start; padding: 8px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; font-size: 14px; font-weight: 600; }
+.hk-day small { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+.hk-day.on { border-color: var(--accent-alt); box-shadow: inset 0 0 0 2px var(--accent-alt); background: var(--accent-bg); }
+.hk-savestate { margin-left: auto; font-size: 13px; color: var(--text-muted); } .hk-savestate .ok { color: var(--success-text); } .hk-savestate .bad { color: var(--danger-text); }
+.hk-error { color: var(--danger-text); background: var(--danger-subtle); border: 1px solid var(--danger-border); padding: 8px 12px; border-radius: 8px; }
+.hk-muted { color: var(--text-muted); font-size: 13.5px; }
+.hk-note { background: var(--warn-bg); color: var(--warn-text); padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.hk-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.hk-tile { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.hk-tile span { font-size: 12px; color: var(--text-muted); } .hk-tile strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 30px; color: var(--text-primary); line-height: 1.1; } .hk-tile small { font-size: 11.5px; color: var(--text-muted); }
+.hk-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.hk-controls { display: grid; gap: 12px; margin-bottom: 16px; position: relative; }
+.hk-picker { position: relative; max-width: 420px; }
+.hk-picker-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.hk-input { font-family: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface-alt); color: var(--text-primary); width: 100%; box-sizing: border-box; }
+.hk-num-in { width: 80px; margin-left: 8px; }
+.hk-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); margin-top: 6px; }
+.hk-picker-list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); max-height: 280px; overflow: auto; }
+.hk-picker-list button { width: 100%; display: flex; justify-content: space-between; gap: 10px; text-align: left; padding: 8px 10px; border: 0; background: transparent; color: var(--text-primary); font: inherit; border-radius: 6px; cursor: pointer; }
+.hk-picker-list button:hover { background: var(--bg-raised); } .hk-picker-list small { color: var(--text-muted); }
+.hk-picker-empty { padding: 8px 10px; color: var(--text-muted); font-size: 13px; } .hk-picker-close button { justify-content: center; color: var(--accent-alt); }
+.hk-chosen { display: flex; flex-wrap: wrap; gap: 8px; }
+.hk-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; border-radius: 999px; background: var(--accent-bg); color: var(--brand-text); font-size: 13px; font-weight: 600; }
+.hk-pill button { border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.hk-settings { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13px; color: var(--text-secondary); }
+.hk-help { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+.hk-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.hk-col h2 { margin: 0; font-size: 17px; font-family: 'TiemposHeadline', Georgia, serif; color: var(--brand-text); }
+.hk-col-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hk-col-un { border-color: var(--warn-text); } .hk-count { display: inline-block; padding: 0 8px; border-radius: 999px; background: var(--bg-raised); font-size: 12px; margin-left: 6px; }
+.hk-col-sum { margin: 6px 0 8px; font-size: 13px; color: var(--text-secondary); }
+.hk-meter { height: 6px; border-radius: 999px; background: var(--bg-raised); overflow: hidden; } .hk-meter span { display: block; height: 100%; background: var(--success); transition: width .5s ease; } .hk-meter span.low { background: #ecc94b; }
+.hk-warn { margin: 6px 0 0; font-size: 12px; color: var(--warn-text); }
+.hk-rooms { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.hk-room { display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface-alt); }
+.hk-room.hk-prio { border-color: #ecc94b; }
+.hk-room-num { font-size: 16px; color: var(--text-primary); } .hk-room-meta { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 0; } .hk-room-meta small { color: var(--text-muted); font-size: 11.5px; }
+.hk-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 6px; }
+.hk-badge-clean { background: var(--danger-bg); color: var(--danger-text); } .hk-badge-service { background: var(--accent-bg); color: var(--brand-text); } .hk-badge-first { background: var(--warn-bg); color: var(--warn-text); }
+.hk-move { font: inherit; font-size: 12.5px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); max-width: 140px; }
+@media (max-width: 900px) { .hk-page-wrap { padding: 16px 16px 80px; } .hk-tiles { grid-template-columns: repeat(2, 1fr); } .hk-room { grid-template-columns: 44px 1fr; } .hk-move { grid-column: 1 / -1; max-width: none; } }
+
+/* ── printable sheets: portaled to <body>, hidden on screen ── */
+.hk-printroot { display: none; }
+@media print {
+  .hk-printroot { display: block !important; }
+  .hk-page { page: hk; break-after: page; page-break-after: always; color: #111; background: #fff; font-family: 'TiemposText', Georgia, serif; }
+  .hk-page:last-child { break-after: auto; page-break-after: auto; }
+  @page hk { size: letter portrait; margin: 0.5in; }
+  .hk-page-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 10px; }
+  .hk-page-head h1 { margin: 0; font-size: 24px; } .hk-page-head p { margin: 2px 0 0; font-size: 12px; color: #444; } .hk-page-tot { font-size: 12px; }
+  .hk-page-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .hk-page-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1.5px solid #111; padding: 4px 6px; }
+  .hk-page-table td { border-bottom: 1px solid #bbb; padding: 7px 6px; vertical-align: middle; }
+  .hk-notes { width: 28%; } .hk-num { font-weight: 700; font-size: 14px; } .hk-why { color: #555; font-size: 10.5px; }
+  .hk-box { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #111; border-radius: 2px; }
+  .hk-first td { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .hk-firsttag { font-size: 10px; }
+  .hk-page-foot { margin-top: 14px; font-size: 10.5px; color: #444; } .hk-page-empty { font-size: 13px; }
+}

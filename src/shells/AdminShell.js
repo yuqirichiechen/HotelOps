@@ -13,6 +13,7 @@ import AdminSettings from '../components/AdminPanel/AdminSettings';
 import ShiftSheet from '../pages/ShiftSheet';
 import Forecasting from '../components/Forecasting'; // Sprint 17.3 — reservations overview (renamed in 17.11)
 import Forecast    from '../components/Forecast';    // Sprint 17.11 — room-type availability forecast
+import Housekeeping from '../components/Housekeeping'; // Sprint 23 — assign housekeepers to rooms
 import { DevSync, DevForecastSettings, DevLogsView, DevPlatformView } from '../pages/Dev/DevViews';
 import '../pages/Dev/DevPages.css';
 // Sprint 12.1: NotesPage no longer reachable from the admin shell —
@@ -47,6 +48,7 @@ const NAV = [
   // availability projection (new page). Both share the same scrape.
   { view: 'reservations', label: 'Reservations', icon: 'calendar', live: true, mobilePrimary: true },
   { view: 'forecast',     label: 'Forecast',     icon: 'calendar', live: true },
+  { view: 'housekeeping', label: 'Housekeeping', icon: 'timesheet', live: true },   // Sprint 23
   { view: 'reports',   label: 'Logbook',   icon: 'logbook' },
   { view: 'assistant', label: 'Assistant', icon: 'assistant' },
   { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
@@ -69,6 +71,7 @@ const VIEWS = {
   sheet:       ShiftSheet,
   reservations: Forecasting, // Sprint 17.11: was 'forecast' → 'reservations'
   forecast:     Forecast,    // Sprint 17.11: room-type availability page
+  housekeeping: Housekeeping, // Sprint 23: who cleans which rooms + printable sheets
   reports:     AdminReports,
   assistant:   Assistant,
   settings:    AdminSettings,

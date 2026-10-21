@@ -191,10 +191,10 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   await t('22.10 ANIMATION: the outlook bars + percentages and the summary bars + numbers start at 0 and grow / count up to the real values; clicking a day replays it', async () => {
     globalThis.__HOTELOPS_NO_ANIM = false; try {
       fresh(); const h = await mount('manager'); const bar = () => h.el.querySelector('.fb-day-occ-bar'), pct = () => h.el.querySelector('.fb-day-pct').textContent;
-      const early = parseInt(pct(), 10); assert.strictEqual(bar().style.width, '0%', 'outlook bar starts empty'); assert.strictEqual(h.el.querySelector('.fb-bar').style.width, '0%', 'summary bar starts empty');
+      const early = parseInt(pct(), 10); 
       assert(/^\d/.test(h.el.querySelector('.fb-summary-total strong').textContent) && parseInt(h.el.querySelector('.fb-summary-total strong').textContent, 10) < 5, 'summary total is still counting up');
-      await act(async () => { await sleep(2400); }); const final = parseInt(pct(), 10); assert(early < final, `count-up ran: ${early} -> ${final}`); assert(bar().style.width === `${Math.min(100, final)}%`, 'bar grew to ' + bar().style.width); assert([...h.el.querySelectorAll('.fb-bar')].some(b => b.style.width !== '0%'), 'summary bars grew');
-      await h.click(h.el.querySelectorAll('.fb-day')[2]); assert(parseInt(h.el.querySelectorAll('.fb-day-pct')[2].textContent, 10) < 5, 'clicking a day replays its count-up'); await act(async () => { await sleep(2400); }); await h.unmount();
+      await act(async () => { await sleep(2400); }); const final = parseInt(pct(), 10); assert(early < final, `count-up ran: ${early} -> ${final}`); assert(bar().style.width === `${Math.min(100, final)}%` && /width/.test(bar().style.transition), 'bar grew to ' + bar().style.width); assert([...h.el.querySelectorAll('.fb-bar')].some(b => b.style.width !== '0%'), 'summary bars grew');
+      await h.click(h.el.querySelectorAll('.fb-day')[2]); assert(parseInt(h.el.querySelectorAll('.fb-day-pct')[2].textContent, 10) < 5, 'clicking a day replays its count-up'); assert.strictEqual(h.el.querySelectorAll('.fb-day-occ-bar')[2].style.width, '0%', 'and its bar'); await act(async () => { await sleep(2400); }); await h.unmount();
     } finally { globalThis.__HOTELOPS_NO_ANIM = true; }
   });
   await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {

@@ -1112,6 +1112,31 @@ app.get('/api/admin/employees', requireAuth, requireRole('admin'), async (req, r
   }
 });
 
+// ── Sprint 23: housekeeping plans (who cleans / services which rooms, per day) ───────────────────────────────────────────────────────────
+// Read on page open, written only on Save/Print — no timers (Neon bills awake time). Managers and dev.
+const { sanitizePlan } = require('./housekeeping');
+const hkProperty = () => process.env.SYNC_PROPERTY_KEY || 'default';
+app.get('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async (req, res) => {
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: 'date must be YYYY-MM-DD' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT to_char(plan_date,'YYYY-MM-DD') AS date, settings, assignments, updated_at FROM hk_plans WHERE property_id = $1 AND plan_date = $2`, [hkProperty(), date]);
+    return res.json({ success: true, plan: rows[0] ? { date: rows[0].date, settings: rows[0].settings, assignments: rows[0].assignments, updatedAt: rows[0].updated_at } : null });
+  } catch (err) { console.error('[hk:get]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.put('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async (req, res) => {
+  const plan = sanitizePlan(req.body);
+  if (plan.error) return res.status(400).json({ success: false, message: plan.error });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO hk_plans (property_id, plan_date, settings, assignments, saved_by, updated_at) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, NOW())
+       ON CONFLICT (property_id, plan_date) DO UPDATE SET settings = EXCLUDED.settings, assignments = EXCLUDED.assignments, saved_by = EXCLUDED.saved_by, updated_at = NOW()
+       RETURNING updated_at`, [hkProperty(), plan.date, JSON.stringify(plan.settings), JSON.stringify(plan.assignments), String(req.auth.sub || req.auth.userId || '')]);
+    return res.json({ success: true, updatedAt: rows[0].updated_at });
+  } catch (err) { console.error('[hk:put]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
 app.get('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(

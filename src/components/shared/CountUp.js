@@ -55,7 +55,7 @@ export function useGrow(animKey) {
   useEffect(() => {
     if (reduced()) { setGrown(true); return undefined; }
     setGrown(false);
-    const id = setTimeout(() => setGrown(true), 40);
+    const id = setTimeout(() => setGrown(true), 80);
     return () => clearTimeout(id);
   }, [animKey]);
   return grown;

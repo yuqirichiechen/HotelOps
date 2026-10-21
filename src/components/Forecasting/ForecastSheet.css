@@ -219,8 +219,8 @@
 @media print {
   /* Sprint 22.9: the sheet is portaled to <body>; every OTHER body child is removed from the print layout (visibility:hidden used to leave
      the page's full height in front of the sheet → a blank first page). */
-  body > *:not(.fc-print-root) { display: none !important; }
-  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body.is-printing-sheet > *:not(.fc-print-root) { display: none !important; }
+  body.is-printing-sheet { height: auto !important; overflow: visible !important; background: #fff !important; }
 
   .fc-sheet-backdrop {
     position: static !important;

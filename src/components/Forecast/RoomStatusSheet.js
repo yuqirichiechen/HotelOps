@@ -3,6 +3,7 @@ import React, { useEffect, useMemo } from 'react';
 import '../Forecasting/ForecastSheet.css';
 import './ForecastDaySheet.css';
 import { createPortal } from 'react-dom';
+import usePrintSheet from '../shared/usePrintSheet';
 import { buildRoomSheet, roomSheetCsv, TONE_LABEL } from './roomSheet';
 
 const fmtDate = (ymd) => {
@@ -12,6 +13,7 @@ const fmtDate = (ymd) => {
 
 const RoomStatusSheet = ({ payload, live, propertyName = 'Snoqualmie Inn', onClose }) => {
   const sheet = useMemo(() => buildRoomSheet(payload, live), [payload, live]);
+  usePrintSheet();
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose && onClose(); };
     window.addEventListener('keydown', onKey);

@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23     | Housekeeping page: assign rooms to housekeepers, print one sheet each | **Built + tested, NOT yet deployed** — NEEDS migration 030 |
 | 22.10  | Animations: summary bars, 14-day outlook, room-type dropdowns | **Built + tested, NOT yet deployed** — closes Sprint 22 |
 | 22.9   | Forecast: outlook on top, rooms by floor, colored room sheet with stay dates, print fixed | **Built + tested, NOT yet deployed** (frontend only) |
 | 22.8   | UI fixes: dark mode, tiles consistent, slower animation, Recent changes card | **Built + tested, NOT yet deployed** (CSS/JS only) |
@@ -26,6 +27,19 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23: Housekeeping (assign rooms to housekeepers)
+
+Decisions (user): auto-suggest then edit; housekeepers = existing staff accounts, searchable; weighted workload (check-out clean vs stay-over service); today + tomorrow, saved.
+**Page** (`src/components/Housekeeping/`, admin nav "Housekeeping", same for managers and dev): Today / Tomorrow tabs · tiles (rooms to clean, stay-overs to service, total workload, housekeepers) · staff picker (search `/admin/employees`; defaults to the Housekeeping department, checkbox widens to everyone; inactive hidden; list closes on choose / click outside) · settings (**minimum workload each = 10, clean counts 1, service counts 0.5**, all adjustable and saved with the plan) ·
+**Auto-suggest** (`hkWork.suggest`): uses only as many housekeepers as the minimum allows (total workload ÷ min, at least one), hands rooms out floor by floor in order so each gets a contiguous run; the rest can be given rooms by hand · every room has a "move to" drop-down (Unassigned / any housekeeper) · per-housekeeper card with counts, workload, minimum meter and a "below the minimum" warning · Save · Print all sheets / Print sheet per person.
+**Work list** (`hkWork.buildWorkList`): TODAY = vacant Dirty/In-progress rooms (clean), occupied rooms checking out today (clean), every other occupied room (stay-over service); rooms the forecast says must be ready first are flagged *Clean first*. TOMORROW = the second-night plan: clean-first rooms, remaining check-outs, leftover dirty rooms (clean), rooms staying over (service); reservations with no room number yet are only counted and shown in a note.
+**Saved plans**: migration **030** `hk_plans` (property_id, plan_date, settings, assignments JSON; one row per day), `GET/PUT /api/admin/housekeeping/plan` (admin + dev; `server/housekeeping.js` validates: date range, ≤60 housekeepers, room-number pattern, kinds, no duplicates, settings clamped). Written ONLY on Save/Print (Print saves first if anything changed) — no timers, no polling (Neon). Reopening a day restores it and **reconciles** with the current work list (rooms that no longer need work drop out, new rooms appear unassigned).
+**Print**: `HkSheets` — one portrait page per housekeeper (name, date, totals, tick-box, room, floor, type, task, clean-first marker, notes column, start/finish/sign-off line), verified through headless Chrome (2 housekeepers → 2 pages, app content not printed). Also fixed a **regression from 22.9**: the "hide everything but the sheet" print rule was global and would have blanked the Reservations print sheet; it is now scoped to `body.is-printing-sheet` (set by `usePrintSheet`, used by the room sheet, plan sheet and these sheets).
+Bug found by tests: the work list threw before the room data had loaded (no date) — guarded.
+Tests: `hkwork` 6 (work list today/tomorrow, weights, suggest, reconcile, assignments), `housekeeping-server` 4 (validation, routes + auth, bad input, migration + real SQL on postgres), `housekeeping` 9 (page: load, picker, suggest, move, save/restore, reconcile, tomorrow, print, failed save); `devshell` nav updated; all earlier suites green; build compiles.
+**Deploy**: run `database/migrations/030_sprint23_hk_plans.sql` BEFORE using the page (psql, like 028/029). No new env vars.
+**Not built (ideas)**: front-desk (staff shell) access to this page; drag-and-drop; remembering a usual housekeeper roster; per-room time estimates; a statistics page.
 
 ### 2026-10-21 — Sprint 22.10: animations (closes Sprint 22)
 

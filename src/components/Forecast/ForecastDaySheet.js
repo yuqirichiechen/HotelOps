@@ -3,6 +3,7 @@
 // Future days: cleaning priority per room type + the departing rooms to turn, by floor.
 // Reuses the fc-sheet-* classes (and their print rules) from the Forecasting sheet.
 import { createPortal } from 'react-dom';
+import usePrintSheet from '../shared/usePrintSheet';
 import React, { useEffect } from 'react';
 import '../Forecasting/ForecastSheet.css';
 import './ForecastDaySheet.css';
@@ -26,6 +27,7 @@ const Rooms = ({ rows, mark }) => (
 );
 
 const ForecastDaySheet = ({ model, propertyName = 'Snoqualmie Inn', onClose }) => {
+  usePrintSheet();
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose && onClose(); };
     window.addEventListener('keydown', onKey);
