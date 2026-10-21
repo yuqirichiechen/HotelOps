@@ -73,11 +73,13 @@ t('TOMORROW: reservations with no room number yet still count BY ROOM TYPE as pl
   const w = HK.buildWorkList({ payload: p2, live: null, allowance: allow, offset: 1 }); const tbd = w.items.filter(i => i.tbd);
   assert(tbd.length >= 2, 'two 1-night bookings checking out tomorrow → two TBD cards, got ' + tbd.length); assert(tbd.every(i => i.typeCode === 'NQRR' && /^[A-Za-z0-9-]{1,8}$/.test(i.roomNumber) && i.floorId === 'unknown')); assert.strictEqual(new Set(w.items.map(i => i.roomNumber)).size, w.items.length);
 });
-t('LOCKED rooms: a guest-locked arrival room that needs cleaning is flagged clean-first with the reason (field read in one place: isRoomLocked)', () => {
+t('DO NOT MOVE rooms (rGuest "Do not move" on an arriving reservation): marked on the card, and cleaned first when they need cleaning — from the server list or a payload flag', () => {
   assert.strictEqual(HK.isRoomLocked({ roomLocked: true }), true); assert.strictEqual(HK.isRoomLocked({}), false);
   const arr = { id: 'L1', status: 'RES', roomType: 'rt1', roomId: 'room102', roomNumber: '102', arrivalDateLocalDate: TODAY, departureDateLocalDate: '2026-10-21', arrivalDate: TODAY, departureDate: '2026-10-21', confirmationId: 'L1', primaryGuestInfo: { firstName: 'L', lastName: 'K' } };
   const base = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }).items.find(i => i.roomNumber === '102'); assert.strictEqual(base.priority, false, 'not priority without a lock');
   const p3 = { ...payload, reservations: [...payload.reservations, { ...arr, arrivalDate: TODAY, departureDate: '2026-10-21', roomLocked: true, guestName: 'L K' }] };
-  const it = HK.buildWorkList({ payload: p3, live: null, allowance: allow, offset: 0 }).items.find(i => i.roomNumber === '102'); assert.strictEqual(it.priority, true); assert(/guest requested this room/.test(it.why));
+  const it = HK.buildWorkList({ payload: p3, live: null, allowance: allow, offset: 0 }).items.find(i => i.roomNumber === '102'); assert.strictEqual(it.priority, true); assert(/do not move/.test(it.why));
+  const viaServer = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0, lockedRooms: ['102', '105'] }).items; const by = Object.fromEntries(viaServer.map(i => [i.roomNumber, i]));
+  assert(by['102'].locked && by['102'].priority, 'dirty arrival room: marked + clean first'); assert(by['105'].locked && !by['105'].priority, 'a stay-over room is marked but is not "clean first"'); assert(!by['103'].locked);
 });
 console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`);

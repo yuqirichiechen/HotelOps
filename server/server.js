@@ -1138,6 +1138,21 @@ app.get('/api/admin/housekeeping/plans', requireAuth, requireRole('admin'), asyn
     return res.json({ success: true, plans: rows.map(r => ({ date: r.date, hks: r.hks, rooms: r.rooms, updatedAt: r.updated_at })) });
   } catch (err) { console.error('[hk:list]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
+// Sprint 23.2 — rooms a guest asked NOT to be moved out of (rGuest "Do not move" on an arriving reservation that already has a room): those rooms are
+// cleaned first. Reads only what the guest-detail job already stored (no rGuest call). Returns room numbers — no guest data.
+app.get('/api/admin/housekeeping/locked-rooms', requireAuth, requireRole('admin'), async (req, res) => {
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: 'date must be YYYY-MM-DD' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT h.room_number
+         FROM reservation_history h JOIN reservation_detail d ON d.reservation_id = h.reservation_id
+        WHERE h.property_id = $1 AND h.gone_at IS NULL AND h.status = 'RES' AND h.room_number IS NOT NULL AND h.room_number <> ''
+          AND h.arrival_date <= $2 AND h.departure_date > $2 AND (d.summary->'stay'->>'doNotMoveRoom') = 'true'
+        ORDER BY h.room_number`, [hkProperty(), date]);
+    return res.json({ success: true, rooms: rows.map(r => String(r.room_number)) });
+  } catch (err) { console.error('[hk:locked]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
 app.put('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async (req, res) => {
   const plan = sanitizePlan(req.body);
   if (plan.error) return res.status(400).json({ success: false, message: plan.error });

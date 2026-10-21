@@ -72,20 +72,20 @@ const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
 );
 
 /** One small room card. Draggable; tap selects it (then "Move here" on a column). */
-const RoomCard = ({ it, pinned, selected, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin }) => (
+const RoomCard = ({ it, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin }) => (
   <div
-    className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${it.tbd ? ' tbd' : ''}${dev && guest ? ' withguest' : ''}`}
+    className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${dev && guest ? ' withguest' : ''}`}
     data-flip={it.roomNumber} data-room={it.roomNumber}
     draggable={!readOnly}
     role={readOnly ? undefined : 'button'} tabIndex={readOnly ? undefined : 0} aria-pressed={readOnly ? undefined : !!selected}
-    aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}`}
+    aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}${it.locked ? ', guest asked not to be moved' : ''}`}
     title={`${it.tbd ? 'Room not assigned yet' : 'Room ' + it.roomNumber} · ${it.typeCode} · ${it.why || (it.kind === 'clean' ? 'Clean' : 'Service')}${guest ? ' · ' + guest : ''}`}
     onClick={() => !readOnly && onSelect(it.roomNumber)}
     onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(it.roomNumber); } }}
     onDragStart={(e) => onDragStart(e, it.roomNumber)} onDragEnd={onDragEnd}
   >
-    <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong>{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span>
-    <small>{it.typeCode}{it.kind === 'service' ? ' · svc' : ''}</small>
+    <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong><span className="hk-rc-marks">{it.locked && <i className="hk-rc-lock" title="Guest asked not to be moved" aria-hidden="true">⚑</i>}{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span></span>
+    <small>{it.typeCode}</small>
     {dev && guest && <em className="hk-rc-guest">{guest}</em>}
     {pinned && !readOnly && <button type="button" className="hk-rc-pin" aria-label={`Let the balancer move room ${it.roomNumber}`} title="Placed by hand — click to let the balancer move it" onClick={(e) => { e.stopPropagation(); onUnpin(it.roomNumber); }}>●</button>}
   </div>
@@ -113,10 +113,13 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const [selected, setSelected] = useState(null);
   const [over, setOver] = useState(null);
   const [lastStays, setLastStays] = useState({});
+  const [lockedRooms, setLockedRooms] = useState([]);
+  const [justMoved, setJustMoved] = useState(null);
   const dragRef = useRef(null);
+  const skipFlip = useRef(false);
   const boardRef = useRef(null);
   const stripRef = useRef(null);
-  useFlip(boardRef);
+  useFlip(boardRef, skipFlip);
 
   const loadAll = useCallback(async () => {
     setError(null);
@@ -146,7 +149,17 @@ const Housekeeping = ({ mode = 'manager' }) => {
   useEffect(() => { if (stripRef.current) stripRef.current.scrollLeft = stripRef.current.scrollWidth; }, [today, plans.length]);
 
   // today / tomorrow: the work list from the room board; history: the saved cards only
-  const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset })), [payload, live, allowance, offset, readOnly, date]);
+  // rooms guests asked not to be moved out of (rGuest "Do not move") — cleaned first; read from what the detail job already stored
+  useEffect(() => {
+    if (!date || readOnly) { setLockedRooms([]); return undefined; }
+    let alive = true;
+    (async () => {
+      const { ok, data } = await apiFetch(`/admin/housekeeping/locked-rooms?date=${date}`);
+      if (alive) setLockedRooms(ok && data?.success ? data.rooms || [] : []);
+    })();
+    return () => { alive = false; };
+  }, [date, readOnly]);
+  const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset, lockedRooms })), [payload, live, allowance, offset, readOnly, date, lockedRooms]);
   const pastItems = useMemo(() => {
     if (!past) return [];
     return past.assignments.flatMap(a => a.rooms.map(r => { const f = normFloor(null, r.roomNumber); return { roomNumber: r.roomNumber, typeCode: r.typeCode || '', floorId: f, floorLabel: floorLabel(f), kind: r.kind, why: r.why || '', priority: !!r.priority, tbd: false, _owner: a.userId }; }));
@@ -185,15 +198,16 @@ const Housekeeping = ({ mode = 'manager' }) => {
 
   // dev: the last stay in each dirty vacant room (one request per day, dev only)
   const dirtyVacant = useMemo(() => (dev && !readOnly ? work.items.filter(i => !i.tbd && i.kind === 'clean' && /^(Dirty|In progress)/.test(i.why || '')).map(i => i.roomNumber) : []), [dev, readOnly, work]);
+  const dirtyKey = dirtyVacant.join(',');
   useEffect(() => {
-    if (!dirtyVacant.length) return undefined;
+    if (!dirtyKey) return undefined;
     let alive = true;
     (async () => {
-      const { ok, data } = await apiFetch(`/dev/rooms/last-stays?rooms=${encodeURIComponent(dirtyVacant.slice(0, 200).join(','))}`);
+      const { ok, data } = await apiFetch(`/dev/rooms/last-stays?rooms=${encodeURIComponent(dirtyKey.split(',').slice(0, 200).join(','))}`);
       if (alive && ok && data?.success) setLastStays(data.stays || {});
     })();
     return () => { alive = false; };
-  }, [dirtyVacant]);
+  }, [dirtyKey]);
   const guestOf = useCallback((room) => {
     if (!dev) return null;
     const g = ((payload && payload.reservations) || []).filter(r => r.status === 'INH' && String(r.roomNumber) === room).sort((a, b) => String(b.departureDate).localeCompare(String(a.departureDate)))[0];
@@ -216,7 +230,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const touch = () => { setDirty(true); setSaveMsg(null); };
   const addHk = (h) => { setHks(prev => (prev.some(x => x.userId === h.userId) ? prev : [...prev, h])); touch(); };
   const removeHk = (id) => { setHks(prev => prev.filter(h => h.userId !== id)); setPinned(prev => { const n = {}; Object.keys(prev).forEach(k => { if (prev[k] !== id) n[k] = prev[k]; }); return n; }); touch(); };
-  const moveCard = (room, id) => { if (readOnly || !room || !itemByRoom.has(room)) return; setPinned(prev => ({ ...prev, [room]: id })); setSelected(null); touch(); };
+  const moveCard = (room, id) => { if (readOnly || !room || !itemByRoom.has(room)) return; skipFlip.current = true; setPinned(prev => ({ ...prev, [room]: id })); setSelected(null); touch(); setJustMoved(room); setTimeout(() => setJustMoved(m => (m === room ? null : m)), 450); };
   const unpin = (room) => { setPinned(prev => { const n = { ...prev }; delete n[room]; return n; }); touch(); };
   const resetManual = () => { setPinned({}); setSelected(null); touch(); };
   const setNum = (k, v) => { const n = Number(v); if (Number.isFinite(n)) { setSettings(s => ({ ...s, [k]: n })); touch(); } };
@@ -247,11 +261,11 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const onDragStart = (e, room) => { dragRef.current = room; setSelected(null); try { e.dataTransfer.setData('text/plain', room); e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ } };
   const onDragEnd = () => { dragRef.current = null; setOver(null); };
   const dropOn = (id) => (e) => { e.preventDefault(); const room = dragRef.current || (e.dataTransfer && e.dataTransfer.getData('text/plain')); dragRef.current = null; setOver(null); moveCard(room, id); };
-  const zone = (key, id) => ({ onDragOver: (e) => { if (readOnly) return; e.preventDefault(); if (over !== key) setOver(key); }, onDragLeave: () => setOver(o => (o === key ? null : o)), onDrop: dropOn(id) });
+  const zone = (key, id) => ({ onDragOver: (e) => { if (readOnly) return; e.preventDefault(); if (over !== key) setOver(key); }, onDragLeave: (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setOver(o => (o === key ? null : o)); }, onDrop: dropOn(id) });
 
   const poolCards = items.filter(i => !assign[i.roomNumber]);
   const cardEl = (it) => (
-    <RoomCard key={it.roomNumber} it={it} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected === it.roomNumber} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
+    <RoomCard key={it.roomNumber} it={it} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected === it.roomNumber} justMoved={justMoved === it.roomNumber} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
       onSelect={(r) => setSelected(s => (s === r ? null : r))} onDragStart={onDragStart} onDragEnd={onDragEnd} onUnpin={unpin} />
   );
   const renderCards = (cards) => byFloor(cards).map(f => (
@@ -262,7 +276,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const selOwner = selected ? assign[selected] || null : null;
 
   return (
-    <div className="hk-page-wrap">
+    <div className="hk-page-wrap" ref={boardRef}>
       <header className="hk-header">
         <div><h1>Housekeeping</h1><p className="hk-sub">Pick who is working — rooms are shared out automatically. Drag a card to change it, then print one sheet per housekeeper.</p></div>
         <div className="hk-actions">
@@ -272,20 +286,32 @@ const Housekeeping = ({ mode = 'manager' }) => {
         </div>
       </header>
 
-      <div className="hk-strip-wrap">
-        <div className="hk-strip" ref={stripRef} role="tablist" aria-label="Day">
-          {days.map(n => {
-            const ymd = addDays(today, n), p = parts(ymd), pl = planByDate.get(ymd);
-            const label = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : p.wd;
-            return (
-              <button key={n} type="button" role="tab" aria-selected={offset === n} className={`hk-day${offset === n ? ' on' : ''}${n < 0 ? ' past' : ''}${pl ? ' has' : ''}`} onClick={() => chooseDay(n)} title={n < 0 ? (pl ? `${pl.hks} housekeepers · ${pl.rooms} rooms (read-only)` : 'No plan was saved') : undefined}>
-                <b>{label}</b><span>{p.m} {p.d}</span>
-                <small>{pl ? `${pl.hks} HK · ${pl.rooms} rooms` : n < 0 ? 'no plan' : ''}</small>
-              </button>
-            );
-          })}
-        </div>
-        <span className="hk-savestate" role="status">{readOnly ? 'History — read-only' : saveMsg ? <span className={saveMsg.ok ? 'ok' : 'bad'}>{saveMsg.text}</span> : dirty ? 'Unsaved changes' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet'}</span>
+      {/* row 1: the days (left) · the numbers for the chosen day (right) */}
+      <div className="hk-top">
+        <section className="hk-panel hk-daycard" aria-label="Days">
+          <div className="hk-strip" ref={stripRef} role="tablist" aria-label="Day">
+            {days.map(n => {
+              const ymd = addDays(today, n), p = parts(ymd), pl = planByDate.get(ymd);
+              const label = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : p.wd;
+              return (
+                <button key={n} type="button" role="tab" aria-selected={offset === n} className={`hk-day${offset === n ? ' on' : ''}${n < 0 ? ' past' : ''}${pl ? ' has' : ''}`} onClick={() => chooseDay(n)} title={n < 0 ? (pl ? `${pl.hks} housekeepers · ${pl.rooms} rooms (read-only)` : 'No plan was saved') : undefined}>
+                  <b>{label}</b><span>{p.m} {p.d}</span>
+                  <small>{pl ? `${pl.hks} HK · ${pl.rooms} rooms` : n < 0 ? 'no plan' : ''}</small>
+                </button>
+              );
+            })}
+          </div>
+          <span className="hk-savestate" role="status">{readOnly ? 'History — read-only' : saveMsg ? <span className={saveMsg.ok ? 'ok' : 'bad'}>{saveMsg.text}</span> : dirty ? 'Unsaved changes' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet'}</span>
+        </section>
+        {!loading && payload && (
+          <section className="hk-panel hk-statbar" aria-label="Workload">
+            <div><span>To clean</span><strong><CountUp value={cleanN} animKey={date} /></strong></div>
+            <div><span>To service</span><strong><CountUp value={serviceN} animKey={date} /></strong></div>
+            <div><span>Workload</span><strong>{fmt(totalUnits)}</strong></div>
+            <div><span>Housekeepers</span><strong><CountUp value={viewHks.length} animKey={date} /></strong></div>
+            <div><span>Each (avg)</span><strong>{viewHks.length ? fmt(totalUnits / viewHks.length) : '—'}</strong></div>
+          </section>
+        )}
       </div>
 
       {error && <p className="hk-error" role="alert">{error}</p>}
@@ -293,16 +319,13 @@ const Housekeeping = ({ mode = 'manager' }) => {
 
       {!loading && payload && (
         <>
-          <section className="hk-statbar" aria-label="Workload">
-            <div><span>To clean</span><strong><CountUp value={cleanN} animKey={date} /></strong></div>
-            <div><span>To service</span><strong><CountUp value={serviceN} animKey={date} /></strong></div>
-            <div><span>Workload</span><strong>{fmt(totalUnits)}</strong></div>
-            <div><span>Housekeepers</span><strong><CountUp value={viewHks.length} animKey={date} /></strong></div>
-            <div><span>Each (avg)</span><strong>{viewHks.length ? fmt(totalUnits / viewHks.length) : '—'}</strong></div>
-          </section>
+          {!readOnly && warn.overall && <p className="hk-warnbar" role="alert">{warn.overall}</p>}
+          {readOnly && !past && <p className="hk-muted">Nothing was saved for {dayText(date)}.</p>}
+          {!readOnly && items.length === 0 && <p className="hk-muted">Nothing to clean or service for this day.</p>}
 
+          {/* row 2 (editable days): staff (narrow) · working today + rules · rooms not assigned yet */}
           {!readOnly && (
-            <div className="hk-two">
+            <div className="hk-mid">
               <StaffCard staff={staff} chosen={hks} onAdd={addHk} disabled={readOnly} />
               <section className="hk-panel hk-working" aria-label="Working">
                 <div className="hk-panel-head"><h2>Working {offset === 0 ? 'today' : 'tomorrow'}</h2><span className="hk-count">{hks.length}</span></div>
@@ -326,46 +349,43 @@ const Housekeeping = ({ mode = 'manager' }) => {
                   <button type="button" className="hk-btn hk-btn-sm" onClick={resetManual} disabled={Object.keys(pinned).length === 0}>Reset hand-placed ({Object.keys(pinned).length})</button>
                 </div>
               </section>
+              <section className={`hk-panel hk-col hk-pool${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
+                <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span></div>
+                {selected && selOwner && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, null)}>Move here</button>}
+                {poolCards.length === 0 ? <p className="hk-muted">{items.length === 0 ? 'No rooms.' : hks.length === 0 ? 'Add a housekeeper to share the rooms out.' : 'Everything is assigned.'}</p> : renderCards(poolCards)}
+              </section>
             </div>
           )}
 
-          {!readOnly && warn.overall && <p className="hk-warnbar" role="alert">{warn.overall}</p>}
-          {readOnly && !past && <p className="hk-muted">Nothing was saved for {dayText(date)}.</p>}
-          {!readOnly && items.length === 0 && <p className="hk-muted">Nothing to clean or service for this day.</p>}
-
           {items.length > 0 && (
-            <div className={`hk-board${dev ? ' dev' : ''}`} ref={boardRef}>
-              {!readOnly && (
-                <section className={`hk-col hk-pool${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
-                  <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span></div>
-                  {selected && selOwner && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, null)}>Move here</button>}
-                  {poolCards.length === 0 ? <p className="hk-muted">Everything is assigned.</p> : renderCards(poolCards)}
-                </section>
-              )}
-              {sum.hks.map(h => {
-                const mine = items.filter(i => assign[i.roomNumber] === h.userId);
-                const pct = Math.min(100, viewSettings.max > 0 ? (h.units / viewSettings.max) * 100 : 100), minPct = Math.min(100, (viewSettings.min / viewSettings.max) * 100);
-                const flag = warn.perHk[h.userId];
-                return (
-                  <section key={h.userId} className={`hk-col${over === h.userId ? ' over' : ''}${flag ? ` flag-${flag}` : ''}`} aria-label={`${h.name}'s rooms`} {...zone(h.userId, h.userId)}>
-                    <div className="hk-col-head">
-                      <h2>{h.name}</h2>
-                      <button type="button" className="hk-btn hk-btn-sm" onClick={() => printNow(h.userId)} disabled={mine.length === 0}>Print sheet</button>
-                    </div>
-                    <p className="hk-col-sum"><strong>{h.rooms}</strong> rooms · {h.clean} clean · {h.service} service · workload <strong>{fmt(h.units)}</strong></p>
-                    <div className="hk-meter" title={`Minimum ${viewSettings.min} · maximum ${viewSettings.max}`}><span className={flag || ''} style={{ width: `${pct}%` }} /><i style={{ left: `${minPct}%` }} /></div>
-                    {flag === 'over' && <p className="hk-warn">Over the maximum of {viewSettings.max}</p>}
-                    {flag === 'under' && <p className="hk-warn">Below the minimum of {viewSettings.min}</p>}
-                    {selected && !readOnly && selOwner !== h.userId && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, h.userId)}>Move here</button>}
-                    {mine.length === 0 ? <p className="hk-muted">No rooms yet.</p> : renderCards(mine)}
-                  </section>
-                );
-              })}
-            </div>
+            <>
+              <p className="hk-legend" aria-label="Legend"><span><i className="lg lg-clean" />Clean</span><span><i className="lg lg-service" />Stay-over service</span><span><i className="lg-star">★</i>Clean first</span><span><i className="lg-lock">⚑</i>Guest asked not to be moved</span><span><i className="lg-pin">●</i>Placed by hand</span></p>
+              <div className={`hk-board${dev ? ' dev' : ''}`}>
+                {sum.hks.map(h => {
+                  const mine = items.filter(i => assign[i.roomNumber] === h.userId);
+                  const pct = Math.min(100, viewSettings.max > 0 ? (h.units / viewSettings.max) * 100 : 100), minPct = Math.min(100, (viewSettings.min / viewSettings.max) * 100);
+                  const flag = warn.perHk[h.userId];
+                  return (
+                    <section key={h.userId} className={`hk-col${over === h.userId ? ' over' : ''}${flag ? ` flag-${flag}` : ''}`} aria-label={`${h.name}'s rooms`} {...zone(h.userId, h.userId)}>
+                      <div className="hk-col-head">
+                        <h2>{h.name}</h2>
+                        <button type="button" className="hk-btn hk-btn-sm" onClick={() => printNow(h.userId)} disabled={mine.length === 0}>Print sheet</button>
+                      </div>
+                      <p className="hk-col-sum"><strong>{h.rooms}</strong> rooms · {h.clean} clean · {h.service} service · workload <strong>{fmt(h.units)}</strong></p>
+                      <div className="hk-meter" title={`Minimum ${viewSettings.min} · maximum ${viewSettings.max}`}><span className={flag || ''} style={{ width: `${pct}%` }} /><i style={{ left: `${minPct}%` }} /></div>
+                      {flag === 'over' && <p className="hk-warn">Over the maximum of {viewSettings.max}</p>}
+                      {flag === 'under' && <p className="hk-warn">Below the minimum of {viewSettings.min}</p>}
+                      {selected && !readOnly && selOwner !== h.userId && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, h.userId)}>Move here</button>}
+                      {mine.length === 0 ? <p className="hk-muted">No rooms yet.</p> : renderCards(mine)}
+                    </section>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           {dev && !readOnly && items.length > 0 && (
-            <p className="hk-devnote" aria-label="Balancer details">DEV · total workload {fmt(totalUnits)} · {hks.length || 0} housekeeper(s) · target {hks.length ? fmt(totalUnits / hks.length) : '—'} each · hand-placed {Object.keys(pinned).length} · cuts snap to floor boundaries within 20% of a share unless that would exceed the max</p>
+            <p className="hk-devnote" aria-label="Balancer details">DEV · total workload {fmt(totalUnits)} · {hks.length || 0} housekeeper(s) · target {hks.length ? fmt(totalUnits / hks.length) : '—'} each · hand-placed {Object.keys(pinned).length} · locked rooms {lockedRooms.length} · cuts snap to floor boundaries within 20% of a share unless that would exceed the max</p>
           )}
         </>
       )}

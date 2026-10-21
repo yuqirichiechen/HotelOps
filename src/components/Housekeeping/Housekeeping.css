@@ -15,13 +15,6 @@
 @keyframes hk-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 /* day strip */
-.hk-strip-wrap { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.hk-strip { display: flex; gap: 6px; overflow-x: auto; flex: 1; padding: 4px 2px 8px; scrollbar-width: thin; }
-.hk-day { flex: 0 0 auto; min-width: 92px; font-family: inherit; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; text-align: left; }
-.hk-day b { font-size: 13px; } .hk-day span { font-size: 12px; color: var(--text-muted); } .hk-day small { font-size: 10.5px; color: var(--text-muted); min-height: 13px; }
-.hk-day.past { background: transparent; } .hk-day.past:not(.has) { opacity: .6; } .hk-day.has small { color: var(--success-text); font-weight: 600; }
-.hk-day.on { border-color: var(--accent-alt); box-shadow: inset 0 0 0 2px var(--accent-alt); background: var(--accent-bg); }
-.hk-savestate { font-size: 13px; color: var(--text-muted); white-space: nowrap; } .hk-savestate .ok { color: var(--success-text); } .hk-savestate .bad { color: var(--danger-text); }
 
 /* stat bar */
 .hk-statbar { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 10px 16px; margin-bottom: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; }
@@ -29,7 +22,6 @@
 .hk-statbar strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 24px; line-height: 1.15; color: var(--text-primary); }
 
 /* two cards: staff (left) · working + rules (right) */
-.hk-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
 .hk-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .hk-panel-head { display: flex; align-items: center; gap: 8px; } .hk-panel-head h2 { margin: 0; font-size: 16px; font-family: 'TiemposHeadline', Georgia, serif; color: var(--brand-text); }
 .hk-count { display: inline-block; min-width: 22px; padding: 0 8px; border-radius: 999px; background: var(--bg-raised); font-size: 12px; text-align: center; }
@@ -80,8 +72,50 @@
 .hk-rc-pin { position: absolute; right: 3px; bottom: 2px; width: 12px; height: 12px; padding: 0; border: 0; background: transparent; color: var(--accent-alt); font-size: 8px; line-height: 12px; cursor: pointer; }
 .hk-devnote { margin-top: 14px; padding: 8px 12px; border: 1px dashed #9f7aea; border-radius: 8px; color: #7c3aed; font-size: 12px; }
 
-@media (max-width: 900px) { .hk-page-wrap { padding: 14px 14px 80px; } .hk-two { grid-template-columns: 1fr; } .hk-board { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .hk-page-wrap { padding: 14px 14px 80px; } .hk-board { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .hk-meter span, .hk-col, .hk-switch-track, .hk-switch-knob, .hk-warnbar { transition: none; animation: none; } }
+
+
+/* ── Sprint 23.2 layout ── */
+.hk-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; align-items: stretch; }
+.hk-daycard { padding: 10px 14px 8px; gap: 4px; min-width: 0; }
+.hk-strip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: thin; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.hk-day { flex: 0 0 auto; min-width: 92px; font-family: inherit; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; text-align: left; scroll-snap-align: end; }
+.hk-day b { font-size: 13px; } .hk-day span { font-size: 12px; color: var(--text-muted); } .hk-day small { font-size: 10.5px; color: var(--text-muted); min-height: 13px; }
+.hk-day.past { background: transparent; } .hk-day.past:not(.has) { opacity: .6; } .hk-day.has small { color: var(--success-text); font-weight: 600; }
+.hk-day.on { border-color: var(--accent-alt); box-shadow: inset 0 0 0 2px var(--accent-alt); background: var(--accent-bg); }
+.hk-savestate { font-size: 12.5px; color: var(--text-muted); } .hk-savestate .ok { color: var(--success-text); } .hk-savestate .bad { color: var(--danger-text); }
+.hk-statbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px 14px; align-content: center; padding: 12px 16px; margin: 0; flex-direction: row; }
+.hk-statbar > div { display: flex; flex-direction: column; min-width: 0; } .hk-statbar span { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.hk-statbar strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 26px; line-height: 1.15; color: var(--text-primary); }
+
+/* row 2: staff (narrow) · working today · not assigned */
+.hk-mid { display: grid; grid-template-columns: 270px minmax(0, 0.9fr) minmax(0, 1.4fr); gap: 12px; margin-bottom: 12px; align-items: start; }
+.hk-mid .hk-staff-list, .hk-mid .hk-working-list { max-height: 210px; }
+.hk-mid .hk-staff-list li, .hk-mid .hk-working-list li { padding: 5px 8px; }
+.hk-mid .hk-pool { border-style: dashed; min-height: 0; max-height: 330px; overflow-y: auto; }
+.hk-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px; font-size: 12px; color: var(--text-muted); }
+.hk-legend span { display: inline-flex; align-items: center; gap: 6px; } .lg { width: 4px; height: 14px; border-radius: 2px; display: inline-block; } .lg-clean { background: #e53e3e; } .lg-service { background: #3182ce; }
+.lg-star { color: #d69e2e; font-style: normal; } .lg-lock { color: #dd6b20; font-style: normal; } .lg-pin { color: var(--accent-alt); font-style: normal; font-size: 9px; }
+.hk-board { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.hk-rc { width: 76px; } .hk-rc small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hk-rc-marks { display: inline-flex; gap: 2px; align-items: center; } .hk-rc-lock { font-style: normal; color: #dd6b20; font-size: 12px; }
+.hk-rc.withguest, .hk-board.dev .hk-rc { width: 150px; }
+.hk-rc.just-moved { animation: hk-land .35s ease; }
+@keyframes hk-land { from { transform: scale(.92); } to { transform: none; } }
+
+@media (max-width: 1180px) { .hk-mid { grid-template-columns: 250px minmax(0, 1fr); } .hk-mid .hk-pool { grid-column: 1 / -1; max-height: none; } .hk-top { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .hk-page-wrap { padding: 12px 12px 90px; } .hk-header h1 { font-size: 26px; } .hk-sub { display: none; }
+  .hk-actions { width: 100%; } .hk-actions .hk-btn { flex: 1 1 auto; text-align: center; padding: 10px 12px; }
+  .hk-mid { grid-template-columns: 1fr; } .hk-mid .hk-staff { order: 2; } .hk-mid .hk-working { order: 1; } .hk-mid .hk-pool { order: 3; }
+  .hk-mid .hk-staff-list { max-height: 190px; }
+  .hk-statbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hk-statbar strong { font-size: 22px; }
+  .hk-board { grid-template-columns: 1fr; }
+  .hk-rc { width: calc(25% - 6px); min-width: 70px; min-height: 48px; } .hk-board.dev .hk-rc, .hk-rc.withguest { width: calc(50% - 6px); }
+  .hk-btn-sm { padding: 8px 12px; } .hk-x { width: 34px; height: 34px; } .hk-num-in { width: 64px; padding: 8px; }
+  .hk-day { min-width: 84px; }
+}
 
 /* ── printable sheets: portaled to <body>, hidden on screen ── */
 .hk-printroot { display: none; }

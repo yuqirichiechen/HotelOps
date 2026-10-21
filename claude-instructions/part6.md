@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23.2   | Housekeeping: do-not-move rooms, new layout, drag flicker, mobile | **Built + tested, NOT yet deployed** (no new migration) |
 | 23.1   | Housekeeping redesign: history, two cards, draggable cards, auto-balance | **Built + tested, NOT yet deployed** (no new migration) |
 | 23     | Housekeeping page: assign rooms to housekeepers, print one sheet each | **Built + tested, NOT yet deployed** — NEEDS migration 030 |
 | 22.10  | Animations: summary bars, 14-day outlook, room-type dropdowns | **Built + tested, NOT yet deployed** — closes Sprint 22 |
@@ -28,6 +29,15 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.2: Housekeeping fixes (do-not-move rooms, layout, drag flicker, mobile)
+
+1. **Do-not-move rooms (point 5 of 23.1, now real)**: the rGuest field is `doNotMoveRoom` on the reservation (already stored by the detail job as `reservation_detail.summary.stay.doNotMoveRoom`). New `GET /api/admin/housekeeping/locked-rooms?date=` (admin/dev; DB only, no rGuest call; room numbers only): arriving (RES) reservations with a room, still current (`gone_at IS NULL`), stay covering the day, flag ON. In the page those rooms get ⚑ on the card, and if they need cleaning they are clean-first (★, reason "guest asked not to be moved (do not move)"). A stay-over room with the flag is marked but not prioritised. Asked once per day view; none for history.
+2. **Layout**: row 1 = day strip card + numbers card side by side; row 2 = Staff (narrow, 270px) · Working today (+ rules) · Not assigned; the housekeepers' columns follow directly below (no more scrolling past tall cards). Legend line (clean / service / ★ / ⚑ / placed by hand). Cards are 76px, type on one line (no "svc" wrapping — the colour bar says clean vs service).
+3. **Drag flicker fixed**: `dragleave` fired every time the pointer crossed a child card → the column highlight toggled and the board re-rendered continuously; now only a real exit clears it. A hand-dropped card no longer FLIP-animates across the page (`useFlip(skipRef)` one-shot skip) — it just pops in place; automatic re-balancing still glides.
+4. **Mobile**: ≤760px single column, order = numbers → working today → staff (short scroll list) → not assigned → columns; full-width action buttons, larger tap targets, 4 cards per row, tap-a-card then "Move here".
+Also: dev last-stay lookup no longer repeats when the work list rebuilds (keyed by room list).
+Tests: `hkwork` 10, `housekeeping-server` 6 (+do-not-move route and its real SQL on postgres incl. gone / INH / false / other property cases), `housekeeping` 15 (+layout rows, drag-leave, do-not-move marks, useFlip); all earlier suites green; screenshots checked at 1440px and 390px (dark).
 
 ### 2026-10-21 — Sprint 23.1: Housekeeping redesign (history, two cards, cards you drag, automatic balancing)
 

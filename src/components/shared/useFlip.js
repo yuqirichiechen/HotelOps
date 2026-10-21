@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef } from 'react';
 
 const off = () => { try { return !!(window.__HOTELOPS_NO_ANIM || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)); } catch { return false; } };
 
-export default function useFlip(rootRef) {
+export default function useFlip(rootRef, skipRef) {
   const prev = useRef(new Map());
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -13,7 +13,9 @@ export default function useFlip(rootRef) {
     const next = new Map(), sx = window.scrollX || 0, sy = window.scrollY || 0;
     const els = root.querySelectorAll('[data-flip]');
     els.forEach(el => { const r = el.getBoundingClientRect(); next.set(el.getAttribute('data-flip'), { x: r.left + sx, y: r.top + sy, el }); });
-    if (!off()) {
+    const skip = !!(skipRef && skipRef.current);
+    if (skipRef) skipRef.current = false;     // one render only (e.g. right after a hand drop, where the browser already showed the move)
+    if (!off() && !skip) {
       next.forEach((cur, key) => {
         const was = prev.current.get(key);
         if (!was) return;

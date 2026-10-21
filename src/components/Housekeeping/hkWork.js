@@ -22,11 +22,12 @@ const WHY_TOMORROW = { dirty: 'Dirty now — needed for a booked arrival', tonig
 
 const mkItem = (roomNumber, typeCode, floorId, kind, why, priority, tbd = false) => ({ roomNumber: String(roomNumber), typeCode: typeCode || '', floorId, floorLabel: floorLabel(floorId), kind, why, priority: !!priority, tbd });
 
-/** A guest asked for / is locked into this room (rGuest "room locked"). The exact field is read in ONE place so it is easy to point at the real one. */
-export const isRoomLocked = (r) => !!(r && (r.roomLocked || r.roomAssignmentLocked || r.lockedRoom));
+/** A guest asked NOT to be moved out of the room they were given (rGuest "Do not move", stored as summary.stay.doNotMoveRoom). The server lists those rooms
+ *  (`/admin/housekeeping/locked-rooms`); a payload flag is also honoured. */
+export const isRoomLocked = (r) => !!(r && (r.doNotMoveRoom || r.roomLocked || r.roomAssignmentLocked || r.lockedRoom));
 
 /** @returns {{date, offset, items, unplaced:{clean:number, service:number}}} */
-export function buildWorkList({ payload, live, allowance, offset = 0 }) {
+export function buildWorkList({ payload, live, allowance, offset = 0, lockedRooms }) {
   const today = (live && live.forecastDate) || (payload && payload.forecastDate) || '';
   const date = today ? addDays(today, offset) : '';   // before the room data has loaded there is no date yet
   const items = [], unplaced = { clean: 0, service: 0 };
@@ -59,8 +60,10 @@ export function buildWorkList({ payload, live, allowance, offset = 0 }) {
     });
   }
   // rooms a guest has locked: clean those first
-  const locked = new Set(((payload && payload.reservations) || []).filter(r => r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date).map(r => String(r.roomNumber)));
-  items.forEach(i => { if (i.kind === 'clean' && locked.has(i.roomNumber) && !i.tbd) { i.priority = true; i.why = `${i.why} — guest requested this room`; } });
+  const locked = new Set([...(lockedRooms || [])].map(String));
+  ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date) locked.add(String(r.roomNumber)); });
+  // every locked room that has work gets the lock mark; clean ones also go first
+  items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean') { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
   const seen = new Set();
   const uniq = items.filter(i => (seen.has(i.roomNumber) ? false : (seen.add(i.roomNumber), true)));   // a room never appears twice (clean wins: it came first)
   uniq.sort(byRoom);

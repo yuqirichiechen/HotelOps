@@ -5,6 +5,7 @@ process.env.PORT = '3993'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.
 const jwt = require(SRV + '/node_modules/jsonwebtoken'); const pg = require(SRV + '/node_modules/pg'); const { sanitizePlan } = require(SRV + '/housekeeping');
 const rows = new Map(); const sqls = [];
 pg.Pool.prototype.query = async function (sql, params) { const q = String(sql).replace(/\s+/g, ' '); sqls.push({ q, params });
+  if (/doNotMoveRoom/.test(q)) return { rows: params[1] === '2026-10-19' ? [{ room_number: '102' }, { room_number: '110' }] : [] };
   if (/BETWEEN \$2 AND \$3/.test(q)) { const out = []; for (const [k, r] of rows) { const [pp, d] = k.split('|'); if (pp === params[0] && d >= params[1] && d <= params[2]) out.push({ date: d, hks: r.assignments.length, rooms: r.assignments.reduce((n, a) => n + a.rooms.length, 0), updated_at: r.at }); } return { rows: out }; }
   if (/FROM hk_plans/.test(q)) { const r = rows.get(params[0] + '|' + params[1]); return { rows: r ? [{ date: params[1], settings: r.settings, assignments: r.assignments, updated_at: r.at }] : [] }; }
   if (/INSERT INTO hk_plans/.test(q)) { const at = new Date('2026-10-19T15:00:00Z'); rows.set(params[0] + '|' + params[1], { settings: JSON.parse(params[2]), assignments: JSON.parse(params[3]), by: params[4], at }); return { rows: [{ updated_at: at }] }; }
@@ -41,6 +42,11 @@ const NOW = new Date('2026-10-19T12:00:00Z'); const good = { date: '2026-10-19',
     assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body.plans.map(p => [p.date, p.hks, p.rooms]), [[date, 2, 2]]);
     for (const q of ['from=x&to=y', `from=${to}&to=${from}`, 'from=2026-01-01&to=2026-06-01', '']) assert.strictEqual((await http('/api/admin/housekeeping/plans?' + q, { token: T.admin })).status, 400, q);
   });
+  await t('do-not-move: /locked-rooms returns room numbers only (no guest data), admin/dev only, date validated', async () => {
+    assert.strictEqual((await http('/api/admin/housekeeping/locked-rooms?date=2026-10-19')).status, 401); assert.strictEqual((await http('/api/admin/housekeeping/locked-rooms?date=2026-10-19', { token: T.staff })).status, 403);
+    const r = await http('/api/admin/housekeeping/locked-rooms?date=2026-10-19', { token: T.admin }); assert.deepStrictEqual(r.body, { success: true, rooms: ['102', '110'] }); assert.deepStrictEqual((await http('/api/admin/housekeeping/locked-rooms?date=2026-10-20', { token: T.dev })).body.rooms, []);
+    assert.strictEqual((await http('/api/admin/housekeeping/locked-rooms?date=nope', { token: T.admin })).status, 400);
+  });
   await t('routes: bad input → 400 with a reason and NOTHING is written; every query is parameterized and scoped to the property', async () => {
     const n = rows.size; const r = await http('/api/admin/housekeeping/plan', { method: 'PUT', token: T.admin, body: { ...good, assignments: [{ userId: 'u1', name: 'A', rooms: [{ roomNumber: "1'; DROP TABLE users;--", kind: 'clean' }] }] } }); assert.strictEqual(r.status, 400); assert(r.body.message); assert.strictEqual(rows.size, n);
     assert.strictEqual((await http('/api/admin/housekeeping/plan?date=garbage', { token: T.admin })).status, 400);
@@ -54,6 +60,7 @@ const NOW = new Date('2026-10-19T12:00:00Z'); const good = { date: '2026-10-19',
     const psql = (a) => sh(`${PGBIN}/psql -h 127.0.0.1 -p ${PORT} -U postgres ${a}`); psql('-c "CREATE DATABASE t"');
     const real = new pg.Client({ host: '127.0.0.1', port: PORT, user: 'postgres', database: 't' }); await real.connect();
     await t('migration 030 applies TWICE cleanly; the route SQL upserts one row per property+day and reads it back as JSON', async () => {
+      for (const f of ['tests/real-postgres/base.sql', 'database/migrations/025_sprint18_reservation_history.sql', 'database/migrations/027_sprint20_reservation_detail.sql', 'database/migrations/028_sprint22_sync_engine.sql']) psql(`-d t -v ON_ERROR_STOP=1 -q -f "${ROOT}/${f}"`);
       psql(`-d t -v ON_ERROR_STOP=1 -q -f "${ROOT}/database/migrations/030_sprint23_hk_plans.sql"`); psql(`-d t -v ON_ERROR_STOP=1 -q -f "${ROOT}/database/migrations/030_sprint23_hk_plans.sql"`);
       const src = fs.readFileSync(SRV + '/server.js', 'utf8'); const up = src.match(/`(INSERT INTO hk_plans[\s\S]*?RETURNING updated_at)`/)[1], sel = src.match(/`(SELECT to_char\(plan_date[\s\S]*?plan_date = \$2)`/)[1];
       const a = await real.query(up, ['default', '2026-10-19', JSON.stringify({ min: 10 }), JSON.stringify(good.assignments), 'mgr']); assert(a.rows[0].updated_at);
@@ -61,6 +68,12 @@ const NOW = new Date('2026-10-19T12:00:00Z'); const good = { date: '2026-10-19',
       const r = (await real.query(sel, ['default', '2026-10-19'])).rows; assert.strictEqual(r.length, 1); assert.strictEqual(r[0].date, '2026-10-19'); assert.deepStrictEqual(r[0].settings, { min: 11 }); assert.deepStrictEqual(r[0].assignments, []);
       assert.strictEqual((await real.query('SELECT count(*)::int n FROM hk_plans')).rows[0].n, 2, 'a second property has its own row');
       await real.query(up, ['default', '2026-10-18', '{}', JSON.stringify(good.assignments), 'mgr']); const list = src.match(/`(SELECT to_char\(plan_date,'YYYY-MM-DD'\) AS date, jsonb_array_length[\s\S]*?ORDER BY plan_date)`/)[1];
+      const lockedSql = src.match(/`(SELECT DISTINCT h\.room_number[\s\S]*?ORDER BY h\.room_number)`/)[1]; const ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '55555555-5555-4555-8555-555555555555'];
+      const hist = (id, room, st, arr, dep, gone) => real.query("INSERT INTO reservation_history (reservation_id, room_number, status, arrival_date, departure_date, gone_at) VALUES ($1,$2,$3,$4,$5,$6)", [id, room, st, arr, dep, gone]);
+      await hist(ids[0], '102', 'RES', '2026-10-19', '2026-10-21', null); await hist(ids[1], '103', 'RES', '2026-10-19', '2026-10-21', null); await hist(ids[2], '104', 'INH', '2026-10-17', '2026-10-21', null); await hist(ids[3], '105', 'RES', '2026-10-19', '2026-10-21', new Date()); await hist(ids[4], '106', 'RES', '2026-10-25', '2026-10-27', null);
+      const det = (id, dnm) => real.query("INSERT INTO reservation_detail (reservation_id, summary) VALUES ($1,$2::jsonb)", [id, JSON.stringify({ stay: { doNotMoveRoom: dnm } })]); for (const [i, v] of [[0, true], [1, false], [2, true], [3, true], [4, true]]) await det(ids[i], v);
+      assert.deepStrictEqual((await real.query(lockedSql, ['default', '2026-10-19'])).rows.map(r => r.room_number), ['102'], 'real SQL: only an ARRIVING (RES) reservation with do-not-move ON, still current, whose stay covers the day');
+      assert.deepStrictEqual((await real.query(lockedSql, ['default', '2026-10-26'])).rows.map(r => r.room_number), ['106']); assert.deepStrictEqual((await real.query(lockedSql, ['other', '2026-10-19'])).rows, [], 'scoped to the property');
       const l = (await real.query(list, ['default', '2026-10-01', '2026-10-31'])).rows; assert.deepStrictEqual(l.map(x => [x.date, x.hks, x.rooms]), [['2026-10-18', 2, 2], ['2026-10-19', 0, 0]], 'real SQL: counts housekeepers and rooms per day, scoped to the property');
     });
     await real.end();
