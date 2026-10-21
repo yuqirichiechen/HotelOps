@@ -103,3 +103,39 @@
   :root[data-theme="dark"] .dv-seg button.on { background:#7c3aed;color:#fff; }
   :root[data-theme="dark"] .dv-viewbar .dv-link { color:#d6bcfa; }
 }
+
+/* 22.9 */
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .fb-room-inspected { background:#0e2218;border-color:#276749; }
+  :root:not([data-theme="light"]) .fb-room-inspected .fb-room-stat { background:#1a3d2b;color:#9ae6b4; }
+  :root:not([data-theme="light"]) .fb-room-pickup { background:#2e2610;border-color:#8a6d1a; }
+  :root:not([data-theme="light"]) .fb-room-pickup .fb-room-stat { background:#3d3000;color:#f6e05e; }
+  :root:not([data-theme="light"]) .fb-room-occupied { background:#2a1212;border-color:#742a2a; }
+  :root:not([data-theme="light"]) .fb-room-occupied .fb-room-stat { background:#3d1515;color:#fc8181; }
+  :root:not([data-theme="light"]) .fb-room-progress { background:#10243a;border-color:#2c5282; }
+  :root:not([data-theme="light"]) .fb-room-progress .fb-room-stat { background:#14304d;color:#90cdf4; }
+  :root:not([data-theme="light"]) .rs-row.rs-inspected td { background:#0e2218; }
+  :root:not([data-theme="light"]) .rs-row.rs-pickup td { background:#2e2610; }
+  :root:not([data-theme="light"]) .rs-row.rs-occupied td { background:#2a1212; }
+  :root:not([data-theme="light"]) .rs-row.rs-progress td { background:#10243a; }
+  :root:not([data-theme="light"]) .rs-row.rs-dirty td { background:#1e2d3f; }
+  :root:not([data-theme="light"]) .rs-row.rs-off td { background:#253649;color:#a0aec0; }
+  :root:not([data-theme="light"]) .rs-legend { color:#a0aec0; }
+}
+@media screen {
+  :root[data-theme="dark"] .fb-room-inspected { background:#0e2218;border-color:#276749; }
+  :root[data-theme="dark"] .fb-room-inspected .fb-room-stat { background:#1a3d2b;color:#9ae6b4; }
+  :root[data-theme="dark"] .fb-room-pickup { background:#2e2610;border-color:#8a6d1a; }
+  :root[data-theme="dark"] .fb-room-pickup .fb-room-stat { background:#3d3000;color:#f6e05e; }
+  :root[data-theme="dark"] .fb-room-occupied { background:#2a1212;border-color:#742a2a; }
+  :root[data-theme="dark"] .fb-room-occupied .fb-room-stat { background:#3d1515;color:#fc8181; }
+  :root[data-theme="dark"] .fb-room-progress { background:#10243a;border-color:#2c5282; }
+  :root[data-theme="dark"] .fb-room-progress .fb-room-stat { background:#14304d;color:#90cdf4; }
+  :root[data-theme="dark"] .rs-row.rs-inspected td { background:#0e2218; }
+  :root[data-theme="dark"] .rs-row.rs-pickup td { background:#2e2610; }
+  :root[data-theme="dark"] .rs-row.rs-occupied td { background:#2a1212; }
+  :root[data-theme="dark"] .rs-row.rs-progress td { background:#10243a; }
+  :root[data-theme="dark"] .rs-row.rs-dirty td { background:#1e2d3f; }
+  :root[data-theme="dark"] .rs-row.rs-off td { background:#253649;color:#a0aec0; }
+  :root[data-theme="dark"] .rs-legend { color:#a0aec0; }
+}

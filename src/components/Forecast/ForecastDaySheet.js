@@ -2,6 +2,7 @@
 // Today: from the live room board (front desk inspects, housekeeping turns, by floor).
 // Future days: cleaning priority per room type + the departing rooms to turn, by floor.
 // Reuses the fc-sheet-* classes (and their print rules) from the Forecasting sheet.
+import { createPortal } from 'react-dom';
 import React, { useEffect } from 'react';
 import '../Forecasting/ForecastSheet.css';
 import './ForecastDaySheet.css';
@@ -40,8 +41,8 @@ const ForecastDaySheet = ({ model, propertyName = 'Snoqualmie Inn', onClose }) =
   const firstRooms = new Set((model.plan || []).flatMap(p => p.floors.flatMap(f => f.rooms.filter(r => r.first).map(r => String(r.roomNumber)))));
   const floors = (model.floors || []).filter(f => f.departing.length || f.stayover.length || f.dirty.length || f.inspect.length);
 
-  return (
-    <div className="fc-sheet-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-label="Printable forecast">
+  const node = (
+    <div className="fc-sheet-backdrop fc-print-root" onClick={onClose} role="dialog" aria-modal="true" aria-label="Printable forecast">
       <div className="fc-sheet-wrap" onClick={(e) => e.stopPropagation()}>
         <div className="fc-sheet-controls">
           <div className="fc-sheet-controls-left">
@@ -138,6 +139,7 @@ const ForecastDaySheet = ({ model, propertyName = 'Snoqualmie Inn', onClose }) =
       </div>
     </div>
   );
+  return createPortal(node, document.body);
 };
 
 export default ForecastDaySheet;

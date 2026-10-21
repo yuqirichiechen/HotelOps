@@ -787,13 +787,12 @@ const Forecast = ({ mode = 'manager' }) => {
             </div>
             </>
           ) : (
-            /* Sprint 22.5 — manager layout: the "sellable vs arriving" summary first, then one simple row per room type (tap for its rooms), then the
-               next-14-days selector. Everything else (stats, action lists, plan, arrivals, notes) lives in the Dev view. */
+            /* Sprint 22.5 — manager layout: the "sellable vs arriving" summary first, then one simple row per room type (tap for its rooms), then the next-14-days selector (22.9: the 14-day outlook now comes FIRST). Everything else (stats, action lists, plan, arrivals, notes) lives in the Dev view. */
             <div className="fb-manager">
               <div ref={topRef} />
+              <OutlookStrip days={outlook} selected={dayOffset} onSelect={selectDay} />
               <ForecastSummaryCard model={model} />
               <SimpleRoomTable model={model} roomsByType={roomsByType} dayLabel={fmtLong(model.date)} />
-              <OutlookStrip days={outlook} selected={dayOffset} onSelect={selectDay} />
             </div>
           )}
 

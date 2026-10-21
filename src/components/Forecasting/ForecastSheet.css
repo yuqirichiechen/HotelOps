@@ -217,8 +217,10 @@
 
    Tested approach in modern Chrome / Safari / Firefox. */
 @media print {
-  body * { visibility: hidden !important; }
-  .fc-sheet, .fc-sheet * { visibility: visible !important; }
+  /* Sprint 22.9: the sheet is portaled to <body>; every OTHER body child is removed from the print layout (visibility:hidden used to leave
+     the page's full height in front of the sheet → a blank first page). */
+  body > *:not(.fc-print-root) { display: none !important; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
 
   .fc-sheet-backdrop {
     position: static !important;
@@ -246,4 +248,6 @@
   .fc-sheet-summary strong { font-size: 16px !important; }
   .fc-sheet-summary span   { font-size: 8px !important; }
   @page { size: letter; margin: 0.5in; }
+  .rs-sheet { page: rs; }
 }
+@page rs { size: letter landscape; margin: 0.4in; }

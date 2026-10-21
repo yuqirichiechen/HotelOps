@@ -15,9 +15,21 @@
   .fcd-room { font-size: 11px !important; }
 }
 
-/* Sprint 22.6 — room status sheet */
-.rs-row.rs-available td { background: #f0fff4; }
-.rs-row.rs-unavailable td { background: #fff8f0; }
-.rs-row.rs-occupied td { background: #f7fafc; }
-.rs-arr { color: #2c5282; font-size: 11px; }
-@media print { .rs-table td, .rs-table th { padding: 3px 6px !important; } .fc-sheet-floor { break-inside: avoid; } }
+/* Sprint 22.6/22.9 — room status sheet */
+.rs-row.rs-inspected td { background: #f0fff4; } .rs-row.rs-pickup td { background: #fffbe0; } .rs-row.rs-occupied td { background: #fff1f1; }
+.rs-row.rs-progress td { background: #ebf4ff; } .rs-row.rs-dirty td { background: #f4f4f5; } .rs-row.rs-off td { background: #e5e7eb; color: #4b5563; }
+.rs-arr { color: #2c5282; font-size: 11px; margin-left: 8px; }
+.rs-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: middle; border: 1px solid rgba(0,0,0,.25); }
+.rs-dot-inspected { background: #38a169; } .rs-dot-pickup { background: #ecc94b; } .rs-dot-occupied { background: #e53e3e; } .rs-dot-progress { background: #3182ce; } .rs-dot-dirty { background: #a0aec0; } .rs-dot-off { background: #4a5568; }
+.rs-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; margin: 0 0 14px; color: #4a5568; } .rs-legend i { margin-right: 6px; }
+.rs-floors { display: block; }
+@media print {
+  .rs-table td, .rs-table th { padding: 2px 5px !important; font-size: 9px !important; }
+  .rs-floors { column-count: 2; column-gap: 18px; }
+  .rs-floors .fc-sheet-floor { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8px !important; }
+  .rs-legend { margin-bottom: 6px; font-size: 9px; }
+  .fc-sheet.rs-sheet, .rs-sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rs-sheet .fc-sheet-header { margin-bottom: 6px !important; padding-bottom: 6px !important; }
+  .rs-sheet .fc-sheet-footer { margin-top: 6px !important; }
+  .rs-sheet .fc-sheet-floor h2 { font-size: 11px !important; margin: 0 0 3px !important; }
+}

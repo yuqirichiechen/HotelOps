@@ -107,10 +107,10 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
     assert(Number(h.cells(h.rowFor('NKRR'))[4]) > 4, 'allowance adds rooms'); appSettings = {}; await h.unmount();
   });
   await t('PLAN SHEET (dev only) follows the selected day (today vs tomorrow) and is built from the same model', async () => {
-    fresh(); const h = await mount(); const open = async () => { await h.click([...h.el.querySelectorAll('button')].find(b => /Plan sheet/.test(b.textContent))); return h.el.querySelector('.fc-sheet'); };
+    fresh(); const h = await mount(); const open = async () => { await h.click([...h.el.querySelectorAll('button')].find(b => /Plan sheet/.test(b.textContent))); return document.querySelector('.fc-sheet'); };
     let sheet = await open(); assert(/today/i.test(sheet.querySelector('h1').textContent) && /Mon|Monday/.test(sheet.textContent) === false || /October 12, 2026/.test(sheet.textContent), sheet.querySelector('h1').textContent);
     assert(/Left to sell/.test(sheet.textContent) && /Inspect \(PU\)/.test(sheet.textContent)); assert(/Floor 1|Ground/.test(sheet.textContent), 'rooms grouped by floor');
-    await h.click(h.el.querySelector('.fc-sheet-btn-secondary')); await h.click(h.el.querySelectorAll('.fb-day')[1]); sheet = await open();
+    await h.click(document.querySelector('.fc-sheet-btn-secondary')); await h.click(h.el.querySelectorAll('.fb-day')[1]); sheet = await open();
     assert(/Housekeeping plan/.test(sheet.querySelector('h1').textContent) && /October 13, 2026/.test(sheet.textContent), sheet.querySelector('h1').textContent + ' | ' + sheet.textContent.slice(0, 200));
     assert(/Clean first, by room type/.test(sheet.textContent) && /Expected/.test(sheet.textContent)); assert(!/Left to sell/.test(sheet.textContent)); await h.unmount();
   });
@@ -148,10 +148,10 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
 
   // ── Sprint 22.5: the MANAGER layout (the dev tests above run the full page) ──
   const order = (el, sels) => sels.map(sel => { const n = [...el.querySelectorAll('h2')].find(h => sel.test(h.textContent)); return n ? [...el.querySelectorAll('*')].indexOf(n) : -1; });
-  await t('MANAGER forecast, top to bottom: "Sellable vs arriving" summary → simple "Rooms to sell today" table → next-14-days selector; nothing else', async () => {
+  await t('MANAGER forecast, top to bottom: "Sellable vs arriving" 14-day outlook FIRST → summary → simple "Rooms to sell today" table; nothing else', async () => {
     fresh(); const h = await mount('manager'); const txt = h.el.textContent;
     const [sum, tbl] = order(h.el, [/Sellable vs arriving/, /Rooms to sell today/]); const strip = [...h.el.querySelectorAll('*')].indexOf(h.el.querySelector('.fb-outlook'));
-    assert(sum > 0 && tbl > sum && strip > tbl, `order ${sum} < ${tbl} < ${strip}`);
+    assert(strip > 0 && sum > strip && tbl > sum, `Sprint 22.9 order: outlook ${strip} < summary ${sum} < table ${tbl}`);
     assert(/NQRR left to sell/.test(txt) && /NKRR left to sell/.test(txt) && /Total left to sell/.test(txt) && /Clean rooms \(VI \+ PU\)/.test(txt) && /Still arriving/.test(txt), 'the summary block matches the dev layout');
     for (const gone of ['.fb-stats', '.fb-need-table', '.fb-detail-table']) assert(!h.el.querySelector(gone), gone + ' is dev-only');
     for (const gone of [/Action list/, /Housekeeping plan/, /Operational Notes/, /Arrivals · /, /Snapshot history/, /Forecast settings/, /Awaiting inspection \(PU\)/, /Dirty \/ in progress/]) assert(!gone.test(txt), String(gone) + ' must not show for managers');
@@ -167,9 +167,10 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   await t('MANAGER dropdown: tap a room type → its rooms with housekeeping state, by subtype, plus "inspect now" / "clean first" room numbers; one open at a time', async () => {
     fresh(); const h = await mount('manager'); const row = (code) => [...h.el.querySelectorAll('.sr-row')].find(r => new RegExp(code + '\\b').test(r.querySelector('code').textContent) && r.querySelector('code').textContent === code);
     assert(!h.el.querySelector('.sr-detail')); await h.click(row('NQRR').querySelector('.sr-toggle')); let d = h.el.querySelector('.sr-detail').textContent;
-    for (const w of [/101\s*Inspected/, /102\s*Awaiting inspection/, /103\s*Dirty/, /104\s*Occupied/, /105\s*Occupied/, /Inspect now: 102/, /Clean first: 103/]) assert(w.test(d), String(w) + ' in: ' + d);
+    assert(/Floor 1\s*5 rooms/.test(d), 'rooms are grouped by FLOOR: ' + d); assert(h.el.querySelector('.sr-detail .fb-room-inspected') && h.el.querySelector('.sr-detail .fb-room-pickup') && h.el.querySelector('.sr-detail .fb-room-occupied'), 'green / yellow / red chips');
+    for (const w of [/101\s*Vacant · inspected/, /102\s*Pickup/, /103\s*Dirty/, /104\s*Occupied/, /105\s*Occupied/, /Inspect now: 102/, /Clean first: 103/]) assert(w.test(d), String(w) + ' in: ' + d);
     assert(h.el.querySelector('.sr-row.open') && h.el.querySelector('.sr-toggle[aria-expanded="true"]'));
-    await h.click(row('NKRR').querySelector('.sr-toggle')); d = h.el.querySelector('.sr-detail').textContent; assert.strictEqual(h.el.querySelectorAll('.sr-detail').length, 1, 'only one open'); assert(/NKRR\s*Standard/.test(d) && /NKRRP\s*Pets/.test(d) && /G28\s*Occupied/.test(d) && /202\s*In progress/.test(d), d);
+    await h.click(row('NKRR').querySelector('.sr-toggle')); d = h.el.querySelector('.sr-detail').textContent; assert.strictEqual(h.el.querySelectorAll('.sr-detail').length, 1, 'only one open'); assert(/NKRR\s*Standard/.test(d) && /NKRRP\s*Pets/.test(d) && /G28\s*(NKRR\w*)?\s*Occupied/.test(d) && /202\s*(NKRR\w*)?\s*In progress/.test(d) && h.el.querySelector('.sr-detail .fb-room-progress'), d);
     await h.click(h.el.querySelector('.sr-row.open')); assert(!h.el.querySelector('.sr-detail'), 'tapping again closes it'); await h.unmount();
   });
   await t('MANAGER, a later day: the table becomes Expected / Turn first / Priority; the dropdown lists the departing rooms to clean by floor; choosing a day returns to the top', async () => {
@@ -182,9 +183,9 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
   });
   await t('ROOM STATUS SHEET: the header button opens a printable sheet of every room by floor (available / unavailable / occupied + check-out), for managers and dev alike', async () => {
     fresh(); for (const mode of ['manager', 'dev']) {
-      const h = await mount(mode); await h.click([...h.el.querySelectorAll('button')].find(b => /Room status sheet/.test(b.textContent))); const sheet = h.el.querySelector('.fc-sheet'); assert(sheet, mode);
-      assert(/Room status/.test(sheet.querySelector('h1').textContent) && /Available/.test(sheet.textContent) && /Unavailable/.test(sheet.textContent) && /Occupied/.test(sheet.textContent) && /Checking out/.test(sheet.textContent), sheet.textContent.slice(0, 200));
-      assert(h.el.querySelectorAll('.fc-sheet-floor').length >= 1 && /Today · 12:00 PM|Tomorrow · 12:00 PM|Check-out date unknown/.test(sheet.textContent)); assert(!/Guest \d/.test(sheet.textContent), 'no guest names on the sheet'); await h.unmount();
+      const h = await mount(mode); await h.click([...h.el.querySelectorAll('button')].find(b => /Room status sheet/.test(b.textContent))); const sheet = document.querySelector('.fc-sheet'); assert(sheet, mode);
+      assert(/Room status/.test(sheet.querySelector('h1').textContent) && /Available/.test(sheet.textContent) && /Unavailable/.test(sheet.textContent) && /Occupied/.test(sheet.textContent) && /check-in → check-out/.test(sheet.textContent), sheet.textContent.slice(0, 200));
+      assert(document.querySelectorAll('.fc-sheet-floor').length >= 1 && /[A-Z][a-z]{2} \d+ → [A-Z][a-z]{2} \d+|Stay dates unknown/.test(sheet.textContent) && !/12:00 PM|11:00 AM/.test(sheet.textContent), 'dates not times'); assert(sheet.closest('.fc-print-root').parentNode === document.body, 'portaled to body so print hides everything else'); assert(!/Guest \d/.test(sheet.textContent), 'no guest names on the sheet'); await h.unmount();
     }
   });
   await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {

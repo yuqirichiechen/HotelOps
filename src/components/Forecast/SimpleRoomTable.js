@@ -5,17 +5,13 @@
 //                                                                          later days = booked, expected, and the departing rooms to clean)
 // The full table (subtype rows, every housekeeping column) stays in the Dev view.
 import React, { useState } from 'react';
-import { PRIORITY_LABEL } from './forecastModel';
+import { PRIORITY_LABEL, normFloor, floorLabel } from './forecastModel';
+import { roomTone, TONE_LABEL } from './roomSheet';
 import DayTwoDetail from './DayTwoDetail';
 
 const STATUS_LABEL = { open: 'Open', tight: 'Clean first', full: 'Sold out', short: 'Oversold' };
-const HK_LABEL = { VI: 'Inspected', PU: 'Awaiting inspection', D: 'Dirty', IP: 'In progress', OC: 'Occupied' };
-const roomLabel = (r) => {
-  if (r.blocked || ['OOO', 'OTM', 'HOLD'].includes(r.inventoryStatus)) return 'Out of service';
-  if (r.occupancyStatus === 'OCC') return 'Occupied';
-  return HK_LABEL[r.hkStatus] || r.hkStatusLabel || r.hkStatus || '—';
-};
-const roomTone = (r) => (r.blocked || ['OOO', 'OTM', 'HOLD'].includes(r.inventoryStatus) ? 'off' : r.occupancyStatus === 'VAC' && r.hkStatus === 'VI' ? 'clean' : r.occupancyStatus === 'VAC' && r.hkStatus === 'PU' ? 'awaiting' : 'busy');
+const roomLabel = (r) => TONE_LABEL[roomTone(r)];
+const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byNumber = (a, b) => String(a.roomNumber || '').localeCompare(String(b.roomNumber || ''), undefined, { numeric: true });
 const list = (rows) => rows.map(r => r.roomNumber).join(', ');
 
@@ -24,6 +20,14 @@ const Caret = ({ open }) => <span className="sr-caret" aria-hidden="true">{open 
 const TodayDetail = ({ g, model, roomsByType }) => {
   const inspect = ((model.actions && model.actions.inspect) || []).filter(r => r.baseCode === g.baseCode);
   const clean = ((model.actions && model.actions.cleanFirst) || []).filter(r => r.baseCode === g.baseCode);
+  const floorMap = new Map();
+  g.variants.forEach(v => (roomsByType.get(v.typeCode) || []).forEach(r => {
+    const fid = normFloor(r.floorId, String(r.roomNumber || ''));
+    if (!floorMap.has(fid)) floorMap.set(fid, { floorId: fid, label: floorLabel(fid), rooms: [] });
+    floorMap.get(fid).rooms.push(r);
+  }));
+  const floors = [...floorMap.values()].sort((a, b) => floorRank(a.floorId) - floorRank(b.floorId));
+  floors.forEach(f => f.rooms.sort(byNumber));
   return (
     <div className="sr-detail-body">
       {(inspect.length > 0 || clean.length > 0) && (
@@ -32,25 +36,24 @@ const TodayDetail = ({ g, model, roomsByType }) => {
           {clean.length > 0 && <li><strong>Clean first:</strong> {list(clean)}</li>}
         </ul>
       )}
-      {g.variants.map(v => {
-        const rooms = (roomsByType.get(v.typeCode) || []).slice().sort(byNumber);
-        return (
-          <div className="sr-sub" key={v.typeCode}>
-            <div className="sr-sub-head">
-              <code>{v.typeCode}</code> <span>{v.subLabel || 'Standard'}</span>
-              <span className="sr-sub-meta">{v.ready} clean · {v.dirty} dirty · {v.arrivals} arriving</span>
-            </div>
-            <div className="sr-chips">
-              {rooms.length === 0 && <span className="fb-muted">No rooms of this type.</span>}
-              {rooms.map(r => (
-                <span key={r.roomNumber || r.reservationId} className={`fb-room-chip fb-room-${roomTone(r)}`}>
-                  <strong>{r.roomNumber || '?'}</strong><span className="fb-room-stat">{roomLabel(r)}</span>
-                </span>
-              ))}
-            </div>
+      <p className="sr-sub-meta sr-sub-line">
+        {g.variants.map(v => `${v.typeCode} ${v.subLabel || 'Standard'}: ${v.ready} clean · ${v.dirty} dirty · ${v.arrivals} arriving`).join('   |   ')}
+      </p>
+      {floors.length === 0 && <span className="fb-muted">No rooms of this type.</span>}
+      {floors.map(f => (
+        <div className="sr-sub" key={f.floorId}>
+          <div className="sr-sub-head"><span>{f.label}</span><span className="sr-sub-meta">{f.rooms.length} room{f.rooms.length === 1 ? '' : 's'}</span></div>
+          <div className="sr-chips">
+            {f.rooms.map(r => (
+              <span key={r.roomNumber || r.reservationId} className={`fb-room-chip fb-room-${roomTone(r)}`}>
+                <strong>{r.roomNumber || '?'}</strong>
+                {g.variants.length > 1 && <small className="sr-chip-code">{r.typeCode}</small>}
+                <span className="fb-room-stat">{roomLabel(r)}</span>
+              </span>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 };

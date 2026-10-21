@@ -18,12 +18,17 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested, NOT yet deployed** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested, NOT yet deployed** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 22.9   | Forecast: outlook on top, rooms by floor, colored room sheet with stay dates, print fixed | **Built + tested, NOT yet deployed** (frontend only) |
 | 22.8   | UI fixes: dark mode, tiles consistent, slower animation, Recent changes card | **Built + tested, NOT yet deployed** (CSS/JS only) |
 | 22.7   | Reservations tiles redo (left-first numbers, rings, count-up, room lists) | **Built + tested, NOT yet deployed** (no migration; new dev route `/api/dev/rooms/last-stays`) |
 | 22.6   | One shell for dev + managers; lean manager Reservations; second-night cleaning plan; room status sheet | **Built + tested, NOT yet deployed** (no migration, no new env) |
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested, NOT yet deployed** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 22.9: Forecast + room sheet fixes
+
+1. Manager Forecast: the **14-day outlook is now first**, then the summary, then the table. 2. "Rooms to sell" dropdown (today) **groups by floor** (Ground, Floor 1…; chips with the room type code when the group has several subtypes; one summary line per subtype stays above). 3. **Room status sheet**: occupied rooms show **check-in → check-out dates** (e.g. "Oct 10 → Oct 13"), no time anywhere (STANDARD_CHECKOUT and the footnote removed; CSV column "Stay (check-in → check-out)"); colors: **green** vacant inspected, **yellow** pickup, **red** occupied (dirty or not), **blue** in progress (+ grey dirty, dark grey out of service), legend on top; the same colors on the room chips in the dropdown (`roomTone` in `roomSheet.js`; dark-mode variants added). 4. **Print fixed**: the old rule hid the page with `visibility:hidden`, which still occupied the page's height → the sheet landed on a blank first page. The sheet (and the dev plan sheet) is now a **portal child of `<body>`** and print CSS removes every other body child (`display:none`), so the first printed page is the sheet. The room sheet prints **landscape, two floor columns per page, colors forced on**; verified by printing 84 rooms through headless Chrome → 2 pages (floors 1–2, then 3–4), nothing else from the app on paper. Tests: `roomsheet` 8, `forecastpage` 23 updated (order, floors, colors, portal, dates); all others green; build compiles.
 
 ### 2026-10-21 — Sprint 22.8: UI fixes
 

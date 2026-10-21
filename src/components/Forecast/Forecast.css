@@ -707,3 +707,12 @@
 .d2-note { margin: 4px 0 0; font-size: 12px; }
 .d2-total { margin: 0; font-size: 13px; padding-top: 6px; border-top: 1px dashed var(--border); }
 @media (max-width: 640px) { .d2-floor-name { flex-basis: 60px; } }
+
+/* Sprint 22.9 — room chips share the room-sheet colors: green vacant inspected · yellow pickup · red occupied · blue in progress */
+.fb-room-inspected { background: #f0fff4; border-color: #68d391; } .fb-room-inspected .fb-room-stat { background: #c6f6d5; color: #276749; }
+.fb-room-pickup { background: #fffbe0; border-color: #ecc94b; } .fb-room-pickup .fb-room-stat { background: #fefcbf; color: #744210; }
+.fb-room-occupied { background: #fff5f5; border-color: #fc8181; } .fb-room-occupied .fb-room-stat { background: #fed7d7; color: #9b2c2c; }
+.fb-room-progress { background: #ebf8ff; border-color: #63b3ed; } .fb-room-progress .fb-room-stat { background: #bee3f8; color: #2c5282; }
+.fb-room-dirty { background: var(--bg-surface-alt); }
+.sr-chip-code { font-size: 10px; color: var(--text-muted); margin: 0 4px; }
+.sr-sub-line { margin: 0 0 8px; }
