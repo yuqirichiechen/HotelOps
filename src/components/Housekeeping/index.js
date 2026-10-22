@@ -1,4 +1,4 @@
-// Sprint 23 / 23.3 — Housekeeping: who cleans / services which rooms, then one printed sheet per housekeeper.
+// Sprint 23 / 23.7 — Housekeeping: who cleans / services which rooms, then one printed sheet per housekeeper.
 //   · Day strip: the last 14 days (read-only history of what was assigned), today and tomorrow (editable).
 //   · Left card = all staff (search, scroll, Add) · right card = who is working + the rules (minimum / maximum workload, weights).
 //   · Rooms are small cards. Nothing is assigned by itself: add the people, then press "Auto-assign" (same floor → same person where possible, cards
@@ -16,6 +16,7 @@ import { buildRoomSheet } from '../Forecast/roomSheet';
 import HkSheets from './HkSheets';
 import HkRoomTable from './HkRoomTable';
 import HkPrintColors from './HkPrintColors';
+import ConfirmModal from '../shared/ConfirmModal';
 import { buildWorkList, summarize, balance, warnings, reconcile, resolveAssign, toAssignments, weightOf, parseColors, DEFAULT_SETTINGS } from './hkWork';
 import './Housekeeping.css';
 
@@ -74,20 +75,22 @@ const StaffCard = ({ staff, chosen, onAdd, disabled }) => {
   );
 };
 
-/** "Just a number" mode: ask how many housekeepers are working (no names). − / + only change the number in the box; Start / Update shares the rooms out. */
+/** "No name" mode: how many housekeepers are working. − / + only change the number in the box; Start / Update shares the rooms out. */
 const clampCount = (v) => Math.max(1, Math.min(40, Math.floor(Number(v)) || 1));
 const CountCard = ({ count, draft, setDraft, onApply, disabled }) => {
   const n = clampCount(draft), started = !!count;
   return (
     <section className="hk-panel hk-staff hk-countcard" aria-label="How many housekeepers">
       <div className="hk-panel-head"><h2>How many housekeepers?</h2></div>
-      <p className="hk-help">{started ? 'Change the number, then press Update — the rooms are shared out again (hand-placed cards stay).' : 'No names needed — say how many are working, then press Start and the rooms are shared out automatically.'}</p>
-      <div className="hk-stepper">
-        <button type="button" className="hk-btn" aria-label="One fewer" disabled={disabled || n <= 1} onClick={() => setDraft(String(clampCount(n - 1)))}>−</button>
-        <input className="hk-input" type="number" min="1" max="40" step="1" aria-label="Number of housekeepers" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onApply(draft); }} />
-        <button type="button" className="hk-btn" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}>+</button>
-        <button type="button" className="hk-btn hk-btn-primary" onClick={() => onApply(draft)} disabled={disabled || (started && n === count)}>{started ? 'Update' : 'Start'}</button>
+      <div className="hk-count-main">
+        <div className="hk-stepper">
+          <button type="button" className="hk-btn hk-step" aria-label="One fewer" disabled={disabled || n <= 1} onClick={() => setDraft(String(clampCount(n - 1)))}>−</button>
+          <input className="hk-input hk-count-input" type="number" min="1" max="40" step="1" aria-label="Number of housekeepers" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onApply(draft); }} />
+          <button type="button" className="hk-btn hk-step" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}>+</button>
+        </div>
+        <div className="hk-people" aria-hidden="true">{Array.from({ length: n }, (_, i) => <i key={i} className={started && i < count ? 'on' : ''} />)}</div>
       </div>
+      <button type="button" className="hk-btn hk-btn-primary hk-count-go" onClick={() => onApply(draft)} disabled={disabled || (started && n === count)}>{started ? 'Update' : 'Start'}</button>
     </section>
   );
 };
@@ -96,8 +99,8 @@ const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
   <label className="hk-field">{label}<input className="hk-input hk-num-in" type="number" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} /></label>
 );
 
-/** One small room card. Draggable; tap selects it (then "Move here" on a column). */
-const RoomCard = ({ it, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin }) => (
+/** One small room card. Draggable; click selects it (Ctrl/⌘-click adds or removes, Shift-click selects a range); right-click opens a "Move to" menu. */
+const RoomCard = ({ it, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin, onMenu }) => (
   <div
     className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${dev && guest ? ' withguest' : ''}`}
     data-flip={it.roomNumber} data-room={it.roomNumber}
@@ -105,8 +108,9 @@ const RoomCard = ({ it, pinned, selected, justMoved, guest, dev, readOnly, onSel
     role={readOnly ? undefined : 'button'} tabIndex={readOnly ? undefined : 0} aria-pressed={readOnly ? undefined : !!selected}
     aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}${it.locked ? ', guest asked not to be moved' : ''}`}
     title={`${it.tbd ? 'Room not assigned yet' : 'Room ' + it.roomNumber} · ${it.typeCode} · ${it.why || (it.kind === 'clean' ? 'Clean' : 'Service')}${guest ? ' · ' + guest : ''}`}
-    onClick={() => !readOnly && onSelect(it.roomNumber)}
-    onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(it.roomNumber); } }}
+    onClick={(e) => !readOnly && onSelect(it.roomNumber, e)}
+    onContextMenu={(e) => { if (!readOnly) onMenu(e, it.roomNumber); }}
+    onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(it.roomNumber, e); } }}
     onDragStart={(e) => onDragStart(e, it.roomNumber)} onDragEnd={onDragEnd}
   >
     <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong><span className="hk-rc-marks">{it.locked && <i className="hk-rc-lock" title="Guest asked not to be moved" aria-hidden="true">⚑</i>}{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span></span>
@@ -115,6 +119,30 @@ const RoomCard = ({ it, pinned, selected, justMoved, guest, dev, readOnly, onSel
     {pinned && !readOnly && <button type="button" className="hk-rc-pin" aria-label={`Let the balancer move room ${it.roomNumber}`} title="Placed by hand — click to let the balancer move it" onClick={(e) => { e.stopPropagation(); onUnpin(it.roomNumber); }}>●</button>}
   </div>
 );
+
+/** Right-click menu: move the selected cards to a group, copy them, or paste copied ones here. */
+const CardMenu = ({ menu, hks, canPaste, clipCount, onMove, onCopy, onPaste, onClose }) => {
+  const ref = useRef(null);
+  useEffect(() => {
+    const away = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const key = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', key); window.addEventListener('blur', onClose);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', key); window.removeEventListener('blur', onClose); };
+  }, [onClose]);
+  const x = Math.min(menu.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 230), y = Math.min(menu.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 60 - 34 * (hks.length + 3));
+  const n = menu.rooms.length;
+  return (
+    <ul className="hk-menu" role="menu" ref={ref} style={{ left: Math.max(8, x), top: Math.max(8, y) }}>
+      {n > 0 && <li className="hk-menu-head">{n} card{n === 1 ? '' : 's'}</li>}
+      {n > 0 && <li role="none"><button type="button" role="menuitem" onClick={() => onCopy(menu.rooms)}>Copy <kbd>Ctrl/⌘ C</kbd></button></li>}
+      {n > 0 && <li className="hk-menu-sep" role="separator" />}
+      {n > 0 && <li className="hk-menu-sub">Move to</li>}
+      {n > 0 && <li role="none"><button type="button" role="menuitem" onClick={() => onMove(menu.rooms, null)}>Not assigned</button></li>}
+      {n > 0 && hks.map(h => <li role="none" key={h.userId}><button type="button" role="menuitem" onClick={() => onMove(menu.rooms, h.userId)}>{h.name}</button></li>)}
+      {menu.group !== undefined && canPaste && <li role="none"><button type="button" role="menuitem" onClick={() => onPaste(menu.group)}>Paste {clipCount} card{clipCount === 1 ? '' : 's'} here <kbd>Ctrl/⌘ V</kbd></button></li>}
+    </ul>
+  );
+};
 
 const Housekeeping = ({ mode = 'manager' }) => {
   const dev = mode === 'dev';
@@ -141,11 +169,17 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const [past, setPast] = useState(null);               // saved plan shown for a history day
   const [plans, setPlans] = useState([]);               // days that have a saved plan
   const [printing, setPrinting] = useState(null);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState([]);       // selected cards (Ctrl/⌘-click adds)
+  const [clip, setClip] = useState([]);                 // copied cards, waiting to be pasted into a group
+  const [menu, setMenu] = useState(null);               // right-click menu { x, y, rooms, group? }
+  const [ask, setAsk] = useState(null);                 // in-app confirm dialog
+  const [vstart, setVstart] = useState(0);              // first housekeeper column in view (carousel)
+  const hoverGroup = useRef(undefined);                  // group under the mouse (for paste): housekeeper id | null (= Not assigned)
+  const lastGroup = useRef(undefined);
   const [over, setOver] = useState(null);
   const [lastStays, setLastStays] = useState({});
   const [lockedRooms, setLockedRooms] = useState([]);
-  const [justMoved, setJustMoved] = useState(null);
+  const [justMoved, setJustMoved] = useState([]);
   const dragRef = useRef(null);
   const skipFlip = useRef(false);
   const boardRef = useRef(null);
@@ -207,7 +241,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
       const { ok, data } = await apiFetch(`/admin/housekeeping/plan?date=${date}`);
       if (!alive) return;
       const saved = ok && data?.success ? data.plan : null;
-      setSelected(null);
+      setSelected([]);
       if (readOnly) {
         setPast(saved ? { assignments: saved.assignments || [], settings: { ...DEFAULT_SETTINGS, ...(saved.settings || {}) }, updatedAt: saved.updatedAt } : null);
         setHks([]); setPinned({}); setSavedAt(saved ? saved.updatedAt : null); setDirty(false); setSaveMsg(null);
@@ -293,11 +327,54 @@ const Housekeeping = ({ mode = 'manager' }) => {
   };
   const switchMode = (toAnon) => {
     if (toAnon === anon) return;
-    if ((hks.length > 0 || Object.keys(pinned).length > 0) && !window.confirm('Switching clears the housekeepers and every assignment for this day. Switch anyway?')) return;
-    setAnon(toAnon); setAnonCount(null); setHks([]); setPinned({}); setAuto({}); setSelected(null); setCountDraft('3'); touch();
+    const go = () => { setAnon(toAnon); setAnonCount(null); setHks([]); setPinned({}); setAuto({}); setSelected([]); setCountDraft('3'); touch(); };
+    if (hks.length > 0 || Object.keys(pinned).length > 0) {
+      setAsk({ title: `Switch to "${toAnon ? 'No name' : 'Names'}"?`, message: 'Switching clears the housekeepers and every assignment for this day.', confirmLabel: 'Switch', tone: 'danger', onConfirm: go });
+    } else go();
   };
-  const doReset = () => { setPinned({}); setAuto({}); setSelected(null); setResetAsk(false); touch(); };
-  const moveCard = (room, id) => { if (readOnly || !room || !itemByRoom.has(room)) return; skipFlip.current = true; setPinned(prev => ({ ...prev, [room]: id })); setSelected(null); touch(); setJustMoved(room); setTimeout(() => setJustMoved(m => (m === room ? null : m)), 450); };
+  const doReset = () => { setPinned({}); setAuto({}); setSelected([]); setResetAsk(false); touch(); };
+  // move one or many cards to a housekeeper (id) or back to Not assigned (null); hand-placed from then on
+  const moveCards = (rooms, id) => {
+    const list = [...new Set((rooms || []).filter(r => itemByRoom.has(r)))];
+    if (readOnly || !list.length) return;
+    skipFlip.current = true;
+    setPinned(prev => { const n = { ...prev }; list.forEach(r => { n[r] = id; }); return n; });
+    setSelected([]); setMenu(null); touch(); setJustMoved(list); setTimeout(() => setJustMoved([]), 450);
+  };
+  // selection: click = just this card · Ctrl/⌘-click (or a touch tap) = add/remove · Shift-click = range inside the same group
+  const selectCard = (room, e) => {
+    const mod = !!(e && (e.metaKey || e.ctrlKey)), shift = !!(e && e.shiftKey), tap = !!(e && e.nativeEvent && e.nativeEvent.pointerType === 'touch');
+    setSelected(prev => {
+      if (shift && prev.length) {
+        const owner = assign[room] || null, order = items.filter(i => (assign[i.roomNumber] || null) === owner).map(i => i.roomNumber);
+        const a = order.indexOf(prev[prev.length - 1]), b = order.indexOf(room);
+        if (a >= 0 && b >= 0) { const [lo, hi] = a < b ? [a, b] : [b, a]; return [...new Set([...prev, ...order.slice(lo, hi + 1)])]; }
+      }
+      if (mod || tap) return prev.includes(room) ? prev.filter(x => x !== room) : [...prev, room];
+      return prev.length === 1 && prev[0] === room ? [] : [room];
+    });
+  };
+  const copyCards = (rooms) => { setClip([...rooms]); setMenu(null); };
+  const pasteTo = (group) => { if (clip.length && group !== undefined) { moveCards(clip, group); } };
+  const openMenu = (e, room) => { e.preventDefault(); const rooms = selected.includes(room) ? selected : [room]; if (!selected.includes(room)) setSelected([room]); setMenu({ x: e.clientX, y: e.clientY, rooms }); };
+  const openGroupMenu = (e, group) => { if (readOnly || !clip.length) return; if (e.target.closest && e.target.closest('.hk-rc')) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, rooms: [], group }); };
+
+  useEffect(() => {
+    if (readOnly) return undefined;
+    const onKey = (e) => {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+      const mod = e.metaKey || e.ctrlKey, k = String(e.key || '').toLowerCase();
+      if (e.key === 'Escape') { setSelected([]); setMenu(null); return; }
+      if (mod && k === 'c' && selected.length) { e.preventDefault(); setClip([...selected]); return; }
+      if (mod && k === 'v' && clip.length) {
+        const g = hoverGroup.current !== undefined ? hoverGroup.current : lastGroup.current;
+        if (g !== undefined) { e.preventDefault(); moveCards(clip, g); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });   // re-bound every render: it reads the latest selection / clipboard
   const unpin = (room) => { setPinned(prev => { const n = { ...prev }; delete n[room]; return n; }); touch(); };
   const setNum = (k, v) => { const n = Number(v); if (Number.isFinite(n)) { setSettings(s => ({ ...s, [k]: n })); touch(); } };
 
@@ -313,7 +390,11 @@ const Housekeeping = ({ mode = 'manager' }) => {
     if (!readOnly && (dirty || !savedAt)) { if (!(await save())) return; }
     setPrinting(who);
   };
-  const chooseDay = (n) => { if (n === offset) return; if (dirty && !window.confirm('You have unsaved changes for this day. Switch anyway?')) return; setOffset(n); setPlanFor(null); setSelected(null); };
+  const chooseDay = (n) => {
+    if (n === offset) return;
+    const go = () => { setOffset(n); setPlanFor(null); setSelected([]); setClip([]); };
+    if (dirty) setAsk({ title: 'Switch day?', message: 'You have unsaved changes for this day. They will be lost.', confirmLabel: 'Switch anyway', tone: 'danger', onConfirm: go }); else go();
+  };
 
   const sheets = useMemo(() => {
     if (!printing) return [];
@@ -324,15 +405,26 @@ const Housekeeping = ({ mode = 'manager' }) => {
   }, [printing, readOnly, past, work, assign, hks, pinned, itemByRoom]);
 
   // ── drag & drop (HTML5) + tap-to-move for touch ──
-  const onDragStart = (e, room) => { dragRef.current = room; setSelected(null); try { e.dataTransfer.setData('text/plain', room); e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ } };
+  const onDragStart = (e, room) => {
+    const rooms = selected.includes(room) ? selected : [room];      // dragging a selected card takes the whole selection along
+    dragRef.current = rooms;
+    try { e.dataTransfer.setData('text/plain', rooms.join(',')); e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ }
+  };
   const onDragEnd = () => { dragRef.current = null; setOver(null); };
-  const dropOn = (id) => (e) => { e.preventDefault(); const room = dragRef.current || (e.dataTransfer && e.dataTransfer.getData('text/plain')); dragRef.current = null; setOver(null); moveCard(room, id); };
-  const zone = (key, id) => ({ onDragOver: (e) => { if (readOnly) return; e.preventDefault(); if (over !== key) setOver(key); }, onDragLeave: (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setOver(o => (o === key ? null : o)); }, onDrop: dropOn(id) });
+  const dropOn = (id) => (e) => { e.preventDefault(); const rooms = dragRef.current || String((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '').split(',').filter(Boolean); dragRef.current = null; setOver(null); moveCards(rooms, id); };
+  const zone = (key, id) => ({
+    onDragOver: (e) => { if (readOnly) return; e.preventDefault(); if (over !== key) setOver(key); },
+    onDragLeave: (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setOver(o => (o === key ? null : o)); },
+    onDrop: dropOn(id),
+    onMouseEnter: () => { hoverGroup.current = id; }, onMouseLeave: () => { if (hoverGroup.current === id) hoverGroup.current = undefined; },
+    onMouseDown: () => { lastGroup.current = id; },
+    onContextMenu: (e) => openGroupMenu(e, id),
+  });
 
   const poolCards = items.filter(i => !assign[i.roomNumber]);
   const cardEl = (it) => (
-    <RoomCard key={it.roomNumber} it={it} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected === it.roomNumber} justMoved={justMoved === it.roomNumber} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
-      onSelect={(r) => setSelected(s => (s === r ? null : r))} onDragStart={onDragStart} onDragEnd={onDragEnd} onUnpin={unpin} />
+    <RoomCard key={it.roomNumber} it={it} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected.includes(it.roomNumber)} justMoved={justMoved.includes(it.roomNumber)} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
+      onSelect={selectCard} onDragStart={onDragStart} onDragEnd={onDragEnd} onUnpin={unpin} onMenu={openMenu} />
   );
   const renderCards = (cards) => byFloor(cards).map(f => (
     <div className="hk-floor" key={f.floorId}><span className="hk-floor-label">{f.label}</span><div className="hk-cards">{f.cards.map(cardEl)}</div></div>
@@ -346,7 +438,19 @@ const Housekeeping = ({ mode = 'manager' }) => {
   }, [poolCards]);   // eslint-disable-line react-hooks/exhaustive-deps
   const planByDate = useMemo(() => new Map(plans.map(p => [p.date, p])), [plans]);
   const days = useMemo(() => (today ? Array.from({ length: HISTORY_DAYS + 2 }, (_, i) => i - HISTORY_DAYS) : []), [today]);
-  const selOwner = selected ? assign[selected] || null : null;
+  const needsMove = (id) => selected.length > 0 && selected.some(r => (assign[r] || null) !== id);   // would "Move here" change anything?
+  // housekeeper columns: three at a time, Prev / Next slide one housekeeper
+  const boardEl = useRef(null);
+  const perView = () => { const b = boardEl.current, c = b && b.children[0]; return b && c && c.offsetWidth ? Math.max(1, Math.round(b.clientWidth / (c.offsetWidth + 12))) : 3; };
+  const colCount = sum.hks.length;
+  const goCol = (i) => {
+    const next = Math.max(0, Math.min(Math.max(0, colCount - perView()), i)); setVstart(next);
+    const b = boardEl.current, c = b && b.children[next];
+    if (b && c) { const left = c.offsetLeft - b.offsetLeft; if (b.scrollTo) b.scrollTo({ left, behavior: 'smooth' }); else b.scrollLeft = left; }
+  };
+  const onBoardScroll = () => { const b = boardEl.current, c = b && b.children[0]; if (b && c && c.offsetWidth) setVstart(Math.max(0, Math.round(b.scrollLeft / (c.offsetWidth + 12)))); };
+  const edgeScroll = (e) => { const b = boardEl.current; if (!b || !dragRef.current) return; const r = b.getBoundingClientRect(); if (e.clientX < r.left + 56) b.scrollLeft -= 18; else if (e.clientX > r.right - 56) b.scrollLeft += 18; };
+  useEffect(() => { setVstart(v => Math.max(0, Math.min(v, Math.max(0, colCount - 3)))); }, [colCount]);
   const sheet = useMemo(() => (dev && !readOnly && payload ? buildRoomSheet(payload, live) : null), [dev, readOnly, payload, live]);
 
   return (
@@ -403,7 +507,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
               <span>Plan by</span>
               <span className="hk-seg">
                 <button type="button" className={!anon ? 'on' : ''} aria-pressed={!anon} onClick={() => switchMode(false)}>Names</button>
-                <button type="button" className={anon ? 'on' : ''} aria-pressed={anon} onClick={() => switchMode(true)}>Just a number</button>
+                <button type="button" className={anon ? 'on' : ''} aria-pressed={anon} onClick={() => switchMode(true)}>No name</button>
               </span>
             </div>
           )}
@@ -446,7 +550,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
                 </section>
                 <section className={`hk-panel hk-col hk-pool${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
                   <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span></div>
-                  {selected && selOwner && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, null)}>Move here</button>}
+                  {needsMove(null) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, null)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
                   {items.length > 0 && hks.length === 0 && <p className="hk-muted">{anon ? 'Enter how many housekeepers are working.' : 'Add a housekeeper, then Auto-assign or drag the cards.'}</p>}
                   <div className="hk-pool-floors">
                     {poolFloors.map(f => (
@@ -463,9 +567,20 @@ const Housekeeping = ({ mode = 'manager' }) => {
           {items.length > 0 && (
             <>
               <div className="hk-divider" role="separator"><span>Housekeepers' rooms</span></div>
-              <p className="hk-legend" aria-label="Legend"><span><i className="lg lg-clean" />Clean</span><span><i className="lg lg-service" />Stay-over service</span><span><i className="lg-star">★</i>Clean first</span><span><i className="lg-lock">⚑</i>Guest asked not to be moved</span><span><i className="lg-pin">●</i>Placed by hand</span></p>
-              <div className={`hk-board${dev ? ' dev' : ''}`}>
-                {sum.hks.length === 0 && <p className="hk-muted">{readOnly ? '' : anon ? 'Housekeepers appear once you say how many.' : 'Housekeepers appear here once they are added.'}</p>}
+              <div className="hk-legendrow">
+                <p className="hk-legend" aria-label="Legend"><span><i className="lg lg-clean" />Clean</span><span><i className="lg lg-service" />Stay-over service</span><span><i className="lg-star">★</i>Clean first</span><span><i className="lg-lock">⚑</i>Guest asked not to be moved</span><span><i className="lg-pin">●</i>Placed by hand</span></p>
+                {colCount > 3 && (
+                  <div className="hk-carctl" role="group" aria-label="Housekeepers in view">
+                    <span className="hk-carcount">Housekeepers {vstart + 1}–{Math.min(colCount, vstart + perView())} of {colCount}</span>
+                    <button type="button" className="hk-btn hk-btn-sm" aria-label="Previous housekeeper" disabled={vstart <= 0} onClick={() => goCol(vstart - 1)}>‹ Prev</button>
+                    <button type="button" className="hk-btn hk-btn-sm" aria-label="Next housekeeper" disabled={vstart + perView() >= colCount} onClick={() => goCol(vstart + 1)}>Next ›</button>
+                  </div>
+                )}
+              </div>
+              {clip.length > 0 && !readOnly && <p className="hk-clipbar" role="status">{clip.length} card{clip.length === 1 ? '' : 's'} copied — put the mouse over a housekeeper (or Not assigned) and press <kbd>Ctrl/⌘ V</kbd>, or right-click a group → Paste. <button type="button" className="hk-btn hk-btn-sm" onClick={() => setClip([])}>Clear</button></p>}
+              {sum.hks.length === 0 && <p className="hk-muted">{readOnly ? '' : anon ? 'Housekeepers appear once you say how many.' : 'Housekeepers appear here once they are added.'}</p>}
+              <div className={`hk-board${dev ? ' dev' : ''}`} ref={boardEl} onScroll={onBoardScroll} onDragOver={edgeScroll}>
+                
                 {sum.hks.map(h => {
                   const mine = items.filter(i => assign[i.roomNumber] === h.userId);
                   const pct = Math.min(100, viewSettings.max > 0 ? (h.units / viewSettings.max) * 100 : 100), minPct = Math.min(100, (viewSettings.min / viewSettings.max) * 100);
@@ -480,7 +595,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
                       <div className="hk-meter" title={`Minimum ${viewSettings.min} · maximum ${viewSettings.max}`}><span className={flag || ''} style={{ width: `${pct}%` }} /><i style={{ left: `${minPct}%` }} /></div>
                       {flag === 'over' && <p className="hk-warn">Over the maximum of {viewSettings.max}</p>}
                       {flag === 'under' && <p className="hk-warn">Below the minimum of {viewSettings.min}</p>}
-                      {selected && !readOnly && selOwner !== h.userId && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, h.userId)}>Move here</button>}
+                      {!readOnly && needsMove(h.userId) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, h.userId)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
                       <div className="hk-col-body">{mine.length === 0 ? <p className="hk-muted">No rooms yet.</p> : renderCards(mine)}</div>
                     </section>
                   );
@@ -499,6 +614,8 @@ const Housekeeping = ({ mode = 'manager' }) => {
         </>
       )}
 
+      {ask && <ConfirmModal {...ask} onClose={() => setAsk(null)} />}
+      {menu && <CardMenu menu={menu} hks={hks} canPaste={clip.length > 0} clipCount={clip.length} onMove={moveCards} onCopy={copyCards} onPaste={(g) => { pasteTo(g); setMenu(null); }} onClose={() => setMenu(null)} />}
       {printing && <HkSheets dateLabel={dayText(date)} sheets={sheets} settings={viewSettings} colors={colors} onDone={() => setPrinting(null)} />}
     </div>
   );

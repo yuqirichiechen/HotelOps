@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23.7   | Housekeeping: in-app dialogs, count card, multi-select/menu/copy-paste, housekeeper strip | **Built + tested** |
 | 23.6   | Housekeeping QoL: Not assigned by floor (unlocked), strip removed, sidebar scroll fix | **Built + tested** |
 | 23.5   | Housekeeping: count-card/stepper fixes, wider Not assigned, evenOut balancing | **Built + tested** |
 | 23.4   | Housekeeping: plan by number, print colours (dev), sheet summary | **Built + tested** |
@@ -33,6 +34,15 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.7: in-app dialogs, count card, multi-select / menu / copy-paste, housekeeper strip
+
+1. **In-app confirmations**: the browser's "hotelops… says" dialogs for switching Plan-by mode and for switching day with unsaved changes are replaced by the shared `ConfirmModal` (themed, Esc / backdrop closes, danger button). No `window.confirm` is left on the page.
+2. **Count card (No name)** redesigned to fill the card: title, a big number between round − / + buttons, a row of person dots (one per housekeeper in the box; they light up once started), and a full-width Start / Update at the bottom. The explanatory paragraph is gone.
+3. **Multi-select**: click = just that card; **Ctrl/⌘-click** adds/removes; **Shift-click** selects the range inside the same group (a touch tap adds); **Esc** clears. Dragging a selected card takes the whole selection; "Move N cards here" does the same by tapping; everything moved is hand-placed (pinned). **Right-click** a card → a themed menu: "N cards", Copy (Ctrl/⌘ C), Move to Not assigned / each housekeeper (right-clicking an unselected card selects it first). **Copy / paste**: Ctrl/⌘+C copies the selection, Ctrl/⌘+V pastes (moves) it into the group under the mouse (or the last group clicked); right-click a group → "Paste N cards here"; a bar shows what is copied (Clear). Shortcuts are ignored while typing in a field.
+4. **Housekeepers as a horizontal strip**: three columns in view (two ≤1100px, one on phones), each a fixed-size card whose rooms scroll inside; "Housekeepers 1–3 of 5" with **Prev / Next** (slide one housekeeper; hidden with three or fewer) or a trackpad swipe; dragging near the strip's edges scrolls it; cards in off-screen columns stay reachable through the menu / paste / "Move here". `useFlip` now keeps its remembered positions in step with scrolling inside the board so the card glide never fires from stale places.
+5. "Plan by" option renamed **Just a number → No name**.
+Tests: `housekeeping` 29 (+multi-select, multi-drag, right-click menu, copy/paste, strip, count card, in-app dialogs), other suites green; build compiles; screenshots checked (light + dark).
 
 ### 2026-10-21 — Sprint 23.6: quality of life
 
