@@ -28,6 +28,8 @@ const HISTORY_DAYS = 14;
 const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 
 /** Group room cards under their floor. */
+// Not assigned always shows these floors ("none" when empty); any other floor with cards (e.g. reservations without a room yet) is added after them
+const PRESET_FLOORS = ['G', '1', '2', '3', '4'];
 const byFloor = (cards) => {
   const m = new Map();
   cards.forEach(c => { if (!m.has(c.floorId)) m.set(c.floorId, { floorId: c.floorId, label: c.floorLabel, cards: [] }); m.get(c.floorId).cards.push(c); });
@@ -74,9 +76,8 @@ const StaffCard = ({ staff, chosen, onAdd, disabled }) => {
 
 /** "Just a number" mode: ask how many housekeepers are working (no names). − / + only change the number in the box; Start / Update shares the rooms out. */
 const clampCount = (v) => Math.max(1, Math.min(40, Math.floor(Number(v)) || 1));
-const CountCard = ({ count, draft, setDraft, onApply, disabled, totalUnits, settings }) => {
+const CountCard = ({ count, draft, setDraft, onApply, disabled }) => {
   const n = clampCount(draft), started = !!count;
-  const lo = totalUnits > 0 ? Math.max(1, Math.ceil(totalUnits / settings.max)) : null, hi = totalUnits > 0 ? Math.max(lo, Math.floor(totalUnits / Math.max(1, settings.min))) : null;
   return (
     <section className="hk-panel hk-staff hk-countcard" aria-label="How many housekeepers">
       <div className="hk-panel-head"><h2>How many housekeepers?</h2></div>
@@ -87,7 +88,6 @@ const CountCard = ({ count, draft, setDraft, onApply, disabled, totalUnits, sett
         <button type="button" className="hk-btn" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}>+</button>
         <button type="button" className="hk-btn hk-btn-primary" onClick={() => onApply(draft)} disabled={disabled || (started && n === count)}>{started ? 'Update' : 'Start'}</button>
       </div>
-      {lo != null && <p className="hk-suggest">Workload {fmt(totalUnits)} → {lo === hi ? `about ${lo}` : `${lo}–${hi}`} housekeeper{hi === 1 ? '' : 's'} keeps everyone between {settings.min} and {settings.max}.</p>}
     </section>
   );
 };
@@ -337,6 +337,13 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const renderCards = (cards) => byFloor(cards).map(f => (
     <div className="hk-floor" key={f.floorId}><span className="hk-floor-label">{f.label}</span><div className="hk-cards">{f.cards.map(cardEl)}</div></div>
   ));
+  // Not assigned: one block per floor, always G · 1 · 2 · 3 · 4 (and any other floor that has cards)
+  const poolFloors = useMemo(() => {
+    const got = new Map(byFloor(poolCards).map(f => [f.floorId, f]));
+    const base = PRESET_FLOORS.map(id => got.get(id) || { floorId: id, label: floorLabel(id), cards: [] });
+    const extra = [...got.values()].filter(f => !PRESET_FLOORS.includes(f.floorId));
+    return [...base, ...extra];
+  }, [poolCards]);   // eslint-disable-line react-hooks/exhaustive-deps
   const planByDate = useMemo(() => new Map(plans.map(p => [p.date, p])), [plans]);
   const days = useMemo(() => (today ? Array.from({ length: HISTORY_DAYS + 2 }, (_, i) => i - HISTORY_DAYS) : []), [today]);
   const selOwner = selected ? assign[selected] || null : null;
@@ -398,12 +405,11 @@ const Housekeeping = ({ mode = 'manager' }) => {
                 <button type="button" className={!anon ? 'on' : ''} aria-pressed={!anon} onClick={() => switchMode(false)}>Names</button>
                 <button type="button" className={anon ? 'on' : ''} aria-pressed={anon} onClick={() => switchMode(true)}>Just a number</button>
               </span>
-              {anon && <span className="hk-help">no names — "Housekeeper 1, 2, 3…", rooms shared out automatically</span>}
             </div>
           )}
           {!readOnly && (
             <div className={`hk-mid${anon ? ' anon' : ''}`}>
-              {anon ? <CountCard count={anonCount} draft={countDraft} setDraft={setCountDraft} onApply={applyCount} disabled={readOnly} totalUnits={totalUnits} settings={settings} /> : <StaffCard staff={staff} chosen={hks} onAdd={addHk} disabled={readOnly} />}
+              {anon ? <CountCard count={anonCount} draft={countDraft} setDraft={setCountDraft} onApply={applyCount} disabled={readOnly} /> : <StaffCard staff={staff} chosen={hks} onAdd={addHk} disabled={readOnly} />}
                 <section className="hk-panel hk-working" aria-label="Working">
                   <div className="hk-panel-head">
                     <h2>Working {offset === 0 ? 'today' : 'tomorrow'}</h2><span className="hk-count">{hks.length}</span>
@@ -441,8 +447,14 @@ const Housekeeping = ({ mode = 'manager' }) => {
                 <section className={`hk-panel hk-col hk-pool${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
                   <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span></div>
                   {selected && selOwner && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCard(selected, null)}>Move here</button>}
-                  <div className="hk-col-body">
-                    {poolCards.length === 0 ? <p className="hk-muted">{items.length === 0 ? 'No rooms.' : hks.length === 0 ? (anon ? 'Enter how many housekeepers are working.' : 'Add a housekeeper, then Auto-assign or drag the cards.') : 'Everything is assigned.'}</p> : renderCards(poolCards)}
+                  {items.length > 0 && hks.length === 0 && <p className="hk-muted">{anon ? 'Enter how many housekeepers are working.' : 'Add a housekeeper, then Auto-assign or drag the cards.'}</p>}
+                  <div className="hk-pool-floors">
+                    {poolFloors.map(f => (
+                      <div className="hk-floor" key={f.floorId} data-floor={f.floorId}>
+                        <span className="hk-floor-label">{f.label}</span>
+                        {f.cards.length ? <div className="hk-cards">{f.cards.map(cardEl)}</div> : <span className="hk-none">none</span>}
+                      </div>
+                    ))}
                   </div>
                 </section>
             </div>

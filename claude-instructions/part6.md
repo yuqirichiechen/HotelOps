@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 23.6   | Housekeeping QoL: Not assigned by floor (unlocked), strip removed, sidebar scroll fix | **Built + tested** |
 | 23.5   | Housekeeping: count-card/stepper fixes, wider Not assigned, evenOut balancing | **Built + tested** |
 | 23.4   | Housekeeping: plan by number, print colours (dev), sheet summary | **Built + tested** |
 | 23.3   | Housekeeping: aligned layout, manual-first + Auto-assign/Reset, fixed columns, dev room table | **Built + tested** |
@@ -32,6 +33,13 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-10-21 — Sprint 23.6: quality of life
+
+1. Removed the explanatory strip next to the "Plan by" switch ("no names — Housekeeper 1, 2, 3…, rooms shared out automatically") and the count card's suggestion line ("Workload 44 → 3–4 housekeepers keeps everyone between 10 and 15").
+2. **Not assigned** is unlocked: it grows with its cards (no fixed height, no inner scroll) and is organised as one block per floor — **Ground, 1, 2, 3, 4 always shown** ("none" when empty); any other floor with cards (e.g. reservations without a room yet) is added after them; cards dropped back land under their floor. The "Everything is assigned." text is gone (only the "add a housekeeper / enter how many" hint remains when nobody is working).
+3. **Sidebar fix** (dev "Platform" / bottom of the page): the dev nav group made the link list taller than a laptop screen, so the sidebar grew past the shell's 100vh and Dark mode / Sign out were pushed below the fold (overlapped by the page). The sidebar is now exactly viewport height; the link list scrolls (thin scrollbar) while the brand and footer stay put. Applies to every shell.
+Tests: `housekeeping` 23 (+floor presets, no suggestion/strip), `devshell` 14 (+sidebar scroll rules); others green; build compiles; sidebar checked in a 640px-high viewport.
 
 ### 2026-10-21 — Sprint 23.5: number-mode card fixes, wider "Not assigned", smarter balancing
 

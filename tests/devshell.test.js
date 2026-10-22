@@ -135,5 +135,9 @@ const std = (sync) => { responses = { 'GET /admin/forecast/current': current(syn
     const h = await mount(el); const rows = h.el.querySelectorAll('.tenant-picker-row'); assert.strictEqual(rows.length, 1); assert(/Snoqualmie Inn/.test(rows[0].textContent) && /Select a property/.test(h.el.textContent) && !/Dev sign-in/.test(h.el.textContent));
     await h.click(rows[0]); assert(/ADMIN SHELL OPENED/.test(h.el.textContent)); assert.strictEqual(localStorage.getItem('hotelops-tenant-slug'), 'snoqualmieinn'); await h.unmount();
   });
+  await t('SIDEBAR with the Dev tools group: the link list scrolls inside a viewport-height sidebar, so Dark mode / Sign out never fall below the screen', async () => {
+    const css = fs.readFileSync(ROOT + '/src/components/Layout/Sidebar.css', 'utf8'); const rule = (sel) => (css.match(new RegExp('\\n' + sel.replace(/[.]/g, '\\.') + ' \\{([^}]*)\\}')) || [])[1] || '';
+    assert(/height:\s*100vh/.test(rule('.sidebar')) && /overflow:\s*hidden/.test(rule('.sidebar')), 'the sidebar is exactly viewport height'); const nav = rule('.sidebar-nav'); assert(/overflow-y:\s*auto/.test(nav) && /min-height:\s*0/.test(nav) && /flex:\s*1 1 0/.test(nav), 'the list scrolls'); assert(/\.sidebar-footer[^{]*\{[^}]*flex-shrink:\s*0/.test(css), 'brand + footer never shrink');
+  });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();

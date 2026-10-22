@@ -3,6 +3,10 @@
 .sidebar {
   width: 220px;
   min-height: 100vh;
+  /* Sprint 23.6: exactly the shell's height (it never grows past the viewport); the link list scrolls, brand + footer stay put. With the Dev tools
+     group the list is longer than a laptop screen — before, Dark mode / Sign out were pushed off the bottom. */
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
@@ -59,11 +63,19 @@
 
 .sidebar-nav {
   list-style: none;
+  margin: 0;
   padding: 16px 0;
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.3) transparent;
 }
+.sidebar-nav::-webkit-scrollbar { width: 6px; } .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 3px; }
+.sidebar-brand, .sidebar-footer { flex-shrink: 0; }
 
 .sidebar-link {
   display: flex;
