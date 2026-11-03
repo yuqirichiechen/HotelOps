@@ -1,3 +1,4 @@
+/* global globalThis */
 // Sprint 24.5 — small building blocks of the redesigned Housekeeping page: icons, the donut, the floor accordion, the "who is working" panel
 // (checkbox list / number stepper), and a modal. Presentational only — all assignment logic stays in index.js / hkWork.js.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -46,22 +47,52 @@ export const FloorSection = ({ label, count, open, onToggle, floorId, children }
   </div>
 );
 
-/** A centred dialog (rules, assignment log). Esc / backdrop closes. */
+// Sprint 24.6 — pop-ups fade in and out. Tests (and "reduce motion") set globalThis.__HOTELOPS_NO_ANIM / prefers-reduced-motion: then they appear and vanish at once.
+const FADE_MS = 180;
+const noAnim = () => { try { return !!globalThis.__HOTELOPS_NO_ANIM || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch { return false; } };
+const raf = (fn) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(fn) : setTimeout(fn, 16));
+const caf = (id) => (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame(id) : clearTimeout(id));
+/** Keeps something mounted while it fades out. `shown` = the CSS "in" state. */
+function useFade(open) {
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open && noAnim());
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      if (noAnim()) { setShown(true); return undefined; }
+      const id = raf(() => raf(() => setShown(true)));
+      return () => caf(id);
+    }
+    setShown(false);
+    if (noAnim()) { setMounted(false); return undefined; }
+    const t = setTimeout(() => setMounted(false), FADE_MS);
+    return () => clearTimeout(t);
+  }, [open]);
+  return { mounted, shown };
+}
+
+/** A centred dialog (rules, assignment log). Fades in; Esc / backdrop / × fade it out, then call onClose. */
 export const HkModal = ({ title, onClose, children, wide }) => {
-  useEffect(() => { const k = (e) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const [open, setOpen] = useState(true);
+  const { mounted, shown } = useFade(open);
+  const closing = useRef(false);
+  const close = () => { if (closing.current) return; closing.current = true; setOpen(false); if (noAnim()) onClose(); else setTimeout(onClose, FADE_MS); };
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') close(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); });   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!mounted) return null;
   return (
-    <div className="hk-modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className={`hk-modal-back${shown ? ' in' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div className={`hk-modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
-        <header><h2>{title}</h2><button type="button" className="hk-x" aria-label="Close" onClick={onClose}>×</button></header>
+        <header><h2>{title}</h2><button type="button" className="hk-x" aria-label="Close" onClick={close}>×</button></header>
         <div className="hk-modal-body">{children}</div>
       </div>
     </div>
   );
 };
 
-/** Pop-over under a button; closes on outside click / Esc. */
+/** Pop-over under a button; fades in / out; closes on outside click / Esc. */
 export const Popover = ({ open, onClose, children, className = '' }) => {
   const ref = useRef(null);
+  const { mounted, shown } = useFade(open);
   useEffect(() => {
     if (!open) return undefined;
     const down = (e) => { if (ref.current && !ref.current.contains(e.target) && !(e.target.closest && e.target.closest('[data-pop-anchor]'))) onClose(); };
@@ -69,8 +100,8 @@ export const Popover = ({ open, onClose, children, className = '' }) => {
     document.addEventListener('mousedown', down); window.addEventListener('keydown', key);
     return () => { document.removeEventListener('mousedown', down); window.removeEventListener('keydown', key); };
   }, [open, onClose]);
-  if (!open) return null;
-  return <div className={`hk-pop ${className}`} ref={ref} role="dialog">{children}</div>;
+  if (!mounted) return null;
+  return <div className={`hk-pop ${shown ? 'in' : ''} ${className}`} ref={ref} role="dialog">{children}</div>;
 };
 
 /** Names mode: everyone, searchable; tick = working. */

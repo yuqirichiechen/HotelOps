@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 24.6   | Housekeeping fixes: header status bar top-right in dev, layout v3 (overview + calendar row, wide Not assigned, full-width assignments), fade pop-ups, blue dots, Reset in No-name mode | **Built + tested** (UI only) |
 | 24.5   | Housekeeping redesign to match Reservations/Forecast (user's reference mockup): header + links + six KPI tiles, left Not assigned panel, right overview donuts + housekeeper cards, floor accordions | **Built + tested** (UI only: no server, migration or env change; hkWork.js untouched) |
 | 24.4   | Staff Home redo (3-card row + timeline), expandable room types on Sellable vs arriving, short dev bar, dev parity audit + dev-only PIN reveal (PIN vault) | **Built + tested** — NEEDS migration 031 + env `PIN_VIEW_KEY` for the PIN reveal |
 | 24.3   | Portal: Reservations tab (tiles + sellable, no chart), Home = hours + timesheet (no Timesheet page, no CSV); Sellable vs arriving x/y (VI only / VI+PU) + dev Available toggle; dev "Front desk view" | **Built + tested** (no migration, no new env) |
@@ -41,6 +42,15 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-03 — Sprint 24.6: Housekeeping bug fixes
+
+1. **Header (dev):** the status bar (freshness + Rooms live) and Refresh / Save / Print wrapped under the title in the dev view because the dev-only "Snapshot history" link made the left block too wide. The **links row now has its own line under the whole header** (`.hk-links { flex: 0 0 100% }`), so the status group stays top-right in dev, manager and portal alike.
+2. **Layout v3 (replaces the side-by-side grid; this also settles "Not assigned should be as tall as the assignments" — it no longer sits beside them):** header → six tiles → one row **[Assignment overview | Calendar]** → **Not assigned** as a wide card (the floors sit side by side, every floor that has rooms starts open, its own scroll above 340 px; the legend sits on the title line; hint "Drag to a housekeeper below") → **Housekeepers' assignments full width** (3-up strip, names have room; each card's header row is avatar · name · × · Print sheet, the "N rooms · clean · service · workload" line has its own row under it, then bar + %, then the floor accordions). The **calendar is the legacy day strip back** (14 past days + today + tomorrow, "N HK · M rooms" on saved days, ‹ › scroll buttons, scrolled to today on open); picking a past day opens it read-only (banner + "Back to today"; the overview and calendar stay so you can navigate), Today/Tomorrow in the modebar still work. The front-desk portal keeps its trimmed version (no tiles / overview / calendar / links).
+3. **Pop-ups fade in and out** (Who's working pop-over, Rules and Assignment-log dialogs: opacity + a small slide, 180 ms; `useFade` in `HkParts.js`; instant under reduce-motion and in tests via `__HOTELOPS_NO_ANIM`). **No-name dots** (the "how many" card) are **always blue** — one per housekeeper in the box — instead of grey-until-Start.
+4. **Reset did nothing in No-name mode:** that mode shares any room that isn't handed out by itself (so new rooms get a housekeeper), and after Reset every room looked "new", so it instantly shared them out again. Reset now records the rooms it handed back (`held`) and the auto-share skips them until you press Auto-assign, Start / Update, change the mode or the day (or a genuinely new room appears). Names mode was already fine. The new test fails with the old behaviour (checked).
+Tests: `housekeeping` 36 (layout v3 order/structure, dev header, calendar, Reset in both modes, fade, dots; accordions: Not assigned opens every floor with rooms), `staffportal` 20 (portal Housekeeping matches the trimmed v3), everything else re-run green; build compiles; screenshot at 1680 px. (Note for the future: `react-scripts build` without `BUILD_PATH` empties the gitignored `build/`; I rebuilt it.) No deploy steps.
+**Open:** card height is a fixed clamp, so a card with few rooms shows empty space (could shrink to content); calendar could show tomorrow's saved plan marks in colour.
 
 ### 2026-11-03 — Sprint 24.5: Housekeeping redesign
 

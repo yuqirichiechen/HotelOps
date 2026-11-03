@@ -56,7 +56,7 @@ const CountCard = ({ count, draft, setDraft, onApply, disabled }) => {
           <input className="hk-input hk-count-input" type="number" min="1" max="40" step="1" aria-label="Number of housekeepers" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onApply(draft); }} />
           <button type="button" className="hk-btn hk-step" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}>+</button>
         </div>
-        <div className="hk-people" aria-hidden="true">{Array.from({ length: n }, (_, i) => <i key={i} className={started && i < count ? 'on' : ''} />)}</div>
+        <div className="hk-people" aria-hidden="true">{Array.from({ length: n }, (_, i) => <i key={i} className="on" />)}</div>   {/* Sprint 24.6: always blue — one dot per housekeeper in the box */}
       </div>
       <button type="button" className="hk-btn hk-btn-primary hk-count-go" onClick={() => onApply(draft)} disabled={disabled || (started && n === count)}>{started ? 'Update' : 'Start'}</button>
     </section>
@@ -156,6 +156,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const boardRef = useRef(null);
   const viewCtx = useViewOptional();
   const [acc, setAcc] = useState({});                   // floor accordions the user opened / closed: { 'pool|2': true, 'userId|3': false }
+  const [held, setHeld] = useState(null);             // rooms a Reset handed back: No-name mode must not instantly share them out again
+  const stripRef = useRef(null);
   const [fresh, setFresh] = useState(null);             // { source, at, health } of the reservation data (freshness badge)
   const [whoOpen, setWhoOpen] = useState(false);        // "Who's working" pop-over
   const [rulesOpen, setRulesOpen] = useState(false);    // rules (+ print colours for dev) dialog
@@ -274,11 +276,11 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   // number mode: any room that is not hand-placed and not yet handed out (a new room after Refresh) is shared out right away
   useEffect(() => {
     if (!anon || readOnly || !anonCount || hks.length === 0) return;
-    const waiting = work.items.some(i => !Object.prototype.hasOwnProperty.call(pinned, i.roomNumber) && !auto[i.roomNumber]);
+    const waiting = work.items.some(i => !Object.prototype.hasOwnProperty.call(pinned, i.roomNumber) && !auto[i.roomNumber] && !(held && held.has(i.roomNumber)));
     if (!waiting) return;
     const res = balance(work.items, hks, pinned, settings), next = {}; Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pinned, k)) next[k] = res[k]; });
     setAuto(next); setDirty(true);
-  }, [anon, anonCount, readOnly, work, hks, pinned, auto, settings]);
+  }, [anon, anonCount, readOnly, work, hks, pinned, auto, settings, held]);
   const touch = () => { setDirty(true); setSaveMsg(null); };
   const addHk = (h) => { setHks(prev => (prev.some(x => x.userId === h.userId) ? prev : [...prev, h])); touch(); };
   const removeHk = (id) => {
@@ -289,7 +291,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const autoAssign = () => {
     const res = balance(work.items, hks, pinned, settings), next = {};
     Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pinned, k)) next[k] = res[k]; });
-    setAuto(next); touch();
+    setAuto(next); setHeld(null); touch();
   };
   // ── "just a number": Housekeeper 1…N, rooms handed out automatically whenever the number (or the work) changes ──
   const anonHks = (n) => Array.from({ length: n }, (_, i) => ({ userId: `anon-${i + 1}`, name: `Housekeeper ${i + 1}` }));
@@ -299,16 +301,18 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     const keep = (prev) => { const o = {}; Object.keys(prev).forEach(k => { if (prev[k] === null || ids.has(prev[k])) o[k] = prev[k]; }); return o; };
     const pins = keep(pinned); setHks(next); setPinned(pins); setAnonCount(n); setCountDraft(String(n));
     const res = balance(work.items, next, pins, settings), nextAuto = {}; Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pins, k)) nextAuto[k] = res[k]; });
-    setAuto(nextAuto); touch();
+    setAuto(nextAuto); setHeld(null); touch();
   };
   const switchMode = (toAnon) => {
     if (toAnon === anon) return;
-    const go = () => { setAnon(toAnon); setAnonCount(null); setHks([]); setPinned({}); setAuto({}); setSelected([]); setCountDraft('3'); touch(); if (toAnon) setWhoOpen(true); };   // "No name" asks how many right away
+    const go = () => { setHeld(null); setAnon(toAnon); setAnonCount(null); setHks([]); setPinned({}); setAuto({}); setSelected([]); setCountDraft('3'); touch(); if (toAnon) setWhoOpen(true); };   // "No name" asks how many right away
     if (hks.length > 0 || Object.keys(pinned).length > 0) {
       setAsk({ title: `Switch to "${toAnon ? 'No name' : 'Names'}"?`, message: 'Switching clears the housekeepers and every assignment for this day.', confirmLabel: 'Switch', tone: 'danger', onConfirm: go });
     } else go();
   };
-  const doReset = () => { setPinned({}); setAuto({}); setSelected([]); setResetAsk(false); touch(); };
+  // Reset hands every room back and keeps the people. In No-name mode the page normally shares new rooms out by itself — `held` stops it from doing that to the rooms just handed back
+  // (it lifts when you press Auto-assign, Start / Update, change the mode or the day, or when a genuinely new room appears).
+  const doReset = () => { setPinned({}); setAuto({}); setSelected([]); setResetAsk(false); setHeld(new Set(work.items.map(i => i.roomNumber))); touch(); };
   // move one or many cards to a housekeeper (id) or back to Not assigned (null); hand-placed from then on
   const moveCards = (rooms, id) => {
     const list = [...new Set((rooms || []).filter(r => itemByRoom.has(r)))];
@@ -370,7 +374,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   };
   const chooseDay = (n) => {
     if (n === offset) return;
-    const go = () => { setOffset(n); setPlanFor(null); setSelected([]); setClip([]); };
+    const go = () => { setOffset(n); setPlanFor(null); setSelected([]); setClip([]); setHeld(null); };
     if (dirty) setAsk({ title: 'Switch day?', message: 'You have unsaved changes for this day. They will be lost.', confirmLabel: 'Switch anyway', tone: 'danger', onConfirm: go }); else go();
   };
 
@@ -407,10 +411,10 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   // floor accordions: open/closed is remembered per (group, floor); until the user touches one, the first floor with rooms is open
   const accOpen = (key, dflt) => (Object.prototype.hasOwnProperty.call(acc, key) ? acc[key] : dflt);
   const accToggle = (key, dflt) => setAcc(a => ({ ...a, [key]: !(Object.prototype.hasOwnProperty.call(a, key) ? a[key] : dflt) }));
-  const renderFloors = (groupKey, floors) => {
+  const renderFloors = (groupKey, floors, openAll = false) => {
     const firstWith = floors.findIndex(f => f.cards.length > 0);
     return floors.map((f, i) => {
-      const key = `${groupKey}|${f.floorId}`, dflt = i === firstWith;
+      const key = `${groupKey}|${f.floorId}`, dflt = openAll ? f.cards.length > 0 : i === firstWith;
       return (
         <FloorSection key={f.floorId} floorId={f.floorId} label={f.label} count={f.cards.length} open={accOpen(key, dflt)} onToggle={() => accToggle(key, dflt)}>
           {f.cards.length ? <div className="hk-cards">{f.cards.map(cardEl)}</div> : <span className="hk-none">none</span>}
@@ -425,6 +429,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     const extra = [...got.values()].filter(f => !PRESET_FLOORS.includes(f.floorId));
     return [...base, ...extra];
   }, [poolCards]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (stripRef.current) stripRef.current.scrollLeft = stripRef.current.scrollWidth; }, [today, plans.length, loading]);
   const planByDate = useMemo(() => new Map(plans.map(p => [p.date, p])), [plans]);
   const days = useMemo(() => (today ? Array.from({ length: HISTORY_DAYS + 2 }, (_, i) => i - HISTORY_DAYS) : []), [today]);
   const needsMove = (id) => selected.length > 0 && selected.some(r => (assign[r] || null) !== id);   // would "Move here" change anything?
@@ -464,14 +469,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
           <nav className="hk-crumb" aria-label="Breadcrumb"><button type="button" onClick={goHome}>Home</button><span aria-hidden="true">›</span><span>Housekeeping</span></nav>
           <h1>Housekeeping</h1>
           <p className="hk-sub">Assign rooms, balance workload, and track daily cleaning progress.</p>
-          {!simple && (
-            <div className="hk-links" role="group" aria-label="Housekeeping tools">
-              {dev && <button type="button" className="hk-link" onClick={() => setHistOpen(true)}><IcClock size={16} />Snapshot history</button>}
-              <button type="button" className="hk-link" onClick={() => setRulesOpen(true)}><IcGear size={16} />Housekeeping settings</button>
-              <button type="button" className="hk-link" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print sheets</button>
-              <button type="button" className="hk-link" onClick={() => setLogOpen(true)}><IcDoc size={16} />Assignment log</button>
-            </div>
-          )}
         </div>
         <div className="hk-actions hk-head-r">
           {fresh && <SyncBadge source={fresh.source} syncedAt={fresh.at} health={fresh.health} label="" />}
@@ -482,6 +479,14 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
           {!readOnly && <button type="button" className="hk-btn hk-btn-primary" onClick={save} disabled={!dirty || hks.length === 0}>{dirty ? 'Save' : 'Saved'}</button>}
           <button type="button" className="hk-btn hk-btn-dark" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
         </div>
+        {!simple && (
+            <div className="hk-links" role="group" aria-label="Housekeeping tools">
+              {dev && <button type="button" className="hk-link" onClick={() => setHistOpen(true)}><IcClock size={16} />Snapshot history</button>}
+              <button type="button" className="hk-link" onClick={() => setRulesOpen(true)}><IcGear size={16} />Housekeeping settings</button>
+              <button type="button" className="hk-link" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print sheets</button>
+              <button type="button" className="hk-link" onClick={() => setLogOpen(true)}><IcDoc size={16} />Assignment log</button>
+            </div>
+        )}
       </header>
 
       {error && <p className="hk-error" role="alert">{error}</p>}
@@ -510,21 +515,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
           )}
           {!readOnly && items.length === 0 && <p className="hk-muted">Nothing to clean or service for this day.</p>}
 
-          <div className={`hk-v2-grid${readOnly ? ' one' : ''}`}>
-            {/* LEFT: Not assigned — fixed height, scrolls on its own; the header and legend stay put */}
-            {!readOnly && <section className={`hk-panel hk-pool hk-pool2${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
-              <div className="hk-pool-top">
-                <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span>{!readOnly && <span className="hk-dragtip"><IcHand size={15} />Drag to assign</span>}</div>
-                {legend}
-                {needsMove(null) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, null)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
-                {items.length > 0 && hks.length === 0 && !readOnly && <p className="hk-muted">{anon ? 'Enter how many housekeepers are working.' : 'Choose who is working, then Auto-assign or drag the cards.'}</p>}
-              </div>
-              <div className="hk-pool-floors hk-scroll">{renderFloors('pool', poolFloors)}</div>
-            </section>}
-
-            {/* RIGHT: overview over the housekeepers' assignments */}
-            <div className="hk-v2-right">
-              {!simple && (
+          {!simple && (
+            <div className="hk-v2-top">
                 <section className="hk-panel hk-overview" aria-label="Assignment overview">
                   <div className="hk-ov-main">
                     <h2>Assignment overview
@@ -544,8 +536,37 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                     <Donut label="Unassigned" count={poolCards.length} total={total} color="#718096" animKey={date} hint="Rooms nobody has yet" />
                   </div>
                 </section>
-              )}
-
+                <section className="hk-panel hk-daycard" aria-label="Days">
+                  <div className="hk-daycard-head">
+                    <h2>Calendar<InfoTip title="Days" label="About the calendar"><p>Pick a day to plan it (today, tomorrow) or to look at what was saved on a past day. Past days open read-only and can be printed again. A day with a saved plan shows its housekeepers and rooms.</p></InfoTip></h2>
+                    <span className="hk-daynav" role="group" aria-label="Scroll days">
+                      <button type="button" className="hk-btn hk-btn-sm" aria-label="Earlier days" onClick={() => { const e = stripRef.current; if (e) { if (e.scrollBy) e.scrollBy({ left: -e.clientWidth * 0.8, behavior: 'smooth' }); else e.scrollLeft -= e.clientWidth * 0.8; } }}>‹</button>
+                      <button type="button" className="hk-btn hk-btn-sm" aria-label="Later days" onClick={() => { const e = stripRef.current; if (e) { if (e.scrollBy) e.scrollBy({ left: e.clientWidth * 0.8, behavior: 'smooth' }); else e.scrollLeft += e.clientWidth * 0.8; } }}>›</button>
+                    </span>
+                  </div>
+                  <div className="hk-strip" ref={stripRef} role="tablist" aria-label="Day">
+                    {days.map(n => {
+                      const ymd = addDays(today, n), p = parts(ymd), pl = planByDate.get(ymd);
+                      return (
+                        <button key={n} type="button" role="tab" aria-selected={offset === n} className={`hk-day${offset === n ? ' on' : ''}${n < 0 ? ' past' : ''}${pl ? ' has' : ''}`} onClick={() => chooseDay(n)} title={n < 0 ? (pl ? `${pl.hks} housekeepers · ${pl.rooms} rooms (read-only)` : 'No plan was saved') : undefined}>
+                          <b>{n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : p.wd}</b><span>{p.m} {p.d}</span>
+                          <small>{pl ? `${pl.hks} HK · ${pl.rooms} rooms` : n < 0 ? 'no plan' : ''}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+            </div>
+          )}
+            {!readOnly && <section className={`hk-panel hk-pool hk-pool2 hk-pool-wide${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
+              <div className="hk-pool-top">
+                <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span>{!readOnly && <span className="hk-dragtip"><IcHand size={15} />Drag to a housekeeper below</span>}</div>
+                {legend}
+                {needsMove(null) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, null)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
+                {items.length > 0 && hks.length === 0 && !readOnly && <p className="hk-muted">{anon ? 'Enter how many housekeepers are working.' : 'Choose who is working, then Auto-assign or drag the cards.'}</p>}
+              </div>
+              <div className="hk-pool-floors hk-pool-cols hk-scroll">{renderFloors('pool', poolFloors, true)}</div>
+            </section>}
               <section className="hk-panel hk-assign" aria-label="Housekeepers' assignments">
                 <div className="hk-assign-head">
                   <div className="hk-col-head"><h2>Housekeepers&rsquo; assignments</h2><span className="hk-count">{viewHks.length}</span></div>
@@ -620,11 +641,11 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                         <section key={h.userId} className={`hk-col hk-hkcol${over === h.userId ? ' over' : ''}${flag ? ` flag-${flag}` : ''}`} aria-label={`${h.name}'s rooms`} {...zone(h.userId, h.userId)}>
                           <div className="hk-col-head hk-hk-head">
                             <span className="hk-avatar" aria-hidden="true"><IcUser size={20} /></span>
-                            <div className="hk-hk-title"><h2>{h.name}</h2>
-                              <p className="hk-col-sum"><strong>{h.rooms}</strong> rooms · {h.clean} clean · {h.service} service · workload <strong>{fmt(h.units)}</strong></p></div>
+                            <div className="hk-hk-title"><h2>{h.name}</h2></div>
                             {!readOnly && !anon && <button type="button" className="hk-x" aria-label={`Remove ${h.name}`} onClick={() => removeHk(h.userId)}>×</button>}
                             <button type="button" className="hk-btn hk-btn-sm hk-print-btn" onClick={() => printNow(h.userId)} disabled={mine.length === 0}><IcPrint size={14} />Print sheet</button>
                           </div>
+                          <p className="hk-col-sum"><strong>{h.rooms}</strong> rooms · {h.clean} clean · {h.service} service · workload <strong>{fmt(h.units)}</strong></p>
                           <div className="hk-meterrow">
                             <div className="hk-meter" title={`Minimum ${viewSettings.min} · maximum ${viewSettings.max}`}><span className={flag || ''} style={{ width: `${pct}%` }} /><i style={{ left: `${minPct}%` }} /></div>
                             <span className="hk-pct">{Math.round(pct)}%</span>
@@ -639,8 +660,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                   </div>
                 )}
               </section>
-            </div>
-          </div>
 
           {dev && !readOnly && items.length > 0 && (
             <>

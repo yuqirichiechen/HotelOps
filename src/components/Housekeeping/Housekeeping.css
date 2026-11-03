@@ -322,3 +322,40 @@
 .hk-hk-title h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hk-print-btn { flex: none; white-space: nowrap; margin-left: 0; }
 .hk-hk-head .hk-x { flex: none; }
+
+/* ═══ Sprint 24.6 — layout v3: header row, [overview | calendar], wide Not assigned, full-width assignments; pop-ups fade ═══ */
+.hk-head2 { align-items: flex-start; }
+.hk-head-l { flex: 1 1 320px; min-width: 0; }
+.hk-head-r { flex: 0 1 auto; }
+.hk-links { flex: 0 0 100%; order: 3; margin-top: 4px; }
+
+.hk-v2-top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: stretch; }
+.hk-v2-top > .hk-overview { margin: 0; }
+.hk-daycard { padding: 16px 18px 12px; gap: 8px; }
+.hk-daycard-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hk-daycard-head h2 { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 20px; color: var(--brand-text); display: flex; align-items: center; gap: 6px; }
+.hk-daynav { display: inline-flex; gap: 6px; } .hk-daynav .hk-btn { min-width: 34px; font-size: 16px; line-height: 1; }
+.hk-daycard .hk-strip { flex: 1; align-items: stretch; padding-top: 6px; }
+.hk-daycard .hk-day { min-width: 104px; padding: 10px 14px; }
+
+/* Not assigned: a wide card — floors side by side, its own scroll when there are many rooms */
+.hk-pool2.hk-pool-wide { position: static; height: auto; min-height: 0; max-height: none; margin-bottom: 16px; }
+.hk-pool-wide .hk-pool-top { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 22px; padding: 14px 18px 10px; border-bottom: 0; }
+.hk-pool-wide .hk-col-head { flex: none; gap: 10px; }
+.hk-pool-wide .hk-legend { margin-left: auto; }
+.hk-pool-wide .hk-pool-top > .hk-muted, .hk-pool-wide .hk-pool-top > .hk-here { flex-basis: 100%; margin: 0; }
+.hk-pool2 .hk-pool-floors.hk-pool-cols { flex: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; align-content: start; align-items: start; max-height: 340px; padding: 4px 16px 16px; overflow-y: auto; }
+
+/* housekeeper cards: header row (avatar · name · remove · print), counts on their own line */
+.hk-hk-head { flex-wrap: nowrap; align-items: center; }
+.hk-hk-title h2 { font-size: 18px; }
+.hk-assign .hk-col-sum { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+
+@media (max-width: 1150px) { .hk-v2-top { grid-template-columns: minmax(0, 1fr); } }
+
+/* pop-ups fade (see HkParts useFade) */
+.hk-pop { opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none; transition: opacity .18s ease, transform .18s ease; }
+.hk-pop.in { opacity: 1; transform: none; pointer-events: auto; }
+.hk-modal-back { opacity: 0; transition: opacity .18s ease; } .hk-modal-back.in { opacity: 1; }
+.hk-modal { transform: translateY(10px) scale(.98); transition: transform .2s ease; } .hk-modal-back.in .hk-modal { transform: none; }
+@media (prefers-reduced-motion: reduce) { .hk-pop, .hk-modal-back, .hk-modal { transition: none; } }

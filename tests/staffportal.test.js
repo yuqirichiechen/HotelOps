@@ -188,11 +188,11 @@ const stdResponses = () => ({
     assert(calls.some(c => c.p === '/clock-in-self' && c.method === 'POST'), 'clocks in'); assert(h.el.querySelector('.home-confirm .home-hero-event'), 'confirmation'); assert(h.el.querySelector('.auto-signout-banner'), 'auto-signout countdown');
     assert(!h.el.querySelector('.home-hero, .home-recent'), 'still no hours'); assert(!/Timesheet|Calendar|Settings/.test(h.el.textContent), 'no other pages'); await h.unmount();
   });
-  await t('HOUSEKEEPING (portal): the trimmed redesign — Plan by + Today/Tomorrow + Who\'s working + Rules, Not assigned (left) and the assignment cards; no KPI tiles / overview / links row; all calls on /frontdesk', async () => {
+  await t('HOUSEKEEPING (portal): the trimmed redesign — Plan by + Today/Tomorrow + Who\'s working + Rules, a wide Not assigned card and the assignment cards; no KPI tiles / overview / links row; all calls on /frontdesk', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); });
     const text = h.el.textContent; for (const l of ['Plan by', 'Names', 'No name', 'Not assigned', 'Housekeepers’ assignments', 'Auto-assign', 'Reset', 'Rules']) assert(text.includes(l), l); assert(h.btn(/Who's working/), 'staff pop-over button');
-    assert(!h.el.querySelector('.fc-kpi-card, .hk-overview, .hk-links, .hk-donut'), 'no KPI tiles / overview / links row for the front desk'); assert(h.el.querySelector('.hk-v2-grid > .hk-pool') && h.el.querySelector('.hk-assign'), 'Not assigned left, assignments right'); assert(h.btn(/^Today$/) && h.btn(/^Tomorrow$/), 'Today | Tomorrow switch');
+    assert(!h.el.querySelector('.fc-kpi-card, .hk-overview, .hk-links, .hk-donut'), 'no KPI tiles / overview / links row for the front desk'); assert(h.el.querySelector('.hk-pool.hk-pool-wide') && h.el.querySelector('.hk-assign') && !h.el.querySelector('.hk-daycard, .hk-v2-top'), 'Not assigned (wide) then the assignments; no overview / calendar row'); assert(h.btn(/^Today$/) && h.btn(/^Tomorrow$/), 'Today | Tomorrow switch');
     assert(calls.some(c => c.p.startsWith('/frontdesk/housekeeping/plans')) && calls.some(c => c.p === '/frontdesk/employees')); assert(calls.every(c => !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', '));
     assert(!/Print sheet colours/i.test(text), 'dev-only colour card stays hidden'); await h.unmount();
   });
