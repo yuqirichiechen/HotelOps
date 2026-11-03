@@ -44,7 +44,7 @@ const sign = (o) => jwt.sign(o, process.env.JWT_SECRET);
 const UID = '11111111-1111-4111-8111-111111111111';
 const T = { admin: sign({ sub: 'mgr', role: 'admin', type: 'admin' }), dev: sign({ sub: 'dev', role: 'dev', type: 'dev' }),
   employee: sign({ sub: UID, role: 'employee', type: 'staff', dept: 'Housekeeping' }), noDept: sign({ sub: UID, role: 'employee', type: 'staff' }),
-  desk: sign({ sub: UID, role: 'employee', type: 'staff', dept: 'Front Desk' }), roleOnly: sign({ sub: UID, role: 'front_desk', type: 'staff', dept: 'Housekeeping' }) };
+  desk: sign({ sub: UID, role: 'employee', type: 'staff', dept: 'Front Desk' }), roleOnly: sign({ sub: UID, role: 'front_desk', type: 'staff', dept: 'Housekeeping' }), roleNoDept: sign({ sub: UID, role: 'front_desk', type: 'staff', dept: null }) };
 const http = (p, o = {}) => fetch('http://127.0.0.1:3992' + p, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', ...(o.token ? { Authorization: 'Bearer ' + o.token } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }));
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 3).join(' | ')); process.exitCode = 1; } };
@@ -68,10 +68,10 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
 
   const READS = ['/api/frontdesk/forecast/current', '/api/frontdesk/forecast/live', '/api/frontdesk/employees', '/api/frontdesk/settings', '/api/frontdesk/housekeeping/plan?date=2026-11-02',
     '/api/frontdesk/housekeeping/plans?from=2026-10-20&to=2026-11-03', '/api/frontdesk/housekeeping/locked-rooms?date=2026-11-02'];
-  await t('every front-desk route: no token 401 · other departments 403 (even with the old front_desk ROLE) · Front Desk department, manager and dev allowed', async () => {
+  await t('every front-desk route: no token 401 · other staff 403 · Front Desk ROLE or DEPARTMENT, manager and dev allowed', async () => {
     for (const p of READS) {
-      assert.strictEqual((await http(p)).status, 401, 'none ' + p); for (const who of ['employee', 'noDept', 'roleOnly']) assert.strictEqual((await http(p, { token: T[who] })).status, 403, who + ' ' + p);
-      for (const who of ['desk', 'admin', 'dev']) { const r = await http(p, { token: T[who] }); assert.strictEqual(r.status, 200, who + ' ' + p + ' → ' + r.status + JSON.stringify(r.body)); }
+      assert.strictEqual((await http(p)).status, 401, 'none ' + p); for (const who of ['employee', 'noDept']) assert.strictEqual((await http(p, { token: T[who] })).status, 403, who + ' ' + p);
+      for (const who of ['desk', 'roleOnly', 'roleNoDept', 'admin', 'dev']) { const r = await http(p, { token: T[who] }); assert.strictEqual(r.status, 200, who + ' ' + p + ' → ' + r.status + JSON.stringify(r.body)); }
     }
     const body = { date: '2026-11-02', settings: { min: 10 }, assignments: [] };
     assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', body })).status, 401); assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', body, token: T.employee })).status, 403);
@@ -83,7 +83,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const r = await login('4155550103'); assert.strictEqual(r.body.user.role, 'front_desk');
     assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: d.body.token })).status, 200, 'Front Desk department');
     assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: h.body.token })).status, 403, 'Housekeeping department');
-    assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: r.body.token })).status, 403, 'the old role alone no longer opens the portal routes');
+    assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: r.body.token })).status, 200, 'role front desk alone (any department, even none) opens the portal routes');
     for (const name of ['Front Desk', 'front desk', 'FRONT DESK', 'Front-Desk', 'front_desk', ' Front Desk ']) assert(require(ROOT + '/auth').isFrontDeskDept(name), name);
     for (const name of ['Housekeeping', 'Front Desk Supervisor', 'Frontdesks', '', null, undefined]) assert(!require(ROOT + '/auth').isFrontDeskDept(name), String(name));
   });

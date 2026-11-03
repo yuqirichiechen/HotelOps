@@ -3,7 +3,6 @@ import { flushSync } from 'react-dom';
 import StaffLogin from './StaffLogin';
 import StaffPortalLogin from './StaffPortalLogin';
 import AdminLogin from './AdminLogin';
-import { getStaffEntry } from '../../auth';
 
 // Sprint 11.2.1: `/:tenant/login` is a single URL that hosts both
 // the staff and the manager sign-in. Mode is internal state — the
@@ -22,11 +21,11 @@ import { getStaffEntry } from '../../auth';
 // "after" DOM before React has actually updated it. Browsers that
 // don't implement the API fall through to a plain `setMode`.
 
-// Sprint 24 / 24.1: three modes — 'clockin' (numpad: clock in / out only), 'staff' (PC form → the staff portal: timesheet, calendar,
-// settings; front desk adds forecast + housekeeping) and 'admin'. Same staff credentials for the first two. The screen opens on the
-// door this browser used last, so a front-desk PC keeps opening on "Staff login" and a kiosk tablet on "Clock in".
+// Sprint 24 / 24.1 / 24.2: three modes — 'clockin' (numpad: clock in / out only), 'staff' (PC form → the staff portal: timesheet, calendar,
+// settings; front desk adds forecast + housekeeping) and 'admin'. Same staff credentials for the first two. The screen ALWAYS opens on
+// Clock in (the numpad); the other modes are one click away and are not remembered for the next visit.
 const TenantLogin = () => {
-  const [mode, setMode] = useState(() => (getStaffEntry() === 'staff' ? 'staff' : 'clockin'));
+  const [mode, setMode] = useState('clockin');
 
   const switchMode = (next) => {
     if (typeof document !== 'undefined' && document.startViewTransition) {

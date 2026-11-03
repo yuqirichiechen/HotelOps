@@ -92,16 +92,17 @@ const requireRole = (...allowed) => (req, res, next) => {
   next();
 };
 
-// ── Front-desk portal access (Sprint 24 / 24.1) ─────────────────────────────
-// Who may call `/api/frontdesk/*`: managers and dev, and staff whose DEPARTMENT is "Front Desk". The department name is carried in the
-// staff token (`dept`, set at sign-in) so these routes — the live room board is polled every 2 min — need no database lookup per request
-// (memory: no DB-touching timers). A department change therefore takes effect at the person's next sign-in (tokens last 8 h).
+// ── Front-desk portal access (Sprint 24 / 24.1 / 24.2) ──────────────────────
+// Who may call `/api/frontdesk/*`: managers and dev, and staff who are "front desk" either by ROLE (Staff → role = front desk) or by
+// DEPARTMENT (named "Front Desk"). Both are carried in the staff token (`role`, `dept`, set at sign-in) so these routes — the live room
+// board is polled every 2 min — need no database lookup per request (memory: no DB-touching timers). A role / department change
+// therefore takes effect at the person's next sign-in (tokens last 8 h).
 const FRONT_DESK_DEPT_RE = /^front[\s_-]*desk$/i;
 const isFrontDeskDept = (name) => typeof name === 'string' && FRONT_DESK_DEPT_RE.test(name.trim());
 const requireFrontDesk = (req, res, next) => {
   if (!req.auth) return res.status(401).json({ success: false, message: 'Not authenticated' });
   if (req.auth.role === 'admin' || req.auth.role === 'dev') return next();
-  if (req.auth.type === 'staff' && isFrontDeskDept(req.auth.dept)) return next();
+  if (req.auth.type === 'staff' && (req.auth.role === 'front_desk' || isFrontDeskDept(req.auth.dept))) return next();
   return res.status(403).json({ success: false, message: 'Forbidden' });
 };
 

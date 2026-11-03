@@ -95,12 +95,12 @@ const stdResponses = () => ({
     await h.click(h.el.querySelector('[data-mode="admin"]')); assert(h.el.querySelector('#username') && h.el.querySelector('#password') && !h.el.querySelector('#identifier')); assert.deepStrictEqual(sw(h), ['clockin', 'staff']);
     await h.click(h.el.querySelector('[data-mode="staff"]')); assert(h.el.querySelector('#staff-identifier')); await h.click(h.el.querySelector('[data-mode="clockin"]')); assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad')); await h.unmount();
   });
-  await t('SAME CREDENTIALS, different door: Clock in (numpad) → /clockin, Staff login (typed) → /staff, one request each to the existing endpoint — and the choice is remembered', async () => {
+  await t('SAME CREDENTIALS, different door: Clock in (numpad) → /clockin, Staff login (typed) → /staff, one request each to the existing endpoint — and the page still opens on Clock in next time', async () => {
     const user = { user_id: 'u9', name: 'Fran', role: 'employee', department: 'Front Desk', pin_must_set: false }; staffLogin = { status: 200, body: { success: true, token: 'TOK', user } };
     localStorage.clear(); realFetchLog.length = 0; let h = await mount(loginPage(), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'clockin'); await h.unmount();
     localStorage.clear(); realFetchLog.length = 0; h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk', '1234'); assert(/PORTAL SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'staff');
     const logins = realFetchLog.filter(([u]) => /auth\/staff\/login/.test(u)); assert.strictEqual(logins.length, 1, 'one request, the existing endpoint — no new credential path'); await h.unmount();
-    h = await mount(loginPage(), 120); assert(h.el.querySelector('#staff-identifier'), 'this browser now opens on the door it used last'); await h.unmount();
+    h = await mount(loginPage(), 120); assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad') && !h.el.querySelector('#staff-identifier'), 'the login page ALWAYS opens on Clock in (the numpad), even right after a Staff login'); await h.unmount();
   });
   await t('Staff login sends exactly what was typed (username / phone / ID + PIN) and a PIN the person has is optional', async () => {
     let sent = null; const orig = global.fetch; global.fetch = async (url, init = {}) => { if (/auth\/staff\/login$/.test(url)) sent = JSON.parse(init.body); return orig(url, init); };
@@ -147,10 +147,12 @@ const stdResponses = () => ({
     assert(!h.el.querySelector('.fd-ops')); assert(h.el.querySelector('.home-hero'), 'their own dashboard (hours) is there'); assert(!h.el.querySelector('.home-clock-section'));
     assert(calls.every(c => !c.p.startsWith('/frontdesk/') && !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', ')); await h.unmount();
   });
-  await t('the front-desk features follow the DEPARTMENT, not the role: role "front_desk" in another department gets nothing extra; "front desk" / "Front-Desk" spellings count', async () => {
-    AuthMock._user = ROLE_ONLY; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Housekeeping') && !h.el.querySelector('.fd-ops')); assert(calls.every(c => !c.p.startsWith('/frontdesk/'))); await h.unmount();
+  await t('front-desk features = ROLE "front desk" OR DEPARTMENT "Front Desk": a front-desk role with NO department works; spellings count; anyone else does not', async () => {
+    AuthMock._user = { ...ROLE_ONLY, department: null }; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 250); assert(navLabels(h).join('|').includes('Housekeeping') && h.el.querySelector('.fd-ops'), 'role only, department None (the reported case)'); assert(calls.some(c => c.p === '/frontdesk/forecast/current')); await h.unmount();
+    AuthMock._user = ROLE_ONLY; h = await mount(portal(), 150); assert(h.el.querySelector('.fd-ops'), 'role + other department'); await h.unmount();
     for (const d of ['front desk', 'Front-Desk', ' FRONT DESK ']) { AuthMock._user = { ...HK, department: d }; h = await mount(portal(), 150); assert(h.el.querySelector('.fd-ops'), d); await h.unmount(); }
     AuthMock._user = { ...HK, department: 'Front Desk Supervisor' }; h = await mount(portal(), 150); assert(!h.el.querySelector('.fd-ops'), 'exact department name'); await h.unmount();
+    AuthMock._user = { ...HK, role: 'employee', department: null }; h = await mount(portal(), 150); assert(!h.el.querySelector('.fd-ops'), 'plain employee, no department'); await h.unmount();
   });
   const clockin = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(ClockIn)));
   await t('CLOCK IN door: ONLY the clock — focused-action screen, Clock In / Out, confirmation + auto-signout countdown; no sidebar, no hours, no timesheet / calendar / settings', async () => {

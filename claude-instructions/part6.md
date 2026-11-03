@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 24.2   | Login always opens on Clock in; front-desk access = role "front desk" OR department "Front Desk" | **Built + tested** (no migration, no new env) |
 | 24.1   | Staff-portal rework after review: Staff login = PC form (admin-card design, no numpad); icon-only mode buttons; Clock in door = clock only; old multi-page staff shell removed, its pages merged into the portal for all staff (no clocking there); front-desk features follow the DEPARTMENT "Front Desk" | **Built + tested** (no migration, no new env) |
 | 24     | Staff portal (front desk): third login mode "Staff login", portal Home (forecast tiles + sellable vs arriving + the clock/hours dashboard) and a simplified Housekeeping; original staff pages kept as the "Clock in" door | **Built + tested** (no migration, no new env) |
 | 23.8   | Obvious Dev / Manager view switch (admin panel) | **Built + tested** |
@@ -37,6 +38,12 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-02 — Sprint 24.2: login default + front-desk access by role or department
+
+1. **Login default.** `/:tenant/login` now ALWAYS opens on **Clock in** (the numpad). The other two modes are one click away and are no longer remembered for the next visit (24.1 reopened on the last door used). `hotelops-staff-entry` is still stored, but only to route an already-signed-in user back to the right shell.
+2. **Front-desk access.** The user tested with Staff → role = **front desk** and department "— None —", and the portal showed nothing extra: 24.1 only looked at the department. Access is now **role `front_desk` OR department "Front Desk"** (either one), on both sides: `requireFrontDesk` (server/auth.js; role and department are read from the signed token, still no DB lookup per request) and `isFrontDesk(user)` (client). Managers/dev unchanged. Role/department changes take effect at the person's next sign-in. NOTE for testing: these features are in the **Staff login** portal (PC form); signing in through **Clock in** only clocks in/out by design.
+Tests: `frontdesk-server` 13 (role-only, role + no department, other role/department combinations) and `staffportal` 16 (the reported case — role front desk, department None — gets Housekeeping + the Home block and calls the front-desk routes; plain employee does not; login opens on Clock in even right after a Staff login). Build compiles; dev-auth, housekeeping-server, devshell, housekeeping re-run green. No deploy steps.
 
 ### 2026-11-02 — Sprint 24.1: staff-portal rework (user review of Sprint 24)
 
