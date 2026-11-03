@@ -82,8 +82,7 @@ const requireAuth = (req, res, next) => {
 
 // Sprint 22.4: the `dev` role (server-verified dev sign-in, see below) can do everything an admin can, plus the dev-only surfaces
 // (auto-sync settings, forecast settings, logs). An admin can NOT use dev-only routes: requireRole('dev').
-// Sprint 24: `front_desk` (an employee role) unlocks the front-desk portal routes (`/api/frontdesk/*`); managers and dev can open them too.
-const ROLE_IMPLIES = { dev: ['admin', 'front_desk'], admin: ['front_desk'] };
+const ROLE_IMPLIES = { dev: ['admin'] };
 const requireRole = (...allowed) => (req, res, next) => {
   if (!req.auth) return res.status(401).json({ success: false, message: 'Not authenticated' });
   const roles = [req.auth.role, ...(ROLE_IMPLIES[req.auth.role] || [])];
@@ -91,6 +90,19 @@ const requireRole = (...allowed) => (req, res, next) => {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   next();
+};
+
+// ── Front-desk portal access (Sprint 24 / 24.1) ─────────────────────────────
+// Who may call `/api/frontdesk/*`: managers and dev, and staff whose DEPARTMENT is "Front Desk". The department name is carried in the
+// staff token (`dept`, set at sign-in) so these routes — the live room board is polled every 2 min — need no database lookup per request
+// (memory: no DB-touching timers). A department change therefore takes effect at the person's next sign-in (tokens last 8 h).
+const FRONT_DESK_DEPT_RE = /^front[\s_-]*desk$/i;
+const isFrontDeskDept = (name) => typeof name === 'string' && FRONT_DESK_DEPT_RE.test(name.trim());
+const requireFrontDesk = (req, res, next) => {
+  if (!req.auth) return res.status(401).json({ success: false, message: 'Not authenticated' });
+  if (req.auth.role === 'admin' || req.auth.role === 'dev') return next();
+  if (req.auth.type === 'staff' && isFrontDeskDept(req.auth.dept)) return next();
+  return res.status(403).json({ success: false, message: 'Forbidden' });
 };
 
 // ── Dev sign-in (Sprint 22.4) ───────────────────────────────────────────────
@@ -143,6 +155,6 @@ module.exports = {
   verifyPin,
   findAdmin,
   requireAuth,
-  requireRole,
+  requireRole, requireFrontDesk, isFrontDeskDept,
   devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey, _resetDevLimiter,
 };

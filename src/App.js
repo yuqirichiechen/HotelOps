@@ -8,7 +8,7 @@ import TenantLogin from './pages/Login/TenantLogin';
 import TenantPicker from './pages/Login/TenantPicker';
 import DevLogin from './pages/Login/DevLogin';
 import SetPin from './pages/SetPin';
-import StaffShell from './shells/StaffShell';             // legacy clock-in dashboard (/:tenant/clockin)
+import ClockInShell from './shells/ClockInShell';         // Sprint 24.1: the Clock in door — only the clock (/:tenant/clockin)
 import StaffPortalShell from './shells/StaffPortalShell'; // Sprint 24: staff portal (/:tenant/staff)
 import AdminShell from './shells/AdminShell';
 import './App.css';
@@ -96,13 +96,13 @@ const App = () => {
               StaffDetail/Calendar/Notes/Reports/Assistant/Settings)
               happens via internal view state — the URL never changes
               after login. See `shells/{StaffShell,AdminShell}.js`. */}
-          {/* Sprint 24: two doors for non-admin users (same credentials). `/:tenant/clockin` is the original clock-in dashboard,
-              kept as is (kiosk-style, short idle sign-out). `/:tenant/staff` is the new staff portal: Home (clock + shift summary +
-              forecast tiles), Housekeeping for the front desk, Timesheet, Calendar, Settings. Which one a person gets depends on the
-              login screen they used ('Clock in' vs 'Staff login'). */}
+          {/* Sprint 24 / 24.1: two doors for non-admin users (same staff credentials). `/:tenant/clockin` = clock in / out ONLY (the numpad
+              sign-in; kiosk behaviour, short idle sign-out). `/:tenant/staff` = the staff portal for everyone (Home with hours, Timesheet,
+              Calendar, Settings — no clocking) plus, for the Front Desk department, today's forecast tiles and Housekeeping. Which door
+              a person gets depends on the sign-in screen they used ('Clock in' vs 'Staff login'). */}
           <Route path="/:tenant/clockin" element={
             <RequireRole role="staff">
-              <StaffShell theme={theme} onToggleTheme={toggleTheme} />
+              <ClockInShell />
             </RequireRole>
           } />
           <Route path="/:tenant/staff" element={

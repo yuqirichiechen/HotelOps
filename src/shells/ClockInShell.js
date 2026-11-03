@@ -1,47 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ViewProvider, useView } from './ViewContext';
 import { apiFetch, useAuth } from '../auth';
-import Sidebar from '../components/Layout/Sidebar';
 import Home from '../pages/Home';
-import Timesheet from '../pages/Timesheet';
-import StaffCalendar from '../pages/StaffCalendar';
-import NotesPage from '../pages/NotesPage';
-import Settings from '../pages/Settings';
 
-// Sprint 11.2.1: the staff side of the app is a single URL
-// (`/:tenant/staff`). Sidebar clicks set view state instead of
-// navigating; the URL never changes after login.
-
-// Sprint 11.6: nav `icon` is now an icon *base name* — Sidebar
-// resolves it to `/logo/<base>_<dark|light>.png` based on the
-// active theme. PNGs live in /public/logo/.
-// Sprint 17.4: `mobilePrimary` marks items that show in the mobile
-// bottom tab bar. Items without the flag collapse into a "More"
-// sheet (slides up from the bottom nav). Desktop sidebar still
-// shows everything — the flag is mobile-only.
-const NAV = [
-  { view: 'home',      label: 'Home',      icon: 'home',      live: true, mobilePrimary: true },
-  { view: 'timesheet', label: 'Timesheet', icon: 'timesheet', live: true, mobilePrimary: true },
-  { view: 'calendar',  label: 'Calendar',  icon: 'calendar',  live: true, mobilePrimary: true },
-  { view: 'settings',  label: 'Settings',  icon: 'settings' },
-];
-
-const VIEWS = {
-  home:      Home,
-  timesheet: Timesheet,
-  calendar:  StaffCalendar,
-  notes:     NotesPage,
-  settings:  Settings,
-};
-
-// Sub-views map to which sidebar item should appear "active" while
-// they're on screen — e.g. NotesPage is reached from Calendar, so
-// the Calendar nav stays highlighted while you're reading notes.
-const ACTIVE_PARENT = {
-  notes: 'calendar',
-};
+// Sprint 24.1: the CLOCK IN door (`/:tenant/clockin`) — what the numpad sign-in opens. It is only the clock: no sidebar, no timesheet /
+// calendar / settings (those moved to the staff portal, `/:tenant/staff`, which every employee reaches with "Staff login"). The old
+// multi-page staff shell (StaffShell) is gone; its pages are served by StaffPortalShell. The kiosk behaviour is unchanged: the
+// focused-action screen, the auto-signout countdown after clocking, and the shell-level idle sign-out below.
 
 // Sprint 16.7: shell-level idle auto-logout. Was only firing on
 // FocusedAction; the GM reported staff who navigated to
@@ -113,34 +79,15 @@ const useShellIdleLogout = () => {
   }, [fireLogout]);
 };
 
-const Body = ({ theme, onToggleTheme }) => {
-  const { view, goTo } = useView();
-  // Sprint 16.7: shell-level idle auto-logout fires regardless of
-  // which staff view is on screen.
+const ClockInShell = () => {
   useShellIdleLogout();
-  const Component = VIEWS[view.name] || VIEWS.home;
-  const activeNav = ACTIVE_PARENT[view.name] || view.name;
   return (
-    <div className="app-shell">
-      <Sidebar
-        navItems={NAV}
-        currentView={activeNav}
-        onNavigate={goTo}
-        role="staff"
-        theme={theme}
-        onToggleTheme={onToggleTheme}
-      />
-      <main className="app-main">
-        <Component theme={theme} onToggleTheme={onToggleTheme} role="staff" {...view.params} />
+    <div className="clockin-shell">
+      <main className="clockin-main">
+        <Home variant="kiosk" />
       </main>
     </div>
   );
 };
 
-const StaffShell = ({ theme, onToggleTheme }) => (
-  <ViewProvider initialView="home">
-    <Body theme={theme} onToggleTheme={onToggleTheme} />
-  </ViewProvider>
-);
-
-export default StaffShell;
+export default ClockInShell;

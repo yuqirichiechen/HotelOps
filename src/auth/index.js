@@ -93,6 +93,9 @@ export const getStaffEntry = () => {
 export const setStaffEntry = (entry) => {
   try { localStorage.setItem(STAFF_ENTRY_KEY, entry === 'staff' ? 'staff' : 'clockin'); } catch { /* storage unavailable */ }
 };
+/** Sprint 24.1: the front-desk features (forecast tiles on Home, Housekeeping) belong to the DEPARTMENT "Front Desk" (the server checks the
+ *  same thing from the token). Managers/dev use the admin shell instead. */
+export const isFrontDesk = (user) => !!user && typeof user.department === 'string' && /^front[\s_-]*desk$/i.test(user.department.trim());
 /** Where a signed-in (non-dev) user belongs for this property. */
 export const homePathFor = (user, slug) =>
   (user && user.role === 'admin') ? `/${slug}/admin` : `/${slug}/${getStaffEntry() === 'staff' ? 'staff' : 'clockin'}`;

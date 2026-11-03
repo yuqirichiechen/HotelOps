@@ -54,9 +54,12 @@ const getMondayISO = (d = new Date()) => {
   return date.toISOString().split('T')[0];
 };
 
-// Sprint 24: `portal` = rendered inside the staff portal (a desk PC, not the clock-in kiosk): no full-screen focused-action overlay and no
-// auto-signout countdown after a clock event — the person keeps working in the portal.
-const Home = ({ portal = false }) => {
+// Sprint 24.1: two variants of the same page.
+//   'kiosk'     (default) — the CLOCK IN door: greeting + the clock (focused-action overlay, Clock In / Out) + a confirmation with the
+//                auto-signout countdown. Nothing else — hours, timesheet etc. live in the staff portal.
+//   'dashboard' — the STAFF PORTAL Home: greeting + this-week hours + recent shifts. No clocking here at all (clocking is its own feature).
+const Home = ({ variant = 'kiosk' }) => {
+  const kiosk = variant !== 'dashboard';
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const t = useT();
@@ -174,7 +177,7 @@ const Home = ({ portal = false }) => {
   // CPS / spam-tap user can't instantly reverse their clock event.
   const DEFAULT_LOCK_SECONDS = 3;
   const triggerClockEvent = (type) => {
-    const seconds = portal ? 0 : (data?.autoSignoutSeconds || 0);
+    const seconds = data?.autoSignoutSeconds || 0;
     setClockEvent({ type, seconds });
     if (seconds <= 0) {
       setTimeout(() => setClockEvent(null), DEFAULT_LOCK_SECONDS * 1000);
@@ -265,7 +268,7 @@ const Home = ({ portal = false }) => {
   // disabled (shows "…") until data resolves so the wrong mode
   // never gets tapped. clockEvent still suppresses it so the
   // existing flip-card flow takes over after a clock action.
-  const showFocused = !portal && !focusedDismissed && !clockEvent;
+  const showFocused = kiosk && !focusedDismissed && !clockEvent;
   const focusedMode = onClock ? 'out' : 'in';
 
   return (
@@ -362,7 +365,7 @@ const Home = ({ portal = false }) => {
           countdown out of this card into the Recent card's back face,
           so the action buttons always live here (clearer affordance
           for "I want to clock the other way RIGHT NOW"). */}
-      <section className="home-clock-section">
+      {kiosk && <section className="home-clock-section">
         <h2 className="home-section-title">{t('home.clock')}</h2>
         <div className="home-clock-flip-container">
           <div className={`home-clock-flip-card ${onClock ? 'flipped' : ''}`}>
@@ -411,7 +414,25 @@ const Home = ({ portal = false }) => {
 
           </div>
         </div>
-      </section>
+      </section>}
+
+      {/* Sprint 24.1: kiosk — what you see after clocking: the confirmation and, when auto-signout is on, the countdown. */}
+      {kiosk && clockEvent && (
+        <section className="home-confirm" aria-live="polite">
+          <div className="home-hero-event">
+            <div className={`home-hero-event-icon ${clockEvent.type || ''}`}>✓</div>
+            <div className="home-hero-event-title">{clockEvent.type === 'out' ? t('notif.clocked_out') : t('notif.clocked_in')}</div>
+            <div className="home-hero-event-sub">{clockEvent.type === 'out' ? '' : t('home.on_clock')}</div>
+          </div>
+          {clockEvent.seconds > 0 && (
+            <div className="home-recent-event">
+              <div className="home-recent-event-banner">
+                <AutoSignoutBanner seconds={clockEvent.seconds} onCancel={handleKeepSignedIn} onSignOut={handleAutoSignout} />
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* This week — Sprint 9.3 flip card. Front = week summary.
           Back = clock-event confirmation (replaces the old top
@@ -419,7 +440,7 @@ const Home = ({ portal = false }) => {
           flips back when the user taps "Keep signed in" on the
           Recent card OR after the auto-clear window when auto-
           signout is disabled. */}
-      <section className="home-flip-container">
+      {!kiosk && <section className="home-flip-container">
         <div className={`home-flip-card ${clockEvent ? 'flipped' : ''}`}>
           <div className="home-flip-face home-hero">
             <div className="home-hero-eyebrow">{t('home.this_week')}</div>
@@ -440,13 +461,13 @@ const Home = ({ portal = false }) => {
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* Recent shifts — Sprint 9.3 flip card. Front = the last few
           shifts. Back = the auto-signout countdown (only flips when
           auto-signout is enabled). Embeds AutoSignoutBanner stripped
           of its own border via .home-recent-event-banner. */}
-      <section className="home-flip-container">
+      {!kiosk && <section className="home-flip-container">
         <div className={`home-flip-card ${clockEvent && clockEvent.seconds > 0 ? 'flipped' : ''}`}>
           <div className="home-flip-face home-recent">
             <h2 className="home-recent-title">{t('home.recent')}</h2>
@@ -488,7 +509,7 @@ const Home = ({ portal = false }) => {
             )}
           </div>
         </div>
-      </section>
+      </section>}
 
     </div>
   );

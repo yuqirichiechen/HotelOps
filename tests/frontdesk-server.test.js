@@ -1,4 +1,4 @@
-// Sprint 24 — the front-desk portal's server side (`/api/frontdesk/*`): who may call what, that no guest identifier ever leaves,
+// Sprint 24 / 24.1 — the front-desk portal's server side (`/api/frontdesk/*`): who may call what (the DEPARTMENT "Front Desk", carried in the staff token), that no guest identifier ever leaves,
 // that the live board stays DB-free, and that the manager routes still behave exactly as before. DB + rGuest fully faked.
 //   node tests/frontdesk-server.test.js "$PWD"
 const ROOT = process.argv[2] + '/server'; const assert = require('assert');
@@ -18,11 +18,14 @@ const PAYLOAD = {
 };
 const LIVE = { forecastDate: '2026-11-02', fetchedAt: '2026-11-02T18:00:00Z', complete: true, rooms: [{ roomNumber: '101', typeCode: 'NQRR', hkStatus: 'VI', occupancyStatus: 'VAC' }], remainingArrivals: [], stillDeparting: [] };
 
+const USERS = { 4155550101: { id: 'a1111111-1111-4111-8111-111111111111', name: 'Fran Desk', role: 'employee', dept: 'Front Desk' }, 4155550102: { id: 'b2222222-2222-4222-8222-222222222222', name: 'Hana HK', role: 'employee', dept: 'Housekeeping' }, 4155550103: { id: 'c3333333-3333-4333-8333-333333333333', name: 'Old Role', role: 'front_desk', dept: 'Housekeeping' } };
 const store = { hk_print_colors: '{"dirty":"#c6f6d5"}', forecast_allowance_scale_pct: '120', login_secret_thing: 'MANAGER-ONLY', overtime_threshold_hours: '40' };
 const plans = new Map(); let queries = 0;
 pg.Pool.prototype.query = async function (sql, params) {
   const q = String(sql).replace(/\s+/g, ' '); queries++;
   if (/FROM forecast_snapshot/.test(q)) return { rows: [{ snapshot_id: 's1', scraped_at: '2026-11-02T17:55:00Z', forecast_date: '2026-11-02', status: 'success', payload: PAYLOAD }] };
+  if (/WHERE key = 'enabled_login_methods'/.test(q)) return { rows: [] };
+  if (/pin_hash/.test(q) && /FROM users u/.test(q)) { const u = USERS[params[0]]; return { rows: u ? [{ user_id: u.id, name: u.name, role: u.role, department_id: 1, pin_required: false, pin_must_set: false, preferred_language: 'en', department: u.dept, phone_number: params[0] }] : [] }; }
   if (/FROM app_settings WHERE key = ANY/.test(q)) return { rows: params[0].filter(k => k in store).map(k => ({ key: k, value: store[k] })) };
   if (/FROM app_settings/.test(q)) return { rows: Object.entries(store).map(([key, value]) => ({ key, value })) };
   if (/FROM users u LEFT JOIN departments/.test(q)) return { rows: [{ user_id: 'u1', name: 'Bryan', active: true, department_id: 'd1', department: 'Housekeeping' }] };
@@ -40,7 +43,8 @@ clientMod.createAgilysysClient = () => ({ getPropertyDate: down, listRooms: down
 const sign = (o) => jwt.sign(o, process.env.JWT_SECRET);
 const UID = '11111111-1111-4111-8111-111111111111';
 const T = { admin: sign({ sub: 'mgr', role: 'admin', type: 'admin' }), dev: sign({ sub: 'dev', role: 'dev', type: 'dev' }),
-  employee: sign({ sub: UID, role: 'employee', type: 'staff' }), desk: sign({ sub: UID, role: 'front_desk', type: 'staff' }) };
+  employee: sign({ sub: UID, role: 'employee', type: 'staff', dept: 'Housekeeping' }), noDept: sign({ sub: UID, role: 'employee', type: 'staff' }),
+  desk: sign({ sub: UID, role: 'employee', type: 'staff', dept: 'Front Desk' }), roleOnly: sign({ sub: UID, role: 'front_desk', type: 'staff', dept: 'Housekeeping' }) };
 const http = (p, o = {}) => fetch('http://127.0.0.1:3992' + p, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', ...(o.token ? { Authorization: 'Bearer ' + o.token } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }));
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 3).join(' | ')); process.exitCode = 1; } };
@@ -64,13 +68,24 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
 
   const READS = ['/api/frontdesk/forecast/current', '/api/frontdesk/forecast/live', '/api/frontdesk/employees', '/api/frontdesk/settings', '/api/frontdesk/housekeeping/plan?date=2026-11-02',
     '/api/frontdesk/housekeeping/plans?from=2026-10-20&to=2026-11-03', '/api/frontdesk/housekeeping/locked-rooms?date=2026-11-02'];
-  await t('every front-desk route: no token 401 · plain employee 403 · front_desk, manager and dev allowed', async () => {
+  await t('every front-desk route: no token 401 · other departments 403 (even with the old front_desk ROLE) · Front Desk department, manager and dev allowed', async () => {
     for (const p of READS) {
-      assert.strictEqual((await http(p)).status, 401, 'none ' + p); assert.strictEqual((await http(p, { token: T.employee })).status, 403, 'employee ' + p);
+      assert.strictEqual((await http(p)).status, 401, 'none ' + p); for (const who of ['employee', 'noDept', 'roleOnly']) assert.strictEqual((await http(p, { token: T[who] })).status, 403, who + ' ' + p);
       for (const who of ['desk', 'admin', 'dev']) { const r = await http(p, { token: T[who] }); assert.strictEqual(r.status, 200, who + ' ' + p + ' → ' + r.status + JSON.stringify(r.body)); }
     }
     const body = { date: '2026-11-02', settings: { min: 10 }, assignments: [] };
     assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', body })).status, 401); assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', body, token: T.employee })).status, 403);
+  });
+  await t('the department rides in the token at sign-in (no DB lookup per request): Front Desk staff can use the portal routes, others cannot', async () => {
+    const login = (phone) => http('/api/auth/staff/login', { method: 'POST', body: { identifier: phone } });
+    const d = await login('4155550101'); assert.strictEqual(d.status, 200); assert.strictEqual(d.body.user.department, 'Front Desk'); assert.strictEqual(jwt.verify(d.body.token, process.env.JWT_SECRET).dept, 'Front Desk');
+    const h = await login('4155550102'); assert.strictEqual(h.body.user.department, 'Housekeeping'); assert.strictEqual(jwt.verify(h.body.token, process.env.JWT_SECRET).dept, 'Housekeeping');
+    const r = await login('4155550103'); assert.strictEqual(r.body.user.role, 'front_desk');
+    assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: d.body.token })).status, 200, 'Front Desk department');
+    assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: h.body.token })).status, 403, 'Housekeeping department');
+    assert.strictEqual((await http('/api/frontdesk/forecast/current', { token: r.body.token })).status, 403, 'the old role alone no longer opens the portal routes');
+    for (const name of ['Front Desk', 'front desk', 'FRONT DESK', 'Front-Desk', 'front_desk', ' Front Desk ']) assert(require(ROOT + '/auth').isFrontDeskDept(name), name);
+    for (const name of ['Housekeeping', 'Front Desk Supervisor', 'Frontdesks', '', null, undefined]) assert(!require(ROOT + '/auth').isFrontDeskDept(name), String(name));
   });
   await t('the front-desk portal can NOT use the manager routes (/api/admin/*) — least privilege', async () => {
     for (const p of ['/api/admin/forecast/current', '/api/admin/forecast/live', '/api/admin/employees', '/api/admin/settings', '/api/admin/housekeeping/plan?date=2026-11-02', '/api/admin/reservations/summaries?ids=r1']) {
@@ -105,7 +120,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', token: T.desk, body: { ...plan, date: 'nope' } })).status, 400, 'same validation as the manager route');
   });
   await t('locked rooms: room numbers only', async () => { const r = await http('/api/frontdesk/housekeeping/locked-rooms?date=2026-11-02', { token: T.desk }); assert.deepStrictEqual(r.body.rooms, ['204']); assert.strictEqual((await http('/api/frontdesk/housekeeping/locked-rooms?date=x', { token: T.desk })).status, 400); });
-  await t('role hierarchy: dev-only routes stay closed to front_desk AND managers; front_desk cannot reach admin-only ones', async () => {
+  await t('role hierarchy: dev-only routes stay closed to front desk AND managers; front desk cannot reach admin-only ones', async () => {
     for (const p of ['/api/admin/sync/status', '/api/admin/forecast/accuracy', '/api/dev/jobs']) { assert.strictEqual((await http(p, { token: T.desk })).status, 403, 'desk ' + p); assert.strictEqual((await http(p, { token: T.admin })).status, 403, 'admin ' + p); }
   });
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);

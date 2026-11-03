@@ -693,3 +693,6 @@
     gap: 10px;
   }
 }
+
+/* Sprint 24.1 — kiosk confirmation after clocking in / out (confirmation card + auto-signout countdown, stacked). */
+.home-confirm { display: flex; flex-direction: column; gap: 14px; animation: home-fade-in 0.3s ease both; }

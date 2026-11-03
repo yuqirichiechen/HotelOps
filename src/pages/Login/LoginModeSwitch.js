@@ -2,11 +2,12 @@ import React from 'react';
 import RoleIcon from '../../components/shared/RoleIcon';
 import '../../components/shared/RoleIcon.css';
 
-// Sprint 24: the sign-in screen has three modes, shown as buttons next to the HotelOps mark (every screen shows the OTHER two):
-//   clockin — phone / ID / PIN, lands in the original clock-in dashboard (formerly just "staff")
+// The sign-in screen has three modes, shown as buttons next to the HotelOps mark (every screen shows the OTHER two):
+//   clockin — phone / ID / PIN on a numpad; clock in / out only (formerly just "staff")
 //   admin   — manager username + password
-//   staff   — the staff portal: same phone / ID / PIN, lands in the portal (forecast tiles, housekeeping for the front desk, …)
-// The two staff doors carry a visible label (they would otherwise look alike); the manager button stays an icon like before.
+//   staff   — "Staff login": a PC form (same staff credentials, typed) → the staff portal
+// Sprint 24.1: icon only (the name is the tooltip / aria-label); the icons are placeholders the user will replace. Every button is the same
+// square, so the HotelOps mark keeps its place on all three screens (the card morph between screens depends on that).
 
 const StaffPortalIcon = () => (
   // ID badge on a lanyard — "staff" as in the team, distinct from the single-person clock-in icon
@@ -19,9 +20,9 @@ const StaffPortalIcon = () => (
 );
 
 export const LOGIN_MODES = [
-  { key: 'clockin', label: 'Clock in',    title: 'Clock in',         labeled: true,  icon: <RoleIcon role="staff" alt="Clock in" /> },
-  { key: 'admin',   label: 'Manager',     title: 'Manager sign-in',  labeled: false, icon: <RoleIcon role="manager" alt="Manager sign-in" /> },
-  { key: 'staff',   label: 'Staff login', title: 'Staff login',      labeled: true,  icon: <StaffPortalIcon /> },
+  { key: 'clockin', title: 'Clock in',        icon: <RoleIcon role="staff" alt="Clock in" /> },
+  { key: 'admin',   title: 'Manager sign-in', icon: <RoleIcon role="manager" alt="Manager sign-in" /> },
+  { key: 'staff',   title: 'Staff login',     icon: <StaffPortalIcon /> },
 ];
 
 const LoginModeSwitch = ({ current, onSwitch }) => (
@@ -32,12 +33,11 @@ const LoginModeSwitch = ({ current, onSwitch }) => (
         type="button"
         data-mode={m.key}
         onClick={() => onSwitch(m.key)}
-        className={`login-role-switch${m.labeled ? ' is-labeled' : ''}`}
+        className="login-role-switch"
         aria-label={m.title}
         title={m.title}
       >
         {m.icon}
-        {m.labeled && <span className="login-role-label">{m.label}</span>}
       </button>
     ))}
   </>

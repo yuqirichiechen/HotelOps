@@ -1,5 +1,6 @@
-// Sprint 24 — the staff portal: login screen modes (Clock in · Manager · Staff login), which door a person is sent through, the portal shell
-// (front desk vs other employees), the front-desk Home (tiles + sellable vs arriving, no guest data, no manager routes) and the simplified Housekeeping.
+// Sprint 24 / 24.1 — the staff portal: login modes (Clock in numpad · Manager · Staff login PC form, icon-only), which door a person is sent through,
+// the clock-only Clock in door, the portal shell (Front Desk DEPARTMENT vs other staff; no clocking in the portal), the front-desk Home (tiles +
+// sellable vs arriving, no guest data, no manager routes) and the simplified Housekeeping.
 //   node tests/staffportal.test.js "$PWD"
 const ROOT = process.argv[2]; process.env.NODE_ENV = 'test'; const assert = require('assert');
 const { JSDOM } = require(ROOT + '/node_modules/jsdom'); const dom = new JSDOM('<!doctype html><body><div id="root"></div></body>', { url: 'http://localhost/', pretendToBeVisual: true }); const w = dom.window;
@@ -53,14 +54,14 @@ const stdResponses = () => ({
   const R = (entry, routes) => React.createElement(Auth.AuthProvider, null, React.createElement(LanguageProvider, null, React.createElement(RR.MemoryRouter, { initialEntries: [entry] }, React.createElement(RR.Routes, null, ...routes))));
   const route = (p, el) => React.createElement(RR.Route, { key: p, path: p, element: el }); const txt = (s) => React.createElement('div', null, s);
 
-  await t('homePathFor: managers → admin; everyone else → the door they last used (default: clock-in dashboard, as before)', () => {
-    localStorage.clear(); const desk = { role: 'front_desk' }, adm = { role: 'admin' };
+  await t('homePathFor: managers → admin; everyone else → the door they last used (default: the Clock in door)', () => {
+    localStorage.clear(); const desk = { role: 'employee', department: 'Front Desk' }, adm = { role: 'admin' };
     assert.strictEqual(Auth.homePathFor(desk, 'x'), '/x/clockin'); assert.strictEqual(Auth.homePathFor(adm, 'x'), '/x/admin');
     Auth.setStaffEntry('staff'); assert.strictEqual(Auth.homePathFor(desk, 'x'), '/x/staff'); assert.strictEqual(Auth.homePathFor(adm, 'x'), '/x/admin'); assert.strictEqual(Auth.getStaffEntry(), 'staff');
     Auth.setStaffEntry('whatever'); assert.strictEqual(Auth.getStaffEntry(), 'clockin', 'unknown values fall back to clock-in');
   });
   await t('guards: signed-in staff on the login page / wrong shell are sent to THEIR door; both shells accept any non-admin, neither admits a manager', async () => {
-    localStorage.setItem('hotelops-token', 't'); localStorage.setItem('hotelops-tenant-slug', 'x'); meUser = { role: 'front_desk', name: 'Fran' };
+    localStorage.setItem('hotelops-token', 't'); localStorage.setItem('hotelops-tenant-slug', 'x'); meUser = { role: 'employee', department: 'Front Desk', name: 'Fran' };
     const page = (entry) => R(entry, [route('/x/login', React.createElement(Auth.RedirectIfAuthed, null, txt('LOGIN'))), route('/x/staff', React.createElement(Auth.RequireRole, { role: 'staff' }, txt('PORTAL'))), route('/x/clockin', React.createElement(Auth.RequireRole, { role: 'staff' }, txt('CLOCKIN'))), route('/x/admin', React.createElement(Auth.RequireRole, { role: 'admin' }, txt('ADMIN')))]);
     Auth.setStaffEntry('staff'); let h = await mount(page('/x/login')); assert(/PORTAL/.test(h.el.textContent), h.el.textContent); await h.unmount();
     Auth.setStaffEntry('clockin'); h = await mount(page('/x/login')); assert(/CLOCKIN/.test(h.el.textContent)); await h.unmount();
@@ -73,71 +74,94 @@ const stdResponses = () => ({
   const loginPage = () => R('/snoqualmieinn/login', [route('/:tenant/login', React.createElement(TenantLogin)), route('/:tenant/staff', txt('PORTAL SHELL')), route('/:tenant/clockin', txt('CLOCKIN SHELL')), route('/set-pin', txt('SET PIN'))]);
   const sw = (h) => [...h.el.querySelectorAll('.login-headline-actions .login-role-switch')].map(b => b.getAttribute('data-mode'));
   const signIn = async (h) => { await h.type(h.el.querySelector('#identifier'), '4155550123'); await h.click(h.el.querySelector('.login-submit')); await act(async () => { await sleep(60); }); };
-  await t('LOGIN SCREEN: opens on Clock in; the buttons are HotelOps, Manager, then "Staff login" at the far right with its name visible', async () => {
+  const typeStaff = async (h, id, pin) => { await h.type(h.el.querySelector('#staff-identifier'), id); if (pin) await h.type(h.el.querySelector('#staff-pin'), pin); await h.click(h.el.querySelector('.login-submit')); await act(async () => { await sleep(60); }); };
+  await t('LOGIN SCREEN: opens on Clock in (numpad); the buttons are HotelOps, Manager, then Staff login at the far right — ICON ONLY, no names on screen', async () => {
     localStorage.clear(); meUser = null; const h = await mount(loginPage(), 120);
-    assert.strictEqual(h.el.querySelector('.login-entry-tag').textContent, 'Clock in'); assert.deepStrictEqual(sw(h), ['admin', 'staff'], 'Manager first, Staff login to its right');
-    const row = [...h.el.querySelector('.login-headline-actions').children]; assert(row[0].classList.contains('login-topbar-brand'), 'HotelOps mark first'); assert.strictEqual(row[row.length - 1].getAttribute('data-mode'), 'staff');
-    assert.strictEqual(row[row.length - 1].querySelector('.login-role-label').textContent, 'Staff login'); assert.strictEqual(row[row.length - 1].getAttribute('aria-label'), 'Staff login'); await h.unmount();
+    assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad'), 'numpad screen'); assert.deepStrictEqual(sw(h), ['admin', 'staff'], 'Manager first, Staff login to its right');
+    const row = [...h.el.querySelector('.login-headline-actions').children]; assert(row[0].classList.contains('login-topbar-brand'), 'HotelOps mark first'); const last = row[row.length - 1]; assert.strictEqual(last.getAttribute('data-mode'), 'staff');
+    assert.strictEqual(last.getAttribute('aria-label'), 'Staff login', 'the name is only the tooltip'); assert.strictEqual(last.textContent.trim(), '', 'no visible text on the button'); assert(last.querySelector('svg'), 'uses the current badge icon');
+    assert(!h.el.querySelector('.login-entry-tag, .login-role-label'), 'no name tags anywhere'); await h.unmount();
   });
-  await t('switching modes: Staff login shows the other two (Clock in, Manager); Manager shows Clock in + Staff login; the form changes only for Manager', async () => {
+  await t('STAFF LOGIN is the PC form, same design as the manager card — typed identifier + PIN, NO numpad; every mode button is the same square so the logo stays put', async () => {
+    localStorage.clear(); const h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]'));
+    assert(h.el.querySelector('#staff-identifier') && h.el.querySelector('#staff-pin'), 'two typed fields'); assert(!h.el.querySelector('.login-keypad, .lk-btn, #identifier'), 'no numpad'); assert(!h.el.querySelector('.login-card-staff'), 'single-column card like the manager sign-in');
+    assert.strictEqual(h.el.querySelector('.login-title').textContent, 'Staff sign-in'); assert.deepStrictEqual(sw(h), ['clockin', 'admin']); assert(/phone number or employee ID/.test(h.el.querySelector('label[for="staff-identifier"]').textContent), 'label follows the enabled login methods');
+    assert(h.el.querySelector('.login-submit').disabled, 'needs an identifier'); assert(![...h.el.querySelectorAll('.login-role-switch')].some(b => b.textContent.trim()), 'icon-only buttons');
+    assert.strictEqual(h.el.querySelectorAll('.login-headline-actions > *').length, 3, 'always HotelOps + two buttons → same widths on every screen'); await h.unmount();
+  });
+  await t('switching modes: all three screens, any order; Manager is the username/password form', async () => {
     localStorage.clear(); const h = await mount(loginPage(), 120);
-    await h.click(h.el.querySelector('[data-mode="staff"]')); assert.strictEqual(h.el.querySelector('.login-entry-tag').textContent, 'Staff login'); assert.deepStrictEqual(sw(h), ['clockin', 'admin']); assert(h.el.querySelector('#identifier'), 'same phone / ID keypad form');
+    await h.click(h.el.querySelector('[data-mode="staff"]')); assert(h.el.querySelector('#staff-identifier'));
     await h.click(h.el.querySelector('[data-mode="admin"]')); assert(h.el.querySelector('#username') && h.el.querySelector('#password') && !h.el.querySelector('#identifier')); assert.deepStrictEqual(sw(h), ['clockin', 'staff']);
-    await h.click(h.el.querySelector('[data-mode="staff"]')); assert.strictEqual(h.el.querySelector('.login-entry-tag').textContent, 'Staff login');
-    await h.click(h.el.querySelector('[data-mode="clockin"]')); assert.strictEqual(h.el.querySelector('.login-entry-tag').textContent, 'Clock in'); await h.unmount();
+    await h.click(h.el.querySelector('[data-mode="staff"]')); assert(h.el.querySelector('#staff-identifier')); await h.click(h.el.querySelector('[data-mode="clockin"]')); assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad')); await h.unmount();
   });
-  await t('SAME CREDENTIALS, different door: the same sign-in request from Clock in lands on /clockin, from Staff login on /staff — and the choice is remembered', async () => {
-    const user = { user_id: 'u9', name: 'Fran', role: 'front_desk', pin_must_set: false }; staffLogin = { status: 200, body: { success: true, token: 'TOK', user } };
+  await t('SAME CREDENTIALS, different door: Clock in (numpad) → /clockin, Staff login (typed) → /staff, one request each to the existing endpoint — and the choice is remembered', async () => {
+    const user = { user_id: 'u9', name: 'Fran', role: 'employee', department: 'Front Desk', pin_must_set: false }; staffLogin = { status: 200, body: { success: true, token: 'TOK', user } };
     localStorage.clear(); realFetchLog.length = 0; let h = await mount(loginPage(), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'clockin'); await h.unmount();
-    localStorage.clear(); realFetchLog.length = 0; h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await signIn(h); assert(/PORTAL SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'staff');
+    localStorage.clear(); realFetchLog.length = 0; h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk', '1234'); assert(/PORTAL SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'staff');
     const logins = realFetchLog.filter(([u]) => /auth\/staff\/login/.test(u)); assert.strictEqual(logins.length, 1, 'one request, the existing endpoint — no new credential path'); await h.unmount();
-    h = await mount(loginPage(), 120); assert.strictEqual(h.el.querySelector('.login-entry-tag').textContent, 'Staff login', 'this browser now opens on the door it used last'); await h.unmount();
+    h = await mount(loginPage(), 120); assert(h.el.querySelector('#staff-identifier'), 'this browser now opens on the door it used last'); await h.unmount();
   });
-  await t('a stale deep link to the OTHER staff shell does not override the door just chosen; a deep link elsewhere still works', async () => {
-    staffLogin = { status: 200, body: { success: true, token: 'TOK', user: { user_id: 'u9', name: 'Fran', role: 'front_desk' } } }; localStorage.clear(); meUser = null;
+  await t('Staff login sends exactly what was typed (username / phone / ID + PIN) and a PIN the person has is optional', async () => {
+    let sent = null; const orig = global.fetch; global.fetch = async (url, init = {}) => { if (/auth\/staff\/login$/.test(url)) sent = JSON.parse(init.body); return orig(url, init); };
+    staffLogin = { status: 200, body: { success: true, token: 'TOK', user: { user_id: 'u9', name: 'Fran', role: 'employee' } } }; localStorage.clear();
+    let h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk'); assert.deepStrictEqual(sent, { identifier: 'fran.desk' }, 'no PIN → none sent'); await h.unmount();
+    localStorage.clear(); h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, '4155550123', '4321'); assert.deepStrictEqual(sent, { identifier: '4155550123', pin: '4321' }); await h.unmount(); global.fetch = orig;
+  });
+  await t('a person who needs a PIN is told so on the form; an unknown person gets the server message; neither leaves the screen', async () => {
+    staffLogin = { status: 400, body: { success: false, message: 'PIN required', pin_required: true } }; localStorage.clear(); let h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk');
+    assert(/Enter your PIN/.test(h.el.textContent)); assert(!/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
+    staffLogin = { status: 404, body: { success: false, message: 'Employee not found' } }; h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'nobody');
+    assert(/Employee not found/.test(h.el.textContent)); assert(!/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
+  });
+  await t('a stale deep link to the OTHER staff shell does not override the door just chosen', async () => {
+    staffLogin = { status: 200, body: { success: true, token: 'TOK', user: { user_id: 'u9', name: 'Fran', role: 'employee' } } }; localStorage.clear(); meUser = null;
     const page = (state) => R({ pathname: '/snoqualmieinn/login', state }, [route('/:tenant/login', React.createElement(TenantLogin)), route('/:tenant/staff', txt('PORTAL SHELL')), route('/:tenant/clockin', txt('CLOCKIN SHELL'))]);
     let h = await mount(page({ from: { pathname: '/snoqualmieinn/staff' } }), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), 'Clock in screen → clock-in door even though the link said /staff'); await h.unmount();
-  });
-  await t('a wrong employee id / unknown person shows the server message and stays on the screen (Staff login too)', async () => {
-    staffLogin = { status: 404, body: { success: false, message: 'Employee not found' } }; localStorage.clear(); const h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await signIn(h);
-    assert(/Employee not found/.test(h.el.textContent)); assert(!/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
+    localStorage.clear(); h = await mount(page({ from: { pathname: '/snoqualmieinn/clockin' } }), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk'); assert(/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
   });
 
   // ── 3. the portal shell ──
-  mockAuth = { apiFetch: apiFetchMock, authFetch: async () => ({ ok: true, json: async () => ({ success: true }) }), useAuth: () => ({ logout: async () => {}, user: mockAuth._user }), setStaffEntry() {}, getStaffEntry: () => 'staff', homePathFor: () => '/x/staff' };
-  const Shell = load(ROOT + '/src/shells/StaffPortalShell.js').default; const AuthMock = mockAuth;
+  mockAuth = { apiFetch: apiFetchMock, authFetch: async () => ({ ok: true, json: async () => ({ success: true }) }), useAuth: () => ({ logout: async () => {}, user: mockAuth._user }), setStaffEntry() {}, getStaffEntry: () => 'staff', homePathFor: () => '/x/staff', isFrontDesk: Auth.isFrontDesk };
+  const Shell = load(ROOT + '/src/shells/StaffPortalShell.js').default; const ClockIn = load(ROOT + '/src/shells/ClockInShell.js').default; const AuthMock = mockAuth;
+  const DESK = { user_id: 'u9', name: 'Fran Desk', role: 'employee', department: 'Front Desk' }, HK = { user_id: 'u5', name: 'Hana Housekeeper', role: 'employee', department: 'Housekeeping' }, ROLE_ONLY = { user_id: 'u7', name: 'Old Role', role: 'front_desk', department: 'Housekeeping' };
   const portal = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(Shell, { theme: 'light', onToggleTheme() {} })));
   const navLabels = (h) => [...h.el.querySelectorAll('.sidebar-nav button, .sidebar button, nav button, nav a')].map(b => b.textContent.trim()).filter(Boolean);
-  await t('PORTAL (front desk): nav = Home · Housekeeping · Timesheet · Calendar · Settings; Home = front-desk tiles + sellable-vs-arriving + the original clock/hours dashboard', async () => {
-    AuthMock._user = { user_id: 'u9', name: 'Fran Desk', role: 'front_desk' }; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 250);
+  await t('PORTAL (Front Desk department): nav = Home · Housekeeping · Timesheet · Calendar · Settings; Home = front-desk tiles + sellable-vs-arriving + hours/recent shifts — and NO clocking', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 250);
     const labels = navLabels(h).join('|'); for (const l of ['Home', 'Housekeeping', 'Timesheet', 'Calendar', 'Settings']) assert(labels.includes(l), l + ' in ' + labels);
     const text = h.el.textContent; for (const l of ['Arrivals left', 'In-house', 'Check-outs left', 'Left to sell', 'Dirty rooms', 'Sellable vs arriving', 'Total left to sell']) assert(text.includes(l), l);
-    assert(h.el.querySelectorAll('.fd-tiles .fc-kpi-card').length === 5, 'five tiles'); assert(h.el.querySelector('.home-clock-section'), 'clock card is on the same Home'); assert(/This week|home\.this_week|12\.5h/.test(text), 'hours summary');
+    assert(h.el.querySelectorAll('.fd-tiles .fc-kpi-card').length === 5, 'five tiles'); assert(/This week|home\.this_week|12\.5h/.test(text), 'hours summary'); assert(h.el.querySelector('.home-recent'), 'recent shifts card');
+    assert(!h.el.querySelector('.home-clock-section, .home-clock-action, .focused-action'), 'clocking in/out is not part of the portal'); assert(calls.every(c => !/clock-(in|out)/.test(c.p)), 'no clock requests');
     assert(!/Secret|Guest[ab]|CONFa/.test(text), 'no guest data on screen'); assert(calls.every(c => !c.p.startsWith('/admin/')), 'never calls a manager route: ' + calls.map(c => c.p).join(', '));
     assert(calls.some(c => c.p === '/frontdesk/forecast/current') && calls.some(c => c.p === '/frontdesk/forecast/live')); await h.unmount();
   });
   await t('the tile numbers come from the same models as the manager pages (arrivals left 1, left to sell 2 = VI+PU, dirty 2 = D+IP)', async () => {
-    AuthMock._user = { user_id: 'u9', name: 'Fran Desk', role: 'front_desk' }; responses = stdResponses(); const h = await mount(portal(), 250);
+    AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 250);
     const tile = (label) => [...h.el.querySelectorAll('.fc-kpi-card')].find(c => c.textContent.includes(label)); const num = (c) => Number(c.querySelector('.fc-kpi-primary').textContent);
     const got = JSON.stringify(Object.fromEntries(['Arrivals left', 'In-house', 'Left to sell', 'Dirty rooms'].map(l => [l, num(tile(l))]))); assert.strictEqual(got, JSON.stringify({ 'Arrivals left': 1, 'In-house': 1, 'Left to sell': 2, 'Dirty rooms': 2 })); await h.unmount();
   });
-  await t('PORTAL (other employee): no Housekeeping, no front-desk block, and not one request to the front-desk routes', async () => {
-    AuthMock._user = { user_id: 'u5', name: 'Hana Housekeeper', role: 'employee' }; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
-    assert(!navLabels(h).join('|').includes('Housekeeping')); assert(!h.el.querySelector('.fd-ops')); assert(h.el.querySelector('.home-clock-section'), 'their own dashboard is there');
+  await t('PORTAL (any other staff — e.g. Housekeeping): Home + Timesheet + Calendar + Settings only; no front-desk block, no Housekeeping page, no front-desk requests; still no clocking', async () => {
+    AuthMock._user = HK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
+    const labels = navLabels(h).join('|'); assert(!labels.includes('Housekeeping')); for (const l of ['Home', 'Timesheet', 'Calendar', 'Settings']) assert(labels.includes(l), l);
+    assert(!h.el.querySelector('.fd-ops')); assert(h.el.querySelector('.home-hero'), 'their own dashboard (hours) is there'); assert(!h.el.querySelector('.home-clock-section'));
     assert(calls.every(c => !c.p.startsWith('/frontdesk/') && !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', ')); await h.unmount();
   });
-  await t('PORTAL has no full-screen "focused action" overlay and no auto-signout countdown after a clock event (it is a desk PC, not the kiosk)', async () => {
-    AuthMock._user = { user_id: 'u9', name: 'Fran Desk', role: 'front_desk' }; responses = stdResponses(); responses['POST /clock-in-self'] = ok({}); calls.length = 0; const h = await mount(portal(), 200);
-    assert(!document.querySelector('.focused-action'), 'no overlay at landing'); await h.click(h.el.querySelector('.home-clock-action.in')); await act(async () => { await sleep(80); });
-    assert(!h.el.querySelector('.auto-signout-banner'), 'no countdown banner'); assert(calls.some(c => c.p === '/clock-in-self' && c.method === 'POST'), 'clocking in still works from the portal'); await h.unmount();
+  await t('the front-desk features follow the DEPARTMENT, not the role: role "front_desk" in another department gets nothing extra; "front desk" / "Front-Desk" spellings count', async () => {
+    AuthMock._user = ROLE_ONLY; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Housekeeping') && !h.el.querySelector('.fd-ops')); assert(calls.every(c => !c.p.startsWith('/frontdesk/'))); await h.unmount();
+    for (const d of ['front desk', 'Front-Desk', ' FRONT DESK ']) { AuthMock._user = { ...HK, department: d }; h = await mount(portal(), 150); assert(h.el.querySelector('.fd-ops'), d); await h.unmount(); }
+    AuthMock._user = { ...HK, department: 'Front Desk Supervisor' }; h = await mount(portal(), 150); assert(!h.el.querySelector('.fd-ops'), 'exact department name'); await h.unmount();
   });
-  await t('control: the ORIGINAL Home (clock-in door) still shows the full-screen focused-action overlay, so the portal test above is not vacuous', async () => {
-    AuthMock._user = { user_id: 'u5', name: 'Hana Housekeeper', role: 'employee' }; responses = stdResponses(); sessionStorage.clear();
-    const Home = load(ROOT + '/src/pages/Home/index.js').default; const h = await mount(React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(Home))), 150);
-    assert(document.querySelector('.focused-action'), 'kiosk overlay present on the legacy Home'); await h.unmount();
+  const clockin = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(ClockIn)));
+  await t('CLOCK IN door: ONLY the clock — focused-action screen, Clock In / Out, confirmation + auto-signout countdown; no sidebar, no hours, no timesheet / calendar / settings', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); responses['POST /clock-in-self'] = ok({}); responses['GET /me'] = ok({ idleLogoutSeconds: 15 }); calls.length = 0; sessionStorage.clear();
+    const h = await mount(clockin(), 200); assert(document.querySelector('.focused-action'), 'kiosk overlay at landing'); assert(!h.el.querySelector('.sidebar, .bottom-nav, nav'), 'no sidebar / tab bar'); assert(!h.el.querySelector('.home-hero, .home-recent'), 'no hours / recent shifts');
+    await h.click(h.el.querySelector('.focused-action button')); await act(async () => { await sleep(1500); });   // the pad confirms the tap after a short delay
+    assert(calls.some(c => c.p === '/clock-in-self' && c.method === 'POST'), 'clocks in'); assert(h.el.querySelector('.home-confirm .home-hero-event'), 'confirmation'); assert(h.el.querySelector('.auto-signout-banner'), 'auto-signout countdown');
+    assert(!h.el.querySelector('.home-hero, .home-recent'), 'still no hours'); assert(!/Timesheet|Calendar|Settings/.test(h.el.textContent), 'no other pages'); await h.unmount();
   });
   await t('HOUSEKEEPING (portal): the simple layout — Plan by + Today/Tomorrow, Staff, Working today, Not assigned; no stat cards or history strip; all calls on /frontdesk', async () => {
-    AuthMock._user = { user_id: 'u9', name: 'Fran Desk', role: 'front_desk' }; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
+    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); });
     const text = h.el.textContent; for (const l of ['Plan by', 'Names', 'No name', 'Staff', 'Working today', 'Not assigned', 'Auto-assign', 'Reset', 'Min', 'Max']) assert(text.includes(l), l);
     assert(!h.el.querySelector('.hk-top') && !h.el.querySelector('.hk-stats') && !h.el.querySelector('.hk-strip'), 'no stat cards / history strip'); assert(h.btn(/^Today$/) && h.btn(/^Tomorrow$/), 'Today | Tomorrow switch');
@@ -145,7 +169,7 @@ const stdResponses = () => ({
     assert(!/Print sheet colours/i.test(text), 'dev-only colour card stays hidden'); await h.unmount();
   });
   await t('HOUSEKEEPING (portal): same functions as the manager page — add a name, save to /frontdesk, switch to Tomorrow, No-name mode', async () => {
-    AuthMock._user = { user_id: 'u9', name: 'Fran Desk', role: 'front_desk' }; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
+    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); });
     await h.click(h.btn(/^Add Bryan$/)); assert(/Working today[\s\S]*Bryan/.test(h.el.textContent), 'Bryan is working'); await h.click(h.btn(/^Save$/)); await act(async () => { await sleep(50); });
     const put = calls.find(c => c.method === 'PUT'); assert(put && put.p === '/frontdesk/housekeeping/plan', 'saved through the front-desk route'); assert.strictEqual(put.body.assignments[0].name, 'Bryan');
@@ -155,7 +179,7 @@ const stdResponses = () => ({
   if (process.env.DUMP_DIR) {   // screenshots: DUMP_DIR=somewhere node tests/staffportal.test.js "$PWD"  → login-*.html, home.html, housekeeping.html (wrap with the built CSS)
     const out = (n, h) => fs.writeFileSync(path.join(process.env.DUMP_DIR, n + '.html'), h.el.innerHTML);
     localStorage.clear(); let h = await mount(loginPage(), 150); out('login-clockin', h); await h.click(h.el.querySelector('[data-mode="staff"]')); out('login-staff', h); await h.unmount();
-    AuthMock._user = { user_id: 'u9', name: 'Fran Desk', role: 'front_desk' }; responses = stdResponses(); h = await mount(portal(), 250); out('home', h);
+    AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); }); await h.click(h.btn(/^Add Bryan$/)); out('housekeeping', h); await h.unmount();
   }
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);

@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const {
   signToken, hashPin, verifyPin, findAdmin,
-  requireAuth, requireRole,
+  requireAuth, requireRole, requireFrontDesk,
   devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey,
 } = require('./auth');
 
@@ -253,14 +253,15 @@ app.post('/api/auth/staff/login', async (req, res) => {
   } catch (_e) { /* if settings table is unavailable, fall through to legacy behavior */ }
 
   try {
-    const where = id.kind === 'phone'    ? 'phone_number = $1'
-                : id.kind === 'code'     ? 'employee_code = $1'
-                : id.kind === 'birthday' ? 'birthday = $1'
-                :                          'LOWER(username) = LOWER($1)';
+    const where = id.kind === 'phone'    ? 'u.phone_number = $1'
+                : id.kind === 'code'     ? 'u.employee_code = $1'
+                : id.kind === 'birthday' ? 'u.birthday = $1'
+                :                          'LOWER(u.username) = LOWER($1)';
     const { rows } = await pool.query(
-      `SELECT user_id, name, phone_number, username, employee_code, birthday, role, department_id,
-              pin_hash, pin_required, pin_must_set, preferred_language
-       FROM users WHERE ${where} AND active = true`,
+      `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code, u.birthday, u.role, u.department_id,
+              u.pin_hash, u.pin_required, u.pin_must_set, u.preferred_language, d.name AS department
+       FROM users u LEFT JOIN departments d ON d.department_id = u.department_id
+       WHERE ${where} AND u.active = true`,
       [id.value]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
@@ -287,6 +288,8 @@ app.post('/api/auth/staff/login', async (req, res) => {
       role: user.role,
       name: user.name,
       type: 'staff',
+      // Sprint 24.1: the department name rides in the token so the front-desk routes can check it without a DB lookup per request.
+      dept: user.department || null,
     });
 
     return res.json({
@@ -294,6 +297,7 @@ app.post('/api/auth/staff/login', async (req, res) => {
       token,
       user: {
         user_id:            user.user_id,
+        department:         user.department || null,
         name:               user.name,
         phone_number:       user.phone_number,
         username:           user.username,
@@ -1165,12 +1169,12 @@ const hkPutPlan = async (req, res) => {
     return res.json({ success: true, updatedAt: rows[0].updated_at });
   } catch (err) { console.error('[hk:put]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 };
-// Managers/dev use /api/admin/housekeeping/*; the front-desk portal (role front_desk) uses the same handlers under /api/frontdesk/housekeeping/*.
-for (const [base, role] of [['/api/admin', 'admin'], ['/api/frontdesk', 'front_desk']]) {
-  app.get(`${base}/housekeeping/plan`,         requireAuth, requireRole(role), hkGetPlan);
-  app.get(`${base}/housekeeping/plans`,        requireAuth, requireRole(role), hkListPlans);
-  app.get(`${base}/housekeeping/locked-rooms`, requireAuth, requireRole(role), hkLockedRooms);
-  app.put(`${base}/housekeeping/plan`,         requireAuth, requireRole(role), hkPutPlan);
+// Managers/dev use /api/admin/housekeeping/*; the front-desk portal (department Front Desk) uses the same handlers under /api/frontdesk/housekeeping/*.
+for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontdesk', requireFrontDesk]]) {
+  app.get(`${base}/housekeeping/plan`,         requireAuth, gate, hkGetPlan);
+  app.get(`${base}/housekeeping/plans`,        requireAuth, gate, hkListPlans);
+  app.get(`${base}/housekeeping/locked-rooms`, requireAuth, gate, hkLockedRooms);
+  app.put(`${base}/housekeeping/plan`,         requireAuth, gate, hkPutPlan);
 }
 
 app.get('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
@@ -4729,7 +4733,7 @@ const forecastLive = async (req, res) => {
   }
 };
 app.get('/api/admin/forecast/live',     requireAuth, requireRole('admin'),      forecastLive);
-app.get('/api/frontdesk/forecast/live', requireAuth, requireRole('front_desk'), forecastLive);   // Sprint 24: room numbers + housekeeping status only, no guest data
+app.get('/api/frontdesk/forecast/live', requireAuth, requireFrontDesk, forecastLive);   // Sprint 24: room numbers + housekeeping status only, no guest data
 
 // ── Sprint 22: auto-sync engine ───────────────────────────────────────────────
 // POST /api/sync/tick is pinged every ~5 min by an EXTERNAL scheduler (cron-job.org) with the header
@@ -4816,11 +4820,11 @@ const forecastCurrent = (redact) => async (req, res) => {
 const send = (res, redact, body) => res.json(redact ? redactCurrentResponse(body) : body);
 app.get('/api/admin/forecast/current',     requireAuth, requireRole('admin'),      forecastCurrent(false));
 // Sprint 24: the front-desk portal gets the same payload with every guest identifier removed (server/frontdesk.js).
-app.get('/api/frontdesk/forecast/current', requireAuth, requireRole('front_desk'), forecastCurrent(true));
+app.get('/api/frontdesk/forecast/current', requireAuth, requireFrontDesk, forecastCurrent(true));
 
 // ── Sprint 24: the rest of what the front-desk portal reads (read-only; the Housekeeping routes are registered above) ──────────────
 // Staff picker for the Housekeeping page: names + department only (the manager route also carries phone, pay rate, birthday, PIN state).
-app.get('/api/frontdesk/employees', requireAuth, requireRole('front_desk'), async (req, res) => {
+app.get('/api/frontdesk/employees', requireAuth, requireFrontDesk, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.user_id, u.name, u.active, u.department_id, d.name AS department
@@ -4830,7 +4834,7 @@ app.get('/api/frontdesk/employees', requireAuth, requireRole('front_desk'), asyn
   } catch (err) { console.error('[frontdesk:employees]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 // Only the keys the Housekeeping + Forecast pages read — never the whole app_settings table.
-app.get('/api/frontdesk/settings', requireAuth, requireRole('front_desk'), async (req, res) => {
+app.get('/api/frontdesk/settings', requireAuth, requireFrontDesk, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT key, value FROM app_settings WHERE key = ANY($1::text[])', [SETTINGS_ALLOWED]);
     return res.json({ success: true, settings: pickSettings(rows) });

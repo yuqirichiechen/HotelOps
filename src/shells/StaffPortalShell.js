@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewProvider, useView } from './ViewContext';
-import { useAuth } from '../auth';
+import { useAuth, isFrontDesk } from '../auth';
 import Sidebar from '../components/Layout/Sidebar';
 import PortalHome from '../pages/PortalHome';
 import Housekeeping from '../components/Housekeeping';
@@ -9,17 +9,19 @@ import StaffCalendar from '../pages/StaffCalendar';
 import NotesPage from '../pages/NotesPage';
 import Settings from '../pages/Settings';
 
-// Sprint 24: the staff portal (`/:tenant/staff`) — the second door for non-admin users (the first, `/:tenant/clockin`, is the original
-// clock-in dashboard, StaffShell, kept as it was). Same single-URL pattern as the other shells: sidebar clicks set view state.
+// Sprint 24 / 24.1: the staff portal (`/:tenant/staff`) — what "Staff login" opens, for EVERY employee. (The other door, `/:tenant/clockin`,
+// is clock in / out only; it replaced the old multi-page staff shell, whose pages now live here.) Same single-URL pattern as the other
+// shells: sidebar clicks set view state.
 //
-//   Home          — greeting, clock in/out, this-week hours, recent shifts + (front desk) today's tiles and sellable-vs-arriving
-//   Housekeeping  — (front desk) plan who cleans which rooms, simplified; same functions as the manager page
+//   Home          — greeting, this-week hours, recent shifts (NO clocking: that is the Clock in door) + for the Front Desk department
+//                   today's tiles and sellable-vs-arriving
+//   Housekeeping  — Front Desk department only: plan who cleans which rooms, simplified; same functions as the manager page
 //   Timesheet · Calendar · Settings — the existing staff pages, unchanged
 //
-// Which items show depends on the signed-in user's role; the server enforces the same split (`/api/frontdesk/*` needs role front_desk).
+// The server enforces the same split: `/api/frontdesk/*` needs the Front Desk department (carried in the token) or a manager.
 const NAV = [
   { view: 'home',         label: 'Home',         icon: 'home',      live: true, mobilePrimary: true },
-  { view: 'housekeeping', label: 'Housekeeping', icon: 'timesheet', live: true, mobilePrimary: true, roles: ['front_desk'] },
+  { view: 'housekeeping', label: 'Housekeeping', icon: 'timesheet', live: true, mobilePrimary: true, frontDeskOnly: true },
   { view: 'timesheet',    label: 'Timesheet',    icon: 'timesheet', live: true, mobilePrimary: true },
   { view: 'calendar',     label: 'Calendar',     icon: 'calendar',  live: true, mobilePrimary: true },
   { view: 'settings',     label: 'Settings',     icon: 'settings' },
@@ -41,9 +43,9 @@ const ACTIVE_PARENT = { notes: 'calendar' };
 const Body = ({ theme, onToggleTheme }) => {
   const { view, goTo } = useView();
   const { user } = useAuth();
-  const role = user && user.role;
-  const navItems = NAV.filter(n => !n.roles || n.roles.includes(role));
-  // a deep link / stale view the person's role can't see falls back to Home (the server would refuse the data anyway)
+  const deskStaff = isFrontDesk(user);
+  const navItems = NAV.filter(n => !n.frontDeskOnly || deskStaff);
+  // a view the person's department can't see falls back to Home (the server would refuse the data anyway)
   const allowed = navItems.some(n => n.view === view.name) || !NAV.some(n => n.view === view.name);
   const name = allowed ? view.name : 'home';
   const Component = VIEWS[name] || VIEWS.home;

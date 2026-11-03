@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { flushSync } from 'react-dom';
 import StaffLogin from './StaffLogin';
+import StaffPortalLogin from './StaffPortalLogin';
 import AdminLogin from './AdminLogin';
 import { getStaffEntry } from '../../auth';
 
@@ -21,9 +22,9 @@ import { getStaffEntry } from '../../auth';
 // "after" DOM before React has actually updated it. Browsers that
 // don't implement the API fall through to a plain `setMode`.
 
-// Sprint 24: three modes — 'clockin' (the original staff sign-in, lands in the clock-in dashboard), 'staff' (the staff portal; same
-// credentials, different door) and 'admin'. The screen opens on the door this browser used last, so a front-desk PC keeps opening
-// on "Staff login" and a kiosk tablet keeps opening on "Clock in".
+// Sprint 24 / 24.1: three modes — 'clockin' (numpad: clock in / out only), 'staff' (PC form → the staff portal: timesheet, calendar,
+// settings; front desk adds forecast + housekeeping) and 'admin'. Same staff credentials for the first two. The screen opens on the
+// door this browser used last, so a front-desk PC keeps opening on "Staff login" and a kiosk tablet on "Clock in".
 const TenantLogin = () => {
   const [mode, setMode] = useState(() => (getStaffEntry() === 'staff' ? 'staff' : 'clockin'));
 
@@ -37,11 +38,9 @@ const TenantLogin = () => {
     }
   };
 
-  return mode === 'admin' ? (
-    <AdminLogin onSwitchMode={switchMode} />
-  ) : (
-    <StaffLogin key={mode} entry={mode} onSwitchMode={switchMode} />
-  );
+  if (mode === 'admin') return <AdminLogin onSwitchMode={switchMode} />;
+  if (mode === 'staff') return <StaffPortalLogin onSwitchMode={switchMode} />;
+  return <StaffLogin onSwitchMode={switchMode} />;
 };
 
 export default TenantLogin;

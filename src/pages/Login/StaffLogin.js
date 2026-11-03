@@ -134,9 +134,9 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch, hidden }) => {
   );
 };
 
-// Sprint 24: `entry` is which door this screen opens — 'clockin' (original dashboard at /:tenant/clockin) or 'staff' (the staff portal at
-// /:tenant/staff). Credentials and the sign-in call are identical; only the landing place differs.
-const StaffLogin = ({ entry = 'clockin', onSwitchMode }) => {
+// Sprint 24.1: this numpad screen is the CLOCK IN door only (kiosk: clock in / out on a pad, then sign out). Staff who want their
+// timesheet / calendar / settings (and the front desk's forecast + housekeeping) use "Staff login" — the PC form, StaffPortalLogin.
+const StaffLogin = ({ onSwitchMode }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -300,8 +300,8 @@ const StaffLogin = ({ entry = 'clockin', onSwitchMode }) => {
       // common case, or whatever the user originally typed.
       // Sprint 24: remember which door was used (the post-login redirects read it), and don't let a stale deep link to the OTHER staff
       // shell override the door the person just chose.
-      setStaffEntry(entry);
-      const door = `/${tenant.slug}/${entry === 'staff' ? 'staff' : 'clockin'}`;
+      setStaffEntry('clockin');
+      const door = `/${tenant.slug}/clockin`;
       const from = loc.state?.from?.pathname;
       const next = res.user.pin_must_set
         ? '/set-pin'
@@ -393,7 +393,6 @@ const StaffLogin = ({ entry = 'clockin', onSwitchMode }) => {
                   i18n keys ever resolve to empty. Hidden by
                   default to keep the focal headline clean. */}
               {!t('login.subtitle') && <p className="login-sub">{subSentence}</p>}
-              <span className="login-entry-tag" data-entry={entry}>{entry === 'staff' ? 'Staff login' : 'Clock in'}</span>
             </div>
             <div className="login-headline-actions">
               <TransitionLink
@@ -406,7 +405,7 @@ const StaffLogin = ({ entry = 'clockin', onSwitchMode }) => {
               </TransitionLink>
               {/* Sprint 11.2.1: in-page mode switch — flips the TenantLogin parent's `mode` state; URL stays put.
                   Sprint 24: shows the other two modes (Manager + the other staff door). */}
-              <LoginModeSwitch current={entry === 'staff' ? 'staff' : 'clockin'} onSwitch={onSwitchMode} />
+              <LoginModeSwitch current="clockin" onSwitch={onSwitchMode} />
             </div>
           </div>
 

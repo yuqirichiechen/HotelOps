@@ -34,3 +34,8 @@
     box-sizing: border-box;
   }
 }
+
+/* Sprint 24.1 — the Clock in door: just the clock, centred, no sidebar. */
+.clockin-shell { min-height: 100vh; background: var(--bg-base); }
+.clockin-main { display: flex; justify-content: center; }
+.clockin-main .home-page { width: 100%; }
