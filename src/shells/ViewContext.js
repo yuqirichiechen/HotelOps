@@ -36,3 +36,6 @@ export const useView = () => {
   if (!ctx) throw new Error('useView must be used inside a <ViewProvider>');
   return ctx;
 };
+
+// Sprint 24.5: for components that can also render outside a shell (tests): returns null instead of throwing.
+export const useViewOptional = () => useContext(ViewContext);

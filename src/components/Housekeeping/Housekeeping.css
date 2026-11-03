@@ -210,3 +210,115 @@
 /* Sprint 24 — simple layout (staff portal): Today | Tomorrow next to "Plan by", save state pushed to the right. */
 .hk-modebar-gap { margin-left: 12px; }
 .hk-modebar .hk-savestate { margin-left: auto; }
+
+/* ═══ Sprint 24.5 — redesign: header + tiles, left "Not assigned", right overview + assignments (matches Reservations / Forecast) ═══ */
+.hk-v2 { max-width: 1680px; margin: 0 auto; }
+.hk-head2 { margin-bottom: 14px; }
+.hk-crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+.hk-crumb button { background: none; border: 0; padding: 0; font: inherit; color: var(--link, #2b6cb0); cursor: pointer; } .hk-crumb button:hover { text-decoration: underline; }
+.hk-head2 .hk-sub { display: block; margin: 4px 0 0; color: var(--text-secondary); }
+.hk-links { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 12px; }
+.hk-link { display: inline-flex; align-items: center; gap: 7px; background: none; border: 0; padding: 4px 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--link, #2b6cb0); cursor: pointer; }
+.hk-link:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; } .hk-link:disabled { opacity: .45; cursor: not-allowed; }
+.hk-head-r { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.hk-head-r .hk-btn { display: inline-flex; align-items: center; gap: 7px; }
+.hk-live { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-surface); font-size: 13px; color: var(--text-secondary); }
+.hk-live strong { color: var(--text-primary); } .hk-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #38a169; box-shadow: 0 0 0 3px rgba(56,161,105,.2); }
+.hk-live.is-off .hk-live-dot { background: #dd6b20; box-shadow: 0 0 0 3px rgba(221,107,32,.2); }
+.hk-kpis { margin-bottom: 16px; }
+
+.hk-v2-grid { display: grid; grid-template-columns: minmax(280px, 30%) minmax(0, 1fr); gap: 16px; align-items: start; }
+.hk-v2-grid.one { grid-template-columns: minmax(0, 1fr); }
+.hk-v2-right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* left: fixed height, own scrollbar; header + legend stay visible */
+.hk-pool2 { position: sticky; top: 10px; height: calc(100vh - 28px); min-height: 440px; max-height: 980px; padding: 0; gap: 0; overflow: hidden; border-style: solid; }
+.hk-pool-top { flex: none; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border-light, var(--border)); background: var(--bg-surface); }
+.hk-pool2 .hk-col-head h2 { font-size: 21px; } .hk-count { margin-left: 4px; }
+.hk-dragtip { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-surface-alt); }
+.hk-pool2 .hk-legend { margin: 0; }
+.hk-scroll { overflow-y: auto; min-height: 0; scrollbar-width: thin; overscroll-behavior: contain; }
+.hk-pool2 .hk-pool-floors { flex: 1 1 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 14px; margin: 0; }
+.hk-pool2.over { box-shadow: 0 0 0 2px #63b3ed inset; }
+
+/* floor accordion (Not assigned and every housekeeper card) */
+.hk-acc { margin: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface-alt); overflow: hidden; }
+.hk-acc-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; background: none; border: 0; font: inherit; cursor: pointer; color: var(--text-primary); text-align: left; }
+.hk-acc-head:hover { background: rgba(66,153,225,.07); } .hk-acc-head:focus-visible { outline: 2px solid #4299e1; outline-offset: -2px; }
+.hk-acc .hk-floor-label { display: inline; margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 15px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+.hk-acc-count { margin-left: auto; font-size: 12.5px; color: var(--text-muted); }
+.hk-acc-caret { font-size: 15px; color: var(--text-secondary); transition: transform .3s ease; display: inline-block; line-height: 1; }
+.hk-acc.open .hk-acc-caret { transform: rotate(180deg); }
+.hk-acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .35s ease; }
+.hk-acc.open .hk-acc-body { grid-template-rows: 1fr; }
+.hk-acc-in { min-height: 0; overflow: hidden; visibility: hidden; padding: 0 10px; transition: visibility 0s .35s; }
+.hk-acc.open .hk-acc-in { visibility: visible; padding: 2px 10px 10px; transition: visibility 0s; }
+.hk-acc.is-empty .hk-acc-head { opacity: .75; } .hk-acc-in .hk-none { font-size: 12px; color: var(--text-muted); font-style: italic; }
+.hk-acc .hk-cards { gap: 6px; }
+
+/* assignment overview */
+.hk-overview { flex-direction: row; align-items: center; gap: 28px; flex-wrap: wrap; padding: 18px 22px; }
+.hk-ov-main { flex: 1 1 300px; min-width: 240px; display: grid; grid-template-columns: 1fr auto; column-gap: 12px; row-gap: 6px; align-items: end; }
+.hk-ov-main h2 { grid-column: 1 / -1; margin: 0 0 4px; font-family: 'TiemposHeadline', Georgia, serif; font-size: 20px; color: var(--brand-text); display: flex; align-items: center; gap: 6px; }
+.hk-ov-num { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px; } .hk-ov-num strong { font-family: 'TiemposHeadline', Georgia, serif; font-size: 40px; line-height: 1; color: var(--text-primary); }
+.hk-ov-num span { font-size: 26px; color: var(--text-secondary); font-family: 'TiemposHeadline', Georgia, serif; } .hk-ov-num small { margin-left: 4px; font-size: 14px; color: var(--text-secondary); }
+.hk-ov-bar { height: 10px; border-radius: 999px; background: var(--bg-raised); overflow: hidden; } .hk-ov-bar span { display: block; height: 100%; border-radius: 999px; background: #38a169; transition: width .7s cubic-bezier(.2,.7,.2,1); }
+.hk-ov-pct { font-weight: 700; color: var(--text-primary); font-size: 14px; }
+.hk-donuts { display: flex; gap: 22px; flex-wrap: wrap; flex: 2 1 380px; justify-content: space-around; border-left: 1px solid var(--border-light, var(--border)); padding-left: 22px; }
+.hk-donut { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; min-width: 76px; }
+.hk-donut .sr-ring { width: 76px; height: 76px; } .hk-donut .sr-ring svg { width: 76px; height: 76px; }
+.hk-donut-in { display: flex; flex-direction: column; line-height: 1.05; } .hk-donut-in strong { font-size: 18px; color: var(--text-primary); } .hk-donut-in small { font-size: 10.5px; color: var(--text-muted); }
+.hk-donut-label { font-size: 13px; color: var(--text-secondary); max-width: 90px; line-height: 1.2; }
+
+/* assignments panel */
+.hk-assign { gap: 12px; padding: 16px 18px 18px; }
+.hk-assign-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hk-assign .hk-col-head h2 { font-size: 21px; }
+.hk-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .hk-tools .hk-btn, .hk-modebar .hk-btn { display: inline-flex; align-items: center; gap: 7px; }
+.hk-assign .hk-modebar { margin: 0; padding: 8px 0 2px; border-top: 1px solid var(--border-light, var(--border)); }
+.hk-who-wrap { position: relative; display: inline-block; margin-left: 12px; }
+.hk-who-btn b { background: var(--bg-raised); border-radius: 999px; padding: 0 8px; font-size: 12px; line-height: 20px; }
+.hk-pop { position: absolute; z-index: 40; top: calc(100% + 8px); left: 0; width: min(360px, 90vw); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.18); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.hk-pop .hk-staff { display: flex; flex-direction: column; gap: 10px; } .hk-pop .hk-staff-list { max-height: 300px; overflow-y: auto; scrollbar-width: thin; }
+.hk-pop .hk-countcard { border: 0; padding: 0; box-shadow: none; }
+.hk-check { display: flex; align-items: center; gap: 10px; cursor: pointer; width: 100%; } .hk-check input { width: 18px; height: 18px; accent-color: #2b6cb0; flex: none; }
+.hk-staff-list li.added { background: rgba(66,153,225,.08); }
+.hk-readonly { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--border); border-left: 4px solid #ecc94b; border-radius: 10px; background: var(--bg-surface); font-size: 14px; margin-bottom: 12px; }
+.hk-muted-inline { color: var(--text-muted); }
+.hk-emptyboard { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 36px 10px; color: var(--text-secondary); text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
+.hk-emptyboard p { margin: 0; }
+
+/* housekeeper cards */
+.hk-assign .hk-hkcol { height: clamp(380px, 56vh, 620px); padding: 12px 12px 10px; gap: 8px; }
+.hk-hk-head { align-items: flex-start; justify-content: flex-start; flex-wrap: wrap; gap: 10px; }
+.hk-avatar { width: 38px; height: 38px; border-radius: 50%; background: #e6f0fb; color: #2b6cb0; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.hk-hk-title { flex: 1 1 120px; min-width: 0; } .hk-hk-title h2 { font-size: 17px; margin: 0; } .hk-hk-title .hk-col-sum { margin: 2px 0 0; font-size: 12px; }
+.hk-print-btn { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
+.hk-meterrow { display: flex; align-items: center; gap: 10px; } .hk-meterrow .hk-meter { flex: 1; margin: 0; } .hk-pct { font-size: 12.5px; font-weight: 700; color: var(--text-secondary); min-width: 34px; text-align: right; }
+.hk-assign .hk-col-body { display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+
+@media (max-width: 1280px) { .hk-v2-grid { grid-template-columns: minmax(250px, 34%) minmax(0, 1fr); } .hk-donuts { border-left: 0; padding-left: 0; } }
+@media (max-width: 1000px) {
+  .hk-v2-grid { grid-template-columns: minmax(0, 1fr); }
+  .hk-pool2 { position: static; height: 460px; }
+}
+@media (max-width: 760px) { .hk-links { gap: 4px 16px; } .hk-head-r { justify-content: flex-start; } .hk-donut { min-width: 64px; } .hk-donut .sr-ring, .hk-donut .sr-ring svg { width: 64px; height: 64px; } }
+
+/* dialogs (rules, assignment log) */
+.hk-modal-back { position: fixed; inset: 0; z-index: 80; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.hk-modal { width: min(560px, 100%); max-height: 88vh; overflow: auto; background: var(--bg-surface); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.35); padding: 18px 20px 20px; }
+.hk-modal.wide { width: min(820px, 100%); }
+.hk-modal > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; } .hk-modal h2 { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 21px; color: var(--brand-text); }
+.hk-modal-body { display: flex; flex-direction: column; gap: 12px; } .hk-modal-body > p { margin: 0; }
+.hk-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 52vh; overflow-y: auto; }
+.hk-log li button { width: 100%; display: grid; grid-template-columns: 90px 70px 1fr; gap: 8px; align-items: baseline; text-align: left; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-surface-alt); font: inherit; font-size: 14px; cursor: pointer; color: var(--text-primary); }
+.hk-log li button:hover { border-color: #63b3ed; } .hk-log li.on button { border-color: #2b6cb0; box-shadow: 0 0 0 1px #2b6cb0 inset; } .hk-log li.past button { color: var(--text-secondary); } .hk-log small { color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .hk-acc-body, .hk-acc-caret, .hk-ov-bar span { transition: none; } }
+
+/* polish after the first screenshots */
+.hk-acc.is-empty .hk-acc-body { display: none; } .hk-acc.is-empty .hk-acc-caret { visibility: hidden; } .hk-acc.is-empty .hk-acc-head { cursor: default; }
+.hk-hk-head { flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+.hk-hk-title { flex: 1 1 0; min-width: 0; }
+.hk-hk-title h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hk-print-btn { flex: none; white-space: nowrap; margin-left: 0; }
+.hk-hk-head .hk-x { flex: none; }

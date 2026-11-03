@@ -19,7 +19,7 @@ import './Forecasting.css';
 import ResnTable from './ResnTable';
 import RecentChanges from './RecentChanges';
 import SyncBadge from '../shared/SyncBadge';
-import { CountUp, StatusRing } from '../shared/CountUp';
+import KpiCard from '../shared/KpiCard';   // Sprint 24.5: the tile moved to shared/ so Housekeeping uses the very same one
 import { buildRoomCondition, fraction } from './roomCondition';
 import RoomConditionPanel from './RoomConditionPanel';
 import { RESN_TABS, DEFAULT_RESN_TAB, tabPredicate } from './resnTabs';
@@ -229,37 +229,6 @@ const ACTION_LABEL = {
 const TILE_FILTERS = { arr: ['remainingArrivals', 'arrived'], inh: ['inhouse'], dep: ['remainingDepartures', 'departed'], noroom: ['needsRoom'] };
 const tileForFilter = (f) => Object.keys(TILE_FILTERS).find(k => TILE_FILTERS[k].includes(f)) || null;
 
-const KpiCard = ({ label, primary, secondary, sublabel, accent, icon, onClick, active, ring, ringColor, ringLabel }) => {
-  // Sprint 20.3 — like rGuest's top tiles, a KPI card can act as a tab button.
-  const clickable = typeof onClick === 'function';
-  // Sprint 22.7 — a click (and the first appearance) restarts the count-up + ring fill from zero.
-  const [animKey, setAnimKey] = useState(1);
-  const press = () => { setAnimKey(k => k + 1); if (clickable) onClick(); };
-  return (
-    <div
-      className={`fc-kpi-card fc-kpi-${accent || 'default'}${clickable ? ' fc-kpi-clickable' : ''}${active ? ' fc-kpi-active' : ''}`}
-      {...(clickable ? {
-        role: 'button', tabIndex: 0, 'aria-pressed': !!active,
-        onClick: press,
-        onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); press(); } },
-      } : {})}
-    >
-      {ring != null
-        ? <StatusRing fraction={ring} animKey={animKey} color={ringColor} label={ringLabel}><span className="fc-kpi-icon fc-kpi-icon-in" aria-hidden="true">{icon}</span></StatusRing>
-        : <div className="fc-kpi-icon" aria-hidden="true">{icon}</div>}
-      <div className="fc-kpi-body">
-        <div className="fc-kpi-label">{label}</div>
-        <div className="fc-kpi-numbers">
-          <span className="fc-kpi-primary">{typeof primary === 'number' ? <CountUp value={primary} animKey={animKey} /> : (primary ?? '—')}</span>
-          {secondary != null && secondary !== '' && (
-            <span className="fc-kpi-secondary">{secondary}</span>
-          )}
-        </div>
-        {sublabel && <div className="fc-kpi-sublabel">{sublabel}</div>}
-      </div>
-    </div>
-  );
-};
 
 // Sprint 17.8 — flattened reservation list w/ filter chips. Reads
 // from `payload.reservations` (added in 17.7). Rendered when the

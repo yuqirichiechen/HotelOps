@@ -50,7 +50,7 @@ Point `DATABASE_URL` at `postgres://postgres@127.0.0.1:5439/hoptest`. `server.js
 | `reservations-refresh.test.js` | Real Reservations page: reads /admin/forecast/current; refresh → sync run (mirror) or legacy scrape (fallback) | `node tests/reservations-refresh.test.js "$PWD"` |
 | `hkwork.test.js` | Housekeeping work list (today/tomorrow), weights, auto-suggest, reconcile (pure) | `node tests/hkwork.test.js "$PWD"` |
 | `housekeeping-server.test.js` | Saved plans: validation, routes/auth, migration 030 + SQL on real postgres | `node tests/housekeeping-server.test.js "$PWD"` |
-| `housekeeping.test.js` | The Housekeeping page in jsdom: picker, suggest, move, save, print | `node tests/housekeeping.test.js "$PWD"` |
+| `housekeeping.test.js` | The Housekeeping page in jsdom (24.5 layout): tiles, overview, floor accordions, Who's working pop-over, drag / select / paste, save, history, print | `node tests/housekeeping.test.js "$PWD"` |
 | `kpi-tiles.test.js` | Reservations tiles: left-first numbers, rings, count-up, room lists (manager vs dev) | `node tests/kpi-tiles.test.js "$PWD"` |
 | `roomsheet.test.js` | Room status sheet: builder (floors, available/unavailable/occupied, check-out day, no names, CSV) + printable component | `node tests/roomsheet.test.js "$PWD"` |
 | `reservations-lean.test.js` | Real Reservations page: lean manager rows vs full dev functions | `node tests/reservations-lean.test.js "$PWD"` |

@@ -188,20 +188,20 @@ const stdResponses = () => ({
     assert(calls.some(c => c.p === '/clock-in-self' && c.method === 'POST'), 'clocks in'); assert(h.el.querySelector('.home-confirm .home-hero-event'), 'confirmation'); assert(h.el.querySelector('.auto-signout-banner'), 'auto-signout countdown');
     assert(!h.el.querySelector('.home-hero, .home-recent'), 'still no hours'); assert(!/Timesheet|Calendar|Settings/.test(h.el.textContent), 'no other pages'); await h.unmount();
   });
-  await t('HOUSEKEEPING (portal): the simple layout — Plan by + Today/Tomorrow, Staff, Working today, Not assigned; no stat cards or history strip; all calls on /frontdesk', async () => {
+  await t('HOUSEKEEPING (portal): the trimmed redesign — Plan by + Today/Tomorrow + Who\'s working + Rules, Not assigned (left) and the assignment cards; no KPI tiles / overview / links row; all calls on /frontdesk', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); });
-    const text = h.el.textContent; for (const l of ['Plan by', 'Names', 'No name', 'Staff', 'Working today', 'Not assigned', 'Auto-assign', 'Reset', 'Min', 'Max']) assert(text.includes(l), l);
-    assert(!h.el.querySelector('.hk-top') && !h.el.querySelector('.hk-stats') && !h.el.querySelector('.hk-strip'), 'no stat cards / history strip'); assert(h.btn(/^Today$/) && h.btn(/^Tomorrow$/), 'Today | Tomorrow switch');
+    const text = h.el.textContent; for (const l of ['Plan by', 'Names', 'No name', 'Not assigned', 'Housekeepers’ assignments', 'Auto-assign', 'Reset', 'Rules']) assert(text.includes(l), l); assert(h.btn(/Who's working/), 'staff pop-over button');
+    assert(!h.el.querySelector('.fc-kpi-card, .hk-overview, .hk-links, .hk-donut'), 'no KPI tiles / overview / links row for the front desk'); assert(h.el.querySelector('.hk-v2-grid > .hk-pool') && h.el.querySelector('.hk-assign'), 'Not assigned left, assignments right'); assert(h.btn(/^Today$/) && h.btn(/^Tomorrow$/), 'Today | Tomorrow switch');
     assert(calls.some(c => c.p.startsWith('/frontdesk/housekeeping/plans')) && calls.some(c => c.p === '/frontdesk/employees')); assert(calls.every(c => !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', '));
     assert(!/Print sheet colours/i.test(text), 'dev-only colour card stays hidden'); await h.unmount();
   });
   await t('HOUSEKEEPING (portal): same functions as the manager page — add a name, save to /frontdesk, switch to Tomorrow, No-name mode', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); });
-    await h.click(h.btn(/^Add Bryan$/)); assert(/Working today[\s\S]*Bryan/.test(h.el.textContent), 'Bryan is working'); await h.click(h.btn(/^Save$/)); await act(async () => { await sleep(50); });
+    await h.click(h.btn(/Who's working/)); await h.click(h.el.querySelector('input[aria-label="Bryan is working"]')); assert([...h.el.querySelectorAll('.hk-hkcol h2')].some(x => x.textContent === 'Bryan'), 'Bryan is working'); await h.click(h.btn(/^Save$/)); await act(async () => { await sleep(50); });
     const put = calls.find(c => c.method === 'PUT'); assert(put && put.p === '/frontdesk/housekeeping/plan', 'saved through the front-desk route'); assert.strictEqual(put.body.assignments[0].name, 'Bryan');
-    await h.click(h.btn(/^Tomorrow$/)); await act(async () => { await sleep(120); }); assert(/Working tomorrow/.test(h.el.textContent), 'Tomorrow view'); assert(calls.some(c => /housekeeping\/plan\?date=2026-11-03/.test(c.p)), 'loaded tomorrow’s plan');
+    await h.click(h.btn(/^Tomorrow$/)); await act(async () => { await sleep(120); }); assert(h.btn(/^Tomorrow$/).getAttribute('aria-selected') === 'true', 'Tomorrow view'); assert(calls.some(c => /housekeeping\/plan\?date=2026-11-03/.test(c.p)), 'loaded tomorrow’s plan');
     await h.click(h.btn(/^No name$/)); await act(async () => { await sleep(60); }); assert(/How many housekeepers/i.test(h.el.textContent), 'No-name mode works'); assert(calls.every(c => !c.p.startsWith('/admin/'))); await h.unmount();
   });
   await t('DEV "Front desk view": one click on the dev bar shows the real portal as a front-desk employee sees it (no sign-in as an employee); switch back any time', async () => {
@@ -220,7 +220,7 @@ const stdResponses = () => ({
     const out = (n, h) => fs.writeFileSync(path.join(process.env.DUMP_DIR, n + '.html'), h.el.innerHTML);
     localStorage.clear(); let h = await mount(loginPage(), 150); out('login-clockin', h); await h.click(h.el.querySelector('[data-mode="staff"]')); out('login-staff', h); await h.unmount();
     AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h); await openTab(h, 'Reservations'); await h.click(h.el.querySelector('.fb-sum-row')); out('reservations', h);
-    await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); }); await h.click(h.btn(/^Add Bryan$/)); out('housekeeping', h); await h.unmount();
+    await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); }); await h.click(h.btn(/Who's working/)); await h.click(h.el.querySelector('input[aria-label="Bryan is working"]')); await h.key('Escape'); out('housekeeping', h); await h.unmount();
   }
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();
