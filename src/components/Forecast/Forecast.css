@@ -725,3 +725,13 @@
 .sr-collapse-in { min-height: 0; overflow: hidden; }
 .sr-caret { display: inline-block; transition: transform .3s ease; }
 @media (prefers-reduced-motion: reduce) { .sr-detail td, .sr-collapse, .sr-caret { transition: none; } }
+
+/* Sprint 24.3 — "x/y" column (VI only / VI + PU), the dev Left-to-sell | Available switch, and the chart-less card (front-desk portal). */
+.fb-summary-head { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); padding-bottom: 4px; }
+.fb-vi-pair { white-space: nowrap; }
+.fb-vi-x.is-zero { opacity: 0.55; }
+.fb-vi-sep { margin: 0 3px; font-weight: 400; color: var(--text-muted); }
+.fb-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--bg-surface); }
+.fb-seg button { font: inherit; font-size: 12.5px; padding: 6px 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.fb-seg button.on { background: var(--brand-bg, #1a365d); color: #fff; }
+.fb-summary-grid.fb-no-chart { grid-template-columns: minmax(0, 1fr); }

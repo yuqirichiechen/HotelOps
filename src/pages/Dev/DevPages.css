@@ -27,6 +27,7 @@
 .dvb { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; padding: 10px 20px; color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.25); transition: background .25s ease; }
 .dvb.is-full { background: linear-gradient(90deg, #5b21b6, #7c3aed); }
 .dvb.is-manager { background: linear-gradient(90deg, #0f766e, #0d9488); }
+.dvb.is-frontdesk { background: linear-gradient(90deg, #b45309, #d97706); }   /* Sprint 24.3: Front desk view */
 .dvb-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .dvb-tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; padding: 3px 9px; border-radius: 6px; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.45); }
 .dvb-now { font-size: 14px; opacity: .95; } .dvb-now b { font-weight: 700; }
@@ -36,7 +37,7 @@
 .dvb-switch button:active { transform: scale(.98); }
 .dvb-switch button:focus-visible, .dvb-prop:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .dvb-switch button.on { background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); cursor: default; }
-.dvb.is-full .dvb-switch button.on { color: #5b21b6; } .dvb.is-manager .dvb-switch button.on { color: #0f766e; }
+.dvb.is-full .dvb-switch button.on { color: #5b21b6; } .dvb.is-manager .dvb-switch button.on { color: #0f766e; } .dvb.is-frontdesk .dvb-switch button.on { color: #b45309; }
 .dvb-ico { flex: none; }
 .dvb-txt { display: flex; flex-direction: column; line-height: 1.2; } .dvb-txt b { font-size: 14.5px; } .dvb-txt small { font-size: 11.5px; opacity: .8; }
 .dvb-prop { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 14px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,.7); background: transparent; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background .18s ease; }

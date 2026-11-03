@@ -197,6 +197,24 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
       await h.click(h.el.querySelectorAll('.fb-day')[2]); assert(parseInt(h.el.querySelectorAll('.fb-day-pct')[2].textContent, 10) < 5, 'clicking a day replays its count-up'); assert.strictEqual(h.el.querySelectorAll('.fb-day-occ-bar')[2].style.width, '0%', 'and its bar'); await act(async () => { await sleep(2400); }); await h.unmount();
     } finally { globalThis.__HOTELOPS_NO_ANIM = true; }
   });
+  const card = (h) => [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').trim());
+  await t('24.3 SELLABLE VS ARRIVING (today): x/y per room type = left to sell counting VI only / counting VI + PU; header + total follow; manager and dev both see it', async () => {
+    for (const mode of ['manager', 'dev']) {
+      fresh({ live: { remainingArrivals: [{ typeCode: 'NQRR' }], arrivalsToday: 1 } }); const h = await mount(mode); const rows = card(h);      // NQRR: 1 VI + 1 PU, 1 arriving → VI only 1−1=0, VI+PU 2−1=1
+      assert(rows.some(r => /^VI \/ VI \+ PU/.test(r)), mode + ' header: ' + rows.join(' | ')); assert(rows.includes('NQRR left to sell0/1'), mode + ': ' + rows.join(' | ')); assert(rows.includes('NKRR left to sell0/0'), rows.join(' | '));
+      assert(rows.includes('Total left to sell0/1 rooms'), rows.join(' | ')); await h.unmount();
+    }
+  });
+  await t('24.3 DEV ONLY: a "Left to sell | Available" switch — Available counts the rooms themselves (nothing subtracted for arrivals): x = VI rooms, y = VI + PU rooms', async () => {
+    fresh({ live: { remainingArrivals: [{ typeCode: 'NQRR' }], arrivalsToday: 1 } }); let h = await mount('manager'); assert(!h.el.querySelector('.fb-seg'), 'no switch for managers'); await h.unmount();
+    h = await mount('dev'); const seg = h.el.querySelector('.fb-seg'); assert(seg, 'switch for dev'); const btn = (re) => [...seg.querySelectorAll('button')].find(b => re.test(b.textContent));
+    assert(btn(/Left to sell/).classList.contains('on'), 'starts on Left to sell'); await h.click(btn(/Available/)); let rows = card(h);
+    assert(rows.includes('NQRR available1/2'), rows.join(' | ')); assert(rows.includes('Total available1/2 rooms'), rows.join(' | ')); assert(btn(/Available/).classList.contains('on'));
+    await h.click(btn(/Left to sell/)); rows = card(h); assert(rows.includes('NQRR left to sell0/1'), rows.join(' | ')); await h.unmount();
+  });
+  await t('24.3 later days keep the old single number (no VI column, no switch): VI/PU only exist for today\'s live board', async () => {
+    fresh(); const h = await mount('dev'); await h.click(h.el.querySelectorAll('.fb-day')[1]); assert(!h.el.querySelector('.fb-summary-head') && !h.el.querySelector('.fb-seg') && !h.el.querySelector('.fb-vi-pair'), 'tomorrow'); assert(/Total left to sell/.test(card(h).join('|'))); await h.unmount();
+  });
   await t('PARITY: every function of the old manager page still exists in the DEV view (outlook, stats, full table with subtypes + room chips, action lists, plan, arrivals, notes, summary, print sheet, history/settings links, live badge)', async () => {
     fresh(); const h = await mount('dev'); const txt = h.el.textContent;
     for (const sel of ['.fb-outlook', '.fb-stats', '.fb-need-table', '.fb-card .fb-detail-table', '.fb-rail', '.fb-sync-badge']) assert(h.el.querySelector(sel), sel);

@@ -1,4 +1,4 @@
-// Sprint 24 / 24.1 — the staff portal: login modes (Clock in numpad · Manager · Staff login PC form, icon-only), which door a person is sent through,
+// Sprint 24 / 24.1 / 24.3 — the staff portal: login modes (Clock in numpad · Manager · Staff login PC form, icon-only), which door a person is sent through,
 // the clock-only Clock in door, the portal shell (Front Desk DEPARTMENT vs other staff; no clocking in the portal), the front-desk Home (tiles +
 // sellable vs arriving, no guest data, no manager routes) and the simplified Housekeeping.
 //   node tests/staffportal.test.js "$PWD"
@@ -127,32 +127,42 @@ const stdResponses = () => ({
   const DESK = { user_id: 'u9', name: 'Fran Desk', role: 'employee', department: 'Front Desk' }, HK = { user_id: 'u5', name: 'Hana Housekeeper', role: 'employee', department: 'Housekeeping' }, ROLE_ONLY = { user_id: 'u7', name: 'Old Role', role: 'front_desk', department: 'Housekeeping' };
   const portal = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(Shell, { theme: 'light', onToggleTheme() {} })));
   const navLabels = (h) => [...h.el.querySelectorAll('.sidebar-nav button, .sidebar button, nav button, nav a')].map(b => b.textContent.trim()).filter(Boolean);
-  await t('PORTAL (Front Desk department): nav = Home · Housekeeping · Timesheet · Calendar · Settings; Home = front-desk tiles + sellable-vs-arriving + hours/recent shifts — and NO clocking', async () => {
+  const openTab = async (h, label) => { await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === label)); await act(async () => { await sleep(250); }); };
+  await t('PORTAL (Front Desk): nav = Home · Reservations · Housekeeping · Calendar · Settings (NO Timesheet page); Home = hours + timesheet; Reservations = the 5 tiles + sellable-vs-arriving WITHOUT the chart', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 250);
-    const labels = navLabels(h).join('|'); for (const l of ['Home', 'Housekeeping', 'Timesheet', 'Calendar', 'Settings']) assert(labels.includes(l), l + ' in ' + labels);
-    const text = h.el.textContent; for (const l of ['Arrivals left', 'In-house', 'Check-outs left', 'Left to sell', 'Dirty rooms', 'Sellable vs arriving', 'Total left to sell']) assert(text.includes(l), l);
-    assert(h.el.querySelectorAll('.fd-tiles .fc-kpi-card').length === 5, 'five tiles'); assert(/This week|home\.this_week|12\.5h/.test(text), 'hours summary'); assert(h.el.querySelector('.home-recent'), 'recent shifts card');
-    assert(!h.el.querySelector('.home-clock-section, .home-clock-action, .focused-action'), 'clocking in/out is not part of the portal'); assert(calls.every(c => !/clock-(in|out)/.test(c.p)), 'no clock requests');
-    assert(!/Secret|Guest[ab]|CONFa/.test(text), 'no guest data on screen'); assert(calls.every(c => !c.p.startsWith('/admin/')), 'never calls a manager route: ' + calls.map(c => c.p).join(', '));
+    const labels = navLabels(h).join('|'); for (const l of ['Home', 'Reservations', 'Housekeeping', 'Calendar', 'Settings']) assert(labels.includes(l), l + ' in ' + labels); assert(!labels.includes('Timesheet'), 'no Timesheet page');
+    const text = h.el.textContent; assert(/This week|home\.this_week|12\.5h/.test(text), 'hours summary'); assert(h.el.querySelector('.home-recent'), 'recent shifts card');
+    assert(h.el.querySelector('.ts-page .ts-hero') && h.el.querySelector('.ts-chart') && h.el.querySelector('.ts-daily-card') && h.el.querySelector('.ts-chev-btn'), 'the timesheet is part of Home (week navigator, total, chart, daily breakdown)');
+    assert(!/Export CSV|csv/i.test(h.el.innerHTML), 'no CSV export'); assert(!h.el.querySelector('.fd-ops, .fd-tiles'), 'the front-desk block is no longer on Home');
+    assert(!h.el.querySelector('.home-clock-section, .home-clock-action, .focused-action'), 'clocking in/out is not part of the portal'); assert(calls.every(c => !/clock-(in|out)/.test(c.p)), 'no clock requests'); assert(calls.some(c => c.p.startsWith('/me/hours')));
+    await openTab(h, 'Reservations'); const t2 = h.el.textContent;
+    for (const l of ['Arrivals left', 'In-house', 'Check-outs left', 'Left to sell', 'Dirty rooms', 'Sellable vs arriving', 'Total left to sell']) assert(t2.includes(l), l);
+    assert(h.el.querySelectorAll('.fd-tiles .fc-kpi-card').length === 5, 'five tiles'); assert(!h.el.querySelector('.fb-chart, .fb-bar'), 'no chart for the front desk'); assert(!h.el.querySelector('.fb-seg'), 'no dev toggle for the front desk');
+    assert(!/Secret|Guest[ab]|CONFa/.test(t2), 'no guest data on screen'); assert(calls.every(c => !c.p.startsWith('/admin/')), 'never calls a manager route: ' + calls.map(c => c.p).join(', '));
     assert(calls.some(c => c.p === '/frontdesk/forecast/current') && calls.some(c => c.p === '/frontdesk/forecast/live')); await h.unmount();
   });
+  await t('Reservations "Sellable vs arriving" shows x/y: VI-only left to sell / VI+PU left to sell (fixture: 1 inspected + 1 pickup, 1 arriving → 0/1, total 0/1 rooms)', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 200); await openTab(h, 'Reservations');
+    const rows = [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()); assert(rows.some(r => /^VI \/ VI \+ PU/.test(r)), 'column header: ' + rows.join(' | '));
+    assert(rows.some(r => /^NQRR left to sell ?0\/1$/.test(r)), rows.join(' | ')); assert(rows.some(r => /^Total left to sell ?0\/1 rooms$/.test(r)), rows.join(' | ')); await h.unmount();
+  });
   await t('the tile numbers come from the same models as the manager pages (arrivals left 1, left to sell 2 = VI+PU, dirty 2 = D+IP)', async () => {
-    AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 250);
+    AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 200); await openTab(h, 'Reservations');
     const tile = (label) => [...h.el.querySelectorAll('.fc-kpi-card')].find(c => c.textContent.includes(label)); const num = (c) => Number(c.querySelector('.fc-kpi-primary').textContent);
     const got = JSON.stringify(Object.fromEntries(['Arrivals left', 'In-house', 'Left to sell', 'Dirty rooms'].map(l => [l, num(tile(l))]))); assert.strictEqual(got, JSON.stringify({ 'Arrivals left': 1, 'In-house': 1, 'Left to sell': 2, 'Dirty rooms': 2 })); await h.unmount();
   });
-  await t('PORTAL (any other staff — e.g. Housekeeping): Home + Timesheet + Calendar + Settings only; no front-desk block, no Housekeeping page, no front-desk requests; still no clocking', async () => {
+  await t('PORTAL (any other staff — e.g. Housekeeping): Home (hours + timesheet) + Calendar + Settings only; no Reservations / Housekeeping, no front-desk requests; still no clocking', async () => {
     AuthMock._user = HK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
-    const labels = navLabels(h).join('|'); assert(!labels.includes('Housekeeping')); for (const l of ['Home', 'Timesheet', 'Calendar', 'Settings']) assert(labels.includes(l), l);
-    assert(!h.el.querySelector('.fd-ops')); assert(h.el.querySelector('.home-hero'), 'their own dashboard (hours) is there'); assert(!h.el.querySelector('.home-clock-section'));
+    const labels = navLabels(h).join('|'); assert(!labels.includes('Housekeeping') && !labels.includes('Reservations') && !labels.includes('Timesheet')); for (const l of ['Home', 'Calendar', 'Settings']) assert(labels.includes(l), l);
+    assert(h.el.querySelector('.home-hero') && h.el.querySelector('.ts-page .ts-hero'), 'their own hours + timesheet are there'); assert(!h.el.querySelector('.home-clock-section'));
     assert(calls.every(c => !c.p.startsWith('/frontdesk/') && !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', ')); await h.unmount();
   });
   await t('front-desk features = ROLE "front desk" OR DEPARTMENT "Front Desk": a front-desk role with NO department works; spellings count; anyone else does not', async () => {
-    AuthMock._user = { ...ROLE_ONLY, department: null }; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 250); assert(navLabels(h).join('|').includes('Housekeeping') && h.el.querySelector('.fd-ops'), 'role only, department None (the reported case)'); assert(calls.some(c => c.p === '/frontdesk/forecast/current')); await h.unmount();
-    AuthMock._user = ROLE_ONLY; h = await mount(portal(), 150); assert(h.el.querySelector('.fd-ops'), 'role + other department'); await h.unmount();
-    for (const d of ['front desk', 'Front-Desk', ' FRONT DESK ']) { AuthMock._user = { ...HK, department: d }; h = await mount(portal(), 150); assert(h.el.querySelector('.fd-ops'), d); await h.unmount(); }
-    AuthMock._user = { ...HK, department: 'Front Desk Supervisor' }; h = await mount(portal(), 150); assert(!h.el.querySelector('.fd-ops'), 'exact department name'); await h.unmount();
-    AuthMock._user = { ...HK, role: 'employee', department: null }; h = await mount(portal(), 150); assert(!h.el.querySelector('.fd-ops'), 'plain employee, no department'); await h.unmount();
+    AuthMock._user = { ...ROLE_ONLY, department: null }; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 200); assert(navLabels(h).join('|').includes('Housekeeping') && navLabels(h).join('|').includes('Reservations'), 'role only, department None (the reported case)'); await openTab(h, 'Reservations'); assert(h.el.querySelector('.fd-ops'), 'tab content'); assert(calls.some(c => c.p === '/frontdesk/forecast/current')); await h.unmount();
+    AuthMock._user = ROLE_ONLY; h = await mount(portal(), 150); assert(navLabels(h).join('|').includes('Reservations'), 'role + other department'); await h.unmount();
+    for (const d of ['front desk', 'Front-Desk', ' FRONT DESK ']) { AuthMock._user = { ...HK, department: d }; h = await mount(portal(), 150); assert(navLabels(h).join('|').includes('Reservations'), d); await h.unmount(); }
+    AuthMock._user = { ...HK, department: 'Front Desk Supervisor' }; h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Reservations'), 'exact department name'); await h.unmount();
+    AuthMock._user = { ...HK, role: 'employee', department: null }; h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Reservations'), 'plain employee, no department'); await h.unmount();
   });
   const clockin = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(ClockIn)));
   await t('CLOCK IN door: ONLY the clock — focused-action screen, Clock In / Out, confirmation + auto-signout countdown; no sidebar, no hours, no timesheet / calendar / settings', async () => {
@@ -178,10 +188,22 @@ const stdResponses = () => ({
     await h.click(h.btn(/^Tomorrow$/)); await act(async () => { await sleep(120); }); assert(/Working tomorrow/.test(h.el.textContent), 'Tomorrow view'); assert(calls.some(c => /housekeeping\/plan\?date=2026-11-03/.test(c.p)), 'loaded tomorrow’s plan');
     await h.click(h.btn(/^No name$/)); await act(async () => { await sleep(60); }); assert(/How many housekeepers/i.test(h.el.textContent), 'No-name mode works'); assert(calls.every(c => !c.p.startsWith('/admin/'))); await h.unmount();
   });
-  if (process.env.DUMP_DIR) {   // screenshots: DUMP_DIR=somewhere node tests/staffportal.test.js "$PWD"  → login-*.html, home.html, housekeeping.html (wrap with the built CSS)
+  await t('DEV "Front desk view": one click on the dev bar shows the real portal as a front-desk employee sees it (no sign-in as an employee); switch back any time', async () => {
+    mockAuth._user = { username: 'dev', name: 'Dev', role: 'dev', type: 'dev' }; sessionStorage.clear(); responses = stdResponses(); calls.length = 0;
+    const AdminShell = load(ROOT + '/src/shells/AdminShell.js').default; const h = await mount(React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(AdminShell, { theme: 'light', onToggleTheme() {} }))), 200);
+    const bar = () => h.el.querySelector('.dvb'); assert(bar() && bar().classList.contains('is-full'), 'starts as Dev view'); const modes = [...h.el.querySelectorAll('.dvb-switch button')].map(b => b.getAttribute('data-view')); assert.deepStrictEqual(modes, ['full', 'manager', 'frontdesk']);
+    await h.click(h.el.querySelector('[data-view="frontdesk"]')); await act(async () => { await sleep(250); });
+    assert(bar().classList.contains('is-frontdesk') && /Front desk/.test(bar().textContent), 'bar shows the front desk colour/label'); const labels = navLabels(h).join('|');
+    for (const l of ['Home', 'Reservations', 'Housekeeping', 'Calendar']) assert(labels.includes(l), l + ' in ' + labels); assert(!labels.includes('Timesheet') && !/Settings/.test(labels.split('Dark mode')[0]), 'portal menu, not the admin one'); assert(!labels.includes('Staff') && !labels.includes('Logbook'), 'admin menu is gone');
+    assert(/Front desk view \(preview\)/.test(h.el.textContent), 'Home explains there are no personal hours'); assert(calls.every(c => !c.p.startsWith('/me/hours')), 'no personal-hours requests for a dev');
+    await openTab(h, 'Reservations'); assert(h.el.querySelectorAll('.fd-tiles .fc-kpi-card').length === 5 && !h.el.querySelector('.fb-chart'), 'tiles + chart-less sellable card'); assert(calls.some(c => c.p === '/frontdesk/forecast/current'), 'through the front-desk route (the server accepts the dev token)');
+    await openTab(h, 'Housekeeping'); assert(/Plan by/.test(h.el.textContent) && !h.el.querySelector('.hk-top'), 'simple Housekeeping');
+    await h.click(h.el.querySelector('[data-view="full"]')); await act(async () => { await sleep(150); }); assert(bar().classList.contains('is-full') && !h.el.querySelector('.fd-tiles'), 'back to the Dev view'); await h.unmount(); mockAuth._user = DESK;
+  });
+  if (process.env.DUMP_DIR) {   // screenshots: DUMP_DIR=somewhere node tests/staffportal.test.js "$PWD"  → login-*.html, home.html, reservations.html, housekeeping.html (wrap with the built CSS)
     const out = (n, h) => fs.writeFileSync(path.join(process.env.DUMP_DIR, n + '.html'), h.el.innerHTML);
     localStorage.clear(); let h = await mount(loginPage(), 150); out('login-clockin', h); await h.click(h.el.querySelector('[data-mode="staff"]')); out('login-staff', h); await h.unmount();
-    AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h);
+    AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h); await openTab(h, 'Reservations'); out('reservations', h);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); }); await h.click(h.btn(/^Add Bryan$/)); out('housekeeping', h); await h.unmount();
   }
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);

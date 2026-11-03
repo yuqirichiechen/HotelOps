@@ -335,32 +335,61 @@ const ArrivalDetailTable = ({ rows, date, isToday }) => {
 // Right-rail summary card. Sprint 17.12 — takes the grouped tree
 // directly. Per-group totals on the left; SVG bar chart on the
 // right comparing each group's Vacant Clean vs Arrivals.
-const ForecastSummaryCard = ({ model }) => {
+// Sprint 24.3 (today only): the list now shows "x/y" per room type — x = left to sell counting only INSPECTED rooms (VI), y = left to sell
+// counting inspected + pickup (VI+PU, the number it always showed). Dev can flip the card to "Available" (nothing subtracted for arrivals:
+// x = VI rooms, y = VI+PU rooms). `showChart={false}` hides the bar chart (front-desk portal); `toggle` shows the switch (dev only).
+const ForecastSummaryCard = ({ model, showChart = true, toggle = false }) => {
   const groups = model.groups;
   const animKey = model.date;   // Sprint 22.10: bars grow + numbers count up on first show and whenever another day is chosen
+  const [metric, setMetric] = useState('left');   // 'left' | 'available'  (dev toggle; everyone else sees 'left')
+  const avail = model.isToday && toggle && metric === 'available';
+  const pair = (t) => (avail ? { x: t.inspected, y: t.ready } : { x: Math.max(0, t.inspected - t.arrivals), y: Math.max(0, t.leftNow) });
+  const totalPair = model.isToday ? groups.reduce((a, g) => { const p = pair(g.totals); return { x: a.x + p.x, y: a.y + p.y }; }, { x: 0, y: 0 }) : null;
   const A = (t) => (model.isToday ? t.ready : t.expected);         // series A: today = clean rooms now · future = arrivals (booked tomorrow; expected later)
   const B = (t) => (model.isToday ? t.arrivals : t.potential);     // series B: today = still arriving · future = rooms that COULD be ready (not occupied by a stayover)
   const maxVal = Math.max(1, ...groups.flatMap(g => [A(g.totals), B(g.totals)]));
   return (
     <div className="fb-card">
-      <h2>Sellable vs arriving</h2>
-      <div className="fb-summary-grid">
+      <div className="fb-card-head">
+        <h2>Sellable vs arriving</h2>
+        {model.isToday && toggle && (
+          <div className="fb-seg" role="group" aria-label="What to count">
+            <button type="button" className={metric === 'left' ? 'on' : ''} aria-pressed={metric === 'left'} onClick={() => setMetric('left')}>Left to sell</button>
+            <button type="button" className={metric === 'available' ? 'on' : ''} aria-pressed={metric === 'available'} onClick={() => setMetric('available')}>Available</button>
+          </div>
+        )}
+      </div>
+      <div className={`fb-summary-grid${showChart ? '' : ' fb-no-chart'}`}>
         <ul className="fb-summary-list">
-          {groups.map(g => (
-            <li key={g.baseCode || g.baseLabel}>
-              <span>{g.baseCode || '—'} left to sell</span>
-              <strong className={(model.isToday ? g.totals.leftNow <= 0 : g.totals.leftToSell <= 0) ? 'fb-emph-warn' : 'fb-emph-ok'}>
-                <CountUp value={model.isToday ? Math.max(0, g.totals.leftNow) : g.totals.leftToSell} animKey={animKey} />
-              </strong>
-            </li>
-          ))}
+          {model.isToday && <li className="fb-summary-head" aria-hidden="true"><span /><span title="Inspected only / inspected + pickup">VI / VI + PU</span></li>}
+          {groups.map(g => {
+            const p = model.isToday ? pair(g.totals) : null;
+            return (
+              <li key={g.baseCode || g.baseLabel}>
+                <span>{g.baseCode || '—'} {avail ? 'available' : 'left to sell'}</span>
+                {model.isToday ? (
+                  <strong className={`fb-vi-pair ${p.y <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}`}>
+                    <span className={`fb-vi-x${p.x <= 0 ? ' is-zero' : ''}`}><CountUp value={p.x} animKey={animKey + metric} /></span>
+                    <span className="fb-vi-sep">/</span>
+                    <span className="fb-vi-y"><CountUp value={p.y} animKey={animKey + metric} /></span>
+                  </strong>
+                ) : (
+                  <strong className={g.totals.leftToSell <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}>
+                    <CountUp value={g.totals.leftToSell} animKey={animKey} />
+                  </strong>
+                )}
+              </li>
+            );
+          })}
           <li className="fb-summary-total">
-            <span>Total left to sell</span>
-            <strong><CountUp value={model.isToday ? model.totals.leftToSell : model.totals.leftToSellFuture} animKey={animKey} /> rooms</strong>
+            <span>{avail ? 'Total available' : 'Total left to sell'}</span>
+            {model.isToday
+              ? <strong className="fb-vi-pair"><span className="fb-vi-x"><CountUp value={totalPair.x} animKey={animKey + metric} /></span><span className="fb-vi-sep">/</span><span className="fb-vi-y"><CountUp value={totalPair.y} animKey={animKey + metric} /></span> rooms</strong>
+              : <strong><CountUp value={model.totals.leftToSellFuture} animKey={animKey} /> rooms</strong>}
           </li>
         </ul>
 
-        <div className="fb-chart">
+        {showChart && <div className="fb-chart">
           <div className="fb-chart-legend">
             <span className="fb-chart-key fb-chart-key-vc">{model.isToday ? 'Clean rooms (VI + PU)' : (model.offset === 1 ? 'Arriving (booked)' : 'Arriving (expected)')}</span>
             <span className="fb-chart-key fb-chart-key-ar">{model.isToday ? 'Still arriving' : 'Rooms that can be ready'}</span>
@@ -377,7 +406,7 @@ const ForecastSummaryCard = ({ model }) => {
           <div className="fb-chart-axis">
             <span>0</span><span>{Math.round(maxVal / 4)}</span><span>{Math.round(maxVal / 2)}</span><span>{Math.round(3 * maxVal / 4)}</span><span>{maxVal}</span>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -786,7 +815,7 @@ const Forecast = ({ mode = 'manager' }) => {
                 <ArrivalDetailTable rows={payload.reservations || []} date={model.date} isToday={model.isToday} />
               </main>
               <aside className="fb-rail">
-                <ForecastSummaryCard model={model} />
+                <ForecastSummaryCard model={model} toggle />
                 <OperationalNotes notes={notes} />
               </aside>
             </div>

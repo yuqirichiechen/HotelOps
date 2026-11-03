@@ -19,7 +19,7 @@
 /* tiles: five across on a wide desk monitor, then 3 / 2 columns (the .fc-kpis rules already do the narrower steps) */
 .fd-tiles { margin-bottom: 0; }
 .fd-tiles .fc-kpi-card { cursor: default; }
-@media (max-width: 1500px) and (min-width: 1101px) {
+@media (max-width: 1250px) and (min-width: 1101px) {
   .fd-tiles.fc-kpis-5 { grid-template-columns: repeat(3, 1fr); }
 }
 .fd-sellable .fb-card { margin: 0; }

@@ -1,4 +1,4 @@
-/* Timesheet — detailed hours view: week nav, hero stat, bar chart, daily breakdown, CSV export. */
+/* Timesheet — detailed hours view: week nav, hero stat, bar chart, daily breakdown. */
 
 .ts-page {
   padding: 28px 32px 64px;
@@ -97,87 +97,6 @@
 
 .ts-this-week-btn:hover:not(:disabled) { background: var(--bg-raised); color: var(--text-primary); }
 .ts-this-week-btn:disabled              { opacity: 0.4; cursor: not-allowed; }
-
-/* ── CSV export dropdown ─────────────────────────────────────────────────── */
-
-.ts-csv-wrap {
-  position: relative;
-}
-
-.ts-csv-btn {
-  font-family: 'TiemposText', Georgia, serif;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 9px 14px;
-  border: 1px solid var(--brand-bg);
-  border-radius: 9px;
-  background: var(--brand-bg);
-  color: white;
-  cursor: pointer;
-  transition: background 0.15s ease;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 38px;
-}
-
-.ts-csv-btn:hover    { background: var(--brand-hover); border-color: var(--brand-hover); }
-.ts-csv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.ts-csv-caret {
-  font-size: 10px;
-  opacity: 0.7;
-  transition: transform 0.15s ease;
-}
-
-.ts-csv-wrap.is-open .ts-csv-caret { transform: rotate(180deg); }
-
-.ts-csv-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 180px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-  padding: 6px;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  animation: ts-csv-menu-in 0.15s ease both;
-}
-
-@keyframes ts-csv-menu-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.ts-csv-menu button {
-  font-family: 'TiemposText', Georgia, serif;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 9px 12px;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-  border-radius: 6px;
-  transition: background 0.1s ease;
-}
-
-.ts-csv-menu button:hover    { background: var(--bg-raised); }
-.ts-csv-menu button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.ts-csv-menu-meta {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: 6px;
-  font-weight: 400;
-}
 
 /* ── Hero stat ───────────────────────────────────────────────────────────── */
 
@@ -516,7 +435,6 @@
   .ts-controls      { gap: 6px; }
   .ts-this-week-btn { padding: 7px 11px; font-size: 12px; height: 34px; }
   .ts-chev-btn      { width: 34px; height: 34px; font-size: 22px; }
-  .ts-csv-btn       { padding: 7px 12px; font-size: 12px; height: 34px; }
 
   .ts-hero          { grid-template-columns: 1fr; gap: 16px; padding: 20px 22px; }
   .ts-hero-side     { align-items: flex-start; }

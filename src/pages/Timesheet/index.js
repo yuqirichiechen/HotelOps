@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../auth';
 import './Timesheet.css';
 
-// Detailed hours view. Pulls /api/me/hours which returns the week summary
+// Detailed hours view (Sprint 24.3: shown inside the staff portal's Home — there is no separate Timesheet page and no CSV export). Pulls /api/me/hours which returns the week summary
 // plus raw entries that INTERSECT the requested week (so cross-week shifts
 // remain visible). Daily breakdown groups entries client-side; entries that
 // cross midnight are split per calendar day; live segments contribute their
@@ -97,9 +97,6 @@ const Timesheet = () => {
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [openDay,   setOpenDay]   = useState(null);
-  const [csvOpen,   setCsvOpen]   = useState(false);
-  const [csvBusy,   setCsvBusy]   = useState(false);
-  const csvWrapRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -113,17 +110,6 @@ const Timesheet = () => {
     });
     return () => { active = false; };
   }, [weekStart]);
-
-  useEffect(() => {
-    if (!csvOpen) return;
-    const onClick = (e) => {
-      if (csvWrapRef.current && !csvWrapRef.current.contains(e.target)) {
-        setCsvOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [csvOpen]);
 
   const today      = localDayKey(new Date());
   const isThisWeek = weekStart === getMondayISO();
@@ -183,96 +169,6 @@ const Timesheet = () => {
     setOpenDay(null);
   };
 
-  // ── CSV export ─────────────────────────────────────────────────────────────
-  const downloadCSV = (rows, filename) => {
-    const csv = rows
-      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const buildRowsFromEntries = (entries) => {
-    const rows = [['Date', 'Day', 'Clock In', 'Clock Out', 'Hours']];
-    entries
-      .slice()
-      .sort((a, b) => new Date(a.clock_in_time) - new Date(b.clock_in_time))
-      .forEach(e => {
-        splitEntryByDay(e).forEach(seg => {
-          const date = new Date(seg.segStart);
-          rows.push([
-            seg.day,
-            date.toLocaleDateString([], { weekday: 'short' }),
-            new Date(seg.segStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-            seg.isLive
-              ? 'In progress'
-              : new Date(seg.segEnd).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-            seg.segHours.toFixed(2),
-          ]);
-        });
-      });
-    return rows;
-  };
-
-  const exportCSV = async (range) => {
-    setCsvOpen(false);
-    setCsvBusy(true);
-    try {
-      let rows;
-      let filename;
-
-      if (range === 'week') {
-        rows = buildRowsFromEntries(data?.entries || []);
-        rows.push([]);
-        rows.push(['', '', '', 'Total worked',    total.toFixed(2)]);
-        if (scheduled > 0) rows.push(['', '', '', 'Total scheduled', scheduled.toFixed(2)]);
-        filename = `timesheet-week-${weekStart}.csv`;
-      } else if (range === 'month') {
-        const now     = new Date();
-        const y       = now.getFullYear();
-        const m       = now.getMonth();
-        const from    = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-        const lastDay = new Date(y, m + 1, 0).getDate();
-        const to      = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-        const { ok, data: r } = await apiFetch(`/me/entries?from=${from}&to=${to}`);
-        if (!ok || !r?.success) throw new Error(r?.message || 'Could not fetch month');
-        rows = buildRowsFromEntries(r.entries);
-        const totalMonth = (r.entries || [])
-          .filter(e => e.clock_out_time)
-          .reduce((s, e) => s + e.hours, 0);
-        rows.push([]);
-        rows.push(['', '', '', 'Total worked', totalMonth.toFixed(2)]);
-        filename = `timesheet-${y}-${String(m + 1).padStart(2, '0')}.csv`;
-      } else if (range === 'year') {
-        const now = new Date();
-        const y   = now.getFullYear();
-        const { ok, data: r } = await apiFetch(`/me/entries?from=${y}-01-01&to=${y}-12-31`);
-        if (!ok || !r?.success) throw new Error(r?.message || 'Could not fetch year');
-        rows = buildRowsFromEntries(r.entries);
-        const totalYear = (r.entries || [])
-          .filter(e => e.clock_out_time)
-          .reduce((s, e) => s + e.hours, 0);
-        rows.push([]);
-        rows.push(['', '', '', 'Total worked', totalYear.toFixed(2)]);
-        filename = `timesheet-${y}.csv`;
-      }
-
-      downloadCSV(rows, filename);
-    } catch (err) {
-      console.error('CSV export failed:', err);
-      alert('Could not export. Please try again.');
-    } finally {
-      setCsvBusy(false);
-    }
-  };
-
   return (
     <div className="ts-page">
 
@@ -290,31 +186,6 @@ const Timesheet = () => {
             This week
           </button>
           <button className="ts-chev-btn" onClick={goNext} disabled={isThisWeek} title="Next week" aria-label="Next week">›</button>
-          <div className={`ts-csv-wrap ${csvOpen ? 'is-open' : ''}`} ref={csvWrapRef}>
-            <button
-              className="ts-csv-btn"
-              onClick={() => setCsvOpen(o => !o)}
-              disabled={csvBusy || !data}
-            >
-              {csvBusy ? 'Exporting…' : '↓ Export CSV'}
-              <span className="ts-csv-caret">▾</span>
-            </button>
-            {csvOpen && (
-              <div className="ts-csv-menu" role="menu">
-                <button onClick={() => exportCSV('week')}>
-                  This week<span className="ts-csv-menu-meta">{weekLabel}</span>
-                </button>
-                <button onClick={() => exportCSV('month')}>
-                  This month<span className="ts-csv-menu-meta">
-                    {new Date().toLocaleDateString([], { month: 'long', year: 'numeric' })}
-                  </span>
-                </button>
-                <button onClick={() => exportCSV('year')}>
-                  This year<span className="ts-csv-menu-meta">{new Date().getFullYear()}</span>
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </header>
 

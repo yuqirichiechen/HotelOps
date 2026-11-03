@@ -1,4 +1,4 @@
-// Sprint 24 — the front-desk portal's "ops" block on Home: the five Reservations tiles (arrivals left · in-house · check-outs left ·
+// Sprint 24 / 24.3 — the front-desk portal's Reservations tab (was a block on Home): the five Reservations tiles (arrivals left · in-house · check-outs left ·
 // left to sell · dirty rooms) and the Forecast's "Sellable vs arriving" card, for TODAY only. Both are the existing components
 // (KpiCard / ForecastSummaryCard) fed by the same models, so the numbers match what managers see; the data comes from the
 // `/api/frontdesk/*` routes, which strip every guest identifier server-side.
@@ -85,7 +85,7 @@ const FrontDeskSummary = () => {
   return (
     <section className="fd-ops" aria-label="Front desk today">
       <header className="fd-ops-head">
-        <h2>Front desk <span>today</span></h2>
+        <h2>Reservations <span>today</span></h2>
         <div className="fd-ops-actions">
           <SyncBadge source={source} syncedAt={snapshot ? snapshot.scraped_at : null} health={health} label="" />
           <button type="button" className="fd-refresh" onClick={refresh} disabled={refreshing} title="Refresh the numbers" aria-label="Refresh the numbers">
@@ -120,7 +120,7 @@ const FrontDeskSummary = () => {
                 ring={fraction(cc.dirtyTotal, condition.total)} ringColor="#c53030" ringLabel={`${cc.dirtyTotal} of ${condition.total} rooms need cleaning`} />
             )}
           </div>
-          {model && <div className="fd-sellable"><ForecastSummaryCard model={model} /></div>}
+          {model && <div className="fd-sellable"><ForecastSummaryCard model={model} showChart={false} /></div>}
         </>
       )}
 
