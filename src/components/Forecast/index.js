@@ -812,4 +812,6 @@ const Forecast = ({ mode = 'manager' }) => {
   );
 };
 
+// Sprint 24: the front-desk Home shows this same card.
+export { ForecastSummaryCard };
 export default Forecast;

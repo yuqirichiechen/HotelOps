@@ -206,3 +206,7 @@
   .hk-firsttag { font-size: 10px; }
   .hk-page-foot { margin-top: 14px; font-size: 10.5px; color: #444; } .hk-page-empty { font-size: 13px; }
 }
+
+/* Sprint 24 — simple layout (staff portal): Today | Tomorrow next to "Plan by", save state pushed to the right. */
+.hk-modebar-gap { margin-left: 12px; }
+.hk-modebar .hk-savestate { margin-left: auto; }

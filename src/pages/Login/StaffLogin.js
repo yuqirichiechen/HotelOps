@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { useAuth } from '../../auth';
+import { useAuth, setStaffEntry } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
-import RoleIcon from '../../components/shared/RoleIcon';
+import LoginModeSwitch from './LoginModeSwitch';
 import { TransitionLink } from './TransitionLink';
 import { useT } from '../../i18n';
 import LangCycleHeadline from '../../components/shared/LangCycleHeadline';
@@ -134,7 +134,9 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch, hidden }) => {
   );
 };
 
-const StaffLogin = ({ onRoleSwitch }) => {
+// Sprint 24: `entry` is which door this screen opens — 'clockin' (original dashboard at /:tenant/clockin) or 'staff' (the staff portal at
+// /:tenant/staff). Credentials and the sign-in call are identical; only the landing place differs.
+const StaffLogin = ({ entry = 'clockin', onSwitchMode }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -296,9 +298,14 @@ const StaffLogin = ({ onRoleSwitch }) => {
       // tried to deep-link into a protected URL while unauthed) is
       // still honored — it'll resolve to `/:slug/staff` in the
       // common case, or whatever the user originally typed.
+      // Sprint 24: remember which door was used (the post-login redirects read it), and don't let a stale deep link to the OTHER staff
+      // shell override the door the person just chose.
+      setStaffEntry(entry);
+      const door = `/${tenant.slug}/${entry === 'staff' ? 'staff' : 'clockin'}`;
+      const from = loc.state?.from?.pathname;
       const next = res.user.pin_must_set
         ? '/set-pin'
-        : (loc.state?.from?.pathname || `/${tenant.slug}/staff`);
+        : (from && !/^\/[^/]+\/(staff|clockin)\/?$/.test(from) ? from : door);
       nav(next, { replace: true });
       return;
     }
@@ -386,6 +393,7 @@ const StaffLogin = ({ onRoleSwitch }) => {
                   i18n keys ever resolve to empty. Hidden by
                   default to keep the focal headline clean. */}
               {!t('login.subtitle') && <p className="login-sub">{subSentence}</p>}
+              <span className="login-entry-tag" data-entry={entry}>{entry === 'staff' ? 'Staff login' : 'Clock in'}</span>
             </div>
             <div className="login-headline-actions">
               <TransitionLink
@@ -396,17 +404,9 @@ const StaffLogin = ({ onRoleSwitch }) => {
               >
                 <HotelOpsLogo size="lg" />
               </TransitionLink>
-              {/* Sprint 11.2.1: in-page role switch — flips the
-                  TenantLogin parent's `mode` state. URL stays put. */}
-              <button
-                type="button"
-                onClick={onRoleSwitch}
-                className="login-role-switch"
-                aria-label="Manager sign-in"
-                title="Manager sign-in"
-              >
-                <RoleIcon role="manager" alt="Manager sign-in" />
-              </button>
+              {/* Sprint 11.2.1: in-page mode switch — flips the TenantLogin parent's `mode` state; URL stays put.
+                  Sprint 24: shows the other two modes (Manager + the other staff door). */}
+              <LoginModeSwitch current={entry === 'staff' ? 'staff' : 'clockin'} onSwitch={onSwitchMode} />
             </div>
           </div>
 

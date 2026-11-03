@@ -1053,4 +1053,6 @@ const Forecasting = ({ mode = 'manager' }) => {
   );
 };
 
+// Sprint 24: the front-desk Home reuses the same tile + icons (no copy, so the two can't drift apart).
+export { KpiCard, IconBriefcase, IconBed, IconExit, IconSparkle, IconBroom };
 export default Forecasting;

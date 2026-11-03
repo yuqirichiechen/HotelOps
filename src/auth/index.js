@@ -81,6 +81,22 @@ export const authFetch = async (url, opts = {}) => {
   return res;
 };
 
+// ── Staff entry (Sprint 24) ─────────────────────────────────────────────────
+// Two doors for non-admin users, same credentials:
+//   'clockin' — the original kiosk dashboard at /:tenant/clockin (clock in/out, timesheet, calendar; short idle sign-out)
+//   'staff'   — the staff portal at /:tenant/staff (Home with forecast tiles, Housekeeping for the front desk, …)
+// The login screen the person used decides which one they get, and it is remembered so a refresh / revisit lands in the same place.
+const STAFF_ENTRY_KEY = 'hotelops-staff-entry';
+export const getStaffEntry = () => {
+  try { return localStorage.getItem(STAFF_ENTRY_KEY) === 'staff' ? 'staff' : 'clockin'; } catch { return 'clockin'; }
+};
+export const setStaffEntry = (entry) => {
+  try { localStorage.setItem(STAFF_ENTRY_KEY, entry === 'staff' ? 'staff' : 'clockin'); } catch { /* storage unavailable */ }
+};
+/** Where a signed-in (non-dev) user belongs for this property. */
+export const homePathFor = (user, slug) =>
+  (user && user.role === 'admin') ? `/${slug}/admin` : `/${slug}/${getStaffEntry() === 'staff' ? 'staff' : 'clockin'}`;
+
 // ── Context ─────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext(null);
@@ -255,7 +271,7 @@ export const RequireRole = ({ role = 'any', children }) => {
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
     if (slug) {
-      return <Navigate to={isAdmin ? `/${slug}/admin` : `/${slug}/staff`} replace />;
+      return <Navigate to={homePathFor(user, slug)} replace />;
     }
     return <Navigate to="/" replace />;
   }
@@ -285,7 +301,7 @@ export const RedirectIfAuthed = ({ children }) => {
       ? localStorage.getItem('hotelops-tenant-slug')
       : null;
     if (slug) {
-      return <Navigate to={user.role === 'admin' ? `/${slug}/admin` : `/${slug}/staff`} replace />;
+      return <Navigate to={homePathFor(user, slug)} replace />;
     }
     return <Navigate to="/" replace />;
   }

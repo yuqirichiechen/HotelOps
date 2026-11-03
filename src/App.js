@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, RequireRole, RequireDev, RedirectIfAuthed, useAuth } from './auth';
+import { AuthProvider, RequireRole, RequireDev, RedirectIfAuthed, useAuth, homePathFor } from './auth';
 import { LanguageProvider } from './i18n';
 import { DEFAULT_TENANT_SLUG } from './config/tenant';
 import ShiftsView from './components/ShiftsView';
@@ -8,7 +8,8 @@ import TenantLogin from './pages/Login/TenantLogin';
 import TenantPicker from './pages/Login/TenantPicker';
 import DevLogin from './pages/Login/DevLogin';
 import SetPin from './pages/SetPin';
-import StaffShell from './shells/StaffShell';
+import StaffShell from './shells/StaffShell';             // legacy clock-in dashboard (/:tenant/clockin)
+import StaffPortalShell from './shells/StaffPortalShell'; // Sprint 24: staff portal (/:tenant/staff)
 import AdminShell from './shells/AdminShell';
 import './App.css';
 import './components/AdminPanel/AdminPanel.css';
@@ -20,7 +21,7 @@ const getInitialTheme = () => {
 };
 
 // Sprint 11.2.1: `/` is the picker for unauthed visitors, and a
-// redirect for authed ones — staff land on `/:slug/staff`, admins
+// redirect for authed ones — staff land on `/:slug/clockin` or `/:slug/staff` (Sprint 24), admins
 // on `/:slug/admin`. The slug comes from localStorage (every
 // successful login persists it). Fallback to the default tenant
 // slug only if localStorage has somehow been cleared — paranoid;
@@ -34,7 +35,7 @@ const RootRoute = () => {
     : null;
   const slug = stored || DEFAULT_TENANT_SLUG;
   if (user.role === 'dev') return <Navigate to="/dev" replace />;   // Sprint 22.4
-  return <Navigate to={user.role === 'admin' ? `/${slug}/admin` : `/${slug}/staff`} replace />;
+  return <Navigate to={homePathFor(user, slug)} replace />;
 };
 
 // Sprint 16.2: bridges the authed user's `preferred_language`
@@ -95,9 +96,18 @@ const App = () => {
               StaffDetail/Calendar/Notes/Reports/Assistant/Settings)
               happens via internal view state — the URL never changes
               after login. See `shells/{StaffShell,AdminShell}.js`. */}
-          <Route path="/:tenant/staff" element={
+          {/* Sprint 24: two doors for non-admin users (same credentials). `/:tenant/clockin` is the original clock-in dashboard,
+              kept as is (kiosk-style, short idle sign-out). `/:tenant/staff` is the new staff portal: Home (clock + shift summary +
+              forecast tiles), Housekeeping for the front desk, Timesheet, Calendar, Settings. Which one a person gets depends on the
+              login screen they used ('Clock in' vs 'Staff login'). */}
+          <Route path="/:tenant/clockin" element={
             <RequireRole role="staff">
               <StaffShell theme={theme} onToggleTheme={toggleTheme} />
+            </RequireRole>
+          } />
+          <Route path="/:tenant/staff" element={
+            <RequireRole role="staff">
+              <StaffPortalShell theme={theme} onToggleTheme={toggleTheme} />
             </RequireRole>
           } />
           <Route path="/:tenant/admin" element={

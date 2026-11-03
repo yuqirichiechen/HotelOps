@@ -3,13 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
-import RoleIcon from '../../components/shared/RoleIcon';
+import LoginModeSwitch from './LoginModeSwitch';
 import { TransitionLink } from './TransitionLink';
 import './Login.css';
 import '../../components/shared/HotelOpsLogo.css';
 import '../../components/shared/RoleIcon.css';
 
-const AdminLogin = ({ onRoleSwitch }) => {
+const AdminLogin = ({ onSwitchMode }) => {
   const { loginAdmin } = useAuth();
   const nav = useNavigate();
   // Sprint 9: same /:tenant slug treatment as StaffLogin.
@@ -79,17 +79,9 @@ const AdminLogin = ({ onRoleSwitch }) => {
             >
               <HotelOpsLogo size="lg" />
             </TransitionLink>
-            {/* Sprint 11.2.1: in-page role switch — flips the
-                TenantLogin parent's `mode` state. URL stays put. */}
-            <button
-              type="button"
-              onClick={onRoleSwitch}
-              className="login-role-switch"
-              aria-label="Staff sign-in"
-              title="Staff sign-in"
-            >
-              <RoleIcon role="staff" alt="Staff sign-in" />
-            </button>
+            {/* Sprint 11.2.1: in-page mode switch — flips the TenantLogin parent's `mode` state; URL stays put.
+                Sprint 24: two staff doors ("Clock in" and "Staff login"). */}
+            <LoginModeSwitch current="admin" onSwitch={onSwitchMode} />
           </div>
         </div>
 

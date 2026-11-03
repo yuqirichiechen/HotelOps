@@ -54,7 +54,9 @@ const getMondayISO = (d = new Date()) => {
   return date.toISOString().split('T')[0];
 };
 
-const Home = () => {
+// Sprint 24: `portal` = rendered inside the staff portal (a desk PC, not the clock-in kiosk): no full-screen focused-action overlay and no
+// auto-signout countdown after a clock event — the person keeps working in the portal.
+const Home = ({ portal = false }) => {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const t = useT();
@@ -172,7 +174,7 @@ const Home = () => {
   // CPS / spam-tap user can't instantly reverse their clock event.
   const DEFAULT_LOCK_SECONDS = 3;
   const triggerClockEvent = (type) => {
-    const seconds = data?.autoSignoutSeconds || 0;
+    const seconds = portal ? 0 : (data?.autoSignoutSeconds || 0);
     setClockEvent({ type, seconds });
     if (seconds <= 0) {
       setTimeout(() => setClockEvent(null), DEFAULT_LOCK_SECONDS * 1000);
@@ -263,7 +265,7 @@ const Home = () => {
   // disabled (shows "…") until data resolves so the wrong mode
   // never gets tapped. clockEvent still suppresses it so the
   // existing flip-card flow takes over after a clock action.
-  const showFocused = !focusedDismissed && !clockEvent;
+  const showFocused = !portal && !focusedDismissed && !clockEvent;
   const focusedMode = onClock ? 'out' : 'in';
 
   return (

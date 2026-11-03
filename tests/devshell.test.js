@@ -107,14 +107,14 @@ const std = (sync) => { responses = { 'GET /admin/forecast/current': current(syn
   await t('ONE SHELL: a dev session sees the manager nav PLUS a "Dev tools" group (Auto-sync, Logs, Forecast settings, Platform); a manager never does', async () => {
     std({ state: 'ok', everyMinutes: 5 }); asUser(DEVU); let h = await mount(shellEl()); const labels = () => [...h.el.querySelectorAll('.sidebar-link .sidebar-nav-label')].map(x => x.textContent);
     assert.deepStrictEqual(labels(), ['Home', 'Staff', 'Calendar', 'Reservations', 'Forecast', 'Housekeeping', 'Logbook', 'Assistant', 'Settings', 'Auto-sync', 'Logs', 'Forecast settings', 'Platform'], labels().join('|')); assert(/Dev tools/.test(h.el.querySelector('.sidebar-section').textContent)); await h.unmount();
-    asUser(MGR); h = await mount(shellEl()); assert.deepStrictEqual(labels(), ['Home', 'Staff', 'Calendar', 'Reservations', 'Forecast', 'Housekeeping', 'Logbook', 'Assistant', 'Settings']); assert(!h.el.querySelector('.dv-viewbar'), 'no dev bar for managers'); assert(!h.el.querySelector('.sidebar-section')); await h.unmount();
+    asUser(MGR); h = await mount(shellEl()); assert.deepStrictEqual(labels(), ['Home', 'Staff', 'Calendar', 'Reservations', 'Forecast', 'Housekeeping', 'Logbook', 'Assistant', 'Settings']); assert(!h.el.querySelector('.dvb'), 'no dev bar for managers'); assert(!h.el.querySelector('.sidebar-section')); await h.unmount();
   });
   await t('VIEW AS: dev starts in FULL (every function); the switch flips Reservations + Forecast to exactly what a manager sees, and remembers it', async () => {
     std({ state: 'ok', everyMinutes: 5 }); sessionStorage.clear(); asUser(DEVU); const h = await mount(shellEl()); const nav = (l) => [...h.el.querySelectorAll('.sidebar-link')].find(b => b.textContent.startsWith(l));
     await h.click(nav('Reservations')); assert(/Raw scraper output/.test(h.el.textContent) && h.el.querySelector('.rl-main') && /Recent changes/.test(h.el.textContent), 'full reservations');
-    await h.click([...h.el.querySelectorAll('.dv-seg button')].find(b => b.textContent === 'Manager')); assert(!/Raw scraper output/.test(h.el.textContent) && h.el.querySelector('.rl-lean') && !/Recent changes/.test(h.el.textContent), 'manager reservations'); assert.strictEqual(sessionStorage.getItem('hotelops-view-as'), 'manager');
+    await h.click(h.el.querySelector('.dvb-switch button[data-view="manager"]')); assert(!/Raw scraper output/.test(h.el.textContent) && h.el.querySelector('.rl-lean') && !/Recent changes/.test(h.el.textContent), 'manager reservations'); assert.strictEqual(sessionStorage.getItem('hotelops-view-as'), 'manager');
     await h.click(nav('Forecast')); assert(h.el.querySelector('.sr-table') && !h.el.querySelector('.fb-need-table') && !/Snapshot history/.test(h.el.textContent), 'manager forecast');
-    await h.click([...h.el.querySelectorAll('.dv-seg button')].find(b => b.textContent === 'Full')); assert(h.el.querySelector('.fb-need-table') && /Snapshot history/.test(h.el.textContent) && /Plan sheet/.test(h.el.textContent), 'full forecast'); await h.unmount();
+    await h.click(h.el.querySelector('.dvb-switch button[data-view="full"]')); assert(h.el.querySelector('.fb-need-table') && /Snapshot history/.test(h.el.textContent) && /Plan sheet/.test(h.el.textContent), 'full forecast'); await h.unmount();
   });
   await t('DEV TOOLS pages open inside the same layout: Auto-sync, Logs (change feed / snapshots / jobs), Forecast settings (no Auto-sync tab), Platform', async () => {
     std({ state: 'ok', everyMinutes: 5 }); responses['GET /dev/jobs'] = { ok: true, data: { success: true, jobs: [{ job_id: 'j1', status: 'failed', total: 5, done: 3, skipped: 0, failed: 2, gone: 0, error: 'rGuest failing repeatedly', started_at: iso(30), finished_at: iso(29) }] } };
@@ -126,7 +126,7 @@ const std = (sync) => { responses = { 'GET /admin/forecast/current': current(syn
     await h.click(nav('Platform')); assert(/Tenant logo/.test(h.el.textContent)); await h.unmount();
   });
   await t('"Switch property" returns to the property picker; Sign out of a dev session goes to the DEV sign-in (not a tenant login)', async () => {
-    std({ state: 'ok', everyMinutes: 5 }); asUser(DEVU); let h = await mount(shellEl()); await h.click([...h.el.querySelectorAll('.dv-link')].find(b => /Switch property/.test(b.textContent))); assert(/PROPERTY PICKER/.test(h.el.textContent)); await h.unmount();
+    std({ state: 'ok', everyMinutes: 5 }); asUser(DEVU); let h = await mount(shellEl()); await h.click(h.el.querySelector('.dvb-prop')); assert(/PROPERTY PICKER/.test(h.el.textContent)); await h.unmount();
     h = await mount(shellEl()); await h.click(h.el.querySelector('.sidebar-signout')); await act(async () => { await sleep(30); }); assert(/DEV SIGN-IN PAGE/.test(h.el.textContent), h.el.textContent.slice(0, 100)); await h.unmount();
   });
   await t('PROPERTY PICKER (dev): one row per property → opens that property\'s admin shell and remembers the slug; no "Dev sign-in" link on it', async () => {
@@ -134,6 +134,14 @@ const std = (sync) => { responses = { 'GET /admin/forecast/current': current(syn
     const el = React.createElement(RR.MemoryRouter, { initialEntries: ['/dev'] }, React.createElement(RR.Routes, null, React.createElement(RR.Route, { path: '/dev', element: React.createElement(Picker, { kind: 'dev' }) }), React.createElement(RR.Route, { path: '/snoqualmieinn/admin', element: React.createElement('div', null, 'ADMIN SHELL OPENED') })));
     const h = await mount(el); const rows = h.el.querySelectorAll('.tenant-picker-row'); assert.strictEqual(rows.length, 1); assert(/Snoqualmie Inn/.test(rows[0].textContent) && /Select a property/.test(h.el.textContent) && !/Dev sign-in/.test(h.el.textContent));
     await h.click(rows[0]); assert(/ADMIN SHELL OPENED/.test(h.el.textContent)); assert.strictEqual(localStorage.getItem('hotelops-tenant-slug'), 'snoqualmieinn'); await h.unmount();
+  });
+  await t('OBVIOUS SWITCH (23.8): a bold bar says which view you are in ("You are viewing as Dev — full / a Manager"), is coloured per view (is-full / is-manager), and has two BIG labelled buttons ("Dev view", "Manager view" + what each shows) where the current one is pressed; plus a labelled Switch property button; managers never see the bar', async () => {
+    std({ state: 'ok', everyMinutes: 5 }); sessionStorage.clear(); asUser(DEVU); const h = await mount(shellEl()); const bar = () => h.el.querySelector('.dvb'); const btn = (v) => h.el.querySelector(`.dvb-switch button[data-view="${v}"]`);
+    assert(bar().classList.contains('is-full') && !bar().classList.contains('is-manager')); assert(/You are viewing as Dev — full/.test(bar().textContent)); assert.strictEqual(btn('full').getAttribute('aria-pressed'), 'true'); assert.strictEqual(btn('manager').getAttribute('aria-pressed'), 'false');
+    assert(/Dev view/.test(btn('full').textContent) && /Every control and debug tool/.test(btn('full').textContent) && /Manager view/.test(btn('manager').textContent) && /Exactly what a manager sees/.test(btn('manager').textContent) && btn('full').querySelector('svg') && btn('manager').querySelector('svg'), 'icons + labels + a line of explanation');
+    await h.click(btn('manager')); assert(bar().classList.contains('is-manager') && !bar().classList.contains('is-full'), 'the bar changes colour'); assert(/You are viewing as a Manager/.test(bar().textContent)); assert.strictEqual(btn('manager').getAttribute('aria-pressed'), 'true'); assert.strictEqual(btn('full').getAttribute('aria-pressed'), 'false');
+    assert(/Switch property/.test(h.el.querySelector('.dvb-prop').textContent), 'a button, not a link'); assert(!h.el.querySelector('.dv-viewbar, .dv-seg, .dv-link'), 'old small controls are gone'); await h.unmount();
+    asUser(MGR); const m = await mount(shellEl()); assert(!m.el.querySelector('.dvb'), 'no bar for managers'); await m.unmount();
   });
   await t('SIDEBAR with the Dev tools group: the link list scrolls inside a viewport-height sidebar, so Dark mode / Sign out never fall below the screen', async () => {
     const css = fs.readFileSync(ROOT + '/src/components/Layout/Sidebar.css', 'utf8'); const rule = (sel) => (css.match(new RegExp('\\n' + sel.replace(/[.]/g, '\\.') + ' \\{([^}]*)\\}')) || [])[1] || '';

@@ -144,7 +144,10 @@ const CardMenu = ({ menu, hks, canPaste, clipCount, onMove, onCopy, onPaste, onC
   );
 };
 
-const Housekeeping = ({ mode = 'manager' }) => {
+// Sprint 24: `apiBase` — '/admin' (managers, dev) or '/frontdesk' (the staff portal; same handlers, guest data stripped server-side).
+// `simple` — the portal layout: no stat cards / 14-day history strip; a Today | Tomorrow switch sits next to "Plan by". Every planning
+// function (names / no name, staff picker, rules, auto-assign, reset, drag, copy/paste, save, print) is unchanged.
+const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) => {
   const dev = mode === 'dev';
   const [payload, setPayload] = useState(null);
   const [live, setLive] = useState(null);
@@ -188,7 +191,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
 
   const loadAll = useCallback(async () => {
     setError(null);
-    const [cur, lv, st, emp] = await Promise.all([apiFetch('/admin/forecast/current'), apiFetch('/admin/forecast/live'), apiFetch('/admin/settings'), apiFetch('/admin/employees')]);
+    const [cur, lv, st, emp] = await Promise.all([apiFetch(`${apiBase}/forecast/current`), apiFetch(`${apiBase}/forecast/live`), apiFetch(`${apiBase}/settings`), apiFetch(`${apiBase}/employees`)]);
     if (cur.ok && cur.data?.success && cur.data.snapshot) setPayload(cur.data.snapshot.payload); else setError(cur.data?.message || 'Could not load the room data.');
     if (lv.ok && lv.data?.success) setLive(lv.data.live);
     const s = st.ok && st.data && st.data.settings;
@@ -199,7 +202,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
     }
     if (emp.ok && emp.data?.success) setStaff((emp.data.employees || []).filter(e => e.active !== false));
     setLoading(false);
-  }, []);
+  }, [apiBase]);
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const today = (live && live.forecastDate) || (payload && payload.forecastDate) || '';
@@ -208,9 +211,9 @@ const Housekeeping = ({ mode = 'manager' }) => {
 
   const loadPlans = useCallback(async () => {
     if (!today) return;
-    const { ok, data } = await apiFetch(`/admin/housekeeping/plans?from=${addDays(today, -HISTORY_DAYS)}&to=${addDays(today, 1)}`);
+    const { ok, data } = await apiFetch(`${apiBase}/housekeeping/plans?from=${addDays(today, -HISTORY_DAYS)}&to=${addDays(today, 1)}`);
     if (ok && data?.success) setPlans(data.plans || []);
-  }, [today]);
+  }, [today, apiBase]);
   useEffect(() => { loadPlans(); }, [loadPlans]);
   useEffect(() => { if (stripRef.current) stripRef.current.scrollLeft = stripRef.current.scrollWidth; }, [today, plans.length]);
 
@@ -220,11 +223,11 @@ const Housekeeping = ({ mode = 'manager' }) => {
     if (!date || readOnly) { setLockedRooms([]); return undefined; }
     let alive = true;
     (async () => {
-      const { ok, data } = await apiFetch(`/admin/housekeeping/locked-rooms?date=${date}`);
+      const { ok, data } = await apiFetch(`${apiBase}/housekeeping/locked-rooms?date=${date}`);
       if (alive) setLockedRooms(ok && data?.success ? data.rooms || [] : []);
     })();
     return () => { alive = false; };
-  }, [date, readOnly]);
+  }, [date, readOnly, apiBase]);
   const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset, lockedRooms })), [payload, live, allowance, offset, readOnly, date, lockedRooms]);
   const pastItems = useMemo(() => {
     if (!past) return [];
@@ -238,7 +241,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
     if (!date || planFor === date) return undefined;
     let alive = true;
     (async () => {
-      const { ok, data } = await apiFetch(`/admin/housekeeping/plan?date=${date}`);
+      const { ok, data } = await apiFetch(`${apiBase}/housekeeping/plan?date=${date}`);
       if (!alive) return;
       const saved = ok && data?.success ? data.plan : null;
       setSelected([]);
@@ -256,7 +259,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
       setPlanFor(date);
     })();
     return () => { alive = false; };
-  }, [date, planFor, readOnly, work]);
+  }, [date, planFor, readOnly, work, apiBase]);
 
   // pins for rooms that no longer need work are forgotten
   useEffect(() => {
@@ -380,10 +383,10 @@ const Housekeeping = ({ mode = 'manager' }) => {
 
   const save = useCallback(async () => {
     const body = { date: work.date, settings: anon ? { ...settings, anonymous: true } : settings, assignments: toAssignments(work.items, assign, hks, pinned) };
-    const { ok, data } = await apiFetch('/admin/housekeeping/plan', { method: 'PUT', body: JSON.stringify(body) });
+    const { ok, data } = await apiFetch(`${apiBase}/housekeeping/plan`, { method: 'PUT', body: JSON.stringify(body) });
     if (ok && data?.success) { setDirty(false); setSavedAt(data.updatedAt); setSaveMsg({ ok: true, text: 'Saved' }); loadPlans(); return true; }
     setSaveMsg({ ok: false, text: data?.message || 'Could not save' }); return false;
-  }, [work, settings, anon, assign, hks, pinned, loadPlans]);
+  }, [work, settings, anon, assign, hks, pinned, loadPlans, apiBase]);
 
   const printNow = async (who) => {
     if (viewHks.length === 0) return;
@@ -452,6 +455,7 @@ const Housekeeping = ({ mode = 'manager' }) => {
   const edgeScroll = (e) => { const b = boardEl.current; if (!b || !dragRef.current) return; const r = b.getBoundingClientRect(); if (e.clientX < r.left + 56) b.scrollLeft -= 18; else if (e.clientX > r.right - 56) b.scrollLeft += 18; };
   useEffect(() => { setVstart(v => Math.max(0, Math.min(v, Math.max(0, colCount - 3)))); }, [colCount]);
   const sheet = useMemo(() => (dev && !readOnly && payload ? buildRoomSheet(payload, live) : null), [dev, readOnly, payload, live]);
+  const saveText = readOnly ? 'History — read-only' : saveMsg ? <span className={saveMsg.ok ? 'ok' : 'bad'}>{saveMsg.text}</span> : dirty ? 'Unsaved changes' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet';
 
   return (
     <div className="hk-page-wrap" ref={boardRef}>
@@ -464,8 +468,8 @@ const Housekeeping = ({ mode = 'manager' }) => {
         </div>
       </header>
 
-      {/* row 1: the numbers as small cards (left) · the days, a few at a time, scroll for more (right) */}
-      <div className="hk-top">
+      {/* row 1: the numbers as small cards (left) · the days, a few at a time, scroll for more (right). Sprint 24: the portal's simple layout skips this row. */}
+      {!simple && <div className="hk-top">
         {!loading && payload ? (
           <section className="hk-stats" aria-label="Workload">
             <div className="hk-stat"><span>To clean</span><strong><CountUp value={cleanN} animKey={date} /></strong></div>
@@ -488,9 +492,9 @@ const Housekeeping = ({ mode = 'manager' }) => {
               );
             })}
           </div>
-          <span className="hk-savestate" role="status">{readOnly ? 'History — read-only' : saveMsg ? <span className={saveMsg.ok ? 'ok' : 'bad'}>{saveMsg.text}</span> : dirty ? 'Unsaved changes' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet'}</span>
+          <span className="hk-savestate" role="status">{saveText}</span>
         </section>
-      </div>
+      </div>}
 
       {error && <p className="hk-error" role="alert">{error}</p>}
       {loading && <p className="hk-muted">Loading rooms…</p>}
@@ -509,6 +513,16 @@ const Housekeeping = ({ mode = 'manager' }) => {
                 <button type="button" className={!anon ? 'on' : ''} aria-pressed={!anon} onClick={() => switchMode(false)}>Names</button>
                 <button type="button" className={anon ? 'on' : ''} aria-pressed={anon} onClick={() => switchMode(true)}>No name</button>
               </span>
+              {simple && (
+                <>
+                  <span className="hk-modebar-gap">For</span>
+                  <span className="hk-seg" role="tablist" aria-label="Day">
+                    <button type="button" role="tab" aria-selected={offset === 0} className={offset === 0 ? 'on' : ''} onClick={() => chooseDay(0)}>Today</button>
+                    <button type="button" role="tab" aria-selected={offset === 1} className={offset === 1 ? 'on' : ''} onClick={() => chooseDay(1)}>Tomorrow</button>
+                  </span>
+                  <span className="hk-savestate" role="status">{saveText}</span>
+                </>
+              )}
             </div>
           )}
           {!readOnly && (

@@ -64,3 +64,5 @@ Point `DATABASE_URL` at `postgres://postgres@127.0.0.1:5439/hoptest`. `server.js
 | `sync-live-dryrun.js` | LIVE read-only rGuest → engine → throwaway local Postgres; validates the mirror against rGuest totals (≈4 min for 12 months, ~1,000 calls — run sparingly) | `node tests/sync-live-dryrun.js "$PWD" [monthsBack]` |
 | `forecast-diagnose.js`, `forecast-futurecheck.js` | Live read-only probes (room conditions vs ours; per-day arrivals/departures) | `node tests/<file> "$PWD"` |
 | `fcrender.js` | Render the Forecast page from a live payload (`DUMP=file.html FC_DAY=1` to capture HTML for screenshots) | `node tests/fcrender.js "$PWD"` |
+| `frontdesk-server.test.js` | Sprint 24: `/api/frontdesk/*` role matrix, guest-data redaction, allow-listed settings, DB-free live board, plan save/read (fake DB + rGuest) | `node tests/frontdesk-server.test.js "$PWD"` |
+| `staffportal.test.js` | Sprint 24: login modes (Clock in / Manager / Staff login), door routing, portal shell + front-desk Home + simplified Housekeeping (jsdom). `DUMP_DIR=<dir>` writes HTML for screenshots | `node tests/staffportal.test.js "$PWD"` |

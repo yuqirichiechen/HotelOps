@@ -89,6 +89,7 @@ const ACTIVE_PARENT = {
 };
 
 // "View as" (dev only): Full = every detail and debug control; Manager = exactly what a manager sees. Remembered for the browser session.
+// Sprint 23.8: the switch is a big two-button control in a coloured bar (purple = Dev, teal = Manager) so the current view is obvious at a glance.
 const VIEW_AS_KEY = 'hotelops-view-as';
 const readViewAs = () => { try { return sessionStorage.getItem(VIEW_AS_KEY) === 'manager' ? 'manager' : 'full'; } catch { return 'full'; } };
 
@@ -116,14 +117,25 @@ const Body = ({ theme, onToggleTheme }) => {
       />
       <main className="app-main">
         {isDev && (
-          <div className="dv-viewbar" role="region" aria-label="Dev view controls">
-            <span className="dv-tag">DEV</span>
-            <span>View as</span>
-            <span className="dv-seg" role="group" aria-label="View as">
-              <button type="button" className={viewAs === 'full' ? 'on' : ''} aria-pressed={viewAs === 'full'} onClick={() => setViewAs('full')}>Full</button>
-              <button type="button" className={viewAs === 'manager' ? 'on' : ''} aria-pressed={viewAs === 'manager'} onClick={() => setViewAs('manager')}>Manager</button>
-            </span>
-            <button type="button" className="dv-link" onClick={() => nav('/dev')}>Switch property</button>
+          <div className={`dvb ${mode === 'dev' ? 'is-full' : 'is-manager'}`} role="region" aria-label="Dev view controls">
+            <div className="dvb-id">
+              <span className="dvb-tag">DEV</span>
+              <span className="dvb-now">You are viewing as <b>{mode === 'dev' ? 'Dev — full' : 'a Manager'}</b></span>
+            </div>
+            <div className="dvb-switch" role="group" aria-label="View as">
+              <button type="button" data-view="full" className={viewAs === 'full' ? 'on' : ''} aria-pressed={viewAs === 'full'} onClick={() => setViewAs('full')}>
+                <svg className="dvb-ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.5 2.5-2.4-.6-.6-2.4z" /></svg>
+                <span className="dvb-txt"><b>Dev view</b><small>Every control and debug tool</small></span>
+              </button>
+              <button type="button" data-view="manager" className={viewAs === 'manager' ? 'on' : ''} aria-pressed={viewAs === 'manager'} onClick={() => setViewAs('manager')}>
+                <svg className="dvb-ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></svg>
+                <span className="dvb-txt"><b>Manager view</b><small>Exactly what a manager sees</small></span>
+              </button>
+            </div>
+            <button type="button" className="dvb-prop" onClick={() => nav('/dev')}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 7h13M16 3l4 4-4 4M17 17H4M8 13l-4 4 4 4" /></svg>
+              Switch property
+            </button>
           </div>
         )}
         <Component theme={theme} onToggleTheme={onToggleTheme} role="admin" mode={mode} {...view.params} />

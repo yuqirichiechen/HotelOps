@@ -94,7 +94,7 @@ app.use('/api', async (req, res, next) => {
   // Sprint 21.3: the Room Forecast polls /admin/forecast/live every ~2 min while someone watches it. That route is
   // DB-free (JWT + rGuest only), so it must NOT trigger this DB query either — otherwise a Forecast page left open on
   // a front-desk monitor would keep Neon awake all day (the 19.1 bug in a new form).
-  if (req.path === '/admin/forecast/live') return next();
+  if (req.path === '/admin/forecast/live' || req.path === '/frontdesk/forecast/live') return next();   // Sprint 24: the front-desk Home polls the same DB-free live board
   // Sprint 22: the external scheduler pings /sync/tick every ~5 min. A tick with nothing due must stay DB-free too.
   if (req.path === '/sync/tick') return next();
   const now = Date.now();
@@ -1115,8 +1115,9 @@ app.get('/api/admin/employees', requireAuth, requireRole('admin'), async (req, r
 // ── Sprint 23: housekeeping plans (who cleans / services which rooms, per day) ───────────────────────────────────────────────────────────
 // Read on page open, written only on Save/Print — no timers (Neon bills awake time). Managers and dev.
 const { sanitizePlan } = require('./housekeeping');
+const { redactCurrentResponse, pickSettings, SETTINGS_ALLOWED } = require('./frontdesk');   // Sprint 24: what the front-desk portal may read
 const hkProperty = () => process.env.SYNC_PROPERTY_KEY || 'default';
-app.get('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async (req, res) => {
+const hkGetPlan = async (req, res) => {
   const date = String(req.query.date || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: 'date must be YYYY-MM-DD' });
   try {
@@ -1124,9 +1125,9 @@ app.get('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async
       `SELECT to_char(plan_date,'YYYY-MM-DD') AS date, settings, assignments, updated_at FROM hk_plans WHERE property_id = $1 AND plan_date = $2`, [hkProperty(), date]);
     return res.json({ success: true, plan: rows[0] ? { date: rows[0].date, settings: rows[0].settings, assignments: rows[0].assignments, updatedAt: rows[0].updated_at } : null });
   } catch (err) { console.error('[hk:get]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
-});
+};
 // Sprint 23.1 — which days have a saved plan (the day strip + history). One cheap query over at most 60 days.
-app.get('/api/admin/housekeeping/plans', requireAuth, requireRole('admin'), async (req, res) => {
+const hkListPlans = async (req, res) => {
   const from = String(req.query.from || ''), to = String(req.query.to || '');
   const ok = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
   if (!ok(from) || !ok(to) || Date.parse(to) < Date.parse(from) || Date.parse(to) - Date.parse(from) > 60 * 86400000) return res.status(400).json({ success: false, message: 'from/to must be YYYY-MM-DD, at most 60 days apart' });
@@ -1137,10 +1138,10 @@ app.get('/api/admin/housekeeping/plans', requireAuth, requireRole('admin'), asyn
          FROM hk_plans WHERE property_id = $1 AND plan_date BETWEEN $2 AND $3 ORDER BY plan_date`, [hkProperty(), from, to]);
     return res.json({ success: true, plans: rows.map(r => ({ date: r.date, hks: r.hks, rooms: r.rooms, updatedAt: r.updated_at })) });
   } catch (err) { console.error('[hk:list]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
-});
+};
 // Sprint 23.2 — rooms a guest asked NOT to be moved out of (rGuest "Do not move" on an arriving reservation that already has a room): those rooms are
 // cleaned first. Reads only what the guest-detail job already stored (no rGuest call). Returns room numbers — no guest data.
-app.get('/api/admin/housekeeping/locked-rooms', requireAuth, requireRole('admin'), async (req, res) => {
+const hkLockedRooms = async (req, res) => {
   const date = String(req.query.date || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: 'date must be YYYY-MM-DD' });
   try {
@@ -1152,8 +1153,8 @@ app.get('/api/admin/housekeeping/locked-rooms', requireAuth, requireRole('admin'
         ORDER BY h.room_number`, [hkProperty(), date]);
     return res.json({ success: true, rooms: rows.map(r => String(r.room_number)) });
   } catch (err) { console.error('[hk:locked]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
-});
-app.put('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async (req, res) => {
+};
+const hkPutPlan = async (req, res) => {
   const plan = sanitizePlan(req.body);
   if (plan.error) return res.status(400).json({ success: false, message: plan.error });
   try {
@@ -1163,7 +1164,14 @@ app.put('/api/admin/housekeeping/plan', requireAuth, requireRole('admin'), async
        RETURNING updated_at`, [hkProperty(), plan.date, JSON.stringify(plan.settings), JSON.stringify(plan.assignments), String(req.auth.sub || req.auth.userId || '')]);
     return res.json({ success: true, updatedAt: rows[0].updated_at });
   } catch (err) { console.error('[hk:put]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
-});
+};
+// Managers/dev use /api/admin/housekeeping/*; the front-desk portal (role front_desk) uses the same handlers under /api/frontdesk/housekeeping/*.
+for (const [base, role] of [['/api/admin', 'admin'], ['/api/frontdesk', 'front_desk']]) {
+  app.get(`${base}/housekeeping/plan`,         requireAuth, requireRole(role), hkGetPlan);
+  app.get(`${base}/housekeeping/plans`,        requireAuth, requireRole(role), hkListPlans);
+  app.get(`${base}/housekeeping/locked-rooms`, requireAuth, requireRole(role), hkLockedRooms);
+  app.put(`${base}/housekeeping/plan`,         requireAuth, requireRole(role), hkPutPlan);
+}
 
 app.get('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
@@ -4704,7 +4712,7 @@ let _liveClient = null;
 const getSharedAgilysys = () => (_liveClient = _liveClient || createAgilysysClient());   // ONE client (one login/token) for live board + sync
 const _live = { at: 0, data: null, inflight: null };
 const LIVE_TTL_MS = 20 * 1000;
-app.get('/api/admin/forecast/live', requireAuth, requireRole('admin'), async (req, res) => {
+const forecastLive = async (req, res) => {
   try {
     if (_live.data && Date.now() - _live.at < LIVE_TTL_MS) return res.json({ success: true, cached: true, live: _live.data });
     if (!_live.inflight) {
@@ -4719,7 +4727,9 @@ app.get('/api/admin/forecast/live', requireAuth, requireRole('admin'), async (re
     console.error('[forecast:live]', err && err.message);
     return res.status(502).json({ success: false, message: 'Could not read live room data from rGuest.' });
   }
-});
+};
+app.get('/api/admin/forecast/live',     requireAuth, requireRole('admin'),      forecastLive);
+app.get('/api/frontdesk/forecast/live', requireAuth, requireRole('front_desk'), forecastLive);   // Sprint 24: room numbers + housekeeping status only, no guest data
 
 // ── Sprint 22: auto-sync engine ───────────────────────────────────────────────
 // POST /api/sync/tick is pinged every ~5 min by an EXTERNAL scheduler (cron-job.org) with the header
@@ -4789,19 +4799,42 @@ app.get('/api/admin/sync/health', requireAuth, requireRole('admin'), async (req,
   try { return res.json({ success: true, health: await syncEngine.health() }); }
   catch (err) { console.error('[sync:health]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
-app.get('/api/admin/forecast/current', requireAuth, requireRole('admin'), async (req, res) => {
+const forecastCurrent = (redact) => async (req, res) => {
   try {
     await syncEngine.ensureHydrated();
     if (syncEngine.isMirrorReady()) {
       try {
         await syncEngine.flushPending();              // make the newest scan visible to the query below
         const cur = await getMirrorPayload();
-        return res.json({ success: true, source: 'mirror', sync: await syncEngine.health(), snapshot: { snapshot_id: null, scraped_at: cur.syncedAt || new Date().toISOString(), forecast_date: cur.payload.forecastDate, source: 'mirror', status: 'success', payload: cur.payload } });
+        return send(res, redact, { success: true, source: 'mirror', sync: await syncEngine.health(), snapshot: { snapshot_id: null, scraped_at: cur.syncedAt || new Date().toISOString(), forecast_date: cur.payload.forecastDate, source: 'mirror', status: 'success', payload: cur.payload } });
       } catch (err) { console.error('[forecast:current] mirror build failed, falling back to the last snapshot:', err && err.message); }
     }
     const row = await latestSnapshotRow();
-    return res.json({ success: true, source: 'snapshot', sync: await syncEngine.health().catch(() => null), snapshot: row });
+    return send(res, redact, { success: true, source: 'snapshot', sync: await syncEngine.health().catch(() => null), snapshot: row });
   } catch (err) { console.error('[forecast:current]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+};
+const send = (res, redact, body) => res.json(redact ? redactCurrentResponse(body) : body);
+app.get('/api/admin/forecast/current',     requireAuth, requireRole('admin'),      forecastCurrent(false));
+// Sprint 24: the front-desk portal gets the same payload with every guest identifier removed (server/frontdesk.js).
+app.get('/api/frontdesk/forecast/current', requireAuth, requireRole('front_desk'), forecastCurrent(true));
+
+// ── Sprint 24: the rest of what the front-desk portal reads (read-only; the Housekeeping routes are registered above) ──────────────
+// Staff picker for the Housekeeping page: names + department only (the manager route also carries phone, pay rate, birthday, PIN state).
+app.get('/api/frontdesk/employees', requireAuth, requireRole('front_desk'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.user_id, u.name, u.active, u.department_id, d.name AS department
+         FROM users u LEFT JOIN departments d ON d.department_id = u.department_id
+        WHERE u.deleted_at IS NULL ORDER BY u.name`);
+    return res.json({ success: true, employees: rows });
+  } catch (err) { console.error('[frontdesk:employees]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+// Only the keys the Housekeeping + Forecast pages read — never the whole app_settings table.
+app.get('/api/frontdesk/settings', requireAuth, requireRole('front_desk'), async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT key, value FROM app_settings WHERE key = ANY($1::text[])', [SETTINGS_ALLOWED]);
+    return res.json({ success: true, settings: pickSettings(rows) });
+  } catch (err) { console.error('[frontdesk:settings]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
 // After the sync writes changes: drop the payload cache and (re)load guest details for new/changed reservations in the detail window.

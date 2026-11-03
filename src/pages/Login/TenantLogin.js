@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { flushSync } from 'react-dom';
 import StaffLogin from './StaffLogin';
 import AdminLogin from './AdminLogin';
+import { getStaffEntry } from '../../auth';
 
 // Sprint 11.2.1: `/:tenant/login` is a single URL that hosts both
 // the staff and the manager sign-in. Mode is internal state — the
@@ -20,10 +21,13 @@ import AdminLogin from './AdminLogin';
 // "after" DOM before React has actually updated it. Browsers that
 // don't implement the API fall through to a plain `setMode`.
 
+// Sprint 24: three modes — 'clockin' (the original staff sign-in, lands in the clock-in dashboard), 'staff' (the staff portal; same
+// credentials, different door) and 'admin'. The screen opens on the door this browser used last, so a front-desk PC keeps opening
+// on "Staff login" and a kiosk tablet keeps opening on "Clock in".
 const TenantLogin = () => {
-  const [mode, setMode] = useState('staff');
+  const [mode, setMode] = useState(() => (getStaffEntry() === 'staff' ? 'staff' : 'clockin'));
 
-  const flipMode = (next) => () => {
+  const switchMode = (next) => {
     if (typeof document !== 'undefined' && document.startViewTransition) {
       document.startViewTransition(() => {
         flushSync(() => setMode(next));
@@ -33,10 +37,10 @@ const TenantLogin = () => {
     }
   };
 
-  return mode === 'staff' ? (
-    <StaffLogin onRoleSwitch={flipMode('admin')} />
+  return mode === 'admin' ? (
+    <AdminLogin onSwitchMode={switchMode} />
   ) : (
-    <AdminLogin onRoleSwitch={flipMode('staff')} />
+    <StaffLogin key={mode} entry={mode} onSwitchMode={switchMode} />
   );
 };
 

@@ -1,0 +1,17 @@
+/* Sprint 24 — portal Home: operations (left, wide) beside the person's own clock / hours (right). Stacks below 1100px, ops first. */
+.ph-page { padding: 22px 24px 40px; }
+.ph-page:not(.has-ops) .ph-me { max-width: 720px; margin: 0 auto; }
+.ph-page.has-ops {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+  align-items: start;
+}
+/* the original dashboard brings its own padding / max-width; inside the grid it should just fill its column */
+.ph-me .home-page { padding: 0; max-width: none; margin: 0; }
+@media (max-width: 1100px) {
+  .ph-page.has-ops { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .ph-page { padding: 16px 14px 90px; }   /* room for the mobile bottom tab bar */
+}

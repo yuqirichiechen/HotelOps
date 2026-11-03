@@ -82,7 +82,8 @@ const requireAuth = (req, res, next) => {
 
 // Sprint 22.4: the `dev` role (server-verified dev sign-in, see below) can do everything an admin can, plus the dev-only surfaces
 // (auto-sync settings, forecast settings, logs). An admin can NOT use dev-only routes: requireRole('dev').
-const ROLE_IMPLIES = { dev: ['admin'] };
+// Sprint 24: `front_desk` (an employee role) unlocks the front-desk portal routes (`/api/frontdesk/*`); managers and dev can open them too.
+const ROLE_IMPLIES = { dev: ['admin', 'front_desk'], admin: ['front_desk'] };
 const requireRole = (...allowed) => (req, res, next) => {
   if (!req.auth) return res.status(401).json({ success: false, message: 'Not authenticated' });
   const roles = [req.auth.role, ...(ROLE_IMPLIES[req.auth.role] || [])];

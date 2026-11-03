@@ -1,0 +1,25 @@
+/* Sprint 24 — front-desk Home block. The tiles (.fc-kpi-card) and the Sellable-vs-arriving card (.fb-card) bring their own styles from
+   Forecasting.css / Forecast.css; this file only lays them out in the portal. */
+.fd-ops { display: flex; flex-direction: column; gap: 14px; min-width: 0; font-family: 'TiemposText', Georgia, serif; }
+.fd-ops-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fd-ops-head h2 { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 22px; color: var(--brand-text); }
+.fd-ops-head h2 span { font-weight: 400; color: var(--text-muted); font-size: 16px; }
+.fd-ops-actions { display: flex; align-items: center; gap: 8px; }
+.fd-refresh {
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer;
+}
+.fd-refresh:hover:not(:disabled) { background: var(--bg-raised); border-color: var(--text-muted); }
+.fd-refresh:disabled { opacity: 0.6; cursor: progress; }
+.fd-refresh:disabled svg { animation: fd-spin 0.9s linear infinite; }
+@keyframes fd-spin { to { transform: rotate(360deg); } }
+.fd-muted { color: var(--text-muted); font-size: 14px; margin: 0; }
+.fd-error { padding: 10px 14px; border: 1px solid var(--danger, #c53030); border-radius: 10px; color: var(--danger, #c53030); font-size: 14px; }
+
+/* tiles: five across on a wide desk monitor, then 3 / 2 columns (the .fc-kpis rules already do the narrower steps) */
+.fd-tiles { margin-bottom: 0; }
+.fd-tiles .fc-kpi-card { cursor: default; }
+@media (max-width: 1500px) and (min-width: 1101px) {
+  .fd-tiles.fc-kpis-5 { grid-template-columns: repeat(3, 1fr); }
+}
+.fd-sellable .fb-card { margin: 0; }
