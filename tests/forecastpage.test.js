@@ -197,7 +197,7 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
       await h.click(h.el.querySelectorAll('.fb-day')[2]); assert(parseInt(h.el.querySelectorAll('.fb-day-pct')[2].textContent, 10) < 5, 'clicking a day replays its count-up'); assert.strictEqual(h.el.querySelectorAll('.fb-day-occ-bar')[2].style.width, '0%', 'and its bar'); await act(async () => { await sleep(2400); }); await h.unmount();
     } finally { globalThis.__HOTELOPS_NO_ANIM = true; }
   });
-  const card = (h) => [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').trim());
+  const card = (h) => [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').replace(/^\s*›\s*/, '').trim());   // (the row caret is not part of the text)
   await t('24.3 SELLABLE VS ARRIVING (today): x/y per room type = left to sell counting VI only / counting VI + PU; header + total follow; manager and dev both see it', async () => {
     for (const mode of ['manager', 'dev']) {
       fresh({ live: { remainingArrivals: [{ typeCode: 'NQRR' }], arrivalsToday: 1 } }); const h = await mount(mode); const rows = card(h);      // NQRR: 1 VI + 1 PU, 1 arriving → VI only 1−1=0, VI+PU 2−1=1
@@ -211,6 +211,18 @@ const fresh = (o = {}) => { sessionStorage.clear(); liveOk = true; snapshot = mk
     assert(btn(/Left to sell/).classList.contains('on'), 'starts on Left to sell'); await h.click(btn(/Available/)); let rows = card(h);
     assert(rows.includes('NQRR available1/2'), rows.join(' | ')); assert(rows.includes('Total available1/2 rooms'), rows.join(' | ')); assert(btn(/Available/).classList.contains('on'));
     await h.click(btn(/Left to sell/)); rows = card(h); assert(rows.includes('NQRR left to sell0/1'), rows.join(' | ')); await h.unmount();
+  });
+  await t('24.4 EXPANDABLE: tap a room type → its types (Standard, Pets…) with the same x/y, types only — no room numbers; several open at once; closes again; Available mode applies inside', async () => {
+    const more = rooms.concat([room('301', 'NKRR', 'VAC', 'VI'), room('G30', 'NKRRP', 'VAC', 'VI'), room('G31', 'NKRRP', 'VAC', 'PU')]).map(r => ({ ...r }));
+    fresh({ live: { rooms: more, remainingArrivals: [{ typeCode: 'NQRR' }], arrivalsToday: 1 } }); const h = await mount('dev'); const rowsEl = () => [...h.el.querySelectorAll('.fb-sum-group')]; const g = (code) => rowsEl().find(li => li.textContent.includes(code + ' left') || li.textContent.includes(code + ' avail'));
+    assert.strictEqual(rowsEl().length, 2, 'one row per room type'); assert(!h.el.querySelector('.fb-sum-type'), 'closed: nothing rendered yet'); assert(rowsEl().every(li => li.querySelector('.fb-sum-row').getAttribute('aria-expanded') === 'false'));
+    await h.click(g('NKRR').querySelector('.fb-sum-row')); assert(g('NKRR').classList.contains('is-open')); assert.strictEqual(g('NKRR').querySelector('.fb-sum-row').getAttribute('aria-expanded'), 'true');
+    let types = [...g('NKRR').querySelectorAll('.fb-sum-type')].map(x => x.textContent.replace(/\s+/g, ' ').trim()); assert.deepStrictEqual(types, ['Standard NKRR1/1', 'Pets NKRRP1/2'], types.join(' | '));   // NKRR: 1 VI; NKRRP: 1 VI + 1 PU; no arrivals
+    assert(!/\b(301|G30|G31|202|201)\b/.test(g('NKRR').textContent), 'no room numbers anywhere in the expansion');
+    await h.click(g('NQRR').querySelector('.fb-sum-row')); assert(g('NQRR').classList.contains('is-open') && g('NKRR').classList.contains('is-open'), 'both open at once'); types = [...g('NQRR').querySelectorAll('.fb-sum-type')].map(x => x.textContent.replace(/\s+/g, ' ').trim()); assert.deepStrictEqual(types, ['Standard NQRR0/1'], types.join(' | '));
+    const seg = h.el.querySelector('.fb-seg'); await h.click([...seg.querySelectorAll('button')].find(b => /Available/.test(b.textContent))); types = [...g('NQRR').querySelectorAll('.fb-sum-type')].map(x => x.textContent.replace(/\s+/g, ' ').trim()); assert.deepStrictEqual(types, ['Standard NQRR1/2'], 'Available mode applies to the types too: ' + types.join(' | '));
+    await h.click(g('NKRR').querySelector('.fb-sum-row')); assert(!g('NKRR').classList.contains('is-open') && g('NQRR').classList.contains('is-open'), 'closes again, the other stays'); assert(g('NKRR').querySelector('.fb-sum-sub'), 'stays mounted so the close can animate');
+    await h.unmount();
   });
   await t('24.3 later days keep the old single number (no VI column, no switch): VI/PU only exist for today\'s live board', async () => {
     fresh(); const h = await mount('dev'); await h.click(h.el.querySelectorAll('.fb-day')[1]); assert(!h.el.querySelector('.fb-summary-head') && !h.el.querySelector('.fb-seg') && !h.el.querySelector('.fb-vi-pair'), 'tomorrow'); assert(/Total left to sell/.test(card(h).join('|'))); await h.unmount();

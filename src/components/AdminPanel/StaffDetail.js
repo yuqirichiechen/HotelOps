@@ -88,7 +88,8 @@ const toLocalInput = (iso) => {
 // entry-edit modal for that specific entry as soon as `entries` is
 // loaded, once per mount (a hasAutoOpenedRef gate prevents the
 // modal from re-opening after the user dismisses it).
-const StaffDetail = ({ userId, editEntryId }) => {
+const StaffDetail = ({ userId, editEntryId, mode }) => {
+  const isDev = mode === 'dev';   // Sprint 24.4: the full Dev view only (a dev viewing "as Manager" sees exactly what a manager sees)
   const { goTo } = useView();
 
   const [emp,           setEmp]           = useState(null);
@@ -303,6 +304,23 @@ const StaffDetail = ({ userId, editEntryId }) => {
     setPinBusy(false);
     if (ok && data?.success) setEmp(prev => ({ ...prev, ...data.employee }));
     else                     setPinErr(data?.message || 'Could not reset PIN');
+  };
+
+  // Sprint 24.4 — dev only: show the PIN (decrypted from the server's encrypted copy; every reveal is audit-logged). Auto-hides after 20 s.
+  const [revealed, setRevealed] = useState(null);   // { pin } | { why }
+  useEffect(() => { setRevealed(null); }, [userId]);
+  useEffect(() => { if (!revealed || !revealed.pin) return undefined; const id = setTimeout(() => setRevealed(null), 20000); return () => clearTimeout(id); }, [revealed]);
+  const REVEAL_WHY = {
+    not_configured: 'Not available: PIN_VIEW_KEY is not set on the server.',
+    not_stored: 'Not viewable yet — it becomes viewable after the person signs in with their PIN or changes it.',
+    no_pin: 'No PIN is set.',
+  };
+  const revealPin = async () => {
+    setPinBusy(true); setPinErr('');
+    const { ok, data } = await apiFetch(`/dev/employees/${emp.user_id}/pin/reveal`, { method: 'POST' });
+    setPinBusy(false);
+    if (ok && data?.success) setRevealed(data.pin ? { pin: data.pin } : { why: REVEAL_WHY[data.reason] || 'Not viewable.' });
+    else setPinErr(data?.message || 'Could not reveal the PIN');
   };
 
   // ── Hour override ─────────────────────────────────────────────────────────
@@ -863,13 +881,21 @@ const StaffDetail = ({ userId, editEntryId }) => {
                 {emp.pin_must_set
                   ? 'Reset pending — employee will set a new PIN at next login.'
                   : emp.has_pin
-                    ? 'PIN is set. You can reset it but cannot view it.'
+                    ? (isDev ? 'PIN is set. As dev you can reveal it; managers can only reset it.' : 'PIN is set. You can reset it but cannot view it.')
                     : 'No PIN set yet.'}
               </div>
+              {isDev && revealed && (revealed.pin
+                ? <div className="emp-pin-reveal" role="status" aria-live="polite">PIN <code>{revealed.pin}</code> <small>hides in 20 s</small> <button type="button" className="emp-pin-hide" onClick={() => setRevealed(null)}>Hide</button></div>
+                : <div className="emp-pin-meta emp-pin-why" role="status">{revealed.why}</div>)}
             </div>
-            <button className="btn-pin-reset" onClick={resetPin} disabled={pinBusy}>
-              {pinBusy ? '…' : 'Reset PIN'}
-            </button>
+            <div className="emp-pin-actions">
+              {isDev && emp.has_pin && !emp.pin_must_set && !(revealed && revealed.pin) && (
+                <button className="btn-pin-reset" onClick={revealPin} disabled={pinBusy}>{pinBusy ? '…' : 'Reveal PIN'}</button>
+              )}
+              <button className="btn-pin-reset" onClick={resetPin} disabled={pinBusy}>
+                {pinBusy ? '…' : 'Reset PIN'}
+              </button>
+            </div>
           </div>
 
           {pinErr && <div className="admin-error" style={{ marginTop: 8 }}>{pinErr}</div>}

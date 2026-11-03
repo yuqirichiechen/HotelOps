@@ -228,6 +228,17 @@ function uniqueViolationMessage(err) {
 
 // ── Auth (new — JWT-based) ───────────────────────────────────────────────────
 
+// Sprint 24.4 — keep the encrypted PIN copy (dev-only reveal) in step with the hash. `enc` is null when no PIN_VIEW_KEY is configured (then any
+// old copy is cleared too). If migration 031 hasn't been applied yet (column missing) the plain hash update still goes through — PIN changes must never fail.
+async function savePinHash(userId, hash, pin) {
+  const enc = pinVault.encryptPin(pin);
+  try {
+    return await pool.query('UPDATE users SET pin_hash = $1, pin_enc = $2, pin_must_set = false WHERE user_id = $3 RETURNING user_id', [hash, enc, userId]);
+  } catch (err) {
+    if (err && err.code === '42703') return pool.query('UPDATE users SET pin_hash = $1, pin_must_set = false WHERE user_id = $2 RETURNING user_id', [hash, userId]);
+    throw err;
+  }
+}
 app.post('/api/auth/staff/login', async (req, res) => {
   // Accept `identifier` (Sprint 7) or `phone` (legacy clients pre-Sprint 7).
   const raw = (req.body?.identifier ?? req.body?.phone ?? '').toString();
@@ -281,6 +292,9 @@ app.post('/api/auth/staff/login', async (req, res) => {
       if (!pin) return res.status(400).json({ success: false, message: 'PIN required', pin_required: true });
       const ok = await verifyPin(pin, user.pin_hash);
       if (!ok) return res.status(401).json({ success: false, message: 'Invalid PIN' });
+      // Sprint 24.4: PINs set before the vault existed become viewable (to dev) the next time their owner signs in with them.
+      // Best effort and off the response path; a no-op when a copy exists, no key is configured, or migration 031 isn't applied.
+      if (pinVault.configured()) pool.query('UPDATE users SET pin_enc = $1 WHERE user_id = $2 AND pin_enc IS NULL', [pinVault.encryptPin(pin), user.user_id]).catch(() => {});
     }
 
     const token = signToken({
@@ -370,11 +384,7 @@ app.post('/api/auth/staff/set-pin', requireAuth, async (req, res) => {
   }
   try {
     const hash = await hashPin(pin);
-    const { rows } = await pool.query(
-      `UPDATE users SET pin_hash = $1, pin_must_set = false
-       WHERE user_id = $2 RETURNING user_id`,
-      [hash, req.auth.sub]
-    );
+    const { rows } = await savePinHash(req.auth.sub, hash, pin);
     if (!rows.length) return res.status(404).json({ success: false, message: 'User not found' });
     return res.json({ success: true });
   } catch (err) {
@@ -457,10 +467,7 @@ app.post('/api/auth/staff/change-pin', requireAuth, async (req, res) => {
     }
 
     const hash = await hashPin(newPin);
-    await pool.query(
-      'UPDATE users SET pin_hash = $1, pin_must_set = false WHERE user_id = $2',
-      [hash, req.auth.sub]
-    );
+    await savePinHash(req.auth.sub, hash, newPin);
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -1119,6 +1126,7 @@ app.get('/api/admin/employees', requireAuth, requireRole('admin'), async (req, r
 // ── Sprint 23: housekeeping plans (who cleans / services which rooms, per day) ───────────────────────────────────────────────────────────
 // Read on page open, written only on Save/Print — no timers (Neon bills awake time). Managers and dev.
 const { sanitizePlan } = require('./housekeeping');
+const pinVault = require('./pinvault');   // Sprint 24.4: encrypted PIN copy, revealed by dev only
 const { redactCurrentResponse, pickSettings, SETTINGS_ALLOWED } = require('./frontdesk');   // Sprint 24: what the front-desk portal may read
 const hkProperty = () => process.env.SYNC_PROPERTY_KEY || 'default';
 const hkGetPlan = async (req, res) => {
@@ -2361,10 +2369,33 @@ app.post('/api/admin/employees/:id/pin/reset', requireAuth, requireRole('admin')
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    await pool.query('UPDATE users SET pin_enc = NULL WHERE user_id = $1', [req.params.id]).catch(() => { /* column not migrated yet */ });
     return res.json({ success: true, employee: rows[0] });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Sprint 24.4 — DEV ONLY: reveal a staff member's PIN (decrypted from the vault copy; see server/pinvault.js). Managers get 403.
+// POST so it is never cached or prefetched; each successful reveal is written to audit_logs. The PIN is only ever in this response.
+app.post('/api/dev/employees/:id/pin/reveal', requireAuth, requireRole('dev'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) return res.status(400).json({ success: false, message: 'Bad employee id' });
+  if (!pinVault.configured()) return res.json({ success: true, pin: null, reason: 'not_configured' });
+  try {
+    const { rows } = await pool.query('SELECT name, pin_hash, pin_enc FROM users WHERE user_id = $1 AND deleted_at IS NULL', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
+    if (!rows[0].pin_hash) return res.json({ success: true, pin: null, reason: 'no_pin' });
+    const pin = pinVault.decryptPin(rows[0].pin_enc);
+    if (!pin) return res.json({ success: true, pin: null, reason: 'not_stored' });
+    await pool.query(
+      `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data) VALUES (NULL, 'dev_pin_reveal', 'users', $1, NULL, $2)`,
+      [req.params.id, JSON.stringify({ dev: req.auth.sub, employee: rows[0].name })]);
+    return res.json({ success: true, pin });
+  } catch (err) {
+    if (err && err.code === '42703') return res.json({ success: true, pin: null, reason: 'not_stored' });   // migration 031 not applied yet
+    console.error('[pin:reveal]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

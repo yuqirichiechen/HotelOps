@@ -1,18 +1,9 @@
-/* Sprint 24.3 — portal Home: own hours (dashboard) with the timesheet underneath, one centred column. */
-.ph-page { padding: 22px 24px 40px; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
-.ph-me .home-page { padding: 0 0 8px; max-width: none; margin: 0; }
-.ph-timesheet .ts-page { padding: 8px 0 0; max-width: none; margin: 0; }
-.ph-preview-note { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg-surface); color: var(--text-secondary); font-family: 'TiemposText', Georgia, serif; font-size: 14px; }
+/* Sprint 24.4 — portal Home: greeting, one row of three cards, then the timeline. One centred column, everything on the same left edge. */
+.ph-page { padding: 24px 28px 48px; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; font-family: 'TiemposText', Georgia, serif; }
+.ph-greet { display: flex; flex-direction: column; gap: 2px; }
+.ph-eyebrow { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.ph-title { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 30px; line-height: 1.15; color: var(--text-primary); letter-spacing: -0.01em; }
+.ph-page .ts-page { padding: 0; max-width: none; margin: 0; animation: none; }
+.ph-preview-note { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg-surface); color: var(--text-secondary); font-size: 14px; }
 .ph-preview-note strong { color: var(--brand-text); font-family: 'TiemposHeadline', Georgia, serif; font-size: 16px; }
-@media (max-width: 760px) { .ph-page { padding: 16px 14px 90px; } }
-
-/* The original dashboard is built for a phone / kiosk (locked to the viewport height, cards that stretch to fill it). In the portal it is
-   just two ordinary cards under the greeting, side by side on a wide screen. */
-.ph-me .home-page { height: auto !important; max-height: none !important; overflow: visible !important; animation: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.ph-me .home-page > .home-greeting,
-.ph-me .home-page > .home-auto-close-warning,
-.ph-me .home-page > .home-notif { grid-column: 1 / -1; }
-.ph-me .home-flip-container { flex: none !important; min-height: 0 !important; }
-.ph-me .home-flip-card { height: auto !important; }
-.ph-me .home-hero, .ph-me .home-recent { height: auto !important; min-height: 130px; }
-@media (max-width: 760px) { .ph-me .home-page { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .ph-page { padding: 16px 14px 90px; } .ph-title { font-size: 24px; } }

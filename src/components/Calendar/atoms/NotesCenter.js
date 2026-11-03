@@ -42,7 +42,7 @@ const NotesCenter = ({
   // admin, repurpose the tile to count *unresolved* active notes
   // (the moderation queue: anything that hasn't been resolved yet).
   // Staff still uses real per-user is_read tracking.
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'dev';   // Sprint 24.4: dev has every manager power
 
   useEffect(() => {
     let cancelled = false;

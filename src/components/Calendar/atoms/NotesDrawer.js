@@ -153,7 +153,7 @@ const NotesDrawer = ({
   const menuRef = useRef(null);
   const visRef  = useRef(null);
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'dev';   // Sprint 24.4: dev has every manager power
 
   // Dismiss open menus on outside click
   useEffect(() => {
@@ -319,7 +319,7 @@ const NotesDrawer = ({
   // ── per-note actions (unchanged from 10.2) ───────────────────────────────
   const canMutate = (note) => {
     if (!currentUser) return false;
-    if (currentUser.role === 'admin') return true;
+    if (currentUser.role === 'admin' || currentUser.role === 'dev') return true;
     return note.author_user_id === currentUser.user_id;
   };
 

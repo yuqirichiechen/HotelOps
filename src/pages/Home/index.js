@@ -33,12 +33,6 @@ const greetingFor = (h) => {
 const formatTime = (iso) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
 
-const formatHours = (h) => {
-  if (h == null || isNaN(h) || h === 0) return '0h';
-  if (h % 1 === 0)                       return `${h}h`;
-  return `${h.toFixed(1)}h`;
-};
-
 const fmtElapsed = (secs) => {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
@@ -54,12 +48,9 @@ const getMondayISO = (d = new Date()) => {
   return date.toISOString().split('T')[0];
 };
 
-// Sprint 24.1: two variants of the same page.
-//   'kiosk'     (default) — the CLOCK IN door: greeting + the clock (focused-action overlay, Clock In / Out) + a confirmation with the
-//                auto-signout countdown. Nothing else — hours, timesheet etc. live in the staff portal.
-//   'dashboard' — the STAFF PORTAL Home: greeting + this-week hours + recent shifts. No clocking here at all (clocking is its own feature).
-const Home = ({ variant = 'kiosk' }) => {
-  const kiosk = variant !== 'dashboard';
+// Sprint 24.1 / 24.4: this page is the CLOCK IN door only — greeting + the clock (focused-action overlay, Clock In / Out) + a confirmation with the
+// auto-signout countdown. Hours, recent shifts and the timesheet live on the staff portal's Home (pages/PortalHome + pages/Timesheet).
+const Home = () => {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const t = useT();
@@ -257,8 +248,6 @@ const Home = ({ variant = 'kiosk' }) => {
   const now       = new Date();
   const greeting  = greetingFor(now.getHours());
   const firstName = (user?.name || '').split(' ')[0];
-  const total     = data?.totalHours || 0;
-  const recent    = (data?.recentShifts || []).slice(0, 3);
 
   // Sprint 16.1 / 16.6: focused-action screen is the landing
   // experience post-login. 16.6 removed the `!loading && !!data`
@@ -268,7 +257,7 @@ const Home = ({ variant = 'kiosk' }) => {
   // disabled (shows "…") until data resolves so the wrong mode
   // never gets tapped. clockEvent still suppresses it so the
   // existing flip-card flow takes over after a clock action.
-  const showFocused = kiosk && !focusedDismissed && !clockEvent;
+  const showFocused = !focusedDismissed && !clockEvent;
   const focusedMode = onClock ? 'out' : 'in';
 
   return (
@@ -365,7 +354,7 @@ const Home = ({ variant = 'kiosk' }) => {
           countdown out of this card into the Recent card's back face,
           so the action buttons always live here (clearer affordance
           for "I want to clock the other way RIGHT NOW"). */}
-      {kiosk && <section className="home-clock-section">
+      <section className="home-clock-section">
         <h2 className="home-section-title">{t('home.clock')}</h2>
         <div className="home-clock-flip-container">
           <div className={`home-clock-flip-card ${onClock ? 'flipped' : ''}`}>
@@ -414,10 +403,10 @@ const Home = ({ variant = 'kiosk' }) => {
 
           </div>
         </div>
-      </section>}
+      </section>
 
       {/* Sprint 24.1: kiosk — what you see after clocking: the confirmation and, when auto-signout is on, the countdown. */}
-      {kiosk && clockEvent && (
+      {clockEvent && (
         <section className="home-confirm" aria-live="polite">
           <div className="home-hero-event">
             <div className={`home-hero-event-icon ${clockEvent.type || ''}`}>✓</div>
@@ -433,83 +422,6 @@ const Home = ({ variant = 'kiosk' }) => {
           )}
         </section>
       )}
-
-      {/* This week — Sprint 9.3 flip card. Front = week summary.
-          Back = clock-event confirmation (replaces the old top
-          notification banner). Flips on successful clock-in/out;
-          flips back when the user taps "Keep signed in" on the
-          Recent card OR after the auto-clear window when auto-
-          signout is disabled. */}
-      {!kiosk && <section className="home-flip-container">
-        <div className={`home-flip-card ${clockEvent ? 'flipped' : ''}`}>
-          <div className="home-flip-face home-hero">
-            <div className="home-hero-eyebrow">{t('home.this_week')}</div>
-            <div className="home-hero-num">{formatHours(total)}</div>
-            <div className="home-hero-meta">
-              {recent.length > 0
-                ? t(recent.length === 1 ? 'home.recent_below_one' : 'home.recent_below_many', { n: recent.length })
-                : t('home.no_shifts')}
-            </div>
-          </div>
-          <div className="home-flip-face home-flip-face-back home-hero-event">
-            <div className={`home-hero-event-icon ${clockEvent?.type || ''}`}>✓</div>
-            <div className="home-hero-event-title">
-              {clockEvent?.type === 'out' ? t('notif.clocked_out') : t('notif.clocked_in')}
-            </div>
-            <div className="home-hero-event-sub">
-              {clockEvent?.type === 'out' ? '' : t('home.on_clock')}
-            </div>
-          </div>
-        </div>
-      </section>}
-
-      {/* Recent shifts — Sprint 9.3 flip card. Front = the last few
-          shifts. Back = the auto-signout countdown (only flips when
-          auto-signout is enabled). Embeds AutoSignoutBanner stripped
-          of its own border via .home-recent-event-banner. */}
-      {!kiosk && <section className="home-flip-container">
-        <div className={`home-flip-card ${clockEvent && clockEvent.seconds > 0 ? 'flipped' : ''}`}>
-          <div className="home-flip-face home-recent">
-            <h2 className="home-recent-title">{t('home.recent')}</h2>
-            {loading && <div className="home-empty">{t('home.loading')}</div>}
-            {!loading && recent.length === 0 && (
-              <div className="home-empty">{t('home.no_shifts_short')}</div>
-            )}
-            {!loading && recent.length > 0 && (
-              <ul className="home-recent-list">
-                {recent.map(s => (
-                  <li key={s.entry_id} className="home-recent-row">
-                    <div className="home-recent-date">
-                      {new Date(s.clock_in_time).toLocaleDateString([], {
-                        weekday: 'short', month: 'short', day: 'numeric',
-                      })}
-                    </div>
-                    <div className="home-recent-times">
-                      {formatTime(s.clock_in_time)} – {s.clock_out_time
-                        ? formatTime(s.clock_out_time)
-                        : <span className="home-recent-open">in progress</span>}
-                    </div>
-                    <div className="home-recent-hours">
-                      {s.clock_out_time ? formatHours(s.hours) : '—'}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="home-flip-face home-flip-face-back home-recent-event">
-            {clockEvent && clockEvent.seconds > 0 && (
-              <div className="home-recent-event-banner">
-                <AutoSignoutBanner
-                  seconds={clockEvent.seconds}
-                  onCancel={handleKeepSignedIn}
-                  onSignOut={handleAutoSignout}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </section>}
 
     </div>
   );

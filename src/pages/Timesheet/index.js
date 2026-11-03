@@ -90,6 +90,32 @@ const computeStatus = (worked, scheduled) => {
   return         { label: 'Approaching overtime',   tone: 'warn' };
 };
 
+// Group a /me/hours response into per-day segments (only the ones inside the displayed week) and totals.
+// weekTotal/dayTotals come from in-week segments only, so a 200h shift crossing weeks contributes only its in-week hours.
+const summarizeWeek = (data) => {
+  const map    = {};
+  const totals = {};
+  if (!data) return { entriesByDay: map, dayTotals: totals, weekTotal: 0 };
+  const inWeekKeys = new Set((data.days || []).map(d => d.date));
+  (data.entries || []).forEach(e => {
+    splitEntryByDay(e).forEach(seg => {
+      if (!inWeekKeys.has(seg.day)) return;       // out-of-week segment
+      (map[seg.day] = map[seg.day] || []).push(seg);
+      totals[seg.day] = (totals[seg.day] || 0) + seg.segHours;
+    });
+  });
+  Object.values(map).forEach(arr => arr.sort((a, b) => new Date(a.segStart) - new Date(b.segStart)));
+  Object.keys(totals).forEach(k => { totals[k] = Math.round(totals[k] * 10) / 10; });
+  const week = Math.round(Object.values(totals).reduce((s, n) => s + n, 0) * 10) / 10;
+  return { entriesByDay: map, dayTotals: totals, weekTotal: week };
+};
+
+const rangeLabel = (data) => {
+  if (!data) return '—';
+  const mon = new Date(data.weekStart + 'T00:00:00'); const sun = new Date(mon.getTime() + 6 * 24 * 3600 * 1000);
+  return `${mon.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${sun.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+};
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 const Timesheet = () => {
@@ -97,6 +123,7 @@ const Timesheet = () => {
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [openDay,   setOpenDay]   = useState(null);
+  const [curData,   setCurData]   = useState(null);   // the current week (kept while another week is browsed)
 
   useEffect(() => {
     let active = true;
@@ -111,40 +138,24 @@ const Timesheet = () => {
     return () => { active = false; };
   }, [weekStart]);
 
+  // keep the current week's data for the top cards: reuse it when it is the week on screen, fetch it once when browsing elsewhere
+  useEffect(() => {
+    if (weekStart === getMondayISO()) { if (data) setCurData(data); return undefined; }
+    if (curData) return undefined;
+    let active = true;
+    apiFetch(`/me/hours?weekStart=${getMondayISO()}&tz_offset_minutes=${new Date().getTimezoneOffset()}`).then(({ data: d }) => { if (active && d?.success) setCurData(d); });
+    return () => { active = false; };
+  }, [weekStart, data, curData]);
+
   const today      = localDayKey(new Date());
   const isThisWeek = weekStart === getMondayISO();
 
-  const monday = data ? new Date(data.weekStart + 'T00:00:00') : null;
-  const sunday = monday ? new Date(monday.getTime() + 6 * 24 * 3600 * 1000) : null;
-  const weekLabel = monday
-    ? `${monday.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${sunday.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
-    : '—';
+  const weekLabel = rangeLabel(data);
 
   // Group entries → segments, but only keep segments inside the displayed
   // week. weekTotal/dayTotals are computed from in-week segments only, so a
   // 200h shift crossing weeks contributes only its in-week hours here.
-  const { entriesByDay, dayTotals, weekTotal } = useMemo(() => {
-    const map    = {};
-    const totals = {};
-    if (!data) return { entriesByDay: map, dayTotals: totals, weekTotal: 0 };
-
-    const inWeekKeys = new Set((data.days || []).map(d => d.date));
-
-    (data.entries || []).forEach(e => {
-      splitEntryByDay(e).forEach(seg => {
-        if (!inWeekKeys.has(seg.day)) return;       // out-of-week segment
-        (map[seg.day] = map[seg.day] || []).push(seg);
-        totals[seg.day] = (totals[seg.day] || 0) + seg.segHours;
-      });
-    });
-
-    Object.values(map).forEach(arr => arr.sort(
-      (a, b) => new Date(a.segStart) - new Date(b.segStart)
-    ));
-    Object.keys(totals).forEach(k => { totals[k] = Math.round(totals[k] * 10) / 10; });
-    const week = Math.round(Object.values(totals).reduce((s, n) => s + n, 0) * 10) / 10;
-    return { entriesByDay: map, dayTotals: totals, weekTotal: week };
-  }, [data]);
+  const { entriesByDay, dayTotals, weekTotal } = useMemo(() => summarizeWeek(data), [data]);
 
   const total     = weekTotal || 0;
   const scheduled = data?.scheduledHours || 0;
@@ -172,44 +183,59 @@ const Timesheet = () => {
   return (
     <div className="ts-page">
 
-      {/* Header — eyebrow + date on one row, controls on a second row */}
-      <header className="ts-header">
-        <div className="ts-eyebrow">Timesheet</div>
-        <h1 className="ts-title">{weekLabel}</h1>
+      {/* Sprint 24.4 — one row: This week · Total worked (the week on screen) · Recent shifts */}
+      <section className="ts-top" aria-label="Hours at a glance">
+        <div className="ts-card ts-this">
+          <div className="ts-card-eyebrow">This week</div>
+          <div className="ts-big">{curData ? fmtHours(curData.totalHours || 0) : '—'}</div>   {/* the server's week total, exactly what the old Home card showed */}
+          <div className="ts-card-meta">{rangeLabel(curData)}</div>
+        </div>
+
+        <div className="ts-card ts-total">
+          <div className="ts-card-eyebrow">Total worked</div>
+          <div className="ts-big">{fmtHours(total)}</div>
+          <div className="ts-card-meta">
+            {scheduled > 0 ? `of ${fmtHours(scheduled)} scheduled` : 'No shifts scheduled this week'}
+            {weekLabel !== '—' && !isThisWeek && <> · {weekLabel}</>}
+          </div>
+          <div className="ts-total-foot">
+            <div className={`ts-status-pill tone-${status.tone}`}>{status.label}</div>
+            {scheduled > 0 && (
+              <>
+                <div className="ts-progress"><div className="ts-progress-fill" style={{ width: `${pct}%` }} /></div>
+                <div className="ts-hero-pct">{Math.round(pct)}%</div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="ts-card ts-recent">
+          <div className="ts-card-eyebrow">Recent</div>
+          {(curData?.recentShifts || []).length === 0 && <div className="ts-card-meta ts-recent-empty">{curData ? 'No shifts yet.' : 'Loading…'}</div>}
+          <ul className="ts-recent-list">
+            {(curData?.recentShifts || []).slice(0, 3).map(sh => (
+              <li key={sh.entry_id}>
+                <span className="ts-recent-date">{new Date(sh.clock_in_time).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                <span className="ts-recent-times">{fmtTime(sh.clock_in_time)} – {sh.clock_out_time ? fmtTime(sh.clock_out_time) : <em className="ts-entry-open">in progress</em>}</span>
+                <span className="ts-recent-hours">{sh.clock_out_time ? fmtHours(sh.hours) : '—'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* Timeline: the week being shown + its navigator, then daily totals on top and the daily breakdown below */}
+      <header className="ts-timeline-head">
+        <div>
+          <div className="ts-eyebrow">Timeline</div>
+          <h2 className="ts-week">{weekLabel}</h2>
+        </div>
         <div className="ts-controls">
           <button className="ts-chev-btn" onClick={goPrev} title="Previous week" aria-label="Previous week">‹</button>
-          <button
-            className="ts-this-week-btn"
-            onClick={goThis}
-            disabled={isThisWeek}
-          >
-            This week
-          </button>
+          <button className="ts-this-week-btn" onClick={goThis} disabled={isThisWeek}>This week</button>
           <button className="ts-chev-btn" onClick={goNext} disabled={isThisWeek} title="Next week" aria-label="Next week">›</button>
         </div>
       </header>
-
-      {/* Hero stat */}
-      <section className="ts-hero">
-        <div className="ts-hero-totals">
-          <div className="ts-hero-eyebrow">Total worked</div>
-          <div className="ts-hero-num">{fmtHours(total)}</div>
-          <div className="ts-hero-meta">
-            {scheduled > 0 ? `of ${fmtHours(scheduled)} scheduled` : 'No shifts scheduled this week'}
-          </div>
-        </div>
-        <div className="ts-hero-side">
-          <div className={`ts-status-pill tone-${status.tone}`}>{status.label}</div>
-          {scheduled > 0 && (
-            <>
-              <div className="ts-progress">
-                <div className="ts-progress-fill" style={{ width: `${pct}%` }} />
-              </div>
-              <div className="ts-hero-pct">{Math.round(pct)}%</div>
-            </>
-          )}
-        </div>
-      </section>
 
       {/* Bar chart */}
       <section className="ts-chart-card">

@@ -457,3 +457,22 @@
   .ts-day-hours     { font-size: 14px; min-width: 50px; }
   .ts-title         { font-size: 18px; }
 }
+
+/* ── Sprint 24.4: Home layout — one row of three cards, then the timeline ───────────────────────────── */
+.ts-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.ts-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 22px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ts-card-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+.ts-big { font-family: 'TiemposHeadline', Georgia, serif; font-size: 44px; line-height: 1.05; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+.ts-card-meta { font-size: 13px; color: var(--text-secondary); }
+.ts-total-foot { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ts-total-foot .ts-progress { flex: 1 1 80px; min-width: 60px; }
+.ts-recent-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; }
+.ts-recent-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }
+.ts-recent-list li:last-child { border-bottom: none; }
+.ts-recent-date { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.ts-recent-times { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-recent-hours { font-family: 'TiemposHeadline', Georgia, serif; font-weight: 700; color: var(--text-primary); }
+.ts-recent-empty { margin-top: 6px; font-style: italic; }
+.ts-timeline-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+.ts-week { margin: 2px 0 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 22px; color: var(--text-primary); letter-spacing: -0.01em; }
+@media (max-width: 900px) { .ts-top { grid-template-columns: minmax(0, 1fr); } .ts-big { font-size: 38px; } }

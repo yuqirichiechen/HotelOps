@@ -32,7 +32,7 @@
 .dvb-tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; padding: 3px 9px; border-radius: 6px; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.45); }
 .dvb-now { font-size: 14px; opacity: .95; } .dvb-now b { font-weight: 700; }
 .dvb-switch { display: inline-flex; padding: 4px; gap: 4px; border-radius: 14px; background: rgba(0,0,0,.25); }
-.dvb-switch button { display: inline-flex; align-items: center; gap: 10px; min-height: 46px; padding: 6px 18px 6px 14px; border: 0; border-radius: 10px; background: transparent; color: rgba(255,255,255,.9); font-family: inherit; text-align: left; cursor: pointer; transition: background .18s ease, color .18s ease, transform .1s ease, box-shadow .18s ease; }
+.dvb-switch button { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 18px 6px 14px; border: 0; border-radius: 10px; background: transparent; color: rgba(255,255,255,.9); font-family: inherit; text-align: left; cursor: pointer; transition: background .18s ease, color .18s ease, transform .1s ease, box-shadow .18s ease; }
 .dvb-switch button:hover:not(.on) { background: rgba(255,255,255,.18); color: #fff; }
 .dvb-switch button:active { transform: scale(.98); }
 .dvb-switch button:focus-visible, .dvb-prop:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }

@@ -342,6 +342,14 @@ const ForecastSummaryCard = ({ model, showChart = true, toggle = false }) => {
   const groups = model.groups;
   const animKey = model.date;   // Sprint 22.10: bars grow + numbers count up on first show and whenever another day is chosen
   const [metric, setMetric] = useState('left');   // 'left' | 'available'  (dev toggle; everyone else sees 'left')
+  // Sprint 24.4: tap a room type to see its types (Standard, Pets, …) — types only, never room numbers. Several can be open at once; once opened a row stays
+  // mounted so closing can animate.
+  const [open, setOpen] = useState(() => new Set());
+  const [everOpen, setEverOpen] = useState(() => new Set());
+  const toggleRow = (k) => {
+    setOpen(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+    setEverOpen(prev => (prev.has(k) ? prev : new Set(prev).add(k)));
+  };
   const avail = model.isToday && toggle && metric === 'available';
   const pair = (t) => (avail ? { x: t.inspected, y: t.ready } : { x: Math.max(0, t.inspected - t.arrivals), y: Math.max(0, t.leftNow) });
   const totalPair = model.isToday ? groups.reduce((a, g) => { const p = pair(g.totals); return { x: a.x + p.x, y: a.y + p.y }; }, { x: 0, y: 0 }) : null;
@@ -364,16 +372,39 @@ const ForecastSummaryCard = ({ model, showChart = true, toggle = false }) => {
           {model.isToday && <li className="fb-summary-head" aria-hidden="true"><span /><span title="Inspected only / inspected + pickup">VI / VI + PU</span></li>}
           {groups.map(g => {
             const p = model.isToday ? pair(g.totals) : null;
+            const gk = g.baseCode || g.baseLabel;
+            const isOpen = open.has(gk);
             return (
-              <li key={g.baseCode || g.baseLabel}>
-                <span>{g.baseCode || '—'} {avail ? 'available' : 'left to sell'}</span>
-                {model.isToday ? (
-                  <strong className={`fb-vi-pair ${p.y <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}`}>
-                    <span className={`fb-vi-x${p.x <= 0 ? ' is-zero' : ''}`}><CountUp value={p.x} animKey={animKey + metric} /></span>
-                    <span className="fb-vi-sep">/</span>
-                    <span className="fb-vi-y"><CountUp value={p.y} animKey={animKey + metric} /></span>
-                  </strong>
-                ) : (
+              <li key={gk} className={model.isToday ? `fb-sum-group${isOpen ? ' is-open' : ''}` : undefined}>
+                {model.isToday ? (<>
+                  <button type="button" className="fb-sum-row" aria-expanded={isOpen} onClick={() => toggleRow(gk)}>
+                    <span className="fb-sum-caret" aria-hidden="true">›</span>
+                    <span className="fb-sum-name">{g.baseCode || '—'} {avail ? 'available' : 'left to sell'}</span>
+                    <strong className={`fb-vi-pair ${p.y <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}`}>
+                      <span className={`fb-vi-x${p.x <= 0 ? ' is-zero' : ''}`}><CountUp value={p.x} animKey={animKey + metric} /></span>
+                      <span className="fb-vi-sep">/</span>
+                      <span className="fb-vi-y"><CountUp value={p.y} animKey={animKey + metric} /></span>
+                    </strong>
+                  </button>
+                  {everOpen.has(gk) && (
+                    <div className="fb-sum-sub" aria-hidden={!isOpen}>
+                      <div className="fb-sum-sub-in">
+                        {g.variants.map(v => {
+                          const q = pair(v);
+                          return (
+                            <div className="fb-sum-type" key={v.typeCode}>
+                              <span className="fb-sum-type-name">{v.subLabel || 'Standard'} <code>{v.typeCode}</code></span>
+                              <span className={`fb-vi-pair ${q.y <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}`}>
+                                <span className={`fb-vi-x${q.x <= 0 ? ' is-zero' : ''}`}>{q.x}</span><span className="fb-vi-sep">/</span><span className="fb-vi-y">{q.y}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>) : <span>{g.baseCode || '—'} left to sell</span>}
+                {model.isToday ? null : (
                   <strong className={g.totals.leftToSell <= 0 ? 'fb-emph-warn' : 'fb-emph-ok'}>
                     <CountUp value={g.totals.leftToSell} animKey={animKey} />
                   </strong>

@@ -84,7 +84,7 @@ const ClockInShell = () => {
   return (
     <div className="clockin-shell">
       <main className="clockin-main">
-        <Home variant="kiosk" />
+        <Home />
       </main>
     </div>
   );

@@ -735,3 +735,20 @@
 .fb-seg button { font: inherit; font-size: 12.5px; padding: 6px 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .fb-seg button.on { background: var(--brand-bg, #1a365d); color: #fff; }
 .fb-summary-grid.fb-no-chart { grid-template-columns: minmax(0, 1fr); }
+
+/* Sprint 24.4 — each room type row opens to show its types (types only, no room numbers); animates like the Rooms-to-sell dropdowns. */
+.fb-summary-list li.fb-sum-group { display: block; padding: 0; }
+.fb-sum-row { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 0; background: none; border: 0; font: inherit; font-size: 13px; color: inherit; cursor: pointer; text-align: left; }
+.fb-sum-row:hover .fb-sum-name { text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+.fb-sum-row:focus-visible { outline: 2px solid var(--brand-bg, #2b6cb0); outline-offset: 2px; border-radius: 6px; }
+.fb-sum-caret { display: inline-block; width: 12px; color: var(--text-muted); transition: transform .3s ease; }
+.fb-sum-group.is-open .fb-sum-caret { transform: rotate(90deg); }
+.fb-sum-name { flex: 1; }
+.fb-sum-sub { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .45s ease, opacity .35s ease; }
+.fb-sum-group.is-open .fb-sum-sub { grid-template-rows: 1fr; opacity: 1; }
+.fb-sum-sub-in { min-height: 0; overflow: hidden; }
+.fb-sum-type { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 0 5px 20px; font-size: 12.5px; color: var(--text-secondary); }
+.fb-sum-type:last-child { padding-bottom: 10px; }
+.fb-sum-type code { font-size: 10.5px; color: var(--text-muted); margin-left: 4px; }
+.fb-sum-type .fb-vi-pair { font-size: 13px; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .fb-sum-sub, .fb-sum-caret { transition: none; } }

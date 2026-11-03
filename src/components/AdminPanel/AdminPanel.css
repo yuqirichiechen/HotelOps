@@ -3483,3 +3483,11 @@
   .staff-mgr-export-radio      { font-size: 12px; }
   .staff-mgr-export-period-btn { padding: 6px 8px; font-size: 11px; }
 }
+
+/* Sprint 24.4 — dev-only PIN reveal on the staff page */
+.emp-pin-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.emp-pin-reveal { margin-top: 6px; font-size: 14px; color: var(--text-primary); }
+.emp-pin-reveal code { font-size: 20px; letter-spacing: 0.25em; padding: 2px 10px; border-radius: 8px; background: var(--bg-raised, #edf2f7); border: 1px solid var(--border); font-weight: 700; }
+.emp-pin-reveal small { color: var(--text-muted); margin-left: 6px; }
+.emp-pin-hide { margin-left: 8px; font: inherit; font-size: 12px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); cursor: pointer; }
+.emp-pin-why { margin-top: 6px; }

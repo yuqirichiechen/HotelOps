@@ -37,7 +37,9 @@ const deskCurrent = redactCurrentResponse({ success: true, source: 'mirror', syn
 const ok = (data) => ({ ok: true, status: 200, data: { success: true, ...data } });
 const stdResponses = () => ({
   'GET /frontdesk/forecast/current': { ok: true, status: 200, data: deskCurrent }, 'GET /frontdesk/forecast/live': { ok: false, status: 502, data: { success: false } },
-  'GET /me/hours': ok({ totalHours: 12.5, recentShifts: [], currentlyClockedIn: false, idleLogoutSeconds: 15, autoSignoutSeconds: 5 }),
+  'GET /me/hours': (p) => { const ws = (p.match(/weekStart=([0-9-]+)/) || [])[1] || '2026-11-02'; const d0 = new Date(ws + 'T00:00:00Z'); const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(d0.getTime() + i * 864e5); return { date: d.toISOString().slice(0, 10), dayName: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i] }; });
+    return ok({ weekStart: ws, days, entries: [], scheduledHours: 0, totalHours: ws === '2026-11-02' ? 12.5 : 3, currentlyClockedIn: false, idleLogoutSeconds: 15, autoSignoutSeconds: 5,
+      recentShifts: ws === '2026-11-02' ? [{ entry_id: 'e1', clock_in_time: '2026-11-02T16:00:00Z', clock_out_time: '2026-11-03T00:00:00Z', hours: 8 }, { entry_id: 'e2', clock_in_time: '2026-10-31T16:00:00Z', clock_out_time: null, hours: 0 }] : [] }); },
   'GET /frontdesk/employees': ok({ employees: [{ user_id: 'u1', name: 'Bryan', active: true, department: 'Housekeeping' }, { user_id: 'u2', name: 'Berta Rangel', active: true, department: 'Housekeeping' }] }),
   'GET /frontdesk/settings': ok({ settings: {} }), 'GET /frontdesk/housekeeping/plans': ok({ plans: [] }), 'GET /frontdesk/housekeeping/locked-rooms': ok({ rooms: [] }),
   'GET /frontdesk/housekeeping/plan': ok({ plan: null }), 'PUT /frontdesk/housekeeping/plan': ok({ updatedAt: new Date().toISOString() }),
@@ -131,8 +133,8 @@ const stdResponses = () => ({
   await t('PORTAL (Front Desk): nav = Home · Reservations · Housekeeping · Calendar · Settings (NO Timesheet page); Home = hours + timesheet; Reservations = the 5 tiles + sellable-vs-arriving WITHOUT the chart', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 250);
     const labels = navLabels(h).join('|'); for (const l of ['Home', 'Reservations', 'Housekeeping', 'Calendar', 'Settings']) assert(labels.includes(l), l + ' in ' + labels); assert(!labels.includes('Timesheet'), 'no Timesheet page');
-    const text = h.el.textContent; assert(/This week|home\.this_week|12\.5h/.test(text), 'hours summary'); assert(h.el.querySelector('.home-recent'), 'recent shifts card');
-    assert(h.el.querySelector('.ts-page .ts-hero') && h.el.querySelector('.ts-chart') && h.el.querySelector('.ts-daily-card') && h.el.querySelector('.ts-chev-btn'), 'the timesheet is part of Home (week navigator, total, chart, daily breakdown)');
+    const text = h.el.textContent; assert(/This week/.test(text) && /12\.5h/.test(text), 'hours summary'); assert(h.el.querySelector('.ts-recent'), 'recent shifts card');
+    assert(h.el.querySelector('.ts-page .ts-total') && h.el.querySelector('.ts-chart') && h.el.querySelector('.ts-daily-card') && h.el.querySelector('.ts-chev-btn'), 'the timesheet is part of Home (week navigator, total, chart, daily breakdown)');
     assert(!/Export CSV|csv/i.test(h.el.innerHTML), 'no CSV export'); assert(!h.el.querySelector('.fd-ops, .fd-tiles'), 'the front-desk block is no longer on Home');
     assert(!h.el.querySelector('.home-clock-section, .home-clock-action, .focused-action'), 'clocking in/out is not part of the portal'); assert(calls.every(c => !/clock-(in|out)/.test(c.p)), 'no clock requests'); assert(calls.some(c => c.p.startsWith('/me/hours')));
     await openTab(h, 'Reservations'); const t2 = h.el.textContent;
@@ -141,9 +143,23 @@ const stdResponses = () => ({
     assert(!/Secret|Guest[ab]|CONFa/.test(t2), 'no guest data on screen'); assert(calls.every(c => !c.p.startsWith('/admin/')), 'never calls a manager route: ' + calls.map(c => c.p).join(', '));
     assert(calls.some(c => c.p === '/frontdesk/forecast/current') && calls.some(c => c.p === '/frontdesk/forecast/live')); await h.unmount();
   });
+  await t('HOME LAYOUT (24.4): greeting, then ONE row [This week · Total worked · Recent], then the timeline: week navigator → Daily totals on top, Daily breakdown below; no "shifts below" line', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 300); const el = h.el; const idx = (sel) => [...el.querySelectorAll('*')].indexOf(el.querySelector(sel));
+    const cards = [...el.querySelectorAll('.ts-top > .ts-card')]; assert.strictEqual(cards.length, 3, 'three cards'); assert.deepStrictEqual(cards.map(c => c.querySelector('.ts-card-eyebrow').textContent), ['This week', 'Total worked', 'Recent']);
+    assert(el.querySelector('.ph-title') && /Good (morning|afternoon|evening), Fran\./.test(el.querySelector('.ph-title').textContent), 'greeting'); assert(idx('.ph-greet') < idx('.ts-top') && idx('.ts-top') < idx('.ts-timeline-head') && idx('.ts-timeline-head') < idx('.ts-chart-card') && idx('.ts-chart-card') < idx('.ts-daily-card'), 'order: greeting → cards → timeline header → daily totals → daily breakdown');
+    assert(!/shifts? below/i.test(el.textContent), 'the "N shifts below" line is gone'); assert.strictEqual(cards[0].querySelector('.ts-big').textContent, '12.5h'); assert(cards[0].textContent.includes('Nov 2'), 'week range'); assert.strictEqual(el.querySelectorAll('.ts-recent-list li').length, 2, 'recent shifts listed'); assert(/in progress/.test(cards[2].textContent));
+    assert(el.querySelector('.ts-timeline-head .ts-chev-btn') && el.querySelector('.ts-timeline-head .ts-this-week-btn'), 'navigator sits with the timeline'); assert(!el.querySelector('.ts-hero, .ts-header'), 'old separate hero / header are gone');
+    await h.unmount();
+  });
+  await t('HOME: browsing to an earlier week changes Total worked + the timeline but NOT This week / Recent (always the current week)', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 300); const el = h.el; const big = (i) => el.querySelectorAll('.ts-top > .ts-card')[i].querySelector('.ts-big').textContent;
+    await h.click(el.querySelector('[aria-label="Previous week"]')); await act(async () => { await sleep(100); });
+    assert(calls.some(c => /weekStart=2026-10-26/.test(c.p)), 'fetched the earlier week'); assert.strictEqual(big(0), '12.5h', 'This week unchanged'); assert(el.querySelectorAll('.ts-recent-list li').length === 2, 'Recent unchanged'); assert(/Oct 26/.test(el.querySelector('.ts-week').textContent), 'timeline label moved');
+    assert.strictEqual(calls.filter(c => /weekStart=2026-11-02/.test(c.p)).length, 1, 'the current week was not fetched twice'); await h.unmount();
+  });
   await t('Reservations "Sellable vs arriving" shows x/y: VI-only left to sell / VI+PU left to sell (fixture: 1 inspected + 1 pickup, 1 arriving → 0/1, total 0/1 rooms)', async () => {
     AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 200); await openTab(h, 'Reservations');
-    const rows = [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()); assert(rows.some(r => /^VI \/ VI \+ PU/.test(r)), 'column header: ' + rows.join(' | '));
+    const rows = [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').replace(/^\s*›\s*/, '').trim()); assert(rows.some(r => /^VI \/ VI \+ PU/.test(r)), 'column header: ' + rows.join(' | '));
     assert(rows.some(r => /^NQRR left to sell ?0\/1$/.test(r)), rows.join(' | ')); assert(rows.some(r => /^Total left to sell ?0\/1 rooms$/.test(r)), rows.join(' | ')); await h.unmount();
   });
   await t('the tile numbers come from the same models as the manager pages (arrivals left 1, left to sell 2 = VI+PU, dirty 2 = D+IP)', async () => {
@@ -154,7 +170,7 @@ const stdResponses = () => ({
   await t('PORTAL (any other staff — e.g. Housekeeping): Home (hours + timesheet) + Calendar + Settings only; no Reservations / Housekeeping, no front-desk requests; still no clocking', async () => {
     AuthMock._user = HK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);
     const labels = navLabels(h).join('|'); assert(!labels.includes('Housekeeping') && !labels.includes('Reservations') && !labels.includes('Timesheet')); for (const l of ['Home', 'Calendar', 'Settings']) assert(labels.includes(l), l);
-    assert(h.el.querySelector('.home-hero') && h.el.querySelector('.ts-page .ts-hero'), 'their own hours + timesheet are there'); assert(!h.el.querySelector('.home-clock-section'));
+    assert(h.el.querySelector('.ts-this') && h.el.querySelector('.ts-total') && h.el.querySelector('.ts-chart'), 'their own hours + timesheet are there'); assert(!h.el.querySelector('.home-clock-section'));
     assert(calls.every(c => !c.p.startsWith('/frontdesk/') && !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', ')); await h.unmount();
   });
   await t('front-desk features = ROLE "front desk" OR DEPARTMENT "Front Desk": a front-desk role with NO department works; spellings count; anyone else does not', async () => {
@@ -203,7 +219,7 @@ const stdResponses = () => ({
   if (process.env.DUMP_DIR) {   // screenshots: DUMP_DIR=somewhere node tests/staffportal.test.js "$PWD"  → login-*.html, home.html, reservations.html, housekeeping.html (wrap with the built CSS)
     const out = (n, h) => fs.writeFileSync(path.join(process.env.DUMP_DIR, n + '.html'), h.el.innerHTML);
     localStorage.clear(); let h = await mount(loginPage(), 150); out('login-clockin', h); await h.click(h.el.querySelector('[data-mode="staff"]')); out('login-staff', h); await h.unmount();
-    AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h); await openTab(h, 'Reservations'); out('reservations', h);
+    AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h); await openTab(h, 'Reservations'); await h.click(h.el.querySelector('.fb-sum-row')); out('reservations', h);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); }); await h.click(h.btn(/^Add Bryan$/)); out('housekeeping', h); await h.unmount();
   }
   console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
