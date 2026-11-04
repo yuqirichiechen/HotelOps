@@ -2,7 +2,6 @@
 // Sprint 24.5 — small building blocks of the redesigned Housekeeping page: icons, the donut, the floor accordion, the "who is working" panel
 // (checkbox list / number stepper), and a modal. Presentational only — all assignment logic stays in index.js / hkWork.js.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StatusRing, CountUp } from '../shared/CountUp';
 
 const Svg = ({ children, size = 20, sw = 2 }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
@@ -21,19 +20,6 @@ export const IcClock   = (p) => <Svg {...p}><circle cx="12" cy="12" r="9" /><pat
 export const IcDoc     = (p) => <Svg {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></Svg>;
 export const IcRefresh = (p) => <Svg {...p}><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" /><path d="M21 3v5h-5" /><path d="M3 21v-5h5" /></Svg>;
 export const IcHand    = (p) => <Svg {...p}><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" /><path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6 7-2.7 0-4-1.4-5.5-4L4 14.5a1.5 1.5 0 0 1 2.4-1.7L8 14" /></Svg>;
-
-/** A ring with the count inside and a caption under it — Assignment overview. `total` is what the percentage is a share of. */
-export const Donut = ({ label, count, total, color, animKey, hint }) => {
-  const f = total > 0 ? count / total : 0;
-  return (
-    <div className="hk-donut" data-kind={label}>
-      <StatusRing fraction={f} animKey={animKey} color={color} label={`${label}: ${count} of ${total}`}>
-        <span className="hk-donut-in"><strong><CountUp value={count} animKey={animKey} /></strong><small>({Math.round(f * 100)}%)</small></span>
-      </StatusRing>
-      <span className="hk-donut-label" title={hint}>{label}</span>
-    </div>
-  );
-};
 
 /** Collapsible floor section: header (floor, room count, caret) + body. The body stays mounted (so cards are always in the DOM, and closing animates). */
 export const FloorSection = ({ label, count, open, onToggle, floorId, children }) => (

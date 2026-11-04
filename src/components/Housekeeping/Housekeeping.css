@@ -359,3 +359,36 @@
 .hk-modal-back { opacity: 0; transition: opacity .18s ease; } .hk-modal-back.in { opacity: 1; }
 .hk-modal { transform: translateY(10px) scale(.98); transition: transform .2s ease; } .hk-modal-back.in .hk-modal { transform: none; }
 @media (prefers-reduced-motion: reduce) { .hk-pop, .hk-modal-back, .hk-modal { transition: none; } }
+
+/* ═══ Sprint 24.7 — seven tiles (overview folded in), full-width calendar, Plan card (step 1) and the rooms board (step 2) ═══ */
+.fc-kpis.hk-kpis-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; }
+.hk-kpis-7 .fc-kpi-card { padding: 14px 12px; }
+.hk-kpis-7 .fc-kpi-sublabel { font-size: 12px; }
+@media (max-width: 1500px) { .fc-kpis.hk-kpis-7 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .fc-kpis.hk-kpis-7 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .fc-kpis.hk-kpis-7 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.hk-daycard.hk-daycard-wide { margin-bottom: 16px; }
+.hk-daycard-wide .hk-day { min-width: 118px; flex: 1 0 118px; }
+
+.hk-plan { gap: 12px; padding: 18px 20px 20px; margin-bottom: 16px; }
+.hk-plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hk-plan-head h2 { margin: 0; font-family: 'TiemposHeadline', Georgia, serif; font-size: 21px; color: var(--brand-text); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hk-plan-head .hk-muted { margin: 4px 0 0; }
+.hk-stepchip { flex: none; white-space: nowrap; line-height: 1.4; font-family: 'TiemposText', Georgia, serif; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; background: #e6f0fb; color: #2b6cb0; }
+.hk-plan .hk-modebar { padding: 10px 0 4px; border-top: 1px solid var(--border-light, var(--border)); margin: 0; }
+.hk-preview { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.hk-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hk-preview-head h3 { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+.hk-pv-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.hk-pv { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-surface-alt); transition: border-color .2s, background .2s; }
+.hk-pv.flag-under, .hk-pv.flag-over { border-color: #ecc94b; }
+.hk-pv-un { border-style: dashed; background: transparent; }
+.hk-pv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.hk-pv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; } .hk-pv-top b { font-family: 'TiemposHeadline', Georgia, serif; font-size: 16px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hk-pv-rooms { font-size: 13px; color: var(--text-secondary); white-space: nowrap; } .hk-pv-rooms strong { font-size: 18px; color: var(--text-primary); font-family: 'TiemposHeadline', Georgia, serif; }
+.hk-pv small { font-size: 12px; color: var(--text-secondary); } .hk-pv .hk-warn { color: var(--warn-text, #975a16); margin: 0; }
+.hk-empty-plan { padding: 22px 10px; }
+.hk-step2 { display: flex; flex-direction: column; scroll-margin-top: 12px; animation: hk-step-in .35s ease both; }
+@keyframes hk-step-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hk-step2 { animation: none; } }
