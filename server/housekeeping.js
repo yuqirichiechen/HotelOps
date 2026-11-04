@@ -10,6 +10,7 @@ function sanitizeSettings(s) {
   s = s && typeof s === 'object' ? s : {};
   const out = { min: num(s.min, 1, 100, DEFAULTS.min), max: num(s.max, 1, 200, DEFAULTS.max), cleanWeight: num(s.cleanWeight, 0.1, 5, DEFAULTS.cleanWeight), serviceWeight: num(s.serviceWeight, 0, 5, DEFAULTS.serviceWeight) };
   if (s.anonymous === true) out.anonymous = true;                      // planned by NUMBER of housekeepers ("Housekeeper 1…N"), no names
+  if (s.blankNames === true) out.blankNames = true;                    // Sprint 24.9: No-name sheets print an empty name line (front desk writes it by hand) instead of "Housekeeper N"
   return out;
 }
 

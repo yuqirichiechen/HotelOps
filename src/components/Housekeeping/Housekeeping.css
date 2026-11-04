@@ -392,3 +392,31 @@
 .hk-step2 { display: flex; flex-direction: column; scroll-margin-top: 12px; animation: hk-step-in .35s ease both; }
 @keyframes hk-step-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .hk-step2 { animation: none; } }
+
+/* ═══ Sprint 24.9 ═══ */
+/* KPI tiles: one-line label + number + one-line description, so every number sits on the same line */
+.fc-kpis.hk-kpis-7 .fc-kpi-body { min-width: 0; }
+.fc-kpis.hk-kpis-7 .fc-kpi-label, .fc-kpis.hk-kpis-7 .fc-kpi-sublabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-kpis.hk-kpis-7 .fc-kpi-sublabel { font-size: 11.5px; margin-top: 2px; }
+
+/* dev room table: one shared column grid for every floor, so the columns line up from floor to floor */
+.hk-rt { table-layout: fixed; }
+.hk-rt col.c-room { width: 84px; } .hk-rt col.c-type { width: 96px; } .hk-rt col.c-now { width: 170px; } .hk-rt col.c-stay { width: 150px; }
+.hk-rt col.c-guest { width: auto; } .hk-rt col.c-task { width: 150px; } .hk-rt col.c-by { width: 170px; }
+.hk-rt td, .hk-rt th { overflow: hidden; text-overflow: ellipsis; }
+.hk-rt td.hk-rt-guest { white-space: nowrap; }
+
+/* "Housekeeper name" switch inside the No-name count pop-over */
+.hk-blank-row { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-light, var(--border)); }
+.hk-blank-row .hk-switch { align-self: flex-start; } .hk-blank-row small { color: var(--text-muted); font-size: 11.5px; }
+.hk-opt-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface-alt); }
+.hk-opt-row .hk-switch { align-self: flex-start; } .hk-opt-row small { color: var(--text-muted); font-size: 12px; } .hk-opt-msg { font-size: 12px; } .hk-opt-msg.ok { color: var(--success-text); } .hk-opt-msg.bad { color: var(--danger-text); }
+
+@media print {
+  /* the colour key under the sheet title must print its colours (browsers drop backgrounds unless told otherwise) */
+  .hk-page-legend i { -webkit-print-color-adjust: exact; print-color-adjust: exact; border-color: #555; }
+  .hk-half-tag { margin-left: 10px; padding: 1px 10px; border: 1.5px solid #111; border-radius: 999px; font-size: 11px; letter-spacing: .08em; }
+  .hk-page-table tr.hk-done td { color: #666; } .hk-page-table tr.hk-done .hk-num { text-decoration: line-through; }
+  .hk-box.is-done { background: #111; color: #fff; font-size: 11px; line-height: 12px; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hk-donetag { font-size: 10.5px; color: #555; }
+}

@@ -39,6 +39,7 @@ function redactCurrentResponse(body) {
 // An allow-list on purpose: app_settings also holds login-method, overtime and other manager-only configuration.
 const SETTINGS_ALLOWED = [
   'hk_print_colors',
+  'hk_print_two_sheets',   // Sprint 24.9
   'forecast_allowance_enabled',
   'forecast_allowance_scale_pct',
   'forecast_allowance_min_extra',

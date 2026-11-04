@@ -202,7 +202,7 @@ const stdResponses = () => ({
     await h.click(h.btn(/Who's working/)); await h.click(h.el.querySelector('input[aria-label="Bryan is working"]')); assert([...h.el.querySelectorAll('.hk-hkcol h2')].some(x => x.textContent === 'Bryan'), 'Bryan is working'); await h.click(h.btn(/^Save$/)); await act(async () => { await sleep(50); });
     const put = calls.find(c => c.method === 'PUT'); assert(put && put.p === '/frontdesk/housekeeping/plan', 'saved through the front-desk route'); assert.strictEqual(put.body.assignments[0].name, 'Bryan');
     await h.click(h.btn(/^Tomorrow$/)); await act(async () => { await sleep(120); }); assert(h.btn(/^Tomorrow$/).getAttribute('aria-selected') === 'true', 'Tomorrow view'); assert(calls.some(c => /housekeeping\/plan\?date=2026-11-03/.test(c.p)), 'loaded tomorrow’s plan');
-    await h.click(h.btn(/^No name$/)); await act(async () => { await sleep(60); }); assert(/How many housekeepers/i.test(h.el.textContent), 'No-name mode works'); assert(calls.every(c => !c.p.startsWith('/admin/'))); await h.unmount();
+    await h.click(h.btn(/^No name$/)); await act(async () => { await sleep(60); }); assert(/How many housekeepers/i.test(h.el.textContent), 'No-name mode works'); assert(h.el.querySelector('[aria-label="Name the sheets Housekeeper 1, 2, 3"]'), 'the front desk gets the blank-name switch too'); assert(calls.every(c => !c.p.startsWith('/admin/'))); await h.unmount();
   });
   await t('DEV "Front desk view": one click on the dev bar shows the real portal as a front-desk employee sees it (no sign-in as an employee); switch back any time', async () => {
     mockAuth._user = { username: 'dev', name: 'Dev', role: 'dev', type: 'dev' }; sessionStorage.clear(); responses = stdResponses(); calls.length = 0;

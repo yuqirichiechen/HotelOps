@@ -50,6 +50,7 @@ const HkRoomTable = ({ sheet, items, assign, hks, pinned, guestOf, offset, date 
           <div className="hk-rt-floor" key={sec.key}>
             <h3>{sec.label}</h3>
             <table className="hk-rt">
+              <colgroup><col className="c-room" /><col className="c-type" /><col className="c-now" /><col className="c-stay" /><col className="c-guest" /><col className="c-task" /><col className="c-by" /></colgroup>
               <thead><tr><th>Room</th><th>Type</th><th>Now</th><th>Stay (in → out)</th><th>Guest</th><th>Task</th><th>Cleaned by</th></tr></thead>
               <tbody>
                 {sec.rows.map((r, i) => (
