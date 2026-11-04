@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 24.8   | Housekeeping polish: no "Step 1 · done", tiles without descriptions, Save into the Plan card (one Print all sheets), phantom-refresh bug fixed (FLIP glides only on a change of owner) | **Built + tested** (UI only) |
 | 24.7   | Housekeeping two-step flow (manager / dev): overview folded into seven KPI tiles, full-width calendar, Plan card with a no-rooms preview, Confirm → rooms board (Not assigned + assignments) | **Built + tested** (UI only; the front-desk portal keeps its 24.6 layout until its own pass) |
 | 24.6   | Housekeeping fixes: header status bar top-right in dev, layout v3 (overview + calendar row, wide Not assigned, full-width assignments), fade pop-ups, blue dots, Reset in No-name mode | **Built + tested** (UI only) |
 | 24.5   | Housekeeping redesign to match Reservations/Forecast (user's reference mockup): header + links + six KPI tiles, left Not assigned panel, right overview donuts + housekeeper cards, floor accordions | **Built + tested** (UI only: no server, migration or env change; hkWork.js untouched) |
@@ -43,6 +44,14 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-03 — Sprint 24.8: Housekeeping polish + the "other columns refresh" bug
+
+1. **"Step 1 · done" removed.** The small "Step 1" chip is shown only while you are still planning (before Confirm); after confirming — and on past / saved days — the Plan card title has no chip.
+2. **KPI tiles have no description lines** (they made the row tall): the seven tiles are label + number (+ the ring on To clean / To service / Dirty / Assignment progress). The detail that used to be in the text ("N of 26 rooms assigned", "9 of 26 rooms to clean") is in each ring's tooltip. Reservations / Forecast tiles are untouched.
+3. **Save moved into the Plan card** (next to Confirm plan / Assign by hand; same disabled / "Saved" logic, the "Unsaved changes" text stays in the bar below it). **Only one Print all sheets** now: the page header's. The front-desk portal (unchanged layout) keeps Save in its header.
+4. **Bug: opening / closing one housekeeper's floor sometimes made other housekeepers' cards "refresh" (glide).** Cause: `useFlip` (the card-glide animation) runs after *every* render of the page and animates any room card whose page position differs from the one it remembered. A floor accordion opens with a 350 ms CSS transition, but the position remembered right after the toggle is the *start* of that transition; the next render (e.g. opening a floor in another housekeeper a moment later) found the cards under the first accordion "moved" and replayed a glide on them — only when two toggles were close together, hence "sometimes". Fix, in two parts (`shared/useFlip.js`): (a) a card now carries `data-flip-group` (its owner: housekeeper id or `pool`) and **only glides when its group changed** — layout shifts (accordions, scrollbars, pop-overs, resizes) never animate cards that stay with their owner; (b) the remembered positions are refreshed on every `transitionend`, so they can't keep a mid-transition layout. Cards without a group (the hook's other callers: none today) behave as before. The new test fails with the old behaviour (checked).
+Tests: `housekeeping` 40 (+Save/Print placement for manager and dev, +no-phantom-refresh at hook level and page level; tiles / two-step tests updated), `staffportal` 20 unchanged, all other suites re-run green; build compiles; screenshot at 1680 px. No deploy steps.
 
 ### 2026-11-03 — Sprint 24.7: Housekeeping as a two-step flow
 

@@ -67,10 +67,10 @@ const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
 );
 
 /** One small room card. Draggable; click selects it (Ctrl/⌘-click adds or removes, Shift-click selects a range); right-click opens a "Move to" menu. */
-const RoomCard = ({ it, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin, onMenu }) => (
+const RoomCard = ({ it, group, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin, onMenu }) => (
   <div
     className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${dev && guest ? ' withguest' : ''}`}
-    data-flip={it.roomNumber} data-room={it.roomNumber}
+    data-flip={it.roomNumber} data-flip-group={group} data-room={it.roomNumber}
     draggable={!readOnly}
     role={readOnly ? undefined : 'button'} tabIndex={readOnly ? undefined : 0} aria-pressed={readOnly ? undefined : !!selected}
     aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}${it.locked ? ', guest asked not to be moved' : ''}`}
@@ -426,7 +426,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
   const poolCards = items.filter(i => !assign[i.roomNumber]);
   const cardEl = (it) => (
-    <RoomCard key={it.roomNumber} it={it} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected.includes(it.roomNumber)} justMoved={justMoved.includes(it.roomNumber)} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
+    <RoomCard key={it.roomNumber} it={it} group={assign[it.roomNumber] || 'pool'} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected.includes(it.roomNumber)} justMoved={justMoved.includes(it.roomNumber)} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
       onSelect={selectCard} onDragStart={onDragStart} onDragEnd={onDragEnd} onUnpin={unpin} onMenu={openMenu} />
   );
   // floor accordions: open/closed is remembered per (group, floor); until the user touches one, the first floor with rooms is open
@@ -471,11 +471,9 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
   // ── numbers for the tiles / overview (all from the same work list + assignment the page already holds) ──
   const total = items.length, assignedN = total - poolCards.length;
-  const checkoutN = items.filter(i => i.kind === 'clean' && /check.?out|checks out/i.test(i.why || '')).length;
   const dirtyNowN = items.filter(i => i.kind === 'clean' && /^(Dirty|In progress)/.test(i.why || '')).length;
   const avgUnits = viewHks.length ? totalUnits / viewHks.length : 0;
   const pctAssigned = total > 0 ? Math.round((assignedN / total) * 100) : 0;
-  const hkInDept = staff.filter(s => HK_DEPT.test(s.department || '')).length;
   const goHome = () => { if (viewCtx && viewCtx.goTo) viewCtx.goTo('home'); };
   const fmtClock = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—');
   const legend = (
@@ -497,7 +495,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             ? <div className="hk-live" title="Room conditions as read from rGuest when this page was opened or refreshed"><span className="hk-live-dot" /><span>Rooms live</span><strong>{fmtClock(live.fetchedAt)}</strong></div>
             : <div className="hk-live is-off" title="rGuest could not be reached just now — room conditions are from the last sync"><span className="hk-live-dot" /><span>Live unavailable</span></div>)}
           <button type="button" className="hk-btn" onClick={() => { loadAll(); loadPlans(); }} disabled={loading}><IcRefresh size={15} />Refresh rooms</button>
-          {!readOnly && <button type="button" className="hk-btn hk-btn-primary" onClick={save} disabled={!dirty || hks.length === 0}>{dirty ? 'Save' : 'Saved'}</button>}
+          {simple && !readOnly && <button type="button" className="hk-btn hk-btn-primary" onClick={save} disabled={!dirty || hks.length === 0}>{dirty ? 'Save' : 'Saved'}</button>}
           <button type="button" className="hk-btn hk-btn-dark" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
         </div>
         {!simple && (
@@ -517,13 +515,13 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
         <>
           {!simple && (
             <section className="fc-kpis hk-kpis hk-kpis-7" aria-label="Workload">
-              <KpiCard accent="staying" icon={<IcBroom />} label="To clean" primary={cleanN} sublabel={`${checkoutN} check-out · ${cleanN - checkoutN} other`} ring={total > 0 ? cleanN / total : 0} ringColor="#2f855a" ringLabel={`${cleanN} of ${total} rooms to clean`} />
-              <KpiCard accent="inhouse" icon={<IcBed />} label="To service" primary={serviceN} sublabel="stay-over service" ring={total > 0 ? serviceN / total : 0} ringColor="#2b6cb0" ringLabel={`${serviceN} of ${total} rooms to service`} />
-              <KpiCard accent="dirty" icon={<IcBroom />} label="Dirty / In progress" primary={dirtyNowN} sublabel="of the rooms to clean, dirty or being cleaned now" ring={total > 0 ? dirtyNowN / total : 0} ringColor="#c53030" ringLabel={`${dirtyNowN} of ${total} rooms are dirty or in progress`} />
-              <KpiCard accent="arrivals" icon={<IcLayers />} label="Total workload" primary={Math.round(totalUnits * 10) / 10} sublabel={`clean ${fmt(items.filter(i => i.kind === 'clean').reduce((n, i) => n + weightOf(i, viewSettings), 0))} · service ${fmt(items.filter(i => i.kind === 'service').reduce((n, i) => n + weightOf(i, viewSettings), 0))}`} />
-              <KpiCard accent="inhouse" icon={<IcPeople />} label="Housekeepers" primary={viewHks.length} sublabel={anon || !hkInDept ? 'working' : `active (of ${hkInDept})`} />
-              <KpiCard accent="default" icon={<IcBars />} label="Avg. workload" primary={viewHks.length ? Math.round(avgUnits * 10) / 10 : '—'} sublabel={`target ${viewSettings.min} – ${viewSettings.max}`} />
-              <KpiCard accent="staying" icon={<IcCheck />} label="Assignment progress" primary={`${pctAssigned}%`} sublabel={`${assignedN} of ${total} rooms assigned`} ring={total > 0 ? assignedN / total : 0} ringColor="#2f855a" ringLabel={`${assignedN} of ${total} rooms assigned`} />
+              <KpiCard accent="staying" icon={<IcBroom />} label="To clean" primary={cleanN} ring={total > 0 ? cleanN / total : 0} ringColor="#2f855a" ringLabel={`${cleanN} of ${total} rooms to clean`} />
+              <KpiCard accent="inhouse" icon={<IcBed />} label="To service" primary={serviceN} ring={total > 0 ? serviceN / total : 0} ringColor="#2b6cb0" ringLabel={`${serviceN} of ${total} rooms to service`} />
+              <KpiCard accent="dirty" icon={<IcBroom />} label="Dirty / In progress" primary={dirtyNowN} ring={total > 0 ? dirtyNowN / total : 0} ringColor="#c53030" ringLabel={`${dirtyNowN} of ${total} rooms are dirty or in progress`} />
+              <KpiCard accent="arrivals" icon={<IcLayers />} label="Total workload" primary={Math.round(totalUnits * 10) / 10} />
+              <KpiCard accent="inhouse" icon={<IcPeople />} label="Housekeepers" primary={viewHks.length} />
+              <KpiCard accent="default" icon={<IcBars />} label="Avg. workload" primary={viewHks.length ? Math.round(avgUnits * 10) / 10 : '—'} />
+              <KpiCard accent="staying" icon={<IcCheck />} label="Assignment progress" primary={`${pctAssigned}%`} ring={total > 0 ? assignedN / total : 0} ringColor="#2f855a" ringLabel={`${assignedN} of ${total} rooms assigned`} />
             </section>
           )}
 
@@ -563,7 +561,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             <section className="hk-panel hk-plan" aria-label="Plan the day">
               <div className="hk-plan-head">
                 <div>
-                  <h2>Plan the day <span className="hk-stepchip">{isConfirmed || readOnly ? 'Step 1 · done' : 'Step 1'}</span></h2>
+                  <h2>Plan the day{!isConfirmed && !readOnly && <span className="hk-stepchip">Step 1</span>}</h2>
                   <p className="hk-muted">{readOnly ? 'The plan saved for this day — read-only.' : isConfirmed ? 'Plan confirmed — place the rooms below, or change the people / rules and auto-assign again.' : 'Choose who is working and check the split, then confirm — the rooms appear below.'}</p>
                 </div>
                 <div className="hk-tools">
@@ -571,6 +569,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                     <>
                       <button type="button" className="hk-btn hk-btn-primary" onClick={() => confirmPlan(false)} disabled={hks.length === 0 || items.length === 0}>{isConfirmed ? <><IcWand size={16} />Auto-assign</> : <><IcCheck size={16} />Confirm plan</>}</button>
                       {!isConfirmed && <button type="button" className="hk-btn" onClick={() => confirmPlan(true)} disabled={hks.length === 0 || items.length === 0}>Assign by hand</button>}
+                      <button type="button" className="hk-btn hk-btn-save" onClick={save} disabled={!dirty || hks.length === 0}>{dirty ? 'Save' : 'Saved'}</button>
                       {isConfirmed && (resetAsk ? (
                         <span className="hk-confirm" role="alertdialog" aria-label="Confirm reset">Put every room back in "Not assigned"?
                           <button type="button" className="hk-btn hk-btn-sm hk-btn-danger" onClick={doReset}>Yes, reset</button>
@@ -581,7 +580,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                       ))}
                     </>
                   )}
-                  <button type="button" className="hk-btn" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
                 </div>
               </div>
               {!readOnly && (
