@@ -22,7 +22,7 @@ import HkSheets from './HkSheets';
 import HkRoomTable from './HkRoomTable';
 import HkPrintColors from './HkPrintColors';
 import ConfirmModal from '../shared/ConfirmModal';
-import { buildWorkList, summarize, balance, warnings, reconcile, resolveAssign, toAssignments, weightOf, parseColors, DEFAULT_SETTINGS } from './hkWork';
+import { buildWorkList, summarize, balance, warnings, reconcile, resolveAssign, toAssignments, weightOf, parseColors, buildMasterSheet, DEFAULT_SETTINGS } from './hkWork';
 import './Housekeeping.css';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -431,7 +431,12 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     setSaveMsg({ ok: false, text: data?.message || 'Could not save' }); return false;
   }, [work, settings, anon, assign, hks, pinned, loadPlans, apiBase]);
 
+  // Sprint 24.10: "Print all sheets" = the ONE-PAGE sheet of every room (today's board). Past days / tomorrow have no board of their own, so they keep the
+  // housekeeper sheets, and so does the "Print housekeeper sheets" link.
+  const canMaster = !readOnly && offset === 0 && !!payload;
+  const printAll = () => (canMaster ? printNow('master') : printNow('all'));
   const printNow = async (who) => {
+    if (who === 'master') { setDoneRooms(new Set()); setPrinting('master'); return; }
     if (viewHks.length === 0) return;
     if (!readOnly && (dirty || !savedAt)) { if (!(await save())) return; }
     if (twoSheets && !readOnly && offset === 0) {
@@ -450,8 +455,9 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     if (dirty) setAsk({ title: 'Switch day?', message: 'You have unsaved changes for this day. They will be lost.', confirmLabel: 'Switch anyway', tone: 'danger', onConfirm: go }); else go();
   };
 
+  const master = useMemo(() => (printing === 'master' ? buildMasterSheet({ payload, live, items: work.items }) : null), [printing, payload, live, work]);
   const sheets = useMemo(() => {
-    if (!printing) return [];
+    if (!printing || printing === 'master') return [];
     const shown = (a) => (viewSettings.blankNames && /^anon-/.test(a.userId) ? BLANK_NAME : a.name);   // No name + "leave blank": an underscore line to write on
     const rows = readOnly
       ? past.assignments.map(a => ({ userId: a.userId, name: shown(a), rooms: a.rooms.map(r => ({ ...itemByRoom.get(r.roomNumber), ...r })) }))
@@ -548,13 +554,13 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             : <div className="hk-live is-off" title="rGuest could not be reached just now — room conditions are from the last sync"><span className="hk-live-dot" /><span>Live unavailable</span></div>)}
           <button type="button" className="hk-btn" onClick={() => { loadAll(); loadPlans(); }} disabled={loading}><IcRefresh size={15} />Refresh rooms</button>
           {simple && !readOnly && <button type="button" className="hk-btn hk-btn-primary" onClick={save} disabled={!dirty || hks.length === 0}>{dirty ? 'Save' : 'Saved'}</button>}
-          <button type="button" className="hk-btn hk-btn-dark" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
+          <button type="button" className="hk-btn hk-btn-dark" onClick={printAll} disabled={canMaster ? loading : viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
         </div>
         {!simple && (
             <div className="hk-links" role="group" aria-label="Housekeeping tools">
               {dev && <button type="button" className="hk-link" onClick={() => setHistOpen(true)}><IcClock size={16} />Snapshot history</button>}
               <button type="button" className="hk-link" onClick={() => setRulesOpen(true)}><IcGear size={16} />Housekeeping settings</button>
-              <button type="button" className="hk-link" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print sheets</button>
+              <button type="button" className="hk-link" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print housekeeper sheets</button>
               <button type="button" className="hk-link" onClick={() => setLogOpen(true)}><IcDoc size={16} />Assignment log</button>
             </div>
         )}
@@ -728,7 +734,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                       ) : (
                         <button type="button" className="hk-btn" onClick={() => setResetAsk(true)} disabled={poolCards.length === items.length}>Reset</button>
                       )}
-                      <button type="button" className="hk-btn" onClick={() => printNow('all')} disabled={viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
+                      <button type="button" className="hk-btn" onClick={printAll} disabled={canMaster ? loading : viewHks.length === 0}><IcPrint size={16} />Print all sheets</button>
                     </div>
                   )}
                 </div>
@@ -858,7 +864,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
       {ask && <ConfirmModal {...ask} onClose={() => setAsk(null)} />}
       {menu && <CardMenu menu={menu} hks={hks} canPaste={clip.length > 0} clipCount={clip.length} onMove={moveCards} onCopy={copyCards} onPaste={(g) => { pasteTo(g); setMenu(null); }} onClose={() => setMenu(null)} />}
-      {printing && <HkSheets dateLabel={dayText(date)} sheets={sheets} settings={viewSettings} colors={colors} twoSheets={twoSheets && !readOnly} onDone={() => setPrinting(null)} />}
+      {printing && <HkSheets dateLabel={dayText(date)} master={master} sheets={sheets} settings={viewSettings} colors={colors} twoSheets={twoSheets && !readOnly} onDone={() => setPrinting(null)} />}
     </div>
   );
 };

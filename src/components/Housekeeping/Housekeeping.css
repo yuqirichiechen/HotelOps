@@ -420,3 +420,14 @@
   .hk-box.is-done { background: #111; color: #fff; font-size: 11px; line-height: 12px; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .hk-donetag { font-size: 10.5px; color: #555; }
 }
+
+/* Sprint 24.10 — the one-page "all rooms" sheet: 3 × [Room | Status] */
+@media print {
+  .hk-master .hk-page-head { margin-bottom: 6px; padding-bottom: 6px; } .hk-master .hk-page-head h1 { font-size: 20px; }
+  .hk-master-table { table-layout: fixed; font-size: 10.5px; }
+  .hk-master-table th, .hk-master-table td { padding: 2.5px 5px; border-bottom: 1px solid #bbb; line-height: 1.2; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+  .hk-master-table th.hk-m-room, .hk-master-table td.hk-m-room { width: 8%; text-align: left; } .hk-master-table td.hk-m-room { font-weight: 700; font-size: 12px; border-right: 1px solid #bbb; }
+  .hk-master-table .hk-m-gap { border-right: 2px solid #111; }
+  .hk-master-table td.hk-m-room { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hk-master-table td.hk-m-status { font-size: 10px; color: #222; }
+}

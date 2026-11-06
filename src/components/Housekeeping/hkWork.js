@@ -16,10 +16,11 @@ import { buildRoomSheet, shortDate } from '../Forecast/roomSheet';
 export const DEFAULT_SETTINGS = { min: 10, max: 15, cleanWeight: 1, serviceWeight: 0.5 };
 export const KIND_LABEL = { clean: 'Clean', service: 'Service' };
 
-// Colour groups of the PRINTED sheet. Defaults (Dev can change them): dirty rooms green · remaining check-outs (leaving today) yellow · priority /
-// pre-assigned rooms pink · in-house (stay-over) rooms no colour, they show check-in → check-out instead.
+// Colour groups of the PRINTED sheets (the one-page "all rooms" sheet and each housekeeper's). Defaults (Dev can change them):
+//   green  = dirty VACANT room (dirty / in progress) · yellow = a guest is checking out that day · pink = PRIORITY = the room is pre-assigned to an arriving
+//   reservation (Sprint 24.10; an arrival that has no room yet can take ANY room of its type, so it makes nothing priority) · in-house stay-overs no colour.
 export const CATS = ['dirty', 'departure', 'priority', 'inhouse'];
-export const CAT_LABEL = { dirty: 'Dirty rooms', departure: 'Check-outs (leaving that day)', priority: 'Priority rooms (clean first / pre-assigned)', inhouse: 'In-house (stay-over)' };
+export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — pre-assigned to an arriving guest', inhouse: 'In-house (stay-over)' };
 export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', inhouse: '' };
 /** Stored setting (JSON string) → a full colour map; anything missing/invalid falls back to the default. '' = no colour. */
 export function parseColors(raw) {
@@ -28,7 +29,7 @@ export function parseColors(raw) {
   return out;
 }
 /** Which colour group a work item belongs to. */
-export const catOf = (it) => (it.priority ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|In progress)/.test(it.why || '') ? 'dirty' : 'departure');
+export const catOf = (it) => (it.pre && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|In progress)/.test(it.why || '') ? 'dirty' : 'departure');
 
 const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byRoom = (a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
@@ -82,6 +83,11 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date) locked.add(String(r.roomNumber)); });
   // every locked room that has work gets the lock mark; clean ones also go first
   items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean') { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
+  // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (pink) when they still need cleaning.
+  const pre = new Set();
+  ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && String(r.arrivalDate).slice(0, 10) === date) pre.add(String(r.roomNumber)); });
+  if (offset === 0 && live && Array.isArray(live.remainingArrivals)) live.remainingArrivals.forEach(a => { if (a && a.roomNumber) pre.add(String(a.roomNumber)); });
+  items.forEach(i => { i.pre = !i.tbd && pre.has(i.roomNumber); });
   // colour group + the stay (check-in → check-out) of whoever is in the room
   const stayBy = new Map();
   ((payload && payload.reservations) || []).filter(r => r.status === 'INH' && r.roomNumber).forEach(r => { const k = String(r.roomNumber), prev = stayBy.get(k); if (!prev || String(r.departureDate) > prev.dep) stayBy.set(k, { dep: String(r.departureDate), text: `${shortDate(r.arrivalDate)} → ${shortDate(r.departureDate)}` }); });
@@ -236,7 +242,7 @@ export function toAssignments(items, assign, hks, pinned = {}) {
   return hks.map(h => ({
     userId: h.userId, name: h.name,
     rooms: items.filter(i => assign[i.roomNumber] === h.userId)
-      .sort((a, b) => (b.priority - a.priority) || byRoom(a, b))
+      .sort((a, b) => (b.priority - a.priority) || ((b.pre ? 1 : 0) - (a.pre ? 1 : 0)) || byRoom(a, b))
       .map(i => {
         const o = { roomNumber: i.roomNumber, kind: i.kind };
         if (i.priority) o.priority = true;
@@ -251,3 +257,32 @@ export function toAssignments(items, assign, hks, pinned = {}) {
 }
 
 export { normFloor };
+
+// ── The one-page "all rooms" sheet (Sprint 24.10) ─────────────────────────────────────────────────────────────────────────────────────────────
+// Every room of the hotel in room-number order (Ground first), laid out in 3 groups of [Room | Status] side by side, filled down each group like a
+// column of a newspaper. Room cell colour: green = dirty vacant · yellow = a guest checks out that day · pink = priority (pre-assigned to an arrival and
+// still needs work); anything else white. Status says what the room is now; a room still occupied by a staying guest shows the stay (check-in → check-out)
+// as before; one checking out says "Check-out 12 PM" — rGuest has no check-out time per guest, so it is the property's standard (change it here).
+export const STANDARD_CHECKOUT = '12 PM';
+export const MASTER_GROUPS = 3;
+
+/** @returns {{rooms: {room, floorId, status, cat, pre, work}[], rows: (object|null)[][], counts, total}} */
+export function buildMasterSheet({ payload, live, items }) {
+  const sheet = buildRoomSheet(payload, live);
+  const byRoomNo = new Map((items || []).filter(i => !i.tbd).map(i => [i.roomNumber, i]));
+  const rooms = [];
+  for (const f of sheet.floors) for (const r of f.rooms) {
+    const it = byRoomNo.get(r.roomNumber), pre = !!((it && it.pre) || r.arrivingToday);
+    let status;
+    if (r.tone === 'off') status = 'Out of service';
+    else if (r.tone === 'occupied') status = (it && it.kind === 'clean' && /check/i.test(it.why || '')) ? `Check-out ${STANDARD_CHECKOUT}` : (r.checkout || 'Occupied');
+    else status = r.toneLabel;
+    if (pre) status += ' · arrival';
+    rooms.push({ room: r.roomNumber, floorId: f.floorId, status, cat: it ? (it.cat || catOf(it)) : null, pre, work: !!it, kind: it ? it.kind : null });
+  }
+  rooms.sort((a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.room).localeCompare(String(b.room), undefined, { numeric: true }));
+  const per = Math.max(1, Math.ceil(rooms.length / MASTER_GROUPS)), rows = [];
+  for (let i = 0; i < per; i += 1) rows.push(Array.from({ length: MASTER_GROUPS }, (_, g) => rooms[g * per + i] || null));
+  const counts = { clean: rooms.filter(r => r.kind === 'clean').length, service: rooms.filter(r => r.kind === 'service').length, priority: rooms.filter(r => r.cat === 'priority').length };
+  return { rooms, rows, counts, total: rooms.length, asOf: sheet.asOf, source: sheet.source };
+}

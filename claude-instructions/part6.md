@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 24.10  | "Print all sheets" = one-page sheet of every room (3 × Room/Status); new pink rule (pre-assigned arrivals); housekeeper sheets use the same colours | **Built + tested** — no migration, no new setting |
 | 24.9   | Housekeeping wrap-up: short tile descriptions + aligned numbers (IP), aligned dev room table, coloured print legend, dev option AM/PM sheets, No-name "blank name" switch | **Built + tested** — NO migration; two new settings (see entry) |
 | 24.8   | Housekeeping polish: no "Step 1 · done", tiles without descriptions, Save into the Plan card (one Print all sheets), phantom-refresh bug fixed (FLIP glides only on a change of owner) | **Built + tested** (UI only) |
 | 24.7   | Housekeeping two-step flow (manager / dev): overview folded into seven KPI tiles, full-width calendar, Plan card with a no-rooms preview, Confirm → rooms board (Not assigned + assignments) | **Built + tested** (UI only; the front-desk portal keeps its 24.6 layout until its own pass) |
@@ -45,6 +46,16 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-05 — Sprint 24.10: the one-page "all rooms" sheet + new colour rule
+
+1. **Print all sheets (header button + the one in the Plan card; dev, admin, front desk) now prints ONE page with every room of the hotel:** three groups of `Room | Status` side by side, rooms in floor/number order filled down each group (9 rows for 27 rooms). Header cards: dirty vacant · check-outs · priority · rooms; legend lists only the colours in use. Needs no housekeepers and no save; uses today's board already on the page (press Refresh rooms first for the very latest). Built by `buildMasterSheet` (hkWork.js), rendered by `HkSheets` `master` prop, CSS `.hk-master*`.
+2. **Room-cell colour (same on the housekeepers' sheets):** green = dirty vacant (dirty or in progress) · yellow = a guest checks out that day · **pink = priority = the room is pre-assigned to an arriving reservation (RES arriving that day that already carries this room number) AND still needs cleaning** · everything else white. A reservation with no room yet makes nothing pink (it can take any room of its type). A pre-assigned room that is already inspected stays white and its status says "· arrival". The old pink (forecast "clean first" / do-not-move) no longer colours rows; those rooms are still cleaned first and still say CLEAN FIRST on the housekeeper sheets. New item flag `pre`; `catOf` uses it; housekeeper sheets list pre-assigned rooms first. Dev can still recolour all four groups (Rules → print colours); legend labels renamed ("Dirty (vacant)", "Checking out that day", "Priority — pre-assigned to an arriving guest", "In-house (stay-over)").
+3. **Status text:** Dirty · In progress · Vacant · inspected · Awaiting inspection · Out of service; a guest leaving today → "Check-out 12 PM" (rGuest gives no per-guest time; `STANDARD_CHECKOUT` in hkWork.js); a guest staying on → the stay span "Oct 17 → Oct 22" as before.
+4. **Housekeeper sheets:** per-card "Print sheet" is unchanged; the all-housekeepers batch moved to the header link **Print housekeeper sheets**. Tomorrow and past days have no board of their own, so Print all sheets there still prints the housekeepers' pages. AM/PM and blank-name options (24.9) apply to those pages only.
+No migration, no new setting, no server change.
+Tests: `housekeeping` 46 (+master page: columns, 27 rooms, order, colours, statuses, legend, cards, dev colours, no save, manager + dev; past day fallback; older print tests moved to the housekeeper link and the new legend labels), `hkwork` 17 (+master builder and pink rule), `staffportal` 20; all other suites green; build clean; checked a printed PDF page.
+**Open:** the "arrival" suffix and pink rely on the reservation already holding the room number in rGuest; the check-out time is the standard 12 PM, not the guest's real one.
 
 ### 2026-11-03 — Sprint 24.9: wrap-up (tiles, dev table, print legend, AM/PM sheets, blank names)
 
