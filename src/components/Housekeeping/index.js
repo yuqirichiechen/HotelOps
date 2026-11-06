@@ -14,11 +14,12 @@ import KpiCard from '../shared/KpiCard';
 import SyncBadge from '../shared/SyncBadge';
 import InfoTip from '../Forecast/InfoTip';
 import ForecastHistory from '../Forecasting/ForecastHistory';
-import { IcBroom, IcBed, IcLayers, IcPeople, IcBars, IcCheck, IcUser, IcPrint, IcWand, IcGear, IcClock, IcDoc, IcRefresh, IcHand, FloorSection, HkModal, Popover, StaffChecklist } from './HkParts';
+import { IcBroom, IcBed, IcLayers, IcPeople, IcBars, IcCheck, IcUser, IcPrint, IcWand, IcGear, IcClock, IcDoc, IcRefresh, IcHand, IcHourglass, FloorSection, HkModal, Popover, StaffChecklist } from './HkParts';
 import { DEFAULT_ALLOWANCE, addDays, normFloor, floorLabel } from '../Forecast/forecastModel';
 import useFlip from '../shared/useFlip';
 import { buildRoomSheet } from '../Forecast/roomSheet';
 import HkSheets from './HkSheets';
+import useDragAutoScroll from './useDragAutoScroll';
 import HkRoomTable from './HkRoomTable';
 import HkPrintColors from './HkPrintColors';
 import ConfirmModal from '../shared/ConfirmModal';
@@ -124,32 +125,20 @@ const CardMenu = ({ menu, hks, canPaste, clipCount, onMove, onCopy, onPaste, onC
 // function (names / no name, staff picker, rules, auto-assign, reset, drag, copy/paste, save, print) is unchanged.
 // Sprint 24.9 — No-name sheets can print an empty name line instead of "Housekeeper N" (the front desk writes the name in by hand).
 const BLANK_NAME = '______________________';
-/** Rooms of today's plan that are already clean on the room board (for the PM sheet): a clean job is done once the room is vacant and Inspected / Pickup;
- *  a stay-over service is done once the room shows occupied-clean (or clean). `board` = live rooms or the page's room sheet. */
-export function cleanedRooms(list, board) {
-  const m = new Map((board || []).map(r => [String(r.roomNumber), r])), out = new Set();
-  (list || []).forEach(i => {
-    const r = m.get(String(i.roomNumber)); if (!r) return;
-    const clean = r.hkStatus === 'VI' || r.hkStatus === 'PU', vacant = r.occupancyStatus !== 'OCC';
-    if (i.kind === 'service' ? (clean || r.hkStatus === 'OC') : (vacant && clean)) out.add(String(i.roomNumber));
-  });
-  return out;
-}
-
-/** Dev only (Rules): print two sheets (AM / PM) per housekeeper. Saved straight away as the global setting hk_print_two_sheets; everyone's prints follow it. */
-const HkPrintOptions = ({ twoSheets, onChange }) => {
+/** Dev only (Rules): print the "return slips" after each housekeeper's sheet. Saved straight away as the global setting hk_print_slips; everyone's prints follow it. */
+const HkPrintOptions = ({ slips, onChange }) => {
   const [msg, setMsg] = useState(null);
   const toggle = async () => {
-    const next = !twoSheets; setMsg(null);
-    const { ok, data } = await apiFetch('/admin/settings', { method: 'PUT', body: JSON.stringify({ hk_print_two_sheets: next ? 'true' : 'false' }) });
+    const next = !slips; setMsg(null);
+    const { ok, data } = await apiFetch('/admin/settings', { method: 'PUT', body: JSON.stringify({ hk_print_slips: next ? 'true' : 'false' }) });
     if (ok && data?.success) { onChange(next); setMsg({ ok: true, text: 'Saved' }); } else setMsg({ ok: false, text: data?.message || 'Could not save' });
   };
   return (
     <div className="hk-opt-row" aria-label="Print options (dev)">
-      <button type="button" role="switch" aria-checked={twoSheets} className={`hk-switch${twoSheets ? ' on' : ''}`} onClick={toggle}>
-        <span className="hk-switch-track"><span className="hk-switch-knob" /></span>Print two sheets per housekeeper (AM and PM) <span className="hk-tag-dev">DEV</span>
+      <button type="button" role="switch" aria-checked={slips} className={`hk-switch${slips ? ' on' : ''}`} onClick={toggle}>
+        <span className="hk-switch-track"><span className="hk-switch-knob" /></span>Print return slips after each sheet <span className="hk-tag-dev">DEV</span>
       </button>
-      <small>The AM page is the plain list; the PM page repeats it with the rooms that are already clean on the room board ticked and greyed, so you can see what was done so far. Today only — Refresh rooms (or just print: it re-reads the board).</small>
+      <small>One extra page per housekeeper with two half-page slips (to hand back during and at the end of the shift). Each has three columns — Cleaned, Serviced, DND — with the housekeeper's own rooms already listed to tick, and blank lines for DND rooms.</small>
       {msg && <span className={`hk-opt-msg ${msg.ok ? 'ok' : 'bad'}`} role="status">{msg.text}</span>}
     </div>
   );
@@ -192,12 +181,12 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const [lockedRooms, setLockedRooms] = useState([]);
   const [justMoved, setJustMoved] = useState([]);
   const dragRef = useRef(null);
+  const autoScroll = useDragAutoScroll();
   const skipFlip = useRef(false);
   const boardRef = useRef(null);
   const viewCtx = useViewOptional();
   const [acc, setAcc] = useState({});                   // floor accordions the user opened / closed: { 'pool|2': true, 'userId|3': false }
-  const [twoSheets, setTwoSheets] = useState(false);       // dev option (Rules): print an AM and a PM sheet per housekeeper
-  const [doneRooms, setDoneRooms] = useState(() => new Set());   // rooms already clean when the sheets were printed (PM sheet)
+  const [slips, setSlips] = useState(false);       // dev option (Rules): print the return slips after each housekeeper's sheet
   const [confirmed, setConfirmed] = useState(false);   // step 1 → step 2: the plan has been confirmed, the rooms board is shown (manager / dev; the portal has no steps yet)
   const [confirmTick, setConfirmTick] = useState(0);
   const stepRef = useRef(null);
@@ -217,7 +206,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     if (lv.ok && lv.data?.success) setLive(lv.data.live);
     const s = st.ok && st.data && st.data.settings;
     if (s) {
-      setColors(parseColors(s.hk_print_colors)); setTwoSheets(s.hk_print_two_sheets === 'true');
+      setColors(parseColors(s.hk_print_colors)); setSlips(s.hk_print_slips === 'true');
       const num = (v, d) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
       setAllowance({ enabled: s.forecast_allowance_enabled == null ? DEFAULT_ALLOWANCE.enabled : s.forecast_allowance_enabled !== 'false', scalePct: num(s.forecast_allowance_scale_pct, DEFAULT_ALLOWANCE.scalePct), minExtra: num(s.forecast_allowance_min_extra, DEFAULT_ALLOWANCE.minExtra) });
     }
@@ -431,22 +420,14 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     setSaveMsg({ ok: false, text: data?.message || 'Could not save' }); return false;
   }, [work, settings, anon, assign, hks, pinned, loadPlans, apiBase]);
 
-  // Sprint 24.10: "Print all sheets" = the ONE-PAGE sheet of every room (today's board). Past days / tomorrow have no board of their own, so they keep the
-  // housekeeper sheets, and so does the "Print housekeeper sheets" link.
-  const canMaster = !readOnly && offset === 0 && !!payload;
+  // Sprint 24.10/24.11: "Print all sheets" = the ONE-PAGE sheet of every room, for today (the room board) and tomorrow (the plan). A past day has no room
+  // board any more, so it keeps the housekeeper sheets, and so does the "Print housekeeper sheets" link.
+  const canMaster = !readOnly && !!payload;
   const printAll = () => (canMaster ? printNow('master') : printNow('all'));
   const printNow = async (who) => {
-    if (who === 'master') { setDoneRooms(new Set()); setPrinting('master'); return; }
+    if (who === 'master') { setPrinting('master'); return; }
     if (viewHks.length === 0) return;
     if (!readOnly && (dirty || !savedAt)) { if (!(await save())) return; }
-    if (twoSheets && !readOnly && offset === 0) {
-      // the PM sheet marks what is already clean: read the room board again right now (a DB-free route); fall back to the board this page already has
-      let board = live && live.rooms;
-      const lv = await apiFetch(`${apiBase}/forecast/live`);
-      if (lv.ok && lv.data && lv.data.success && lv.data.live) board = lv.data.live.rooms;   // only used for the ticks — the page's own data is left alone
-      if (!board && payload) board = payload.perRoomSheet;
-      setDoneRooms(cleanedRooms(work.items, board));
-    } else setDoneRooms(new Set());
     setPrinting(who);
   };
   const chooseDay = (n) => {
@@ -455,24 +436,24 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     if (dirty) setAsk({ title: 'Switch day?', message: 'You have unsaved changes for this day. They will be lost.', confirmLabel: 'Switch anyway', tone: 'danger', onConfirm: go }); else go();
   };
 
-  const master = useMemo(() => (printing === 'master' ? buildMasterSheet({ payload, live, items: work.items }) : null), [printing, payload, live, work]);
+  const master = useMemo(() => (printing === 'master' ? buildMasterSheet({ payload, live, items: work.items, offset }) : null), [printing, payload, live, work, offset]);
   const sheets = useMemo(() => {
     if (!printing || printing === 'master') return [];
     const shown = (a) => (viewSettings.blankNames && /^anon-/.test(a.userId) ? BLANK_NAME : a.name);   // No name + "leave blank": an underscore line to write on
     const rows = readOnly
       ? past.assignments.map(a => ({ userId: a.userId, name: shown(a), rooms: a.rooms.map(r => ({ ...itemByRoom.get(r.roomNumber), ...r })) }))
-      : toAssignments(work.items, assign, hks, pinned).map(a => ({ userId: a.userId, name: shown(a), rooms: a.rooms.map(r => ({ ...itemByRoom.get(r.roomNumber), ...r, done: doneRooms.has(String(r.roomNumber)) })) }));
+      : toAssignments(work.items, assign, hks, pinned).map(a => ({ userId: a.userId, name: shown(a), rooms: a.rooms.map(r => ({ ...itemByRoom.get(r.roomNumber), ...r })) }));
     return rows.filter(a => printing === 'all' || a.userId === printing);
-  }, [printing, readOnly, past, work, assign, hks, pinned, itemByRoom, viewSettings, doneRooms]);
+  }, [printing, readOnly, past, work, assign, hks, pinned, itemByRoom, viewSettings]);
 
   // ── drag & drop (HTML5) + tap-to-move for touch ──
   const onDragStart = (e, room) => {
     const rooms = selected.includes(room) ? selected : [room];      // dragging a selected card takes the whole selection along
-    dragRef.current = rooms;
+    dragRef.current = rooms; autoScroll.start(e.currentTarget);      // the page scrolls by itself when the card is held near the top / bottom edge
     try { e.dataTransfer.setData('text/plain', rooms.join(',')); e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ }
   };
-  const onDragEnd = () => { dragRef.current = null; setOver(null); };
-  const dropOn = (id) => (e) => { e.preventDefault(); const rooms = dragRef.current || String((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '').split(',').filter(Boolean); dragRef.current = null; setOver(null); moveCards(rooms, id); };
+  const onDragEnd = () => { dragRef.current = null; autoScroll.stop(); setOver(null); };
+  const dropOn = (id) => (e) => { e.preventDefault(); const rooms = dragRef.current || String((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '').split(',').filter(Boolean); dragRef.current = null; autoScroll.stop(); setOver(null); moveCards(rooms, id); };
   const zone = (key, id) => ({
     onDragOver: (e) => { if (readOnly) return; e.preventDefault(); if (over !== key) setOver(key); },
     onDragLeave: (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setOver(o => (o === key ? null : o)); },
@@ -573,9 +554,9 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
         <>
           {!simple && (
             <section className="fc-kpis hk-kpis hk-kpis-7" aria-label="Workload">
-              <KpiCard accent="staying" icon={<IcBroom />} label="To clean" primary={cleanN} sublabel="check-outs & dirty" ring={total > 0 ? cleanN / total : 0} ringColor="#2f855a" ringLabel={`${cleanN} of ${total} rooms to clean`} />
+              <KpiCard accent="staying" icon={<IcBroom />} label="To clean" primary={cleanN} sublabel="check-outs" ring={total > 0 ? cleanN / total : 0} ringColor="#2f855a" ringLabel={`${cleanN} of ${total} rooms to clean`} />
               <KpiCard accent="inhouse" icon={<IcBed />} label="To service" primary={serviceN} sublabel="stay-overs" ring={total > 0 ? serviceN / total : 0} ringColor="#2b6cb0" ringLabel={`${serviceN} of ${total} rooms to service`} />
-              <KpiCard accent="dirty" icon={<IcBroom />} label="IP" primary={dirtyNowN} sublabel="dirty / in progress" ring={total > 0 ? dirtyNowN / total : 0} ringColor="#c53030" ringLabel={`${dirtyNowN} of ${total} rooms are dirty or in progress`} />
+              <KpiCard accent="dirty" icon={<IcHourglass />} label="IP" primary={dirtyNowN} sublabel="dirty + IP" />
               <KpiCard accent="arrivals" icon={<IcLayers />} label="Total workload" primary={Math.round(totalUnits * 10) / 10} sublabel="clean + service" />
               <KpiCard accent="inhouse" icon={<IcPeople />} label="Housekeepers" primary={viewHks.length} sublabel="working" />
               <KpiCard accent="default" icon={<IcBars />} label="Avg. workload" primary={viewHks.length ? Math.round(avgUnits * 10) / 10 : '—'} sublabel={`target ${viewSettings.min}–${viewSettings.max}`} />
@@ -838,7 +819,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             <NumField label="Service =" value={settings.serviceWeight} min={0} max={5} step={0.1} disabled={readOnly} onChange={(v) => setNum('serviceWeight', v)} />
           </div>
           {readOnly && <p className="hk-muted">This is a past day — its rules can't be changed.</p>}
-          {dev && <HkPrintOptions twoSheets={twoSheets} onChange={setTwoSheets} apiBase={apiBase} />}
+          {dev && <HkPrintOptions slips={slips} onChange={setSlips} />}
           {dev && <HkPrintColors colors={colors} onSaved={setColors} />}
         </HkModal>
       )}
@@ -864,7 +845,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
       {ask && <ConfirmModal {...ask} onClose={() => setAsk(null)} />}
       {menu && <CardMenu menu={menu} hks={hks} canPaste={clip.length > 0} clipCount={clip.length} onMove={moveCards} onCopy={copyCards} onPaste={(g) => { pasteTo(g); setMenu(null); }} onClose={() => setMenu(null)} />}
-      {printing && <HkSheets dateLabel={dayText(date)} master={master} sheets={sheets} settings={viewSettings} colors={colors} twoSheets={twoSheets && !readOnly} onDone={() => setPrinting(null)} />}
+      {printing && <HkSheets dateLabel={dayText(date)} master={master} sheets={sheets} settings={viewSettings} colors={colors} slips={slips} onDone={() => setPrinting(null)} />}
     </div>
   );
 };

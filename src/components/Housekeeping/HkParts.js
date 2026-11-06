@@ -20,6 +20,7 @@ export const IcClock   = (p) => <Svg {...p}><circle cx="12" cy="12" r="9" /><pat
 export const IcDoc     = (p) => <Svg {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></Svg>;
 export const IcRefresh = (p) => <Svg {...p}><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" /><path d="M21 3v5h-5" /><path d="M3 21v-5h5" /></Svg>;
 export const IcHand    = (p) => <Svg {...p}><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" /><path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6 7-2.7 0-4-1.4-5.5-4L4 14.5a1.5 1.5 0 0 1 2.4-1.7L8 14" /></Svg>;
+export const IcHourglass = (p) => <Svg {...p}><path d="M6 3h12M6 21h12" /><path d="M7 3c0 5 3 6 5 9-2 3-5 4-5 9" /><path d="M17 3c0 5-3 6-5 9 2 3 5 4 5 9" /></Svg>;
 
 /** Collapsible floor section: header (floor, room count, caret) + body. The body stays mounted (so cards are always in the DOM, and closing animates). */
 export const FloorSection = ({ label, count, open, onToggle, floorId, children }) => (

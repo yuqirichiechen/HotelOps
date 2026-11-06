@@ -29,7 +29,14 @@ export function parseColors(raw) {
   return out;
 }
 /** Which colour group a work item belongs to. */
-export const catOf = (it) => (it.pre && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|In progress)/.test(it.why || '') ? 'dirty' : 'departure');
+/** rooms that a reservation arriving on `date` already holds (pre-assigned); the live board's remaining arrivals count for today */
+export function preAssignedRooms(payload, date, live) {
+  const pre = new Set();
+  ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && String(r.arrivalDate).slice(0, 10) === date) pre.add(String(r.roomNumber)); });
+  if (live && Array.isArray(live.remainingArrivals)) live.remainingArrivals.forEach(a => { if (a && a.roomNumber) pre.add(String(a.roomNumber)); });
+  return pre;
+}
+export const catOf = (it) => (it.pre && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|In progress|Checks out today)/.test(it.why || '') ? 'dirty' : 'departure');
 
 const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byRoom = (a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
@@ -84,9 +91,7 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   // every locked room that has work gets the lock mark; clean ones also go first
   items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean') { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
   // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (pink) when they still need cleaning.
-  const pre = new Set();
-  ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && String(r.arrivalDate).slice(0, 10) === date) pre.add(String(r.roomNumber)); });
-  if (offset === 0 && live && Array.isArray(live.remainingArrivals)) live.remainingArrivals.forEach(a => { if (a && a.roomNumber) pre.add(String(a.roomNumber)); });
+  const pre = preAssignedRooms(payload, date, offset === 0 ? live : null);
   items.forEach(i => { i.pre = !i.tbd && pre.has(i.roomNumber); });
   // colour group + the stay (check-in → check-out) of whoever is in the room
   const stayBy = new Map();
@@ -266,15 +271,26 @@ export { normFloor };
 export const STANDARD_CHECKOUT = '12 PM';
 export const MASTER_GROUPS = 3;
 
-/** @returns {{rooms: {room, floorId, status, cat, pre, work}[], rows: (object|null)[][], counts, total}} */
-export function buildMasterSheet({ payload, live, items }) {
+/** What the status column says for a room that has work. Today's wording comes from the room board; tomorrow's from the plan ("why"). */
+const planStatus = (it, offset) => {
+  if (it.kind === 'service') return it.stay || 'Stay-over';
+  if (/^Check/.test(it.why || '') && !/^Checks out today/.test(it.why)) return `Check-out ${STANDARD_CHECKOUT}`;
+  return /^In progress/.test(it.why || '') ? 'In progress' : 'Dirty';
+};
+
+/** @param {number} [offset] 0 = today (the room board), 1 = tomorrow (the planned day: today's board moved forward by the plan)
+ *  @returns {{rooms: {room, floorId, status, cat, pre, work, kind}[], rows: (object|null)[][], counts, total}} */
+export function buildMasterSheet({ payload, live, items, offset = 0 }) {
   const sheet = buildRoomSheet(payload, live);
+  const date = sheet.date ? addDays(sheet.date, offset) : '';
+  const preSet = preAssignedRooms(payload, date, offset === 0 ? live : null);
   const byRoomNo = new Map((items || []).filter(i => !i.tbd).map(i => [i.roomNumber, i]));
   const rooms = [];
   for (const f of sheet.floors) for (const r of f.rooms) {
-    const it = byRoomNo.get(r.roomNumber), pre = !!((it && it.pre) || r.arrivingToday);
+    const it = byRoomNo.get(r.roomNumber), pre = !!((it && it.pre) || preSet.has(r.roomNumber));
     let status;
     if (r.tone === 'off') status = 'Out of service';
+    else if (it && offset > 0) status = planStatus(it, offset);
     else if (r.tone === 'occupied') status = (it && it.kind === 'clean' && /check/i.test(it.why || '')) ? `Check-out ${STANDARD_CHECKOUT}` : (r.checkout || 'Occupied');
     else status = r.toneLabel;
     if (pre) status += ' · arrival';
@@ -284,5 +300,5 @@ export function buildMasterSheet({ payload, live, items }) {
   const per = Math.max(1, Math.ceil(rooms.length / MASTER_GROUPS)), rows = [];
   for (let i = 0; i < per; i += 1) rows.push(Array.from({ length: MASTER_GROUPS }, (_, g) => rooms[g * per + i] || null));
   const counts = { clean: rooms.filter(r => r.kind === 'clean').length, service: rooms.filter(r => r.kind === 'service').length, priority: rooms.filter(r => r.cat === 'priority').length };
-  return { rooms, rows, counts, total: rooms.length, asOf: sheet.asOf, source: sheet.source };
+  return { rooms, rows, counts, total: rooms.length, asOf: sheet.asOf, source: sheet.source, date, offset };
 }

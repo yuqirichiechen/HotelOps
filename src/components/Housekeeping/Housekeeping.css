@@ -415,10 +415,6 @@
 @media print {
   /* the colour key under the sheet title must print its colours (browsers drop backgrounds unless told otherwise) */
   .hk-page-legend i { -webkit-print-color-adjust: exact; print-color-adjust: exact; border-color: #555; }
-  .hk-half-tag { margin-left: 10px; padding: 1px 10px; border: 1.5px solid #111; border-radius: 999px; font-size: 11px; letter-spacing: .08em; }
-  .hk-page-table tr.hk-done td { color: #666; } .hk-page-table tr.hk-done .hk-num { text-decoration: line-through; }
-  .hk-box.is-done { background: #111; color: #fff; font-size: 11px; line-height: 12px; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .hk-donetag { font-size: 10.5px; color: #555; }
 }
 
 /* Sprint 24.10 — the one-page "all rooms" sheet: 3 × [Room | Status] */
@@ -430,4 +426,18 @@
   .hk-master-table .hk-m-gap { border-right: 2px solid #111; }
   .hk-master-table td.hk-m-room { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .hk-master-table td.hk-m-status { font-size: 10px; color: #222; }
+}
+
+/* Sprint 24.11 — return slips: a page of two half-page slips (Cleaned | Serviced | DND) per housekeeper */
+@media print {
+  .hk-slips { display: flex; flex-direction: column; height: 9.9in; }
+  .hk-slip { flex: 1 1 0; min-height: 0; padding: 4px 2px 8px; display: flex; flex-direction: column; overflow: hidden; }
+  .hk-slip + .hk-slip { border-top: 2px dashed #777; padding-top: 14px; }
+  .hk-slip header { display: flex; align-items: baseline; gap: 14px; border-bottom: 2px solid #111; padding-bottom: 5px; margin-bottom: 6px; } .hk-slip header strong { font-size: 18px; } .hk-slip header span { font-size: 11.5px; color: #333; } .hk-slip .hk-slip-time { margin-left: auto; }
+  .hk-slip-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .hk-slip-col { border-right: 1.5px solid #111; padding: 0 8px; display: flex; flex-direction: column; min-height: 0; } .hk-slip-col:last-child { border-right: 0; }
+  .hk-slip-col h3 { margin: 0 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; } .hk-slip-col h3 small { display: block; font-size: 9.5px; font-weight: 400; text-transform: none; letter-spacing: 0; color: #555; }
+  .hk-slip-col ul { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; display: grid; grid-template-rows: repeat(var(--hk-slip-rows, 8), minmax(0, 1fr)); }
+  .hk-slip-col li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #bbb; font-size: 13px; font-weight: 700; min-height: 0; line-height: 1; }
+  .hk-slip-col li .hk-line { display: block; width: 100%; }
 }

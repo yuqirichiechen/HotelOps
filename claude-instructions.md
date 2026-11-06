@@ -33,7 +33,7 @@
 6. **[claude-instructions/part6.md](./claude-instructions/part6.md)** —
    iteration log for **Sprint 21+** (Room Forecast revamp, then the scraper database
    revamp). The roadmap/brief for it lives in part5 §0.
-   Newest entries = **Sprint 24 – 24.10 (24.5–24.10 = Housekeeping redesign, fixes, two-step flow, polish, print options) (staff portal: Clock in = clock only at `/:tenant/clockin`; Staff login =
+   Newest entries = **Sprint 24 – 24.11 (24.5–24.11 = Housekeeping redesign, fixes, two-step flow, polish, print options) (staff portal: Clock in = clock only at `/:tenant/clockin`; Staff login =
    PC form → `/:tenant/staff` for all staff; Front Desk department adds forecast tiles + Housekeeping via
    `/api/frontdesk/*`)**.
 

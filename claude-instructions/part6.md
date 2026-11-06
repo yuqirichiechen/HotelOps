@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 24.11  | Tomorrow's Print all sheets = same one-page sheet; tile text + IP icon/no ring; drag auto-scroll; AM/PM replaced by dev-option return slips | **Built + tested** — setting `hk_print_two_sheets` replaced by `hk_print_slips` (never deployed-claimed; no migration) |
 | 24.10  | "Print all sheets" = one-page sheet of every room (3 × Room/Status); new pink rule (pre-assigned arrivals); housekeeper sheets use the same colours | **Built + tested** — no migration, no new setting |
 | 24.9   | Housekeeping wrap-up: short tile descriptions + aligned numbers (IP), aligned dev room table, coloured print legend, dev option AM/PM sheets, No-name "blank name" switch | **Built + tested** — NO migration; two new settings (see entry) |
 | 24.8   | Housekeeping polish: no "Step 1 · done", tiles without descriptions, Save into the Plan card (one Print all sheets), phantom-refresh bug fixed (FLIP glides only on a change of owner) | **Built + tested** (UI only) |
@@ -46,6 +47,15 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-05 — Sprint 24.11: tomorrow's all-rooms sheet, tiles, drag auto-scroll, return slips
+
+1. **Print all sheets for TOMORROW** is now the same one-page all-rooms sheet (24.10), titled "Planned room status". Only past days (no room board left) still print housekeeper pages. Tomorrow's statuses come from the plan: a guest leaving → "Check-out 12 PM" (yellow), a stay-over → the stay span, a room dirty tomorrow because its guest leaves today → "Dirty" (green; `catOf` now treats "Checks out today…" as dirty), a reservation arriving tomorrow that already holds a room → pink + "· arrival" while the room needs work. `preAssignedRooms()` shared by the work list and the sheet; `buildMasterSheet({offset})`.
+2. **Tiles:** To clean says "check-outs" (the "& dirty" was clipping; dirty rooms are the IP tile), IP says "dirty + IP", IP has its own hourglass icon (`IcHourglass`) and **no ring**. Why: the rings on To clean / To service are that tile's share of the day's rooms; IP is already inside To clean, so a second ring only repeated the same idea in red.
+3. **Drag auto-scroll** (`useDragAutoScroll.js`): while a room card is held, the page (or the scrolling container the page lives in) scrolls towards the top/bottom edge the mouse is near — 96 px zone, up to 26 px per frame, faster nearer the edge. Stops on drop, drag end, Esc and unmount. The existing sideways scroll of the housekeeper board is unchanged.
+4. **AM/PM sheets removed** (24.9 option, `hk_print_two_sheets`, PM ticks, live re-read at print, `cleanedRooms`). Replaced by a dev-only Rules option **"Print return slips after each sheet"** (`hk_print_slips`, 'true'/'false', dev writes, managers + front desk read): after each housekeeper's sheet comes one page with TWO half-page slips (dashed cut line), each with Name · date · Time ____ and three columns **Cleaned** (vacant dirty / check-outs), **Serviced** (stay-overs), **DND** — the housekeeper's own rooms pre-listed with tick boxes, DND as blank lines. Off by default; the all-rooms sheet never has slips.
+Tests: `housekeeping` 48 (+tomorrow master, drag auto-scroll, slips; tiles updated), `hkwork` 18 (+tomorrow master/pink), server tests renamed to `hk_print_slips`; all suites green; printed the slips page to PDF.
+**Open / decided with the user:** whether the slips should be on for everyone (it is a dev option for now); DND is not in rGuest data we use, so it stays handwritten; no housekeeper phone input (GM said no) — an optional later step is for the front desk to tick returned slips into the app.
 
 ### 2026-11-05 — Sprint 24.10: the one-page "all rooms" sheet + new colour rule
 

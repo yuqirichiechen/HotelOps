@@ -3788,7 +3788,7 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     },
     // Sprint 24.9: dev option — print TWO sheets per housekeeper (AM and PM; the PM sheet marks the rooms already clean on the room board). 'true' | 'false'.
     // Written from the Dev view only (the hk_ prefix is dev-write-only); everyone's prints read it.
-    hk_print_two_sheets: v => v === 'true' || v === 'false',
+    hk_print_slips: v => v === 'true' || v === 'false',
     // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).
     // enabled: 'true'|'false'; scale: percent of the calibrated table (25..300, 100 = as calibrated);
     // min: minimum extra rooms for a room-type group with 4+ booked arrivals (0..10).

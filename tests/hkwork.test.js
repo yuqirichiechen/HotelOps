@@ -112,6 +112,14 @@ t('MASTER SHEET (24.10): every room once, floor then number, laid out in 3 group
   const cleanArrival = HK.buildMasterSheet({ payload: { ...payload, reservations: payload.reservations.map(r => (r.id === 'r3' ? { ...r, roomNumber: '101' } : r)) }, live: null, items: HK.buildWorkList({ payload: { ...payload, reservations: payload.reservations.map(r => (r.id === 'r3' ? { ...r, roomNumber: '101' } : r)) }, live: null, allowance: allow, offset: 0 }).items });
   const c101 = cleanArrival.rooms.find(r => r.room === '101'); assert.strictEqual(c101.cat, null, 'an already-inspected pre-assigned room needs no work → white'); assert(/arrival/.test(c101.status));
 });
+t('MASTER SHEET for TOMORROW (24.11): planned statuses (stay span / check-out / dirty) and a room pre-assigned to a reservation arriving that day is pink', () => {
+  const pay2 = { ...payload, reservations: payload.reservations.map(r => (r.id === 'r2' ? { ...r, roomNumber: '102', roomId: 'room102' } : r)) };
+  const w = HK.buildWorkList({ payload: pay2, live: null, allowance: allow, offset: 1 }); const m = HK.buildMasterSheet({ payload: pay2, live: null, items: w.items, offset: 1 }); const by = Object.fromEntries(m.rooms.map(r => [r.room, r]));
+  assert.strictEqual(m.offset, 1); assert.strictEqual(m.date, '2026-10-20'); assert.strictEqual(m.total, 8);
+  assert.strictEqual(by['105'].status, 'Oct 18 → Oct 21', 'stays through tomorrow → span'); assert.strictEqual(by['105'].cat, 'inhouse'); assert.strictEqual(by['201'].status, 'Check-out ' + HK.STANDARD_CHECKOUT, 'leaves tomorrow'); assert.strictEqual(by['201'].cat, 'departure');
+  assert.strictEqual(by['102'].pre, true); assert.strictEqual(by['102'].cat, 'priority', 'pre-assigned for tomorrow\'s arrival and dirty → pink'); assert(/arrival/.test(by['102'].status), by['102'].status);
+  assert(w.items.filter(i => /^Checks out today/.test(i.why || '')).every(i => i.cat === 'dirty'), 'a room that is dirty tomorrow because its guest leaves today is green');
+});
 const mk = (n, f, kind) => ({ roomNumber: n, floorId: f, kind, priority: false });
 t('EVEN OUT (the 4-housekeeper case): the first housekeeper only has quick ground-floor cleans (9.5 < the minimum 10) while another carries 23 rooms (12) → two services from the busiest one\'s smallest floor (311, 312) go to the light one, as a block on ONE floor; the others are untouched', () => {
   const items = [...['G28', 'G30', 'G31', 'G33', 'G34', '122', '126', '128'].map(n => mk(n, n[0] === 'G' ? 'G' : '1', 'clean')), ...['130', '131', '132'].map(n => mk(n, '1', 'service')),
