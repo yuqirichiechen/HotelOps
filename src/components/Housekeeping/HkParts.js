@@ -29,7 +29,7 @@ export const FloorSection = ({ label, count, open, onToggle, floorId, children, 
     <div className="hk-acc-bar" {...(dragProps || {})}>
       <button type="button" className="hk-acc-head" aria-expanded={open} onClick={onToggle}>
         <span className="hk-floor-label">{label}</span>
-        <span className="hk-acc-count">{count === 0 ? 'none' : `${count} room${count === 1 ? '' : 's'}`}</span>
+        <span className="hk-acc-count" title={count === 0 ? undefined : `${count} room${count === 1 ? '' : 's'}`}>{count === 0 ? 'none' : <>{count}<span className="hk-acc-w"> room{count === 1 ? '' : 's'}</span></>}</span>
         <span className="hk-acc-caret" aria-hidden="true">⌄</span>
       </button>
       {actions && <div className="hk-acc-actions">{actions}</div>}

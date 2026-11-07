@@ -459,3 +459,34 @@
 .hk-chip-type small { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); line-height: 1.1; }
 .hk-prio-row .hk-chips { margin-top: 2px; }
 @media print { .hk-page-table tr.hk-cat-progress td { color: #333; } }
+
+/* Sprint 25.2 — floors never clip or shrink (the column grows / scrolls with its content), compact floor header, "Select rooms" mode, edge arrows, flag line */
+.hk-assign .hk-col-body > .hk-floor, .hk-col-body > .hk-floor { flex: 0 0 auto; }
+.hk-assign .hk-hkcol { height: auto; min-height: 380px; }
+.hk-hkcol .hk-col-body, .hk-assign .hk-col-body { overflow: visible; flex: 1 1 auto; }
+.hk-acc-bar { flex-wrap: nowrap; gap: 6px; }
+.hk-acc-bar .hk-acc-head { padding: 8px 6px 8px 12px; gap: 8px; }
+.hk-acc .hk-floor-label { white-space: nowrap; font-size: 14px; } .hk-acc-count { white-space: nowrap; font-size: 11.5px; margin-left: 0; } .hk-acc-bar .hk-acc-caret { margin-left: 2px; }
+.hk-acc-bar .hk-acc-head { flex: 1 1 auto; justify-content: flex-start; }
+.hk-acc-actions { padding-right: 8px; gap: 4px; white-space: nowrap; }
+.hk-acc-actions .hk-btn-xs { padding: 2px 7px; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; line-height: 1.5; }
+.hk-acc-actions .hk-floor-move { font-size: 11px; padding: 2px 4px; max-width: 98px; }
+.hk-tick { font-style: normal; font-size: 13px; line-height: 1; }
+.hk-floor-sel.on { background: var(--accent-bg); border-color: var(--accent-alt); color: var(--accent-alt); }
+.hk-rc.pick { padding-left: 22px; cursor: pointer; }
+.hk-rc-box { position: absolute; left: 5px; top: 7px; width: 12px; height: 12px; border: 1.5px solid #94a3b8; border-radius: 3px; background: var(--bg-surface); color: #fff; font-size: 9px; line-height: 10px; text-align: center; font-weight: 700; }
+.hk-rc-box.on { background: var(--accent-alt); border-color: var(--accent-alt); }
+.hk-board-wrap { position: relative; }
+.hk-board.is-dragging { scroll-snap-type: none; scroll-behavior: auto; }
+.hk-edge { position: absolute; top: 0; bottom: 0; width: 76px; z-index: 6; display: flex; align-items: center; pointer-events: none; opacity: 0; transition: opacity .2s ease; }
+.hk-edge.can { opacity: .55; } .hk-edge.hot { opacity: 1; }
+.hk-edge-left { left: -2px; justify-content: flex-start; background: linear-gradient(90deg, rgba(66,153,225,.30), rgba(66,153,225,0)); border-left: 3px solid rgba(66,153,225,.75); border-radius: 12px 0 0 12px; }
+.hk-edge-right { right: -2px; justify-content: flex-end; background: linear-gradient(270deg, rgba(66,153,225,.30), rgba(66,153,225,0)); border-right: 3px solid rgba(66,153,225,.75); border-radius: 0 12px 12px 0; }
+.hk-edge span { font-size: 38px; font-weight: 300; color: #2b6cb0; padding: 0 10px; line-height: 1; }
+.hk-edge.hot span { animation: hk-nudge-r .7s ease-in-out infinite; } .hk-edge-left.hot span { animation-name: hk-nudge-l; }
+@keyframes hk-nudge-r { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(7px); } } @keyframes hk-nudge-l { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-7px); } }
+@media (prefers-reduced-motion: reduce) { .hk-edge.hot span { animation: none; } }
+.hk-carctl { flex-wrap: wrap; } .hk-carflag { font-size: 12.5px; color: #975a16; font-weight: 600; }
+.hk-pv-flags { margin-left: 12px; }
+.hk-acc-bar:has(.hk-acc-actions) .hk-acc-w { display: none; } .hk-acc-bar .hk-acc-head { min-width: 0; overflow: hidden; }
+.hk-acc-actions .hk-btn-xs { padding: 2px 6px; font-size: 10.5px; } .hk-acc-actions .hk-floor-move { max-width: 84px; font-size: 10.5px; }

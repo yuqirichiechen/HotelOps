@@ -37,6 +37,7 @@ const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 /** Group room cards under their floor. */
 // Not assigned always shows these floors ("none" when empty); any other floor with cards (e.g. reservations without a room yet) is added after them
 const PRESET_FLOORS = ['G', '1', '2', '3', '4'];
+const EDGE_ZONE = 90, EDGE_STEP = 24;   // px from the board's edge where it starts scrolling; px per frame at the very edge
 const byFloor = (cards) => {
   const m = new Map();
   cards.forEach(c => { if (!m.has(c.floorId)) m.set(c.floorId, { floorId: c.floorId, label: c.floorLabel, cards: [] }); m.get(c.floorId).cards.push(c); });
@@ -79,19 +80,20 @@ const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
 const isMacCtrlClick = (e) => !!(e && e.ctrlKey && e.button === 0 && typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || ''));
 
 /** One small room card. Draggable; click selects it (Ctrl/⌘-click adds or removes, Shift-click selects a range); right-click opens a "Move to" menu. */
-const RoomCard = ({ it, group, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin, onMenu }) => (
+const RoomCard = ({ it, group, pinned, selected, pick, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin, onMenu }) => (
   <div
-    className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${it.ip ? ' ip' : ''}${dev && guest ? ' withguest' : ''}`}
+    className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${it.ip ? ' ip' : ''}${pick ? ' pick' : ''}${dev && guest ? ' withguest' : ''}`}
     data-flip={it.roomNumber} data-flip-group={group} data-room={it.roomNumber}
     draggable={!readOnly}
     role={readOnly ? undefined : 'button'} tabIndex={readOnly ? undefined : 0} aria-pressed={readOnly ? undefined : !!selected}
     aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.ip ? 'in progress, someone is already on it' : it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}${it.locked ? ', guest asked not to be moved' : ''}`}
     title={`${it.tbd ? 'Room not assigned yet' : 'Room ' + it.roomNumber} · ${it.typeCode} · ${it.why || (it.kind === 'clean' ? 'Clean' : 'Service')}${guest ? ' · ' + guest : ''}`}
-    onClick={(e) => !readOnly && onSelect(it.roomNumber, e)}
+    onClick={(e) => !readOnly && onSelect(it.roomNumber, pick ? { ctrlKey: true } : e)}      // "Select rooms" mode on this floor: a plain click ticks / unticks
     onContextMenu={(e) => { if (readOnly) return; if (isMacCtrlClick(e)) { e.preventDefault(); onSelect(it.roomNumber, { ctrlKey: true }); return; } onMenu(e, it.roomNumber); }}   // on a Mac, Ctrl-click is a right-click: treat it as the multi-select click
     onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(it.roomNumber, e); } }}
     onDragStart={(e) => onDragStart(e, it.roomNumber)} onDragEnd={onDragEnd}
   >
+    {pick && <span className={`hk-rc-box${selected ? ' on' : ''}`} aria-hidden="true">{selected ? '✓' : ''}</span>}
     <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong><span className="hk-rc-marks">{it.locked && <i className="hk-rc-lock" title="Guest asked not to be moved" aria-hidden="true">⚑</i>}{it.ip && <i className="hk-rc-iptag" title="In progress — someone is already on this room">IP</i>}{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span></span>
     <small>{it.typeCode}</small>
     {dev && guest && <em className="hk-rc-guest">{guest}</em>}
@@ -180,6 +182,10 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const hoverGroup = useRef(undefined);                  // group under the mouse (for paste): housekeeper id | null (= Not assigned)
   const lastGroup = useRef(undefined);
   const [over, setOver] = useState(null);
+  const [pick, setPick] = useState({});                 // "Select rooms" mode per floor section: { 'group|floor': true } — a plain click ticks rooms there
+  const [dragging, setDragging] = useState(false);       // a card / floor is being dragged (shows the edge arrows when there are more housekeepers than fit)
+  const [edge, setEdge] = useState(null);                 // 'left' | 'right' while the mouse holds the edge of the board
+  const [canScroll, setCanScroll] = useState({ l: false, r: false });
   const [lastStays, setLastStays] = useState({});
   const [lockedRooms, setLockedRooms] = useState([]);
   const [justMoved, setJustMoved] = useState([]);
@@ -471,11 +477,11 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   // ── drag & drop (HTML5) + tap-to-move for touch ──
   const onDragStart = (e, room, whole) => {
     const rooms = whole || (selected.includes(room) ? selected : [room]);      // dragging a selected card takes the whole selection along; dragging a floor header takes the whole floor
-    dragRef.current = rooms; autoScroll.start(e.currentTarget);      // the page scrolls by itself when the card is held near the top / bottom edge
+    dragRef.current = rooms; setDragging(true); autoScroll.start(e.currentTarget);      // the page scrolls by itself when the card is held near the top / bottom edge
     try { e.dataTransfer.setData('text/plain', rooms.join(',')); e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ }
   };
-  const onDragEnd = () => { dragRef.current = null; autoScroll.stop(); setOver(null); };
-  const dropOn = (id) => (e) => { e.preventDefault(); const rooms = dragRef.current || String((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '').split(',').filter(Boolean); dragRef.current = null; autoScroll.stop(); setOver(null); moveCards(rooms, id); };
+  const onDragEnd = () => { dragRef.current = null; autoScroll.stop(); setOver(null); setDragging(false); setEdge(null); };
+  const dropOn = (id) => (e) => { e.preventDefault(); const rooms = dragRef.current || String((e.dataTransfer && e.dataTransfer.getData('text/plain')) || '').split(',').filter(Boolean); dragRef.current = null; autoScroll.stop(); setOver(null); setDragging(false); setEdge(null); moveCards(rooms, id); };
   const zone = (key, id) => ({
     onDragOver: (e) => { if (readOnly) return; e.preventDefault(); if (over !== key) setOver(key); },
     onDragLeave: (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setOver(o => (o === key ? null : o)); },
@@ -486,8 +492,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   });
 
   const poolCards = items.filter(i => !assign[i.roomNumber]);
-  const cardEl = (it) => (
-    <RoomCard key={it.roomNumber} it={it} group={assign[it.roomNumber] || 'pool'} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected.includes(it.roomNumber)} justMoved={justMoved.includes(it.roomNumber)} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
+  const cardEl = (it, pick = false) => (
+    <RoomCard key={it.roomNumber} it={it} pick={pick && !it.ip} group={assign[it.roomNumber] || 'pool'} pinned={Object.prototype.hasOwnProperty.call(pinned, it.roomNumber)} selected={selected.includes(it.roomNumber)} justMoved={justMoved.includes(it.roomNumber)} guest={guestOf(it.roomNumber)} dev={dev} readOnly={readOnly}
       onSelect={selectCard} onDragStart={onDragStart} onDragEnd={onDragEnd} onUnpin={unpin} onMenu={openMenu} />
   );
   // floor accordions: open/closed is remembered per (group, floor); until the user touches one, the first floor with rooms is open
@@ -498,21 +504,24 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     return floors.map((f, i) => {
       const key = `${groupKey}|${f.floorId}`, dflt = openAll ? f.cards.length > 0 : i === firstWith;
       const gid = groupKey === 'pool' ? null : groupKey, rooms = f.cards.filter(c => !c.ip).map(c => c.roomNumber), allSel = rooms.length > 0 && rooms.every(r => selected.includes(r));
+      const pickOn = !!pick[key], ticked = rooms.filter(r => selected.includes(r)), movers = ticked.length ? ticked : rooms;
       const actions = readOnly || rooms.length === 0 ? null : (
         <>
-          <button type="button" className="hk-btn hk-btn-xs hk-floor-sel" aria-pressed={allSel} aria-label={`${allSel ? 'Unselect' : 'Select'} every room on ${f.label}`}
-            onClick={() => setSelected(prev => (allSel ? prev.filter(r => !rooms.includes(r)) : [...new Set([...prev, ...rooms])]))}>{allSel ? 'Unselect floor' : 'Select floor'}</button>
-          <select className="hk-floor-move" aria-label={`Move all of ${f.label} to`} value="" onChange={(e) => { const v = e.target.value; if (v) moveCards(rooms, v === '__pool' ? null : v); }}>
-            <option value="">Move floor to…</option>
+          <button type="button" className={`hk-btn hk-btn-xs hk-floor-sel${pickOn ? ' on' : ''}`} aria-pressed={pickOn} aria-label={`Select rooms on ${f.label}`} title="Tick rooms with the mouse, then drag them, right-click, or use Move to…"
+            onClick={() => setPick(p => ({ ...p, [key]: !p[key] }))}><i className="hk-tick" aria-hidden="true">{pickOn ? '☑' : '☐'}</i>Select rooms</button>
+          {pickOn && <button type="button" className="hk-btn hk-btn-xs hk-floor-all" aria-pressed={allSel} title={allSel ? 'Untick every room on this floor' : 'Tick every room on this floor'}
+            onClick={() => setSelected(prev => (allSel ? prev.filter(r => !rooms.includes(r)) : [...new Set([...prev, ...rooms])]))}>{allSel ? 'None' : 'All'}</button>}
+          <select className="hk-floor-move" aria-label={`Move ${ticked.length ? 'the ticked rooms of' : 'all of'} ${f.label} to`} value="" onChange={(e) => { const v = e.target.value; if (v) moveCards(movers, v === '__pool' ? null : v); }}>
+            <option value="">{ticked.length ? `Move ${ticked.length} to…` : 'Move to…'}</option>
             {gid !== null && <option value="__pool">Not assigned</option>}
             {hks.filter(h => h.userId !== gid).map(h => <option key={h.userId} value={h.userId}>{h.name}</option>)}
           </select>
         </>
       );
-      const dragProps = readOnly || rooms.length === 0 ? null : { draggable: true, 'data-floor-drag': f.floorId, onDragStart: (e) => onDragStart(e, rooms[0], rooms), onDragEnd };
+      const dragProps = readOnly || rooms.length === 0 ? null : { draggable: true, 'data-floor-drag': f.floorId, onDragStart: (e) => onDragStart(e, movers[0], movers), onDragEnd };
       return (
         <FloorSection key={f.floorId} floorId={f.floorId} label={f.label} count={f.cards.length} open={accOpen(key, dflt)} onToggle={() => accToggle(key, dflt)} actions={actions} dragProps={dragProps}>
-          {f.cards.length ? <div className="hk-cards">{f.cards.map(cardEl)}</div> : <span className="hk-none">none</span>}
+          {f.cards.length ? <div className="hk-cards">{f.cards.map(c => cardEl(c, pickOn))}</div> : <span className="hk-none">none</span>}
         </FloorSection>
       );
     });
@@ -527,7 +536,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   useEffect(() => { if (stripRef.current) stripRef.current.scrollLeft = stripRef.current.scrollWidth; }, [today, plans.length, loading]);
   const planByDate = useMemo(() => new Map(plans.map(p => [p.date, p])), [plans]);
   const days = useMemo(() => (today ? Array.from({ length: HISTORY_DAYS + 2 }, (_, i) => i - HISTORY_DAYS) : []), [today]);
-  const needsMove = (id) => selected.length > 0 && selected.some(r => (assign[r] || null) !== id);   // would "Move here" change anything?
   // housekeeper columns: three at a time, Prev / Next slide one housekeeper
   const boardEl = useRef(null);
   const perView = () => { const b = boardEl.current, c = b && b.children[0]; return b && c && c.offsetWidth ? Math.max(1, Math.round(b.clientWidth / (c.offsetWidth + 12))) : 3; };
@@ -538,7 +546,32 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     if (b && c) { const left = c.offsetLeft - b.offsetLeft; if (b.scrollTo) b.scrollTo({ left, behavior: 'smooth' }); else b.scrollLeft = left; }
   };
   const onBoardScroll = () => { const b = boardEl.current, c = b && b.children[0]; if (b && c && c.offsetWidth) setVstart(Math.max(0, Math.round(b.scrollLeft / (c.offsetWidth + 12)))); };
-  const edgeScroll = (e) => { const b = boardEl.current; if (!b || !dragRef.current) return; const r = b.getBoundingClientRect(); if (e.clientX < r.left + 56) b.scrollLeft -= 18; else if (e.clientX > r.right - 56) b.scrollLeft += 18; };
+  // Sprint 25.2 — holding a card near the left / right edge of the housekeeper board scrolls it (smoothly, faster nearer the edge) to the next / previous
+  // housekeepers; a faded edge with an arrow shows where it will go whenever there are more housekeepers than fit.
+  const edgeRef = useRef({ dir: 0, speed: 0, at: 0 });
+  const measureScroll = () => { const b = boardEl.current; if (!b) return; const l = b.scrollLeft > 2, r = b.scrollLeft < b.scrollWidth - b.clientWidth - 2; setCanScroll(c => (c.l === l && c.r === r ? c : { l, r })); };
+  const edgeScroll = (e) => {
+    const b = boardEl.current; if (!b || !dragRef.current) return;
+    const r = b.getBoundingClientRect(), x = e.clientX; let dir = 0, speed = 0;
+    if (x < r.left + EDGE_ZONE) { dir = -1; speed = Math.ceil(EDGE_STEP * Math.min(1, (r.left + EDGE_ZONE - x) / EDGE_ZONE)); }
+    else if (x > r.right - EDGE_ZONE) { dir = 1; speed = Math.ceil(EDGE_STEP * Math.min(1, (x - (r.right - EDGE_ZONE)) / EDGE_ZONE)); }
+    edgeRef.current = { dir, speed, at: Date.now() };
+    const name = dir < 0 ? 'left' : dir > 0 ? 'right' : null; setEdge(c => (c === name ? c : name));
+  };
+  useEffect(() => {
+    if (!dragging) return undefined;
+    const rf = (fn) => (window.requestAnimationFrame ? window.requestAnimationFrame(fn) : setTimeout(fn, 16)), cf = (id) => (window.cancelAnimationFrame ? window.cancelAnimationFrame(id) : clearTimeout(id));
+    const stop = () => { setDragging(false); setEdge(null); };   // dragRef is cleared by the drop / drag-end handlers themselves (this capture listener runs first)
+    window.addEventListener('dragend', stop, true); window.addEventListener('drop', stop, true);
+    measureScroll(); let id;
+    const tick = () => {
+      const b = boardEl.current, e = edgeRef.current;
+      if (b && e.dir && Date.now() - e.at < 250) { const before = b.scrollLeft; b.scrollLeft += e.dir * e.speed; if (b.scrollLeft !== before) measureScroll(); }
+      id = rf(tick);
+    };
+    id = rf(tick);
+    return () => { cf(id); window.removeEventListener('dragend', stop, true); window.removeEventListener('drop', stop, true); };
+  }, [dragging]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setVstart(v => Math.max(0, Math.min(v, Math.max(0, colCount - 3)))); }, [colCount]);
   const sheet = useMemo(() => (dev && !readOnly && payload ? buildRoomSheet(payload, live) : null), [dev, readOnly, payload, live]);
   const saveText = readOnly ? 'History — read-only' : saveMsg ? <span className={saveMsg.ok ? 'ok' : 'bad'}>{saveMsg.text}</span> : dirty ? 'Unsaved changes' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet';
@@ -553,6 +586,16 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     <p className="hk-legend" aria-label="Legend"><span><i className="lg lg-clean" />Clean</span><span><i className="lg lg-service" />Stay-over</span><span><i className="lg-star">★</i>Clean first</span><span><i className="lg-lock">⚑</i>Guest asked not to be moved</span><span><i className="lg-pin">●</i>Placed by hand</span></p>
   );
   const whoCount = viewHks.length;
+  // who is under the minimum / over the maximum, as one line (it used to be an extra line inside every card, which pushed the cards out of line)
+  const flagLines = (hksList, perHk, st) => {
+    const names = (kind) => hksList.filter(h => perHk[h.userId] === kind).map(h => h.name), out = [];
+    const u = names('under'), o = names('over'), who = (l) => (l.length > 3 ? `${l.length} housekeepers` : l.join(', '));      // long lists become a count
+    if (u.length) out.push(`${who(u)} ${u.length === 1 ? 'is' : 'are'} below the minimum of ${st.min}`);
+    if (o.length) out.push(`${who(o)} ${o.length === 1 ? 'is' : 'are'} over the maximum of ${st.max}`);
+    return out;
+  };
+  const boardFlags = readOnly ? [] : flagLines(sum.hks, warn.perHk, viewSettings);
+  const previewFlags = readOnly ? [] : flagLines(previewSum.hks, pvWarn.perHk, viewSettings);
   const floorChoices = useMemo(() => [...new Set([...PRESET_FLOORS, ...items.map(i => i.floorId).filter(f => f && f !== 'unknown')])].sort((a, b) => floorRank(a) - floorRank(b)), [items]);
   const typeChoices = useMemo(() => {
     const m = new Map(); if (payload) buildRoomSheet(payload, live).floors.forEach(f => f.rooms.forEach(r => { if (r.typeCode && !m.has(r.typeCode)) m.set(r.typeCode, r.typeLabel || r.typeCode); }));
@@ -691,6 +734,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                 <div className="hk-preview-head">
                   <h3>{readOnly ? 'Saved split' : isConfirmed ? 'Current split' : 'Proposed split'}</h3>
                   <span className="hk-muted-inline">{previewSum.hks.length ? `${previewSum.hks.reduce((n, h) => n + h.rooms, 0)} of ${total} rooms · ${previewSum.hks.length} housekeeper${previewSum.hks.length === 1 ? '' : 's'}` : `${total} rooms need work`}{!readOnly && !isConfirmed && previewSum.hks.length > 0 ? ' · nothing is assigned until you confirm' : ''}</span>
+                  {previewFlags.length > 0 && <span className="hk-carflag hk-pv-flags" role="status">{previewFlags.join(' · ')}</span>}
                 </div>
                 {previewSum.hks.length === 0 ? (
                   <div className="hk-emptyboard hk-empty-plan">
@@ -721,8 +765,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                                 {floorChoices.map(f => { const on = (prefs.floors[h.userId] || []).includes(f); return <button key={f} type="button" className={`hk-chip${on ? ' on' : ''}`} aria-pressed={on} aria-label={`${h.name} prefers ${floorLabel(f)}`} onClick={() => toggleFloorPref(h.userId, f)}>{f}</button>; })}
                               </div>
                             )}
-                            {flag === 'over' && <small className="hk-warn">Over the maximum of {viewSettings.max}</small>}
-                            {flag === 'under' && <small className="hk-warn">Below the minimum of {viewSettings.min}</small>}
                           </div>
                         </li>
                       );
@@ -744,12 +786,11 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                 {!readOnly && poolCards.some(c => !c.ip) && (
                   <div className="hk-pool-tools">
                     <button type="button" className="hk-btn hk-btn-xs hk-pool-all" onClick={() => setSelected(poolCards.filter(c => !c.ip).map(c => c.roomNumber))}>Select all {poolCards.filter(c => !c.ip).length}</button>
-                    <small className="hk-multihint">Several at once: Ctrl/⌘-click · Shift-click for a range · <b>Select floor</b> / <b>Move floor to…</b> on any floor · or drag a floor's header</small>
+                    <small className="hk-multihint">Several at once: Ctrl/⌘-click · Shift-click for a range · <b>Select rooms</b> on a floor to tick with the mouse · <b>Move to…</b> sends the ticked rooms (or the whole floor) · or drag a floor's header</small>
                   </div>
                 )}
                 {legend}
                 {poolCards.some(c => c.ip) && <p className="hk-ipnote" role="note"><b>{poolCards.filter(c => c.ip).length} in progress</b> — someone is already on {poolCards.filter(c => c.ip).length === 1 ? 'it' : 'them'}, so Auto-assign leaves {poolCards.filter(c => c.ip).length === 1 ? 'it' : 'them'} alone. Drag one to a housekeeper if it still needs a cleaner.</p>}
-                {needsMove(null) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, null)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
                 {items.length > 0 && hks.length === 0 && !readOnly && <p className="hk-muted">{anon ? 'Enter how many housekeepers are working.' : 'Choose who is working, then place the rooms.'}</p>}
               </div>
               <div className="hk-pool-floors hk-pool-cols hk-scroll">{renderFloors('pool', poolFloors, true)}</div>
@@ -803,11 +844,16 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
                 {clip.length > 0 && !readOnly && <p className="hk-clipbar" role="status">{clip.length} card{clip.length === 1 ? '' : 's'} copied — put the mouse over a housekeeper (or Not assigned) and press <kbd>Ctrl/⌘ V</kbd>, or right-click a group → Paste. <button type="button" className="hk-btn hk-btn-sm" onClick={() => setClip([])}>Clear</button></p>}
 
-                {items.length > 0 && colCount > 3 && (
+                {items.length > 0 && (colCount > 3 || boardFlags.length > 0) && (
                   <div className="hk-carctl" role="group" aria-label="Housekeepers in view">
-                    <span className="hk-carcount">Housekeepers {vstart + 1}–{Math.min(colCount, vstart + perView())} of {colCount}</span>
-                    <button type="button" className="hk-btn hk-btn-sm" aria-label="Previous housekeeper" disabled={vstart <= 0} onClick={() => goCol(vstart - 1)}>‹ Prev</button>
-                    <button type="button" className="hk-btn hk-btn-sm" aria-label="Next housekeeper" disabled={vstart + perView() >= colCount} onClick={() => goCol(vstart + 1)}>Next ›</button>
+                    {colCount > 3 && (
+                      <>
+                        <span className="hk-carcount">Housekeepers {vstart + 1}–{Math.min(colCount, vstart + perView())} of {colCount}</span>
+                        <button type="button" className="hk-btn hk-btn-sm" aria-label="Previous housekeeper" disabled={vstart <= 0} onClick={() => goCol(vstart - 1)}>‹ Prev</button>
+                        <button type="button" className="hk-btn hk-btn-sm" aria-label="Next housekeeper" disabled={vstart + perView() >= colCount} onClick={() => goCol(vstart + 1)}>Next ›</button>
+                      </>
+                    )}
+                    {boardFlags.length > 0 && <span className="hk-carflag" role="status">{boardFlags.join(' · ')}</span>}
                   </div>
                 )}
                 {sum.hks.length === 0 && (
@@ -822,7 +868,14 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                   </div>
                 )}
                 {sum.hks.length > 0 && (
-                  <div className={`hk-board${dev ? ' dev' : ''}`} ref={boardEl} onScroll={onBoardScroll} onDragOver={edgeScroll}>
+                  <div className="hk-board-wrap">
+                  {dragging && colCount > perView() && (
+                    <>
+                      <div className={`hk-edge hk-edge-left${canScroll.l ? ' can' : ''}${edge === 'left' && canScroll.l ? ' hot' : ''}`} aria-hidden="true"><span>‹</span></div>
+                      <div className={`hk-edge hk-edge-right${canScroll.r ? ' can' : ''}${edge === 'right' && canScroll.r ? ' hot' : ''}`} aria-hidden="true"><span>›</span></div>
+                    </>
+                  )}
+                  <div className={`hk-board${dev ? ' dev' : ''}${dragging ? ' is-dragging' : ''}`} ref={boardEl} onScroll={onBoardScroll} onDragOver={edgeScroll}>
                     {sum.hks.map(h => {
                       const mine = items.filter(i => assign[i.roomNumber] === h.userId);
                       const pct = Math.min(100, viewSettings.max > 0 ? (h.units / viewSettings.max) * 100 : 100), minPct = Math.min(100, (viewSettings.min / viewSettings.max) * 100);
@@ -840,13 +893,11 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                             <div className="hk-meter" title={`Minimum ${viewSettings.min} · maximum ${viewSettings.max}`}><span className={flag || ''} style={{ width: `${pct}%` }} /><i style={{ left: `${minPct}%` }} /></div>
                             <span className="hk-pct">{Math.round(pct)}%</span>
                           </div>
-                          {flag === 'over' && <p className="hk-warn">Over the maximum of {viewSettings.max}</p>}
-                          {flag === 'under' && <p className="hk-warn">Below the minimum of {viewSettings.min}</p>}
-                          {!readOnly && needsMove(h.userId) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, h.userId)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
                           <div className="hk-col-body hk-scroll">{mine.length === 0 ? <p className="hk-muted">No rooms yet.</p> : renderFloors(h.userId, byFloor(mine).map(f => ({ ...f })))}</div>
                         </section>
                       );
                     })}
+                  </div>
                   </div>
                 )}
               </section>

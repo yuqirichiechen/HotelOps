@@ -142,6 +142,15 @@ t('IN PROGRESS rooms (25): their own state — never handed out by Auto-assign (
   const items = [...mix('1', 8, 0), { roomNumber: '199', floorId: '1', kind: 'clean', priority: false, ip: true, why: 'In progress' }]; const as = HK.balance(items, H('a', 'b'), {}, S); assert(!('199' in as), 'left in the pool'); assert.strictEqual(Object.keys(as).length, 8);
   const placed = HK.balance(items, H('a', 'b'), { 199: 'b' }, S); assert.strictEqual(placed['199'], 'b', 'a hand-placed In Progress room is respected'); assert.strictEqual(HK.catOf({ ip: true, kind: 'clean', pre: true }), 'progress');
 });
+t('IN PROGRESS carries into TOMORROW (25.2): a vacant room rGuest shows as IP now is still IP in tomorrow\'s list — not assumed cleaned overnight — so it is never auto-assigned, grey on the all-rooms sheet, and the same room is not "dirty" tomorrow', () => {
+  const today = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }).items.find(i => i.roomNumber === '103'); assert.strictEqual(today.ip, true);
+  const tm = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 1 }); const it = tm.items.find(i => i.roomNumber === '103'); assert(it, '103 is in tomorrow\'s list'); assert.strictEqual(it.ip, true, 'still In Progress tomorrow'); assert.strictEqual(it.why, 'In progress'); assert.strictEqual(it.priority, false); assert.strictEqual(HK.catOf(it), 'progress');
+  const dirtyToday = HK.buildWorkList({ payload, live: null, allowance: allow, offset: 0 }).items.filter(i => i.kind === 'clean' && !i.ip).map(i => i.roomNumber); assert(!tm.items.some(i => i.ip && i.kind === 'service'));
+  const as = HK.balance(tm.items, H('a', 'b'), {}, S); assert(!('103' in as), 'tomorrow\'s Auto-assign leaves it alone'); assert(dirtyToday.length > 0);
+  const m = HK.buildMasterSheet({ payload, live: null, items: tm.items, offset: 1 }); const r = m.rooms.find(x => x.room === '103'); assert.strictEqual(r.cat, 'progress'); assert.strictEqual(r.status, 'In progress');
+  // the latest inventory wins: no IP room in the board → nothing is IP tomorrow
+  const none = { ...payload, perRoomSheet: payload.perRoomSheet.map(x => (x.hkStatus === 'IP' ? { ...x, hkStatus: 'D' } : x)) }; assert(HK.buildWorkList({ payload: none, live: null, allowance: allow, offset: 1 }).items.every(i => !i.ip), 'read from the latest room inventory, not remembered');
+});
 t('PREFERRED FLOORS (25): a housekeeper who asked for a floor gets it when the day allows (and the others fill in around), still floor-contiguous', () => {
   const real = [...mix('G', 8, 2), ...mix('1', 12, 2), ...mix('2', 12, 3), ...mix('3', 9, 6)];
   const as = HK.balance(real, H('a', 'b', 'c', 'd'), {}, S, { a: ['3'], d: ['G'] }); assert.deepStrictEqual(floorsOf(real, as, 'a'), ['3'], 'a asked for floor 3'); assert.deepStrictEqual(floorsOf(real, as, 'd'), ['G'], 'd asked for the ground floor'); assert.strictEqual(Object.keys(as).length, real.length);

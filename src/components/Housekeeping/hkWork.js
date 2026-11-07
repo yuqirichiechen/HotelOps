@@ -87,11 +87,17 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
       unplaced.clean += (d.unplacedPriority || 0) + (d.depUnassigned || 0); unplaced.service += d.stayUnassigned || 0;
     });
   }
+  // Sprint 25.2: In Progress is read from the LATEST room inventory and does not expire overnight — a vacant room rGuest shows as IP now is still IP in tomorrow's
+  // plan (someone is on it; nobody is assigned to clean it), instead of being assumed "done by tomorrow" and handed out as a dirty room.
+  if (offset > 0) {
+    const ipNow = new Set(); buildRoomSheet(payload, live).floors.forEach(f => f.rooms.forEach(r => { if (r.tone === 'progress') ipNow.add(r.roomNumber); }));
+    items.forEach(i => { if (!i.tbd && i.kind === 'clean' && ipNow.has(i.roomNumber)) { i.ip = true; i.why = 'In progress'; i.priority = false; } });
+  }
   // rooms a guest has locked: clean those first
   const locked = new Set([...(lockedRooms || [])].map(String));
   ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date) locked.add(String(r.roomNumber)); });
   // every locked room that has work gets the lock mark; clean ones also go first
-  items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean') { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
+  items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean' && !i.ip) { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
   // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (pink) when they still need cleaning.
   const pre = preAssignedRooms(payload, date, offset === 0 ? live : null);
   const ptypes = new Set((priorityTypes || []).map(String));
