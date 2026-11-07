@@ -1125,7 +1125,7 @@ app.get('/api/admin/employees', requireAuth, requireRole('admin'), async (req, r
 
 // ── Sprint 23: housekeeping plans (who cleans / services which rooms, per day) ───────────────────────────────────────────────────────────
 // Read on page open, written only on Save/Print — no timers (Neon bills awake time). Managers and dev.
-const { sanitizePlan } = require('./housekeeping');
+const { sanitizePlan, sanitizePrefs, parsePrefs } = require('./housekeeping');
 const pinVault = require('./pinvault');   // Sprint 24.4: encrypted PIN copy, revealed by dev only
 const { redactCurrentResponse, pickSettings, SETTINGS_ALLOWED } = require('./frontdesk');   // Sprint 24: what the front-desk portal may read
 const hkProperty = () => process.env.SYNC_PROPERTY_KEY || 'default';
@@ -1177,12 +1177,29 @@ const hkPutPlan = async (req, res) => {
     return res.json({ success: true, updatedAt: rows[0].updated_at });
   } catch (err) { console.error('[hk:put]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 };
+// Sprint 25 — property-wide preferences (preferred floors per housekeeper, priority room types), kept in app_settings.hk_prefs. Front desk and managers may both change them.
+const hkGetPrefs = async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM app_settings WHERE key = 'hk_prefs'`);
+    return res.json({ success: true, prefs: rows[0] ? parsePrefs(rows[0].value) : parsePrefs(null) });
+  } catch (err) { console.error('[hk:prefs:get]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+};
+const hkPutPrefs = async (req, res) => {
+  const r = sanitizePrefs(req.body && req.body.prefs);
+  if (r.error) return res.status(400).json({ success: false, message: r.error });
+  try {
+    await pool.query(`INSERT INTO app_settings (key, value) VALUES ('hk_prefs', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [JSON.stringify(r.prefs)]);
+    return res.json({ success: true, prefs: r.prefs });
+  } catch (err) { console.error('[hk:prefs:put]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+};
 // Managers/dev use /api/admin/housekeeping/*; the front-desk portal (department Front Desk) uses the same handlers under /api/frontdesk/housekeeping/*.
 for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontdesk', requireFrontDesk]]) {
   app.get(`${base}/housekeeping/plan`,         requireAuth, gate, hkGetPlan);
   app.get(`${base}/housekeeping/plans`,        requireAuth, gate, hkListPlans);
   app.get(`${base}/housekeeping/locked-rooms`, requireAuth, gate, hkLockedRooms);
   app.put(`${base}/housekeeping/plan`,         requireAuth, gate, hkPutPlan);
+  app.get(`${base}/housekeeping/prefs`,        requireAuth, gate, hkGetPrefs);
+  app.put(`${base}/housekeeping/prefs`,        requireAuth, gate, hkPutPrefs);
 }
 
 app.get('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (req, res) => {
@@ -3782,11 +3799,11 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     // Written from the Dev view only; managers read it (GET) so their prints use it.
     hk_print_colors: v => {
       try {
-        const o = JSON.parse(String(v)); const keys = ['dirty', 'departure', 'priority', 'inhouse'];
+        const o = JSON.parse(String(v)); const keys = ['dirty', 'departure', 'priority', 'progress', 'inhouse'];
         return !!o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).every(k => keys.includes(k)) && keys.every(k => o[k] === undefined || o[k] === '' || /^#[0-9A-Fa-f]{6}$/.test(o[k]));
       } catch { return false; }
     },
-    // Sprint 24.9: dev option — print TWO sheets per housekeeper (AM and PM; the PM sheet marks the rooms already clean on the room board). 'true' | 'false'.
+    // Sprint 24.11: dev option — print a return-slips page (Cleaned / Serviced / DND) after each housekeeper's sheet. 'true' | 'false'.
     // Written from the Dev view only (the hk_ prefix is dev-write-only); everyone's prints read it.
     hk_print_slips: v => v === 'true' || v === 'false',
     // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).

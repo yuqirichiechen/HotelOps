@@ -19,9 +19,10 @@ export const KIND_LABEL = { clean: 'Clean', service: 'Service' };
 // Colour groups of the PRINTED sheets (the one-page "all rooms" sheet and each housekeeper's). Defaults (Dev can change them):
 //   green  = dirty VACANT room (dirty / in progress) · yellow = a guest is checking out that day · pink = PRIORITY = the room is pre-assigned to an arriving
 //   reservation (Sprint 24.10; an arrival that has no room yet can take ANY room of its type, so it makes nothing priority) · in-house stay-overs no colour.
-export const CATS = ['dirty', 'departure', 'priority', 'inhouse'];
-export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — pre-assigned to an arriving guest', inhouse: 'In-house (stay-over)' };
-export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', inhouse: '' };
+//   Sprint 25: pink also marks every room of a PRIORITY ROOM TYPE (set in Rules); a room rGuest shows as In Progress (someone is already on it) is its own grey group.
+export const CATS = ['dirty', 'departure', 'priority', 'progress', 'inhouse'];
+export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — pre-assigned or a priority room type', progress: 'In progress (being cleaned)', inhouse: 'In-house (stay-over)' };
+export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', progress: '#e2e8f0', inhouse: '' };
 /** Stored setting (JSON string) → a full colour map; anything missing/invalid falls back to the default. '' = no colour. */
 export function parseColors(raw) {
   let o = {}; try { o = typeof raw === 'string' ? JSON.parse(raw) : (raw || {}); } catch { o = {}; }
@@ -36,7 +37,7 @@ export function preAssignedRooms(payload, date, live) {
   if (live && Array.isArray(live.remainingArrivals)) live.remainingArrivals.forEach(a => { if (a && a.roomNumber) pre.add(String(a.roomNumber)); });
   return pre;
 }
-export const catOf = (it) => (it.pre && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|In progress|Checks out today)/.test(it.why || '') ? 'dirty' : 'departure');
+export const catOf = (it) => (it.ip ? 'progress' : (it.pre || it.ptype) && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|Checks out today)/.test(it.why || '') ? 'dirty' : 'departure');
 
 const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byRoom = (a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
@@ -53,7 +54,7 @@ const mkItem = (roomNumber, typeCode, floorId, kind, why, priority, tbd = false)
 export const isRoomLocked = (r) => !!(r && (r.doNotMoveRoom || r.roomLocked || r.roomAssignmentLocked || r.lockedRoom));
 
 /** @returns {{date, offset, items, unplaced:{clean:number, service:number}}} */
-export function buildWorkList({ payload, live, allowance, offset = 0, lockedRooms }) {
+export function buildWorkList({ payload, live, allowance, offset = 0, lockedRooms, priorityTypes }) {
   const today = (live && live.forecastDate) || (payload && payload.forecastDate) || '';
   const date = today ? addDays(today, offset) : '';   // before the room data has loaded there is no date yet
   const items = [], unplaced = { clean: 0, service: 0 };
@@ -63,7 +64,8 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
     const model = buildDayModel(payload, today, live, allowance);
     const first = new Set(((model.actions && model.actions.cleanFirst) || []).map(r => String(r.roomNumber)));
     for (const f of sheet.floors) for (const r of f.rooms) {
-      if (r.tone === 'dirty' || r.tone === 'progress') items.push(mkItem(r.roomNumber, r.typeCode, f.floorId, 'clean', r.tone === 'progress' ? 'In progress' : 'Dirty', first.has(r.roomNumber)));
+      if (r.tone === 'dirty') items.push(mkItem(r.roomNumber, r.typeCode, f.floorId, 'clean', 'Dirty', first.has(r.roomNumber)));
+      else if (r.tone === 'progress') items.push({ ...mkItem(r.roomNumber, r.typeCode, f.floorId, 'clean', 'In progress', false), ip: true });   // Sprint 25: someone is already on it — never handed out automatically
       else if (r.tone === 'occupied') {
         if (r.checkoutDate === today) items.push(mkItem(r.roomNumber, r.typeCode, f.floorId, 'clean', 'Check-out today', false));
         else items.push(mkItem(r.roomNumber, r.typeCode, f.floorId, 'service', r.checkoutDate ? 'Stay-over' : 'Stay-over (check-out date unknown)', false));
@@ -92,7 +94,11 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean') { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
   // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (pink) when they still need cleaning.
   const pre = preAssignedRooms(payload, date, offset === 0 ? live : null);
-  items.forEach(i => { i.pre = !i.tbd && pre.has(i.roomNumber); });
+  const ptypes = new Set((priorityTypes || []).map(String));
+  items.forEach(i => {
+    i.pre = !i.tbd && !i.ip && pre.has(i.roomNumber); i.ptype = !i.tbd && !i.ip && i.kind === 'clean' && ptypes.has(i.typeCode);
+    if ((i.pre || i.ptype) && i.kind === 'clean') i.priority = true;                // pre-assigned arrival / priority room type: cleaned first, pink
+  });
   // colour group + the stay (check-in → check-out) of whoever is in the room
   const stayBy = new Map();
   ((payload && payload.reservations) || []).filter(r => r.status === 'INH' && r.roomNumber).forEach(r => { const k = String(r.roomNumber), prev = stayBy.get(k); if (!prev || String(r.departureDate) > prev.dep) stayBy.set(k, { dep: String(r.departureDate), text: `${shortDate(r.arrivalDate)} → ${shortDate(r.departureDate)}` }); });
@@ -166,13 +172,21 @@ export function evenOut(items, assign, hks, pinned = {}, s = DEFAULT_SETTINGS, t
   return assign;
 }
 
+// Sprint 25 — Auto-assign, rewritten after the front desk's first real use ("gives housekeepers 3 floors and unnecessarily splits floors that can be
+// completed by one housekeeper"). The rooms are laid out in floor / room order and cut into one CONTIGUOUS run per housekeeper — so a person gets
+// neighbouring floors (usually one, at most two) and a floor is cut in two only when keeping it whole would leave somebody clearly over / under.
+// The cut positions are found exactly (dynamic programming) by minimising a cost: workload far from the fair share, floors touched beyond one, a floor
+// cut in the middle, going over the maximum / under the minimum, and — when a housekeeper has preferred floors — work on floors they did not ask for.
+const W = { dev: 100, floors: 8, cut: 12, over: 300, under: 60, pref: 80 };
+const permutations = (a) => (a.length <= 1 ? [a] : a.flatMap((x, i) => permutations([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])));
+
 /**
  * Hand the work out. Cards in `pinned` ({ room: userId | null }) were placed by a person and stay where they are (null = deliberately left in the
- * pool). Everything else is spread so each housekeeper ends up with about the same workload (pinned cards count), and — wherever it costs little —
- * a whole floor goes to ONE housekeeper: the cuts between people are moved to the nearest floor boundary when that is within 20% of a share and nobody goes over the maximum because of it.
+ * pool); rooms rGuest shows as In Progress (`ip`) are never handed out automatically. Everything else is spread so each housekeeper ends up with about the
+ * same workload (pinned cards count), floor-contiguously. `prefs` = { userId: [floorId…] } — a housekeeper's preferred floors.
  * @returns {{ [roomNumber]: userId }}  (only rooms that have an owner; pool cards are absent)
  */
-export function balance(items, hks, pinned = {}, s = DEFAULT_SETTINGS) {
+export function balance(items, hks, pinned = {}, s = DEFAULT_SETTINGS, prefs = {}) {
   const assign = {};
   if (!hks.length || !items.length) return assign;
   const idx = new Map(hks.map((h, i) => [h.userId, i]));
@@ -180,33 +194,53 @@ export function balance(items, hks, pinned = {}, s = DEFAULT_SETTINGS) {
   for (const it of items) {
     const has = Object.prototype.hasOwnProperty.call(pinned, it.roomNumber), u = has ? pinned[it.roomNumber] : undefined;
     if (has && u === null) continue;                                              // held in the pool on purpose
-    if (has && u && idx.has(u)) { assign[it.roomNumber] = u; pre[idx.get(u)] += weightOf(it, s); } else free.push(it);
+    if (has && u && idx.has(u)) { assign[it.roomNumber] = u; pre[idx.get(u)] += weightOf(it, s); } else if (!it.ip) free.push(it);   // In Progress rooms stay in the pool
   }
   if (!free.length) return assign;
   free.sort(byRoom);
-  const F = free.reduce((n, i) => n + weightOf(i, s), 0), n = hks.length, T = F + pre.reduce((a, b) => a + b, 0), target = T / n;
+  const N = free.length, n = hks.length, wts = free.map(i => weightOf(i, s));
+  const P = [0]; wts.forEach((w, i) => P.push(P[i] + w));
+  const F = P[N], T = F + pre.reduce((a, b) => a + b, 0), avg = Math.max(T / n, 1e-6), target = T / n;
   let quota = pre.map(p => Math.max(0, target - p)); const S = quota.reduce((a, b) => a + b, 0);
   quota = S > 0 ? quota.map(q => (q * F) / S) : quota.map(() => F / n);
-  const cuts = []; let acc = 0; quota.forEach((q, j) => { acc += q; if (j < n - 1) cuts.push(acc); });
-  // floor boundaries (cumulative workload at the end of each floor except the last)
-  const bounds = []; let cum = 0;
-  free.forEach((it, i) => { cum += weightOf(it, s); if (i < free.length - 1 && free[i + 1].floorId !== it.floorId) bounds.push(cum); });
-  const tol = 0.2 * (F / n);
-  const snapped = cuts.map(c => { let best = c, d = Infinity; bounds.forEach(bd => { const x = Math.abs(bd - c); if (x < d && x <= tol) { d = x; best = bd; } }); return best; });
-  for (let i = 1; i < snapped.length; i += 1) if (snapped[i] < snapped[i - 1]) snapped[i] = snapped[i - 1];
-  const run = (cutList) => {
-    const out = {}, load = pre.slice(); let before = 0;
-    for (const it of free) {
-      const w = weightOf(it, s), mid = before + w / 2; let j = 0;
-      while (j < cutList.length && mid >= cutList[j]) j += 1;
-      out[it.roomNumber] = hks[j].userId; load[j] += w; before += w;
+  const minEff = Math.min(s.min, 0.9 * target);                                   // a day too small to give everyone the minimum must not leave people empty-handed
+  const fl = free.map(i => i.floorId);
+  const starts = [0]; for (let i = 0; i < N; i += 1) starts.push(starts[i] + (i === 0 || fl[i] !== fl[i - 1] ? 1 : 0));   // starts[k] = floors that begin before index k
+  const touched = (i, j) => (j <= i ? 0 : starts[j] - starts[i] + (i > 0 && fl[i] === fl[i - 1] ? 1 : 0));
+  const prefSets = hks.map(h => new Set((prefs && prefs[h.userId]) || []));
+  const outside = hks.map((h, hi) => { const o = [0]; for (let i = 0; i < N; i += 1) o.push(o[i] + (prefSets[hi].size && !prefSets[hi].has(fl[i]) ? wts[i] : 0)); return o; });
+  const run = (order) => {                                                         // order[k] = index into hks of the k-th run
+    const INF = 1e18, dp = Array.from({ length: n + 1 }, () => new Float64Array(N + 1).fill(INF)), back = Array.from({ length: n + 1 }, () => new Int32Array(N + 1));
+    dp[0][0] = 0;
+    for (let k = 0; k < n; k += 1) {
+      const h = order[k], q = quota[h];
+      for (let j = 0; j <= N; j += 1) {
+        const base = dp[k][j]; if (base >= INF) continue;
+        for (let e = j; e <= N; e += 1) {
+          const w = P[e] - P[j], d = (w - q) / avg, tot = pre[h] + w;
+          let c = base + W.dev * d * d;
+          const t = touched(j, e); if (t > 1) c += W.floors * (t - 1) * (t - 1);
+          if (e > j && e < N && fl[e - 1] === fl[e]) c += W.cut;
+          if (tot > s.max + 1e-9) c += 25 * (tot - s.max) + W.over * ((tot - s.max) / avg) ** 2;
+          if (w > 0 && tot < minEff - 1e-9) c += W.under * ((minEff - tot) / avg) ** 2;
+          if (prefSets[h].size && w > 0) { const o = outside[h][e] - outside[h][j]; c += W.pref * (o / avg) ** 2; }
+          if (c < dp[k + 1][e]) { dp[k + 1][e] = c; back[k + 1][e] = j; }
+        }
+      }
     }
-    return { out, peak: Math.max(...load) };
+    const cuts = []; let e = N; for (let k = n; k >= 1; k -= 1) { cuts[k - 1] = [back[k][e], e]; e = back[k][e]; }
+    return { cost: dp[n][N], cuts, order };
   };
-  // keep a floor together only if nobody ends up over the maximum because of it (or it is no worse than the plain split)
-  const plain = run(cuts), tidy = run(snapped);
-  Object.assign(assign, tidy.peak <= Math.max(s.max, plain.peak) + 1e-9 ? tidy.out : plain.out);
-  return evenOut(items, assign, hks, pinned, s);
+  const anyPref = prefSets.some(p => p.size), ids = hks.map((_, i) => i);
+  let orders = [ids];
+  if (anyPref) {
+    const rank = (hi) => { const f = [...prefSets[hi]].map(floorRank); return f.length ? f.reduce((a, b) => a + b, 0) / f.length : null; };
+    const known = ids.filter(hi => rank(hi) !== null), mid = known.length ? known.reduce((a, hi) => a + rank(hi), 0) / known.length : 0;
+    orders = n <= 5 ? permutations(ids) : [ids.slice().sort((a, b) => ((rank(a) === null ? mid : rank(a)) - (rank(b) === null ? mid : rank(b))))];
+  }
+  let best = null; for (const o of orders) { const r = run(o); if (!best || r.cost < best.cost - 1e-9) best = r; }
+  best.cuts.forEach(([a, b], k) => { for (let i = a; i < b; i += 1) assign[free[i].roomNumber] = hks[best.order[k]].userId; });
+  return assign;
 }
 
 /** Plain-language warnings: one overall line + a flag per housekeeper ('over' | 'under'). */
@@ -263,20 +297,12 @@ export function toAssignments(items, assign, hks, pinned = {}) {
 
 export { normFloor };
 
-// ── The one-page "all rooms" sheet (Sprint 24.10) ─────────────────────────────────────────────────────────────────────────────────────────────
-// Every room of the hotel in room-number order (Ground first), laid out in 3 groups of [Room | Status] side by side, filled down each group like a
-// column of a newspaper. Room cell colour: green = dirty vacant · yellow = a guest checks out that day · pink = priority (pre-assigned to an arrival and
-// still needs work); anything else white. Status says what the room is now; a room still occupied by a staying guest shows the stay (check-in → check-out)
-// as before; one checking out says "Check-out 12 PM" — rGuest has no check-out time per guest, so it is the property's standard (change it here).
-export const STANDARD_CHECKOUT = '12 PM';
+// ── The one-page "all rooms" sheet (Sprint 24.10, trimmed in 25) ───────────────────────────────────────────────────────────────────────────────
+// Every room of the hotel in floor / room-number order (Ground first), 3 groups of [Room | Status] filled down each group like a newspaper column.
+// Room cell colour: green = dirty vacant · yellow = a guest checks out that day · pink = priority (pre-assigned to an arrival or a priority room type,
+// still needs work) · grey = in progress; anything else white. The STATUS column is deliberately almost empty (front desk: "unnecessary information"):
+// only a staying guest's stay span, "In progress" and "Out of service" are written; departures stay blank so a late check-out can be pencilled in.
 export const MASTER_GROUPS = 3;
-
-/** What the status column says for a room that has work. Today's wording comes from the room board; tomorrow's from the plan ("why"). */
-const planStatus = (it, offset) => {
-  if (it.kind === 'service') return it.stay || 'Stay-over';
-  if (/^Check/.test(it.why || '') && !/^Checks out today/.test(it.why)) return `Check-out ${STANDARD_CHECKOUT}`;
-  return /^In progress/.test(it.why || '') ? 'In progress' : 'Dirty';
-};
 
 /** @param {number} [offset] 0 = today (the room board), 1 = tomorrow (the planned day: today's board moved forward by the plan)
  *  @returns {{rooms: {room, floorId, status, cat, pre, work, kind}[], rows: (object|null)[][], counts, total}} */
@@ -288,12 +314,10 @@ export function buildMasterSheet({ payload, live, items, offset = 0 }) {
   const rooms = [];
   for (const f of sheet.floors) for (const r of f.rooms) {
     const it = byRoomNo.get(r.roomNumber), pre = !!((it && it.pre) || preSet.has(r.roomNumber));
-    let status;
+    let status = '';
     if (r.tone === 'off') status = 'Out of service';
-    else if (it && offset > 0) status = planStatus(it, offset);
-    else if (r.tone === 'occupied') status = (it && it.kind === 'clean' && /check/i.test(it.why || '')) ? `Check-out ${STANDARD_CHECKOUT}` : (r.checkout || 'Occupied');
-    else status = r.toneLabel;
-    if (pre) status += ' · arrival';
+    else if (it && it.ip) status = 'In progress';
+    else if (it && it.kind === 'service') status = it.stay || r.checkout || '';
     rooms.push({ room: r.roomNumber, floorId: f.floorId, status, cat: it ? (it.cat || catOf(it)) : null, pre, work: !!it, kind: it ? it.kind : null });
   }
   rooms.sort((a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.room).localeCompare(String(b.room), undefined, { numeric: true }));

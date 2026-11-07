@@ -75,21 +75,24 @@ const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
   <label className="hk-field">{label}<input className="hk-input hk-num-in" type="number" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} /></label>
 );
 
+// macOS turns Ctrl-click into a right-click (contextmenu with ctrlKey and button 0): the front desk on a Mac expects it to add to the selection
+const isMacCtrlClick = (e) => !!(e && e.ctrlKey && e.button === 0 && typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || ''));
+
 /** One small room card. Draggable; click selects it (Ctrl/⌘-click adds or removes, Shift-click selects a range); right-click opens a "Move to" menu. */
 const RoomCard = ({ it, group, pinned, selected, justMoved, guest, dev, readOnly, onSelect, onDragStart, onDragEnd, onUnpin, onMenu }) => (
   <div
-    className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${dev && guest ? ' withguest' : ''}`}
+    className={`hk-rc hk-rc-${it.kind}${it.priority ? ' prio' : ''}${pinned ? ' pinned' : ''}${selected ? ' selected' : ''}${justMoved ? ' just-moved' : ''}${it.tbd ? ' tbd' : ''}${it.ip ? ' ip' : ''}${dev && guest ? ' withguest' : ''}`}
     data-flip={it.roomNumber} data-flip-group={group} data-room={it.roomNumber}
     draggable={!readOnly}
     role={readOnly ? undefined : 'button'} tabIndex={readOnly ? undefined : 0} aria-pressed={readOnly ? undefined : !!selected}
-    aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}${it.locked ? ', guest asked not to be moved' : ''}`}
+    aria-label={`${it.tbd ? 'Room to be assigned' : 'Room ' + it.roomNumber}, ${it.typeCode || ''}, ${it.ip ? 'in progress, someone is already on it' : it.kind === 'clean' ? 'clean' : 'stay-over service'}${it.priority ? ', clean first' : ''}${it.locked ? ', guest asked not to be moved' : ''}`}
     title={`${it.tbd ? 'Room not assigned yet' : 'Room ' + it.roomNumber} · ${it.typeCode} · ${it.why || (it.kind === 'clean' ? 'Clean' : 'Service')}${guest ? ' · ' + guest : ''}`}
     onClick={(e) => !readOnly && onSelect(it.roomNumber, e)}
-    onContextMenu={(e) => { if (!readOnly) onMenu(e, it.roomNumber); }}
+    onContextMenu={(e) => { if (readOnly) return; if (isMacCtrlClick(e)) { e.preventDefault(); onSelect(it.roomNumber, { ctrlKey: true }); return; } onMenu(e, it.roomNumber); }}   // on a Mac, Ctrl-click is a right-click: treat it as the multi-select click
     onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(it.roomNumber, e); } }}
     onDragStart={(e) => onDragStart(e, it.roomNumber)} onDragEnd={onDragEnd}
   >
-    <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong><span className="hk-rc-marks">{it.locked && <i className="hk-rc-lock" title="Guest asked not to be moved" aria-hidden="true">⚑</i>}{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span></span>
+    <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong><span className="hk-rc-marks">{it.locked && <i className="hk-rc-lock" title="Guest asked not to be moved" aria-hidden="true">⚑</i>}{it.ip && <i className="hk-rc-iptag" title="In progress — someone is already on this room">IP</i>}{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span></span>
     <small>{it.typeCode}</small>
     {dev && guest && <em className="hk-rc-guest">{guest}</em>}
     {pinned && !readOnly && <button type="button" className="hk-rc-pin" aria-label={`Let the balancer move room ${it.roomNumber}`} title="Placed by hand — click to let the balancer move it" onClick={(e) => { e.stopPropagation(); onUnpin(it.roomNumber); }}>●</button>}
@@ -186,6 +189,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const boardRef = useRef(null);
   const viewCtx = useViewOptional();
   const [acc, setAcc] = useState({});                   // floor accordions the user opened / closed: { 'pool|2': true, 'userId|3': false }
+  const [prefs, setPrefs] = useState({ floors: {}, priorityTypes: [] });   // Sprint 25: housekeepers' preferred floors + priority room types (saved for the whole property)
   const [slips, setSlips] = useState(false);       // dev option (Rules): print the return slips after each housekeeper's sheet
   const [confirmed, setConfirmed] = useState(false);   // step 1 → step 2: the plan has been confirmed, the rooms board is shown (manager / dev; the portal has no steps yet)
   const [confirmTick, setConfirmTick] = useState(0);
@@ -201,7 +205,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
   const loadAll = useCallback(async () => {
     setError(null);
-    const [cur, lv, st, emp] = await Promise.all([apiFetch(`${apiBase}/forecast/current`), apiFetch(`${apiBase}/forecast/live`), apiFetch(`${apiBase}/settings`), apiFetch(`${apiBase}/employees`)]);
+    const [cur, lv, st, emp, pf] = await Promise.all([apiFetch(`${apiBase}/forecast/current`), apiFetch(`${apiBase}/forecast/live`), apiFetch(`${apiBase}/settings`), apiFetch(`${apiBase}/employees`), apiFetch(`${apiBase}/housekeeping/prefs`)]);
     if (cur.ok && cur.data?.success && cur.data.snapshot) { setPayload(cur.data.snapshot.payload); setFresh({ source: cur.data.source || null, at: cur.data.snapshot.scraped_at || null, health: cur.data.sync || null }); } else setError(cur.data?.message || 'Could not load the room data.');
     if (lv.ok && lv.data?.success) setLive(lv.data.live);
     const s = st.ok && st.data && st.data.settings;
@@ -210,6 +214,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
       const num = (v, d) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
       setAllowance({ enabled: s.forecast_allowance_enabled == null ? DEFAULT_ALLOWANCE.enabled : s.forecast_allowance_enabled !== 'false', scalePct: num(s.forecast_allowance_scale_pct, DEFAULT_ALLOWANCE.scalePct), minExtra: num(s.forecast_allowance_min_extra, DEFAULT_ALLOWANCE.minExtra) });
     }
+    if (pf && pf.ok && pf.data?.success && pf.data.prefs) setPrefs({ floors: pf.data.prefs.floors || {}, priorityTypes: pf.data.prefs.priorityTypes || [] });
     if (emp.ok && emp.data?.success) setStaff((emp.data.employees || []).filter(e => e.active !== false));
     setLoading(false);
   }, [apiBase]);
@@ -237,7 +242,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     })();
     return () => { alive = false; };
   }, [date, readOnly, apiBase]);
-  const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset, lockedRooms })), [payload, live, allowance, offset, readOnly, date, lockedRooms]);
+  const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset, lockedRooms, priorityTypes: prefs.priorityTypes })), [payload, live, allowance, offset, readOnly, date, lockedRooms, prefs.priorityTypes]);
   const pastItems = useMemo(() => {
     if (!past) return [];
     return past.assignments.flatMap(a => a.rooms.map(r => { const f = normFloor(null, r.roomNumber); return { roomNumber: r.roomNumber, typeCode: r.typeCode || '', floorId: f, floorLabel: floorLabel(f), kind: r.kind, why: r.why || '', priority: !!r.priority, tbd: false, cat: r.cat, stay: r.stay, _owner: a.userId }; }));
@@ -302,10 +307,12 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     [readOnly, pastItems, work, hks, pinned, auto]);
   const viewHks = useMemo(() => (readOnly ? (past ? past.assignments.map(a => ({ userId: a.userId, name: a.name })) : []) : hks), [readOnly, past, hks]);
   const viewSettings = readOnly && past ? past.settings : settings;
-  const sum = useMemo(() => summarize(items, assign, viewHks, viewSettings), [items, assign, viewHks, viewSettings]);
-  const totalUnits = items.reduce((n, i) => n + weightOf(i, viewSettings), 0);
+  // Sprint 25: a room rGuest shows as In Progress is not work to hand out — it only counts once somebody was given it
+  const countable = useCallback((i, a) => !i.ip || !!a[i.roomNumber], []);
+  const sum = useMemo(() => summarize(items.filter(i => countable(i, assign)), assign, viewHks, viewSettings), [items, assign, viewHks, viewSettings, countable]);
+  const totalUnits = items.filter(i => countable(i, assign)).reduce((n, i) => n + weightOf(i, viewSettings), 0);
   const warn = useMemo(() => warnings(sum, totalUnits, viewSettings), [sum, totalUnits, viewSettings]);
-  const cleanN = items.filter(i => i.kind === 'clean').length, serviceN = items.length - cleanN;
+  const cleanN = items.filter(i => i.kind === 'clean' && !i.ip).length, serviceN = items.filter(i => i.kind === 'service').length, ipN = items.filter(i => i.ip).length;
 
   // Sprint 24.7 — two steps for managers / dev: (1) the Plan card (who is working, rules, a preview of how many rooms each person gets) → Confirm → (2) the rooms board
   // (Not assigned + the housekeepers' cards). The front-desk portal has no steps yet: its board is always there.
@@ -313,20 +320,35 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const isConfirmed = !gated || confirmed;
   const showBoard = readOnly || isConfirmed;
   // the preview: the balancer's proposal until the plan is confirmed (nothing is assigned yet), the real assignment afterwards — counts only, no rooms
-  const proposal = useMemo(() => ((!gated || readOnly || isConfirmed || hks.length === 0 || work.items.length === 0) ? null : balance(work.items, hks, pinned, settings)), [gated, readOnly, isConfirmed, hks, work, pinned, settings]);
+  const proposal = useMemo(() => ((!gated || readOnly || isConfirmed || hks.length === 0 || work.items.length === 0) ? null : balance(work.items, hks, pinned, settings, prefs.floors)), [gated, readOnly, isConfirmed, hks, work, pinned, settings, prefs.floors]);
   const previewAssign = useMemo(() => (isConfirmed || readOnly ? assign : (proposal || {})), [isConfirmed, readOnly, assign, proposal]);
-  const previewSum = useMemo(() => summarize(items, previewAssign, viewHks, viewSettings), [items, previewAssign, viewHks, viewSettings]);
+  const previewSum = useMemo(() => summarize(items.filter(i => countable(i, previewAssign)), previewAssign, viewHks, viewSettings), [items, previewAssign, viewHks, viewSettings, countable]);
   const pvWarn = useMemo(() => warnings(previewSum, totalUnits, viewSettings), [previewSum, totalUnits, viewSettings]);
 
   // number mode: any room that is not hand-placed and not yet handed out (a new room after Refresh) is shared out right away
   useEffect(() => {
     if (!anon || readOnly || !isConfirmed || !anonCount || hks.length === 0) return;
-    const waiting = work.items.some(i => !Object.prototype.hasOwnProperty.call(pinned, i.roomNumber) && !auto[i.roomNumber] && !(held && held.has(i.roomNumber)));
+    const waiting = work.items.some(i => !i.ip && !Object.prototype.hasOwnProperty.call(pinned, i.roomNumber) && !auto[i.roomNumber] && !(held && held.has(i.roomNumber)));   // In Progress rooms are never handed out, so they must not keep this firing
     if (!waiting) return;
-    const res = balance(work.items, hks, pinned, settings), next = {}; Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pinned, k)) next[k] = res[k]; });
+    const res = balance(work.items, hks, pinned, settings, prefs.floors), next = {}; Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pinned, k)) next[k] = res[k]; });
     setAuto(next); setDirty(true);
-  }, [anon, anonCount, readOnly, isConfirmed, work, hks, pinned, auto, settings, held]);
+  }, [anon, anonCount, readOnly, isConfirmed, work, hks, pinned, auto, settings, held, prefs.floors]);
   const touch = () => { setDirty(true); setSaveMsg(null); };
+  // preferred floors / priority room types are kept for the whole property (not per day): saved the moment they change, separately from the day's plan
+  const savePrefs = async (next) => {
+    const prev = prefs; setPrefs(next);
+    const { ok, data } = await apiFetch(`${apiBase}/housekeeping/prefs`, { method: 'PUT', body: JSON.stringify({ prefs: next }) });
+    if (!(ok && data?.success)) { setPrefs(prev); setSaveMsg({ ok: false, text: data?.message || 'Could not save that preference' }); }
+  };
+  const toggleFloorPref = (userId, floor) => {
+    const cur = prefs.floors[userId] || [], nextList = cur.includes(floor) ? cur.filter(f => f !== floor) : [...cur, floor];
+    const floors = { ...prefs.floors }; if (nextList.length) floors[userId] = nextList; else delete floors[userId];
+    savePrefs({ ...prefs, floors });
+  };
+  const togglePriorityType = (code) => {
+    const cur = prefs.priorityTypes, next = cur.includes(code) ? cur.filter(c => c !== code) : [...cur, code];
+    savePrefs({ ...prefs, priorityTypes: next });
+  };
   const addHk = (h) => { setHks(prev => (prev.some(x => x.userId === h.userId) ? prev : [...prev, h])); touch(); };
   const removeHk = (id) => {
     const drop = (prev) => { const n = {}; Object.keys(prev).forEach(k => { if (prev[k] !== id) n[k] = prev[k]; }); return n; };
@@ -334,7 +356,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   };
   // Auto-assign: share the rooms that are not hand-placed across everyone working (same floor → same person where possible)
   const autoAssign = () => {
-    const res = balance(work.items, hks, pinned, settings), next = {};
+    const res = balance(work.items, hks, pinned, settings, prefs.floors), next = {};
     Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pinned, k)) next[k] = res[k]; });
     setAuto(next); setHeld(null); touch();
   };
@@ -353,7 +375,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     const keep = (prev) => { const o = {}; Object.keys(prev).forEach(k => { if (prev[k] === null || ids.has(prev[k])) o[k] = prev[k]; }); return o; };
     const pins = keep(pinned); setHks(next); setPinned(pins); setAnonCount(n); setCountDraft(String(n));
     if (!isConfirmed) { setAuto({}); touch(); return; }   // step 1: only the number changes (the preview follows); Confirm plan shares the rooms out
-    const res = balance(work.items, next, pins, settings), nextAuto = {}; Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pins, k)) nextAuto[k] = res[k]; });
+    const res = balance(work.items, next, pins, settings, prefs.floors), nextAuto = {}; Object.keys(res).forEach(k => { if (!Object.prototype.hasOwnProperty.call(pins, k)) nextAuto[k] = res[k]; });
     setAuto(nextAuto); setHeld(null); touch();
   };
   const switchMode = (toAnon) => {
@@ -447,8 +469,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   }, [printing, readOnly, past, work, assign, hks, pinned, itemByRoom, viewSettings]);
 
   // ── drag & drop (HTML5) + tap-to-move for touch ──
-  const onDragStart = (e, room) => {
-    const rooms = selected.includes(room) ? selected : [room];      // dragging a selected card takes the whole selection along
+  const onDragStart = (e, room, whole) => {
+    const rooms = whole || (selected.includes(room) ? selected : [room]);      // dragging a selected card takes the whole selection along; dragging a floor header takes the whole floor
     dragRef.current = rooms; autoScroll.start(e.currentTarget);      // the page scrolls by itself when the card is held near the top / bottom edge
     try { e.dataTransfer.setData('text/plain', rooms.join(',')); e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ }
   };
@@ -475,8 +497,21 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     const firstWith = floors.findIndex(f => f.cards.length > 0);
     return floors.map((f, i) => {
       const key = `${groupKey}|${f.floorId}`, dflt = openAll ? f.cards.length > 0 : i === firstWith;
+      const gid = groupKey === 'pool' ? null : groupKey, rooms = f.cards.filter(c => !c.ip).map(c => c.roomNumber), allSel = rooms.length > 0 && rooms.every(r => selected.includes(r));
+      const actions = readOnly || rooms.length === 0 ? null : (
+        <>
+          <button type="button" className="hk-btn hk-btn-xs hk-floor-sel" aria-pressed={allSel} aria-label={`${allSel ? 'Unselect' : 'Select'} every room on ${f.label}`}
+            onClick={() => setSelected(prev => (allSel ? prev.filter(r => !rooms.includes(r)) : [...new Set([...prev, ...rooms])]))}>{allSel ? 'Unselect floor' : 'Select floor'}</button>
+          <select className="hk-floor-move" aria-label={`Move all of ${f.label} to`} value="" onChange={(e) => { const v = e.target.value; if (v) moveCards(rooms, v === '__pool' ? null : v); }}>
+            <option value="">Move floor to…</option>
+            {gid !== null && <option value="__pool">Not assigned</option>}
+            {hks.filter(h => h.userId !== gid).map(h => <option key={h.userId} value={h.userId}>{h.name}</option>)}
+          </select>
+        </>
+      );
+      const dragProps = readOnly || rooms.length === 0 ? null : { draggable: true, 'data-floor-drag': f.floorId, onDragStart: (e) => onDragStart(e, rooms[0], rooms), onDragEnd };
       return (
-        <FloorSection key={f.floorId} floorId={f.floorId} label={f.label} count={f.cards.length} open={accOpen(key, dflt)} onToggle={() => accToggle(key, dflt)}>
+        <FloorSection key={f.floorId} floorId={f.floorId} label={f.label} count={f.cards.length} open={accOpen(key, dflt)} onToggle={() => accToggle(key, dflt)} actions={actions} dragProps={dragProps}>
           {f.cards.length ? <div className="hk-cards">{f.cards.map(cardEl)}</div> : <span className="hk-none">none</span>}
         </FloorSection>
       );
@@ -509,8 +544,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const saveText = readOnly ? 'History — read-only' : saveMsg ? <span className={saveMsg.ok ? 'ok' : 'bad'}>{saveMsg.text}</span> : dirty ? 'Unsaved changes' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet';
 
   // ── numbers for the tiles / overview (all from the same work list + assignment the page already holds) ──
-  const total = items.length, assignedN = total - poolCards.length;
-  const dirtyNowN = items.filter(i => i.kind === 'clean' && /^(Dirty|In progress)/.test(i.why || '')).length;
+  const total = items.filter(i => countable(i, assign)).length, assignedN = total - poolCards.filter(i => !i.ip).length;
   const avgUnits = viewHks.length ? totalUnits / viewHks.length : 0;
   const pctAssigned = total > 0 ? Math.round((assignedN / total) * 100) : 0;
   const goHome = () => { if (viewCtx && viewCtx.goTo) viewCtx.goTo('home'); };
@@ -519,6 +553,12 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     <p className="hk-legend" aria-label="Legend"><span><i className="lg lg-clean" />Clean</span><span><i className="lg lg-service" />Stay-over</span><span><i className="lg-star">★</i>Clean first</span><span><i className="lg-lock">⚑</i>Guest asked not to be moved</span><span><i className="lg-pin">●</i>Placed by hand</span></p>
   );
   const whoCount = viewHks.length;
+  const floorChoices = useMemo(() => [...new Set([...PRESET_FLOORS, ...items.map(i => i.floorId).filter(f => f && f !== 'unknown')])].sort((a, b) => floorRank(a) - floorRank(b)), [items]);
+  const typeChoices = useMemo(() => {
+    const m = new Map(); if (payload) buildRoomSheet(payload, live).floors.forEach(f => f.rooms.forEach(r => { if (r.typeCode && !m.has(r.typeCode)) m.set(r.typeCode, r.typeLabel || r.typeCode); }));
+    prefs.priorityTypes.forEach(c => { if (!m.has(c)) m.set(c, c); });
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [payload, live, prefs.priorityTypes]);
 
   return (
     <div className="hk-page-wrap hk-v2" ref={boardRef}>
@@ -556,7 +596,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             <section className="fc-kpis hk-kpis hk-kpis-7" aria-label="Workload">
               <KpiCard accent="staying" icon={<IcBroom />} label="To clean" primary={cleanN} sublabel="check-outs" ring={total > 0 ? cleanN / total : 0} ringColor="#2f855a" ringLabel={`${cleanN} of ${total} rooms to clean`} />
               <KpiCard accent="inhouse" icon={<IcBed />} label="To service" primary={serviceN} sublabel="stay-overs" ring={total > 0 ? serviceN / total : 0} ringColor="#2b6cb0" ringLabel={`${serviceN} of ${total} rooms to service`} />
-              <KpiCard accent="dirty" icon={<IcHourglass />} label="IP" primary={dirtyNowN} sublabel="dirty + IP" />
+              <KpiCard accent="dirty" icon={<IcHourglass />} label="IP" primary={ipN} sublabel="being cleaned" />
               <KpiCard accent="arrivals" icon={<IcLayers />} label="Total workload" primary={Math.round(totalUnits * 10) / 10} sublabel="clean + service" />
               <KpiCard accent="inhouse" icon={<IcPeople />} label="Housekeepers" primary={viewHks.length} sublabel="working" />
               <KpiCard accent="default" icon={<IcBars />} label="Avg. workload" primary={viewHks.length ? Math.round(avgUnits * 10) / 10 : '—'} sublabel={`target ${viewSettings.min}–${viewSettings.max}`} />
@@ -675,6 +715,12 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                             <div className="hk-pv-top"><b>{h.name}</b><span className="hk-pv-rooms"><strong>{h.rooms}</strong> rooms</span></div>
                             <small>{h.clean} clean · {h.service} service · workload <strong>{fmt(h.units)}</strong>{dev && floors ? ` · floors ${floors}` : ''}</small>
                             <div className="hk-meterrow"><div className="hk-meter" title={`Minimum ${viewSettings.min} · maximum ${viewSettings.max}`}><span className={flag || ''} style={{ width: `${pct}%` }} /><i style={{ left: `${minPct}%` }} /></div><span className="hk-pct">{Math.round(pct)}%</span></div>
+                            {!readOnly && !anon && (
+                              <div className="hk-pv-prefs" role="group" aria-label={`${h.name}'s preferred floors`}>
+                                <span>Prefers</span>
+                                {floorChoices.map(f => { const on = (prefs.floors[h.userId] || []).includes(f); return <button key={f} type="button" className={`hk-chip${on ? ' on' : ''}`} aria-pressed={on} aria-label={`${h.name} prefers ${floorLabel(f)}`} onClick={() => toggleFloorPref(h.userId, f)}>{f}</button>; })}
+                              </div>
+                            )}
                             {flag === 'over' && <small className="hk-warn">Over the maximum of {viewSettings.max}</small>}
                             {flag === 'under' && <small className="hk-warn">Below the minimum of {viewSettings.min}</small>}
                           </div>
@@ -695,7 +741,14 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             {!readOnly && <section className={`hk-panel hk-pool hk-pool2 hk-pool-wide${over === 'pool' ? ' over' : ''}`} aria-label="Unassigned rooms" {...zone('pool', null)}>
               <div className="hk-pool-top">
                 <div className="hk-col-head"><h2>Not assigned</h2><span className="hk-count">{poolCards.length}</span>{!readOnly && <span className="hk-dragtip"><IcHand size={15} />Drag to a housekeeper below</span>}</div>
+                {!readOnly && poolCards.some(c => !c.ip) && (
+                  <div className="hk-pool-tools">
+                    <button type="button" className="hk-btn hk-btn-xs hk-pool-all" onClick={() => setSelected(poolCards.filter(c => !c.ip).map(c => c.roomNumber))}>Select all {poolCards.filter(c => !c.ip).length}</button>
+                    <small className="hk-multihint">Several at once: Ctrl/⌘-click · Shift-click for a range · <b>Select floor</b> / <b>Move floor to…</b> on any floor · or drag a floor's header</small>
+                  </div>
+                )}
                 {legend}
+                {poolCards.some(c => c.ip) && <p className="hk-ipnote" role="note"><b>{poolCards.filter(c => c.ip).length} in progress</b> — someone is already on {poolCards.filter(c => c.ip).length === 1 ? 'it' : 'them'}, so Auto-assign leaves {poolCards.filter(c => c.ip).length === 1 ? 'it' : 'them'} alone. Drag one to a housekeeper if it still needs a cleaner.</p>}
                 {needsMove(null) && <button type="button" className="hk-btn hk-btn-sm hk-here" onClick={() => moveCards(selected, null)}>Move {selected.length > 1 ? `${selected.length} cards ` : ''}here</button>}
                 {items.length > 0 && hks.length === 0 && !readOnly && <p className="hk-muted">{anon ? 'Enter how many housekeepers are working.' : 'Choose who is working, then place the rooms.'}</p>}
               </div>
@@ -819,6 +872,14 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             <NumField label="Service =" value={settings.serviceWeight} min={0} max={5} step={0.1} disabled={readOnly} onChange={(v) => setNum('serviceWeight', v)} />
           </div>
           {readOnly && <p className="hk-muted">This is a past day — its rules can't be changed.</p>}
+          <div className="hk-opt-row hk-prio-row" aria-label="Priority room types">
+            <b>Priority room types</b>
+            <small>Every room of a ticked type that needs cleaning is cleaned first and printed pink — in addition to rooms already pre-assigned to an arriving guest. Kept for every day.</small>
+            <div className="hk-chips">
+              {typeChoices.length === 0 && <small>Room types appear once the room data has loaded.</small>}
+              {typeChoices.map(([code, label]) => { const on = prefs.priorityTypes.includes(code); return <button key={code} type="button" className={`hk-chip hk-chip-type${on ? ' on' : ''}`} aria-pressed={on} title={label} disabled={readOnly} onClick={() => togglePriorityType(code)}>{code}<small>{label !== code ? label : ''}</small></button>; })}
+            </div>
+          </div>
           {dev && <HkPrintOptions slips={slips} onChange={setSlips} />}
           {dev && <HkPrintColors colors={colors} onSaved={setColors} />}
         </HkModal>

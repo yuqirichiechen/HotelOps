@@ -2,7 +2,7 @@
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ROOM_RE = /^[A-Za-z0-9-]{1,8}$/;
 const DEFAULTS = { min: 10, max: 15, cleanWeight: 1, serviceWeight: 0.5 };
-const CATS = ['dirty', 'departure', 'priority', 'inhouse'];
+const CATS = ['dirty', 'departure', 'priority', 'progress', 'inhouse'];
 
 const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : d; };
 
@@ -50,4 +50,29 @@ function sanitizePlan(body, today = new Date()) {
   return { date: body.date, settings: sanitizeSettings(body.settings), assignments };
 }
 
-module.exports = { sanitizePlan, sanitizeSettings, DEFAULTS };
+/** Sprint 25 — property-wide housekeeping preferences: each housekeeper's preferred floors + the room types that are always priority (pink, cleaned first).
+ *  @returns {{error: string}|{prefs: {floors: {[userId]: string[]}, priorityTypes: string[]}}} */
+function sanitizePrefs(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'Missing preferences' };
+  const f = raw.floors == null ? {} : raw.floors;
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return { error: 'floors must be an object' };
+  const ids = Object.keys(f); if (ids.length > 200) return { error: 'too many housekeepers' };
+  const floors = {};
+  for (const id of ids) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || id.startsWith('anon-')) return { error: 'bad housekeeper id' };
+    if (!Array.isArray(f[id]) || f[id].length > 12) return { error: 'a housekeeper\'s floors must be a short list' };
+    const list = [];
+    for (const fl of f[id]) { if (typeof fl !== 'string' || !/^[A-Za-z0-9]{1,3}$/.test(fl)) return { error: 'bad floor' }; if (!list.includes(fl)) list.push(fl); }
+    if (list.length) floors[id] = list;
+  }
+  const t = raw.priorityTypes == null ? [] : raw.priorityTypes;
+  if (!Array.isArray(t) || t.length > 40) return { error: 'priorityTypes must be a short list' };
+  const priorityTypes = [];
+  for (const c of t) { if (typeof c !== 'string' || !/^[A-Za-z0-9]{1,12}$/.test(c)) return { error: 'bad room type' }; if (!priorityTypes.includes(c)) priorityTypes.push(c); }
+  return { prefs: { floors, priorityTypes } };
+}
+const EMPTY_PREFS = () => ({ floors: {}, priorityTypes: [] });
+/** Stored JSON text → clean prefs (anything unreadable → empty). */
+function parsePrefs(text) { try { const r = sanitizePrefs(JSON.parse(String(text))); return r.error ? EMPTY_PREFS() : r.prefs; } catch { return EMPTY_PREFS(); } }
+
+module.exports = { sanitizePlan, sanitizeSettings, sanitizePrefs, parsePrefs, DEFAULTS };

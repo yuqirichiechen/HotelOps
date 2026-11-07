@@ -2,9 +2,11 @@
 //   node tests/housekeeping-server.test.js "$PWD"
 const ROOT = process.argv[2]; const SRV = ROOT + '/server'; const assert = require('assert'); const { execSync } = require('child_process'); const fs = require('fs');
 process.env.PORT = '3993'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.DATABASE_URL = 'postgres://u:p@127.0.0.1:1/none';
-const jwt = require(SRV + '/node_modules/jsonwebtoken'); const pg = require(SRV + '/node_modules/pg'); const { sanitizePlan } = require(SRV + '/housekeeping');
+const jwt = require(SRV + '/node_modules/jsonwebtoken'); const pg = require(SRV + '/node_modules/pg'); const { sanitizePlan, sanitizePrefs, parsePrefs } = require(SRV + '/housekeeping');
 const rows = new Map(); const sqls = []; const settingsStore = {};
 pg.Pool.prototype.query = async function (sql, params) { const q = String(sql).replace(/\s+/g, ' '); sqls.push({ q, params });
+  if (/INSERT INTO app_settings/.test(q) && /'hk_prefs'/.test(q)) { settingsStore.hk_prefs = params[0]; return { rows: [], rowCount: 1 }; }
+  if (/FROM app_settings WHERE key = 'hk_prefs'/.test(q)) return { rows: settingsStore.hk_prefs ? [{ value: settingsStore.hk_prefs }] : [] };
   if (/INSERT INTO app_settings/.test(q)) { settingsStore[params[0]] = params[1]; return { rows: [], rowCount: 1 }; }
   if (/FROM app_settings/.test(q)) return { rows: Object.entries(settingsStore).map(([key, value]) => ({ key, value })) };
   if (/doNotMoveRoom/.test(q)) return { rows: params[1] === '2026-10-19' ? [{ room_number: '102' }, { room_number: '110' }] : [] };
@@ -65,6 +67,21 @@ const NOW = new Date('2026-10-19T12:00:00Z'); const good = { date: '2026-10-19',
   await t('24.9 NO NAME: plans keep the "leave the name blank" flag (only a real boolean true); anything else is dropped', () => {
     const r = sanitizePlan({ date: '2026-10-19', settings: { anonymous: true, blankNames: true }, assignments: [] }, NOW); assert.strictEqual(r.settings.blankNames, true); assert.strictEqual(r.settings.anonymous, true);
     for (const v of ['true', 1, 'yes', null]) assert.strictEqual(sanitizePlan({ date: '2026-10-19', settings: { blankNames: v }, assignments: [] }, NOW).settings.blankNames, undefined, String(v));
+  });
+  await t('25 PREFS (preferred floors + priority room types): pure validation — clean lists kept, junk refused, no-name slots (anon-N) never stored; unreadable stored text → empty', () => {
+    assert.deepStrictEqual(sanitizePrefs({ floors: { u1: ['3', '3', 'G'], u2: [] }, priorityTypes: ['NQRR', 'NQRR', 'KSTE'] }).prefs, { floors: { u1: ['3', 'G'] }, priorityTypes: ['NQRR', 'KSTE'] });
+    assert.deepStrictEqual(sanitizePrefs({}).prefs, { floors: {}, priorityTypes: [] });
+    for (const bad of [null, [], 'x', { floors: [] }, { floors: { 'anon-1': ['1'] } }, { floors: { u1: 'G' } }, { floors: { u1: ['<b>'] } }, { floors: { 'u 1': ['1'] } }, { floors: { u1: Array.from({ length: 13 }, (_, i) => String(i)) } }, { priorityTypes: 'NQRR' }, { priorityTypes: ['x y'] }, { priorityTypes: Array.from({ length: 41 }, (_, i) => 'T' + i) }]) assert(sanitizePrefs(bad).error, JSON.stringify(bad));
+    assert.deepStrictEqual(parsePrefs('{not json'), { floors: {}, priorityTypes: [] }); assert.deepStrictEqual(parsePrefs(JSON.stringify({ floors: { u1: ['2'] }, priorityTypes: ['A'] })), { floors: { u1: ['2'] }, priorityTypes: ['A'] }); assert.deepStrictEqual(parsePrefs(null), { floors: {}, priorityTypes: [] });
+    assert.strictEqual(sanitizePlan({ ...good, assignments: [{ userId: 'u', name: 'n', rooms: [{ roomNumber: '106', kind: 'clean', cat: 'progress' }] }] }, NOW).assignments[0].rooms[0].cat, 'progress', 'the In-progress colour group is kept on saved rooms');
+  });
+  await t('25 PREFS routes: admin / dev read and write them (staff and anonymous refused), bad input → 400 and nothing stored, round-trips', async () => {
+    const u = '/api/admin/housekeeping/prefs'; assert.strictEqual((await http(u)).status, 401); assert.strictEqual((await http(u, { token: T.staff })).status, 403); assert.strictEqual((await http(u, { method: 'PUT', token: T.staff, body: { prefs: {} } })).status, 403);
+    assert.deepStrictEqual((await http(u, { token: T.admin })).body.prefs, { floors: {}, priorityTypes: [] }, 'empty before anything is saved');
+    const prefs = { floors: { u1: ['3'], u2: ['G', '1'] }, priorityTypes: ['NQRR'] }; const put = await http(u, { method: 'PUT', token: T.admin, body: { prefs } }); assert.strictEqual(put.status, 200); assert.deepStrictEqual(put.body.prefs, prefs);
+    assert.deepStrictEqual((await http(u, { token: T.dev })).body.prefs, prefs, 'dev reads what a manager saved');
+    const before = settingsStore.hk_prefs; assert.strictEqual((await http(u, { method: 'PUT', token: T.admin, body: { prefs: { floors: { 'anon-1': ['1'] } } } })).status, 400); assert.strictEqual((await http(u, { method: 'PUT', token: T.admin, body: {} })).status, 400); assert.strictEqual(settingsStore.hk_prefs, before, 'nothing written');
+    const q = sqls.filter(x => /hk_prefs/.test(x.q) && /INSERT/.test(x.q)).pop(); assert(q && !/\$1.*\$2/.test(q.q) && q.params.length === 1 && typeof q.params[0] === 'string', 'parameterized');
   });
   await t('plans keep the sheet colour group + stay, and the "by number" flag; junk is dropped', () => {
     const r = sanitizePlan({ date: '2026-10-19', settings: { anonymous: true, min: 10 }, assignments: [{ userId: 'anon-1', name: 'Housekeeper 1', rooms: [{ roomNumber: '101', kind: 'clean', cat: 'dirty', stay: 'Oct 17 → Oct 21' }, { roomNumber: '102', kind: 'service', cat: 'rainbow', stay: '<b>x</b>' }] }] }, NOW);

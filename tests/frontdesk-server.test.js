@@ -67,13 +67,14 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
   require(ROOT + '/server.js'); await sleep(600);
 
   const READS = ['/api/frontdesk/forecast/current', '/api/frontdesk/forecast/live', '/api/frontdesk/employees', '/api/frontdesk/settings', '/api/frontdesk/housekeeping/plan?date=2026-11-02',
-    '/api/frontdesk/housekeeping/plans?from=2026-10-20&to=2026-11-03', '/api/frontdesk/housekeeping/locked-rooms?date=2026-11-02'];
+    '/api/frontdesk/housekeeping/plans?from=2026-10-20&to=2026-11-03', '/api/frontdesk/housekeeping/locked-rooms?date=2026-11-02', '/api/frontdesk/housekeeping/prefs'];
   await t('every front-desk route: no token 401 · other staff 403 · Front Desk ROLE or DEPARTMENT, manager and dev allowed', async () => {
     for (const p of READS) {
       assert.strictEqual((await http(p)).status, 401, 'none ' + p); for (const who of ['employee', 'noDept']) assert.strictEqual((await http(p, { token: T[who] })).status, 403, who + ' ' + p);
       for (const who of ['desk', 'roleOnly', 'roleNoDept', 'admin', 'dev']) { const r = await http(p, { token: T[who] }); assert.strictEqual(r.status, 200, who + ' ' + p + ' → ' + r.status + JSON.stringify(r.body)); }
     }
     const body = { date: '2026-11-02', settings: { min: 10 }, assignments: [] };
+    const pf = { prefs: { floors: { u1: ['2'] }, priorityTypes: ['NQRR'] } }; assert.strictEqual((await http('/api/frontdesk/housekeeping/prefs', { method: 'PUT', body: pf })).status, 401); assert.strictEqual((await http('/api/frontdesk/housekeeping/prefs', { method: 'PUT', body: pf, token: T.employee })).status, 403); for (const who of ['desk', 'roleOnly', 'admin', 'dev']) assert.strictEqual((await http('/api/frontdesk/housekeeping/prefs', { method: 'PUT', body: pf, token: T[who] })).status, 200, 'prefs ' + who); assert.strictEqual((await http('/api/frontdesk/housekeeping/prefs', { method: 'PUT', body: { prefs: { floors: { 'anon-1': ['1'] } } }, token: T.desk })).status, 400);
     assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', body })).status, 401); assert.strictEqual((await http('/api/frontdesk/housekeeping/plan', { method: 'PUT', body, token: T.employee })).status, 403);
   });
   await t('the department rides in the token at sign-in (no DB lookup per request): Front Desk staff can use the portal routes, others cannot', async () => {

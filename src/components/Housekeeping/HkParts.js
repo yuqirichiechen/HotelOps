@@ -23,13 +23,17 @@ export const IcHand    = (p) => <Svg {...p}><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0
 export const IcHourglass = (p) => <Svg {...p}><path d="M6 3h12M6 21h12" /><path d="M7 3c0 5 3 6 5 9-2 3-5 4-5 9" /><path d="M17 3c0 5-3 6-5 9 2 3 5 4 5 9" /></Svg>;
 
 /** Collapsible floor section: header (floor, room count, caret) + body. The body stays mounted (so cards are always in the DOM, and closing animates). */
-export const FloorSection = ({ label, count, open, onToggle, floorId, children }) => (
+// Sprint 25: `actions` = per-floor controls next to the header (select the whole floor, move it to a housekeeper); `dragProps` makes the header draggable (drag a whole floor).
+export const FloorSection = ({ label, count, open, onToggle, floorId, children, actions, dragProps }) => (
   <div className={`hk-floor hk-acc${open ? ' open' : ''}${count === 0 ? ' is-empty' : ''}`} data-floor={floorId}>
-    <button type="button" className="hk-acc-head" aria-expanded={open} onClick={onToggle}>
-      <span className="hk-floor-label">{label}</span>
-      <span className="hk-acc-count">{count === 0 ? 'none' : `${count} room${count === 1 ? '' : 's'}`}</span>
-      <span className="hk-acc-caret" aria-hidden="true">⌄</span>
-    </button>
+    <div className="hk-acc-bar" {...(dragProps || {})}>
+      <button type="button" className="hk-acc-head" aria-expanded={open} onClick={onToggle}>
+        <span className="hk-floor-label">{label}</span>
+        <span className="hk-acc-count">{count === 0 ? 'none' : `${count} room${count === 1 ? '' : 's'}`}</span>
+        <span className="hk-acc-caret" aria-hidden="true">⌄</span>
+      </button>
+      {actions && <div className="hk-acc-actions">{actions}</div>}
+    </div>
     <div className="hk-acc-body"><div className="hk-acc-in" aria-hidden={!open}>{children}</div></div>
   </div>
 );

@@ -8,6 +8,7 @@ const SAMPLE = {
   dirty: { room: '104', task: 'Clean', note: 'Dirty' },
   departure: { room: '107', task: 'Clean', note: 'Check-out today' },
   priority: { room: '122', task: 'Clean · CLEAN FIRST', note: 'Needed for a booked arrival' },
+  progress: { room: '106', task: 'Clean', note: 'In progress — someone is already on it' },
   inhouse: { room: '210', task: 'Service (stay-over)', note: 'Oct 17 → Oct 21' },
 };
 

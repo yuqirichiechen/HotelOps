@@ -441,3 +441,21 @@
   .hk-slip-col li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #bbb; font-size: 13px; font-weight: 700; min-height: 0; line-height: 1; }
   .hk-slip-col li .hk-line { display: block; width: 100%; }
 }
+
+/* Sprint 25 — whole-floor controls, In Progress rooms, preferred floors, priority room types */
+.hk-acc-bar { display: flex; align-items: center; gap: 8px; } .hk-acc-bar[draggable="true"] { cursor: grab; } .hk-acc-bar .hk-acc-head { flex: 1 1 auto; width: auto; min-width: 0; }
+.hk-acc-actions { display: inline-flex; align-items: center; gap: 6px; padding-right: 10px; flex: 0 0 auto; }
+.hk-btn-xs { padding: 3px 9px; font-size: 11.5px; border-radius: 7px; } .hk-btn-xs[aria-pressed="true"] { background: var(--accent-bg); border-color: var(--accent-alt); color: var(--accent-alt); }
+.hk-floor-move { font: inherit; font-size: 11.5px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-surface); color: var(--text-primary); max-width: 150px; cursor: pointer; }
+.hk-acc.is-empty .hk-acc-actions { display: none; }
+.hk-pool-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; } .hk-multihint { color: var(--text-muted); font-size: 11.5px; line-height: 1.4; } .hk-multihint b { font-weight: 600; color: var(--text-secondary); }
+.hk-rc.ip { border-style: dashed; border-left-color: #94a3b8; background: repeating-linear-gradient(135deg, var(--bg-surface-alt), var(--bg-surface-alt) 6px, rgba(148,163,184,.16) 6px, rgba(148,163,184,.16) 12px); }
+.hk-rc-iptag { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; color: #475569; border: 1px solid #94a3b8; border-radius: 4px; padding: 0 3px; line-height: 13px; }
+.hk-ipnote { margin: 6px 0 0; padding: 7px 10px; border-radius: 8px; background: rgba(148,163,184,.14); border: 1px dashed #94a3b8; color: var(--text-secondary); font-size: 12px; }
+.hk-pv-prefs { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 6px; } .hk-pv-prefs > span { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
+.hk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hk-chip { font: inherit; font-size: 12px; font-weight: 600; min-width: 28px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.hk-chip:hover:not(:disabled) { border-color: var(--accent-alt); } .hk-chip.on { background: var(--accent-bg); border-color: var(--accent-alt); color: var(--accent-alt); } .hk-chip:disabled { opacity: .55; cursor: default; }
+.hk-chip-type small { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); line-height: 1.1; }
+.hk-prio-row .hk-chips { margin-top: 2px; }
+@media print { .hk-page-table tr.hk-cat-progress td { color: #333; } }
