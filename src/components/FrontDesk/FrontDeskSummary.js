@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { KpiCard, IconBriefcase, IconBed, IconExit, IconSparkle, IconBroom } from '../Forecasting';
-import { ForecastSummaryCard } from '../Forecast';
+import { ForecastSummaryCard, SimpleRoomTable, roomsByTypeOf } from '../Forecast';
 import { buildRoomCondition, fraction } from '../Forecasting/roomCondition';
 import { buildDayModel, DEFAULT_ALLOWANCE } from '../Forecast/forecastModel';
 import SyncBadge from '../shared/SyncBadge';
@@ -70,13 +70,17 @@ const FrontDeskSummary = () => {
     return () => { clearInterval(tick); ACTIVITY_EVENTS.forEach(e => window.removeEventListener(e, onActivity)); };
   }, [fetchLive]);
 
-  const refresh = async () => { setRefreshing(true); await Promise.all([loadCurrent(), fetchLive()]); setRefreshing(false); };
+  // Sprint 25.5: the front desk's Refresh button only re-reads what has already been synced (our own copy). It never asks rGuest for anything — the live room board
+  // is pulled by the 2-minute timer above and by opening the tab, and the server hands out a cached board for 2 minutes whatever the front desk presses.
+  const refresh = async () => { setRefreshing(true); await loadCurrent(); setRefreshing(false); };
 
   const payload = snapshot && snapshot.payload;
   const today = (live && live.forecastDate) || (payload && payload.forecastDate) || null;
   const kpis = (payload && payload.kpis) || {};
   const condition = useMemo(() => (payload ? buildRoomCondition(payload) : null), [payload]);
   const model = useMemo(() => (payload && today ? buildDayModel(payload, today, live, DEFAULT_ALLOWANCE) : null), [payload, today, live]);
+
+  const roomsByType = useMemo(() => (model ? roomsByTypeOf(payload, live, model) : new Map()), [payload, live, model]);
 
   const arrTotal = kpis.arrivals ?? 0, arrLeft = kpis.remainingArrivals ?? 0, arrived = Math.max(0, arrTotal - arrLeft);
   const depTotal = kpis.departures ?? 0, depLeft = kpis.remainingDepartures ?? 0, checkedOut = Math.max(0, depTotal - depLeft);
@@ -88,7 +92,7 @@ const FrontDeskSummary = () => {
         <h2>Reservations <span>today</span></h2>
         <div className="fd-ops-actions">
           <SyncBadge source={source} syncedAt={snapshot ? snapshot.scraped_at : null} health={health} label="" />
-          <button type="button" className="fd-refresh" onClick={refresh} disabled={refreshing} title="Refresh the numbers" aria-label="Refresh the numbers">
+          <button type="button" className="fd-refresh" onClick={refresh} disabled={refreshing} title="Re-read the latest synced numbers" aria-label="Refresh the numbers">
             <IconRefresh />
           </button>
         </div>
@@ -121,6 +125,7 @@ const FrontDeskSummary = () => {
             )}
           </div>
           {model && <div className="fd-sellable"><ForecastSummaryCard model={model} showChart={false} /></div>}
+          {model && <div className="fd-sellable fd-rts"><SimpleRoomTable model={model} roomsByType={roomsByType} dayLabel="" /></div>}
         </>
       )}
 

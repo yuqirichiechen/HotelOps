@@ -159,8 +159,16 @@ const stdResponses = () => ({
   });
   await t('Reservations "Sellable vs arriving" shows x/y: VI-only left to sell / VI+PU left to sell (fixture: 1 inspected + 1 pickup, 1 arriving → 0/1, total 0/1 rooms)', async () => {
     AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 200); await openTab(h, 'Reservations');
-    const rows = [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').replace(/^\s*›\s*/, '').trim()); assert(rows.some(r => /^VI \/ VI \+ PU/.test(r)), 'column header: ' + rows.join(' | '));
+    const rows = [...h.el.querySelectorAll('.fb-summary-list li')].map(li => li.textContent.replace(/\s+/g, ' ').replace(/^\s*›\s*/, '').trim()); assert(/^VI ?\/ ?VI \+ PU$/.test(h.el.querySelector('.fb-card-head .fb-vi-legend').textContent.trim()), 'the key sits on the title line'); assert(!h.el.querySelector('.fb-summary-head'), 'not a small grey line above the list');
     assert(rows.some(r => /^NQRR left to sell ?0\/1$/.test(r)), rows.join(' | ')); assert(rows.some(r => /^Total left to sell ?0\/1 rooms$/.test(r)), rows.join(' | ')); await h.unmount();
+  });
+  await t('25.5 Reservations (front desk): the manager\'s "Rooms to sell today" table sits right below "Sellable vs arriving"; the VI / VI + PU key is big and dark on the title line; Refresh only re-reads synced data (never the live board)', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200); await openTab(h, 'Reservations');
+    if (process.env.DUMP_RES) fs.writeFileSync(process.env.DUMP_RES, h.el.innerHTML);
+    const cards = [...h.el.querySelectorAll('.fd-sellable > .fb-card')]; assert.strictEqual(cards.length, 2, 'two cards'); assert.strictEqual(cards[0].querySelector('h2').textContent, 'Sellable vs arriving'); assert.strictEqual(cards[1].querySelector('h2').textContent, 'Rooms to sell today'); assert.strictEqual(cards[0].nextElementSibling === cards[1] || cards[0].parentElement.nextElementSibling.contains(cards[1]), true, 'right below');
+    assert.deepStrictEqual([...cards[1].querySelectorAll('thead th')].map(x => x.textContent), ['Room type', 'Clean', 'Arriving', 'Left to sell', 'Status']); const row = cards[1].querySelector('tbody tr.sr-row'); assert(row, 'a row per room type'); await h.click(row); assert(cards[1].querySelector('.sr-detail.open .fb-room-chip'), 'tap a row → its rooms (numbers + status only)');
+    assert(!/Secret|Guest[ab]|CONFa/.test(h.el.textContent), 'no guest data'); const css = fs.readFileSync(ROOT + '/src/components/Forecast/Forecast.css', 'utf8'); assert(/\.fb-vi-legend \{[^}]*font-size: 16px;[^}]*color: var\(--text-primary\)/.test(css), 'big and dark, like the total');
+    calls.length = 0; await h.click(h.el.querySelector('.fd-refresh')); await act(async () => { await sleep(60); }); assert(calls.some(c => c.p === '/frontdesk/forecast/current'), 'it re-reads the synced numbers'); assert(!calls.some(c => c.p === '/frontdesk/forecast/live'), 'but never asks for the live board'); assert(calls.every(c => c.p.startsWith('/frontdesk/')), 'only portal routes'); await h.unmount();
   });
   await t('the tile numbers come from the same models as the manager pages (arrivals left 1, left to sell 2 = VI+PU, dirty 2 = D+IP)', async () => {
     AuthMock._user = DESK; responses = stdResponses(); const h = await mount(portal(), 200); await openTab(h, 'Reservations');

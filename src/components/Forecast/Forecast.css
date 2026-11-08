@@ -752,3 +752,8 @@
 .fb-sum-type code { font-size: 10.5px; color: var(--text-muted); margin-left: 4px; }
 .fb-sum-type .fb-vi-pair { font-size: 13px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .fb-sum-sub, .fb-sum-caret { transition: none; } }
+
+/* Sprint 25.5 — the "VI / VI + PU" key: big and dark like the total (it was small grey text) */
+.fb-vi-legend { display: inline-flex; align-items: baseline; gap: 6px; margin-left: auto; font-family: 'TiemposHeadline', Georgia, serif; font-size: 16px; color: var(--text-primary); white-space: nowrap; }
+.fb-vi-legend b { font-weight: 700; } .fb-vi-legend i { font-style: normal; font-weight: 400; color: var(--text-muted); }
+.fb-summary-head { font-size: inherit; letter-spacing: 0; text-transform: none; color: var(--text-primary); padding-bottom: 6px; }

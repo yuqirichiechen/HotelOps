@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 25.5   | Front desk Reservations: "Rooms to sell today" table under Sellable vs arriving; bigger VI / VI + PU key; Refresh no longer pulls rGuest (2-min server cache) | **Built + tested** — no migration |
 | 25.4   | Rename pencil for numbered housekeepers; For [Today · date | Tomorrow · date] box; icon steppers / chevrons | **Built + tested** — UI only |
 | 25.3   | In Progress as its own group; dev setting for plan-by-name (default No name only) + typed names for numbered housekeepers; own chevron / Move-to menu / tick box; floor headers re-flow; touch sizes | **Built + tested** — new dev setting `hk_plan_by_name` (default off); no migration |
 | 25.2   | In Progress carries into tomorrow; floor cards no longer clip; Select rooms mode; edge arrows + auto-scroll between housekeepers; Move here removed; below-min as one line | **Built + tested** — no server / migration change |
@@ -51,6 +52,14 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-11 — Sprint 25.5
+
+1. **Front-desk Reservations → "Rooms to sell today"**: the manager's table (room type · Clean · Arriving · Left to sell · Status, tap a type for its rooms with their status) now sits right below "Sellable vs arriving" (`SimpleRoomTable`, exported from Forecast along with the new `roomsByTypeOf(payload, live, model)` helper, which the manager page now uses too). Same numbers as the manager; room numbers and status only, no guest data (the portal payload is already redacted server-side).
+2. **VI / VI + PU key:** no longer small grey text above the list — big dark serif ("VI / VI + PU", same weight and colour as the "18 / 39 rooms" total). In the front desk (no chart) it sits on the title line of the card, right above the numbers; in the manager / dev Forecast (chart on the right) it stays at the head of the list but with the new styling. `viLegend` in `ForecastSummaryCard`.
+3. **Front desk cannot pull rGuest by hand:** the Refresh button stays but now only re-reads what has already been synced (`/frontdesk/forecast/current`, our own copy) — it never requests the live board. The live board comes from the existing 2-minute timer and from opening the tab. Server-side guard so it holds for the Housekeeping portal's "Refresh rooms" and for page reloads too: `/api/frontdesk/forecast/live` has its own **2-minute cache** (`FD_LIVE_TTL_MS`, managers keep 20 s); both share the same pull, so a fresher manager pull is reused by the desk. `liveHandler(ttl)` in server.js.
+Tests: `staffportal` 22 (+rooms-to-sell table / key / refresh makes no live call), `forecastlive-route` 6 (+front-desk cache window, shared pull, 401 / 403), `forecastpage` updated for the key markup; all suites green; screenshot.
+**Open:** the front desk's room board can be up to ~2 min old (+ the 2-min timer); the Housekeeping portal's "Refresh rooms" now returns the cached board inside that window.
 
 ### 2026-11-10 — Sprint 25.4
 

@@ -338,6 +338,20 @@ const ArrivalDetailTable = ({ rows, date, isToday }) => {
 // Sprint 24.3 (today only): the list now shows "x/y" per room type — x = left to sell counting only INSPECTED rooms (VI), y = left to sell
 // counting inspected + pickup (VI+PU, the number it always showed). Dev can flip the card to "Available" (nothing subtracted for arrivals:
 // x = VI rooms, y = VI+PU rooms). `showChart={false}` hides the bar chart (front-desk portal); `toggle` shows the switch (dev only).
+/** The physical rooms of each typeCode with their LIVE status (today) or last-scrape status — what the "Rooms to sell" rows open up to. No guest data. */
+export const roomsByTypeOf = (payload, live, model) => {
+  const m = new Map();
+  const src = live && model?.isToday
+    ? live.rooms.filter(r => !((payload?.inactiveRooms || []).includes(String(r.roomNumber))) && r.status !== false && !(r.endDate && String(r.endDate).slice(0, 10) < live.forecastDate))
+    : (payload?.perRoomSheet || []);
+  for (const r of src) {
+    if (!r.typeCode) continue;
+    if (!m.has(r.typeCode)) m.set(r.typeCode, []);
+    m.get(r.typeCode).push({ ...r, hkStatusLabel: r.hkStatusLabel || ({ VI: 'Inspected', PU: 'Pickup', D: 'Dirty', IP: 'In progress', OC: 'Occupied clean' }[r.hkStatus]) || r.hkStatus });
+  }
+  return m;
+};
+
 const ForecastSummaryCard = ({ model, showChart = true, toggle = false }) => {
   const groups = model.groups;
   const animKey = model.date;   // Sprint 22.10: bars grow + numbers count up on first show and whenever another day is chosen
@@ -356,10 +370,14 @@ const ForecastSummaryCard = ({ model, showChart = true, toggle = false }) => {
   const A = (t) => (model.isToday ? t.ready : t.expected);         // series A: today = clean rooms now · future = arrivals (booked tomorrow; expected later)
   const B = (t) => (model.isToday ? t.arrivals : t.potential);     // series B: today = still arriving · future = rooms that COULD be ready (not occupied by a stayover)
   const maxVal = Math.max(1, ...groups.flatMap(g => [A(g.totals), B(g.totals)]));
+  // Sprint 25.5: what the two numbers per room type are — big and dark like the total at the bottom (it was small grey text above the list). With no chart (front desk)
+  // it sits on the title line, right above the numbers; with the chart it stays at the head of the list.
+  const viLegend = <span className="fb-vi-legend" title="Inspected only / inspected + pickup"><b>VI</b>{' '}<i>/</i>{' '}<b>VI + PU</b></span>;
   return (
     <div className="fb-card">
       <div className="fb-card-head">
         <h2>Sellable vs arriving</h2>
+        {model.isToday && !showChart && viLegend}
         {model.isToday && toggle && (
           <div className="fb-seg" role="group" aria-label="What to count">
             <button type="button" className={metric === 'left' ? 'on' : ''} aria-pressed={metric === 'left'} onClick={() => setMetric('left')}>Left to sell</button>
@@ -369,7 +387,7 @@ const ForecastSummaryCard = ({ model, showChart = true, toggle = false }) => {
       </div>
       <div className={`fb-summary-grid${showChart ? '' : ' fb-no-chart'}`}>
         <ul className="fb-summary-list">
-          {model.isToday && <li className="fb-summary-head" aria-hidden="true"><span /><span title="Inspected only / inspected + pickup">VI / VI + PU</span></li>}
+          {model.isToday && showChart && <li className="fb-summary-head" aria-hidden="true"><span />{viLegend}</li>}
           {groups.map(g => {
             const p = model.isToday ? pair(g.totals) : null;
             const gk = g.baseCode || g.baseLabel;
@@ -704,18 +722,7 @@ const Forecast = ({ mode = 'manager' }) => {
     [payload, today, dayOffset, live, allowance]);
   const notes   = useMemo(() => (model ? deriveNotes(model) : []), [model]);
   // Click-to-expand rows list the physical rooms of each typeCode with their LIVE status (today) or last-scrape status.
-  const roomsByType = useMemo(() => {
-    const m = new Map();
-    const src = live && model?.isToday
-      ? live.rooms.filter(r => !((payload?.inactiveRooms || []).includes(String(r.roomNumber))) && r.status !== false && !(r.endDate && String(r.endDate).slice(0, 10) < live.forecastDate))
-      : (payload?.perRoomSheet || []);
-    for (const r of src) {
-      if (!r.typeCode) continue;
-      if (!m.has(r.typeCode)) m.set(r.typeCode, []);
-      m.get(r.typeCode).push({ ...r, hkStatusLabel: r.hkStatusLabel || ({ VI: 'Inspected', PU: 'Pickup', D: 'Dirty', IP: 'In progress', OC: 'Occupied clean' }[r.hkStatus]) || r.hkStatus });
-    }
-    return m;
-  }, [payload, live, model]);
+  const roomsByType = useMemo(() => roomsByTypeOf(payload, live, model), [payload, live, model]);
 
   const fmtT = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—');
   const ageHours = snapshot?.scraped_at ? (Date.now() - new Date(snapshot.scraped_at).getTime()) / 3600000 : 0;
@@ -873,5 +880,5 @@ const Forecast = ({ mode = 'manager' }) => {
 };
 
 // Sprint 24: the front-desk Home shows this same card.
-export { ForecastSummaryCard };
+export { ForecastSummaryCard, SimpleRoomTable };
 export default Forecast;

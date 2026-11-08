@@ -4769,9 +4769,10 @@ let _liveClient = null;
 const getSharedAgilysys = () => (_liveClient = _liveClient || createAgilysysClient());   // ONE client (one login/token) for live board + sync
 const _live = { at: 0, data: null, inflight: null };
 const LIVE_TTL_MS = 20 * 1000;
-const forecastLive = async (req, res) => {
+const FD_LIVE_TTL_MS = 120 * 1000;     // Sprint 25.5: the front desk never makes rGuest pull more often than every 2 minutes, however often Refresh / reload is pressed
+const liveHandler = (ttlMs) => async (req, res) => {
   try {
-    if (_live.data && Date.now() - _live.at < LIVE_TTL_MS) return res.json({ success: true, cached: true, live: _live.data });
+    if (_live.data && Date.now() - _live.at < ttlMs) return res.json({ success: true, cached: true, live: _live.data });
     if (!_live.inflight) {
       getSharedAgilysys();
       _live.inflight = _liveClient.fetchTodayLive()
@@ -4785,8 +4786,9 @@ const forecastLive = async (req, res) => {
     return res.status(502).json({ success: false, message: 'Could not read live room data from rGuest.' });
   }
 };
+const forecastLive = liveHandler(LIVE_TTL_MS), forecastLiveFrontDesk = liveHandler(FD_LIVE_TTL_MS);
 app.get('/api/admin/forecast/live',     requireAuth, requireRole('admin'),      forecastLive);
-app.get('/api/frontdesk/forecast/live', requireAuth, requireFrontDesk, forecastLive);   // Sprint 24: room numbers + housekeeping status only, no guest data
+app.get('/api/frontdesk/forecast/live', requireAuth, requireFrontDesk, forecastLiveFrontDesk);   // Sprint 24: room numbers + housekeeping status only, no guest data
 
 // ── Sprint 22: auto-sync engine ───────────────────────────────────────────────
 // POST /api/sync/tick is pinged every ~5 min by an EXTERNAL scheduler (cron-job.org) with the header
