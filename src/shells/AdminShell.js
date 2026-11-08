@@ -50,7 +50,7 @@ const NAV = [
   { view: 'reservations', label: 'Reservations', icon: 'calendar', live: true, mobilePrimary: true },
   { view: 'forecast',     label: 'Forecast',     icon: 'calendar', live: true },
   { view: 'housekeeping', label: 'Housekeeping', icon: 'timesheet', live: true },   // Sprint 23
-  { view: 'reports',   label: 'Logbook',   icon: 'logbook' },
+  { view: 'reports',   label: 'Logbook',   icon: 'logbook',    live: true },   // Sprint 26.1: the green "live" dot, like the other live pages
   { view: 'assistant', label: 'Assistant', icon: 'assistant' },
   { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
 ];

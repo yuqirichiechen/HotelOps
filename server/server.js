@@ -1202,71 +1202,122 @@ for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontde
   app.put(`${base}/housekeeping/prefs`,        requireAuth, gate, hkPutPrefs);
 }
 
-// ── Sprint 26: the Log Book (dated notes: priority, time span, audience, draft / published / archived) ──────────────────────────────────
-// Managers and dev use /api/admin/logbook/*; front-desk staff use the same handlers under /api/frontdesk/logbook/* (same rights for now — they get
-// tightened per role later). Read on page open and written on Save / Publish / Archive — no timers. Scoped to the property; every query is parameterized.
-const { sanitizeNote, toApi: lbToApi } = require('./logbook');
+// ── Sprint 26 / 26.1: the Log Book (dated notes: priority, time span, audience, draft / published / archived) ───────────────────────────
+// Managers and dev use /api/admin/logbook/*; front-desk staff use the same handlers under /api/frontdesk/logbook/*. WHAT each person may do depends on who
+// they are, not on the URL (server/logbook.js `permissions`):  edit / pin — dev and managers on any note, front desk only on their own ·  delete — dev on
+// any, front desk on their own, managers never ·  archive / restore — dev only.  Read on page open and written on Save / Publish / etc. — no timers.
+// Scoped to the property; every query is parameterized.
+const { sanitizeNote, toApi: lbToApi, viewerOf: lbViewerOf, permissions: lbPermissions } = require('./logbook');
 const LB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LB_COLS = `note_id, title, body, priority, start_date::text AS start_date, to_char(start_time, 'HH24:MI') AS start_time, end_date::text AS end_date, to_char(end_time, 'HH24:MI') AS end_time,
-  audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, pinned, status, author_label, created_at, updated_at, published_at`;
-const lbAuthor = (req) => ({ id: req.auth.type === 'staff' && LB_UUID_RE.test(String(req.auth.sub)) ? req.auth.sub : null, label: String(req.auth.name || req.auth.sub || '').slice(0, 120) });
+const LB_COLS = `note_id, title, body, body_rich, priority, start_date::text AS start_date, to_char(start_time, 'HH24:MI') AS start_time, end_date::text AS end_date, to_char(end_time, 'HH24:MI') AS end_time,
+  audience_all, audience_departments, audience_staff, recipients, show_on_calendar, require_ack, pinned, status, author_user_id, author_label, created_at, updated_at, published_at, modified_at, modified_by`;
 const lbFail = (res, tag, err) => { console.error(`[logbook:${tag}]`, err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); };
-const lbNoteParams = (n) => [n.title, n.body, n.priority, n.startDate, n.startTime, n.endDate, n.endTime, n.audience.all, n.audience.departments, n.audience.staff, n.showOnCalendar, n.requireAck, n.pinned, n.status];
+const lbNoteParams = (n) => [n.title, n.body, n.priority, n.startDate, n.startTime, n.endDate, n.endTime, n.audience.all, n.audience.departments, n.audience.staff, n.showOnCalendar, n.requireAck, n.pinned, n.status, n.bodyRich ? JSON.stringify(n.bodyRich) : null, n.recipients];
+// rows → what the page gets, for THIS viewer (which notes they have already looked at, what they may do)
+const lbMap = async (req, rows) => {
+  const viewer = lbViewerOf(req.auth); let read = new Set();
+  if (viewer.id && rows.length) { const r = await pool.query('SELECT note_id FROM logbook_reads WHERE user_id = $1::uuid AND note_id = ANY($2::uuid[])', [viewer.id, rows.map(x => x.note_id)]); read = new Set(r.rows.map(x => x.note_id)); }
+  return rows.map(r => lbToApi(r, viewer, read));
+};
+const lbOne = async (id) => (await pool.query(`SELECT ${LB_COLS} FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2`, [id, hkProperty()])).rows[0];
+// "send to" may only name front-desk staff (role front_desk or department Front Desk), people who still work here
+const lbRecipientsOk = async (ids) => {
+  if (!ids.length) return true;
+  const { rows } = await pool.query(`SELECT u.user_id FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.user_id = ANY($1::uuid[]) AND u.deleted_at IS NULL AND u.active IS NOT FALSE AND (u.role = 'front_desk' OR d.name ~* '^front[ _-]*desk$')`, [ids]);
+  return rows.length === ids.length;
+};
 const lbList = async (req, res) => {
   const from = String(req.query.from || ''), to = String(req.query.to || ''), ok = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + 'T12:00:00Z'));
   if (!ok(from) || !ok(to) || Date.parse(to) < Date.parse(from) || Date.parse(to) - Date.parse(from) > 100 * 86400000) return res.status(400).json({ success: false, message: 'from / to must be YYYY-MM-DD, at most 100 days apart' });
   try {
+    const viewer = lbViewerOf(req.auth);
+    if (req.query.archived === '1' && !lbPermissions(viewer, {}).archive) return res.json({ success: true, notes: [], viewer: { role: viewer.role, id: viewer.id } });   // only dev sees the archive
     const { rows } = await pool.query(
       `SELECT ${LB_COLS} FROM logbook_notes WHERE property_id = $1 AND start_date <= $3::date AND end_date >= $2::date AND status = ANY($4::text[])
         ORDER BY pinned DESC, start_date, start_time NULLS FIRST, created_at LIMIT 1000`, [hkProperty(), from, to, req.query.archived === '1' ? ['archived'] : ['draft', 'published']]);
-    return res.json({ success: true, notes: rows.map(lbToApi) });
+    return res.json({ success: true, notes: await lbMap(req, rows), viewer: { role: viewer.role, id: viewer.id } });
   } catch (err) { return lbFail(res, 'list', err); }
 };
 const lbCreate = async (req, res) => {
   const r = sanitizeNote(req.body); if (r.error) return res.status(400).json({ success: false, message: r.error });
-  const a = lbAuthor(req);
+  const v = lbViewerOf(req.auth);
   try {
+    if (!(await lbRecipientsOk(r.note.recipients))) return res.status(400).json({ success: false, message: 'You can only send a note to front-desk staff' });
     const { rows } = await pool.query(
-      `INSERT INTO logbook_notes (property_id, title, body, priority, start_date, start_time, end_date, end_time, audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, pinned, status, author_user_id, author_label, published_at)
-       VALUES ($1, $2, $3, $4, $5::date, $6::time, $7::date, $8::time, $9, $10::int[], $11::uuid[], $12, $13, $14, $15::text, $16, $17, CASE WHEN $15::text = 'published' THEN NOW() END)
-       RETURNING ${LB_COLS}`, [hkProperty(), ...lbNoteParams(r.note), a.id, a.label]);
-    return res.status(201).json({ success: true, note: lbToApi(rows[0]) });
+      `INSERT INTO logbook_notes (property_id, title, body, priority, start_date, start_time, end_date, end_time, audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, pinned, status, body_rich, recipients, author_user_id, author_label, published_at)
+       VALUES ($1, $2, $3, $4, $5::date, $6::time, $7::date, $8::time, $9, $10::int[], $11::uuid[], $12, $13, $14, $15::text, $16::jsonb, $17::uuid[], $18::uuid, $19, CASE WHEN $15::text = 'published' THEN NOW() END)
+       RETURNING ${LB_COLS}`, [hkProperty(), ...lbNoteParams(r.note), v.id, v.name]);
+    return res.status(201).json({ success: true, note: (await lbMap(req, rows))[0] });
   } catch (err) { return lbFail(res, 'create', err); }
 };
 const lbUpdate = async (req, res) => {
   if (!LB_UUID_RE.test(String(req.params.id))) return res.status(400).json({ success: false, message: 'bad note id' });
   const r = sanitizeNote(req.body); if (r.error) return res.status(400).json({ success: false, message: r.error });
+  const v = lbViewerOf(req.auth);
   try {
+    const cur = await lbOne(req.params.id);
+    if (!cur || cur.status === 'archived') return res.status(404).json({ success: false, message: 'That note was not found (or it is archived — restore it first)' });
+    if (!lbPermissions(v, cur).edit) return res.status(403).json({ success: false, message: 'You can only change notes you posted' });
+    if (!(await lbRecipientsOk(r.note.recipients))) return res.status(400).json({ success: false, message: 'You can only send a note to front-desk staff' });
+    // "Edited by … at …" is stamped when anyone EXCEPT dev changes a note that was already published
     const { rows } = await pool.query(
       `UPDATE logbook_notes SET title = $3, body = $4, priority = $5, start_date = $6::date, start_time = $7::time, end_date = $8::date, end_time = $9::time, audience_all = $10, audience_departments = $11::int[], audience_staff = $12::uuid[],
-              show_on_calendar = $13, require_ack = $14, pinned = $15, status = $16::text, updated_at = NOW(), published_at = CASE WHEN $16::text = 'published' AND published_at IS NULL THEN NOW() ELSE published_at END
-        WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`, [req.params.id, hkProperty(), ...lbNoteParams(r.note)]);
+              show_on_calendar = $13, require_ack = $14, pinned = $15, status = $16::text, body_rich = $17::jsonb, recipients = $18::uuid[], updated_at = NOW(),
+              published_at = CASE WHEN $16::text = 'published' AND published_at IS NULL THEN NOW() ELSE published_at END,
+              modified_at = CASE WHEN $19::boolean AND published_at IS NOT NULL THEN NOW() ELSE modified_at END,
+              modified_by = CASE WHEN $19::boolean AND published_at IS NOT NULL THEN $20 ELSE modified_by END
+        WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`, [req.params.id, hkProperty(), ...lbNoteParams(r.note), v.role !== 'dev', v.name]);
     if (!rows[0]) return res.status(404).json({ success: false, message: 'That note was not found (or it is archived — restore it first)' });
-    return res.json({ success: true, note: lbToApi(rows[0]) });
+    return res.json({ success: true, note: (await lbMap(req, rows))[0] });
   } catch (err) { return lbFail(res, 'update', err); }
 };
-const lbAct = (tag, sql, extra = () => []) => async (req, res) => {
+// pin / archive / restore / duplicate / delete: look the note up, check the person may, then do one statement
+const lbAct = (tag, need, sql, extra = () => []) => async (req, res) => {
   if (!LB_UUID_RE.test(String(req.params.id))) return res.status(400).json({ success: false, message: 'bad note id' });
   const more = extra(req); if (more === null) return res.status(400).json({ success: false, message: 'bad request' });
   try {
+    const cur = await lbOne(req.params.id); if (!cur) return res.status(404).json({ success: false, message: 'That note was not found' });
+    if (need && !lbPermissions(lbViewerOf(req.auth), cur)[need]) return res.status(403).json({ success: false, message: need === 'archive' ? 'Only the dev account can archive or restore notes' : need === 'delete' ? 'You can only delete notes you posted' : 'You can only change notes you posted' });
     const { rows } = await pool.query(sql, [req.params.id, hkProperty(), ...more]);
     if (!rows[0]) return res.status(404).json({ success: false, message: 'That note was not found' });
-    return res.status(tag === 'duplicate' ? 201 : 200).json({ success: true, note: lbToApi(rows[0]) });
+    if (tag === 'delete') return res.json({ success: true });
+    return res.status(tag === 'duplicate' ? 201 : 200).json({ success: true, note: (await lbMap(req, rows))[0] });
   } catch (err) { return lbFail(res, tag, err); }
 };
-const lbArchive = lbAct('archive', `UPDATE logbook_notes SET status = 'archived', archived_at = NOW(), updated_at = NOW() WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`);
-const lbRestore = lbAct('restore', `UPDATE logbook_notes SET status = CASE WHEN published_at IS NULL THEN 'draft' ELSE 'published' END, archived_at = NULL, updated_at = NOW() WHERE note_id = $1::uuid AND property_id = $2 AND status = 'archived' RETURNING ${LB_COLS}`);
-const lbPin = lbAct('pin', `UPDATE logbook_notes SET pinned = $3, updated_at = NOW() WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`, (req) => (typeof (req.body || {}).pinned === 'boolean' ? [req.body.pinned] : null));
-const lbDuplicate = lbAct('duplicate',
-  `INSERT INTO logbook_notes (property_id, title, body, priority, start_date, start_time, end_date, end_time, audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, pinned, status, author_user_id, author_label)
-   SELECT property_id, LEFT(title, 112) || ' (copy)', body, priority, start_date, start_time, end_date, end_time, audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, FALSE, 'draft', $3::uuid, $4
-     FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2 RETURNING ${LB_COLS}`, (req) => { const a = lbAuthor(req); return [a.id, a.label]; });
+const lbArchive = lbAct('archive', 'archive', `UPDATE logbook_notes SET status = 'archived', archived_at = NOW(), updated_at = NOW() WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`);
+const lbRestore = lbAct('restore', 'archive', `UPDATE logbook_notes SET status = CASE WHEN published_at IS NULL THEN 'draft' ELSE 'published' END, archived_at = NULL, updated_at = NOW() WHERE note_id = $1::uuid AND property_id = $2 AND status = 'archived' RETURNING ${LB_COLS}`);
+const lbPin = lbAct('pin', 'edit', `UPDATE logbook_notes SET pinned = $3, updated_at = NOW() WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`, (req) => (typeof (req.body || {}).pinned === 'boolean' ? [req.body.pinned] : null));
+const lbDelete = lbAct('delete', 'delete', `DELETE FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2 RETURNING note_id`);
+// a copy is the duplicator's own draft (no recipients, so nobody is notified twice)
+const lbDuplicate = lbAct('duplicate', null,
+  `INSERT INTO logbook_notes (property_id, title, body, body_rich, priority, start_date, start_time, end_date, end_time, audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, pinned, status, author_user_id, author_label)
+   SELECT property_id, LEFT(title, 112) || ' (copy)', body, body_rich, priority, start_date, start_time, end_date, end_time, audience_all, audience_departments, audience_staff, show_on_calendar, require_ack, FALSE, 'draft', $3::uuid, $4
+     FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2 AND status <> 'archived' RETURNING ${LB_COLS}`, (req) => { const v = lbViewerOf(req.auth); return [v.id, v.name]; });
+// "I have looked at it": clears the notification for a note sent to me (a no-op for managers / dev, who are never recipients)
+const lbRead = async (req, res) => {
+  if (!LB_UUID_RE.test(String(req.params.id))) return res.status(400).json({ success: false, message: 'bad note id' });
+  try {
+    const v = lbViewerOf(req.auth);
+    if (v.id) await pool.query(`INSERT INTO logbook_reads (note_id, user_id) SELECT note_id, $3::uuid FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2 ON CONFLICT DO NOTHING`, [req.params.id, hkProperty(), v.id]);
+    return res.json({ success: true });
+  } catch (err) { return lbFail(res, 'read', err); }
+};
+// notes sent to me that I have not looked at yet (the badge on the Logbook tab + the "for you" strip)
+const lbUnread = async (req, res) => {
+  try {
+    const v = lbViewerOf(req.auth); if (!v.id) return res.json({ success: true, count: 0, notes: [] });
+    const { rows } = await pool.query(
+      `SELECT ${LB_COLS} FROM logbook_notes n WHERE property_id = $1 AND status = 'published' AND recipients @> ARRAY[$2::uuid]
+          AND NOT EXISTS (SELECT 1 FROM logbook_reads r WHERE r.note_id = n.note_id AND r.user_id = $2::uuid) ORDER BY published_at DESC LIMIT 50`, [hkProperty(), v.id]);
+    const notes = await lbMap(req, rows); return res.json({ success: true, count: notes.length, notes });
+  } catch (err) { return lbFail(res, 'unread', err); }
+};
 // who a note can be for: departments + people (names only — the same view the Housekeeping staff picker gets)
 const lbAudience = async (req, res) => {
   try {
     const [d, u] = await Promise.all([
       pool.query('SELECT department_id, name, color FROM departments ORDER BY name'),
-      pool.query(`SELECT u.user_id, u.name, u.department_id, d.name AS department FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.deleted_at IS NULL AND u.active IS NOT FALSE ORDER BY u.name`),
+      pool.query(`SELECT u.user_id, u.name, u.role, u.department_id, d.name AS department FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.deleted_at IS NULL AND u.active IS NOT FALSE ORDER BY u.name`),
     ]);
     return res.json({ success: true, departments: d.rows, staff: u.rows });
   } catch (err) { return lbFail(res, 'audience', err); }
@@ -1275,10 +1326,13 @@ for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontde
   app.get(`${base}/logbook/notes`,                    requireAuth, gate, lbList);
   app.post(`${base}/logbook/notes`,                   requireAuth, gate, lbCreate);
   app.put(`${base}/logbook/notes/:id`,                requireAuth, gate, lbUpdate);
+  app.delete(`${base}/logbook/notes/:id`,             requireAuth, gate, lbDelete);
   app.post(`${base}/logbook/notes/:id/archive`,       requireAuth, gate, lbArchive);
   app.post(`${base}/logbook/notes/:id/restore`,       requireAuth, gate, lbRestore);
   app.post(`${base}/logbook/notes/:id/duplicate`,     requireAuth, gate, lbDuplicate);
   app.post(`${base}/logbook/notes/:id/pin`,           requireAuth, gate, lbPin);
+  app.post(`${base}/logbook/notes/:id/read`,          requireAuth, gate, lbRead);
+  app.get(`${base}/logbook/unread`,                   requireAuth, gate, lbUnread);
   app.get(`${base}/logbook/audience`,                 requireAuth, gate, lbAudience);
 }
 

@@ -1,6 +1,8 @@
 // Sprint 26 — the Log Book's pure helpers: month grid, which notes touch which day, counts, sorting, labels, and the note form <-> API mapping.
 // Dates are the hotel's local calendar days as 'YYYY-MM-DD' strings; times are 'HH:MM' (24 h). Nothing here touches the clock except `todayYmd`.
 
+import { EMPTY_DOC, docOfNote, plainLength, isBlank } from './richModel';
+
 export const PRIORITIES = ['high', 'medium', 'general'];
 export const PRIORITY = {
   high:    { label: 'High',    rank: 0 },
@@ -87,15 +89,15 @@ export function audienceLabel(n, departments = [], staff = []) {
 }
 
 // ── the note form ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-export const emptyForm = (ymd) => ({ title: '', body: '', priority: 'general', startDate: ymd, startTime: '09:00', endDate: ymd, endTime: '10:00', allDay: false, audienceMode: 'all', departments: [], staff: [], showOnCalendar: true, requireAck: false, pinned: false, status: 'draft' });
+export const emptyForm = (ymd) => ({ title: '', doc: EMPTY_DOC, recipients: [], priority: 'general', startDate: ymd, startTime: '09:00', endDate: ymd, endTime: '10:00', allDay: false, audienceMode: 'all', departments: [], staff: [], showOnCalendar: true, requireAck: false, pinned: false, status: 'draft' });
 export const formFromNote = (n) => ({
-  title: n.title, body: n.body, priority: n.priority, startDate: n.startDate, startTime: n.startTime || '09:00', endDate: n.endDate, endTime: n.endTime || '10:00', allDay: !!n.allDay,
+  title: n.title, doc: docOfNote(n), recipients: (n.recipients || []).slice(), priority: n.priority, startDate: n.startDate, startTime: n.startTime || '09:00', endDate: n.endDate, endTime: n.endTime || '10:00', allDay: !!n.allDay,
   audienceMode: n.audience.all ? 'all' : (n.audience.departments.length && !n.audience.staff.length ? 'departments' : 'staff'), departments: n.audience.departments.slice(), staff: n.audience.staff.slice(),
   showOnCalendar: n.showOnCalendar !== false, requireAck: !!n.requireAck, pinned: !!n.pinned, status: n.status,
 });
 /** the request body; 'Selected staff' may also carry departments picked earlier, so both lists are sent unless the audience is everyone */
 export const formToBody = (f, status) => ({
-  title: f.title.trim(), body: f.body.trim(), priority: f.priority, startDate: f.startDate, endDate: f.endDate, allDay: !!f.allDay,
+  title: f.title.trim(), bodyRich: f.doc, recipients: f.recipients, priority: f.priority, startDate: f.startDate, endDate: f.endDate, allDay: !!f.allDay,
   startTime: f.allDay ? null : f.startTime, endTime: f.allDay ? null : f.endTime,
   audience: f.audienceMode === 'all' ? { all: true, departments: [], staff: [] } : { all: false, departments: f.audienceMode === 'departments' ? f.departments : [], staff: f.audienceMode === 'staff' ? f.staff : [] },
   showOnCalendar: f.showOnCalendar, requireAck: f.requireAck, pinned: f.pinned, status,
@@ -104,14 +106,19 @@ export const formToBody = (f, status) => ({
 export function formError(f, status) {
   if (!f.title.trim()) return 'Give the note a title';
   if (f.title.length > MAX_TITLE) return `The title can be at most ${MAX_TITLE} characters`;
-  if (f.body.length > MAX_BODY) return `The description can be at most ${MAX_BODY} characters`;
+  if (plainLength(f.doc) > MAX_BODY) return `The description can be at most ${MAX_BODY} characters`;
   if (!f.startDate || !f.endDate) return 'Choose the start and end dates';
   if (f.endDate < f.startDate) return 'The end cannot be before the start';
   if (!f.allDay && f.startDate === f.endDate && f.endTime <= f.startTime) return 'The end time must be after the start time';
   if (status === 'published') {
-    if (!f.body.trim()) return 'Add a description before publishing';
+    if (isBlank(f.doc)) return 'Add a description before publishing';
     if (f.audienceMode === 'departments' && !f.departments.length) return 'Choose at least one department';
     if (f.audienceMode === 'staff' && !f.staff.length) return 'Choose at least one person';
   }
   return '';
 }
+
+/** "12 Nov, 8:15 AM"-style stamp for "posted by … · …" lines (the browser's local time = the hotel's) */
+export const stampLabel = (iso) => { const d = new Date(iso); if (Number.isNaN(d.getTime())) return ''; return `${MON3[d.getMonth()]} ${d.getDate()}, ${fmtTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`; };
+/** only front-desk staff can be sent a note: role front_desk, or the department is called Front Desk */
+export const isDeskStaff = (s) => s.role === 'front_desk' || /^front[\s_-]*desk$/i.test(String(s.department || '').trim());

@@ -2,7 +2,9 @@
 // selected staff) · description · show on calendar / require acknowledgment / pin · Save draft / Publish. Controlled by the page (`form`, `onChange`).
 import React, { useMemo, useState } from 'react';
 import { Ic, DateField, TimeField } from './pickers';
-import { PRIORITIES, PRIORITY, MAX_TITLE, MAX_BODY, TIME_SLOTS } from './logbookModel';
+import RichEditor from './RichEditor';
+import { plainLength } from './richModel';
+import { PRIORITIES, PRIORITY, MAX_TITLE, MAX_BODY, TIME_SLOTS, isDeskStaff } from './logbookModel';
 
 const PRIO_ICON = { high: Ic.Alert, medium: Ic.Flag, general: Ic.Info };
 const Switch = ({ on, onClick, label, icon }) => (
@@ -12,7 +14,7 @@ const Switch = ({ on, onClick, label, icon }) => (
 const plus = (hhmm, mins) => { const i = TIME_SLOTS.indexOf(hhmm); return TIME_SLOTS[Math.min(95, (i < 0 ? 36 : i) + mins / 15)]; };
 
 const NoteForm = ({ form, onChange, mode, departments, staff, error, busy, onSave, onClose }) => {
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(''), [rq, setRq] = useState('');
   const set = (patch) => onChange({ ...form, ...patch });
   const setStart = (patch) => {
     const next = { ...form, ...patch };
@@ -24,6 +26,8 @@ const NoteForm = ({ form, onChange, mode, departments, staff, error, busy, onSav
   const toggle = (key, v) => set({ [key]: form[key].includes(v) ? form[key].filter(x => x !== v) : [...form[key], v] });
   const byId = useMemo(() => new Map(staff.map(s => [s.user_id, s])), [staff]);
   const matches = useMemo(() => { const n = q.trim().toLowerCase(); return staff.filter(s => !n || s.name.toLowerCase().includes(n) || (s.department || '').toLowerCase().includes(n)).slice(0, 60); }, [staff, q]);
+  const desk = useMemo(() => staff.filter(isDeskStaff), [staff]);
+  const deskMatches = useMemo(() => { const n = rq.trim().toLowerCase(); return desk.filter(s => !n || s.name.toLowerCase().includes(n)).slice(0, 40); }, [desk, rq]);
   const published = form.status === 'published' && mode === 'edit';
   return (
     <section className="lb-panel lb-form" aria-label={mode === 'edit' ? 'Edit note' : 'New note'}>
@@ -86,9 +90,27 @@ const NoteForm = ({ form, onChange, mode, departments, staff, error, busy, onSav
         )}
       </div>
 
-      <label className="lb-fgroup"><span className="lb-flabel">Description <i>*</i><small>{form.body.length} / {MAX_BODY}</small></span>
-        <textarea className="lb-input lb-text" rows={5} value={form.body} maxLength={MAX_BODY} placeholder="What does the team need to know?" aria-label="Description" onChange={(e) => set({ body: e.target.value })} />
-      </label>
+      <div className="lb-fgroup"><span className="lb-flabel">Description <i>*</i><small>{plainLength(form.doc)} / {MAX_BODY}</small></span>
+        <RichEditor value={form.doc} onChange={(doc) => set({ doc })} ariaLabel="Description" placeholder="What does the team need to know?" />
+      </div>
+
+      <div className="lb-fgroup lb-sendto"><span className="lb-flabel">Send to <small>optional · front desk</small></span>
+        <p className="lb-hint">Pick front-desk people to notify directly. They see a badge on their Logbook tab until they have opened the note.</p>
+        <div className="lb-chips" aria-label="Sent to">
+          {form.recipients.length === 0 && <small className="lb-muted">Nobody in particular — the note is just there for the audience above.</small>}
+          {form.recipients.map(id => { const p = byId.get(id); return <span key={id} className="lb-chip on lb-chip-x">{p ? p.name : 'Staff member'}<button type="button" aria-label={`Do not send to ${p ? p.name : 'staff member'}`} onClick={() => toggle('recipients', id)}><Ic.X size={12} sw={2.6} /></button></span>; })}
+        </div>
+        {desk.length > 0 && (
+          <>
+            <input className="lb-input" type="search" value={rq} placeholder="Search the front desk…" aria-label="Search front desk" onChange={(e) => setRq(e.target.value)} />
+            <ul className="lb-stafflist" aria-label="Front desk list">
+              {deskMatches.length === 0 && <li className="lb-muted">No one matches.</li>}
+              {deskMatches.map(s => <li key={s.user_id}><label><input type="checkbox" checked={form.recipients.includes(s.user_id)} onChange={() => toggle('recipients', s.user_id)} aria-label={`Send to ${s.name}`} /><span>{s.name}</span></label></li>)}
+            </ul>
+          </>
+        )}
+        {desk.length === 0 && <small className="lb-muted">No front-desk staff found.</small>}
+      </div>
 
       <div className="lb-switches">
         <Switch on={form.showOnCalendar} onClick={() => set({ showOnCalendar: !form.showOnCalendar })} label="Show on calendar" icon={<Ic.Calendar size={16} />} />

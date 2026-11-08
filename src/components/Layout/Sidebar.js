@@ -43,6 +43,7 @@ const Sidebar = ({
   role = 'staff',
   theme,
   onToggleTheme,
+  badges = {},          // Sprint 26.1: { [view]: count } — e.g. { logbook: 2 } = notes sent to this person that they have not looked at yet
 }) => {
   const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const isDark = theme === 'dark' || (theme === null && osDark);
@@ -50,6 +51,7 @@ const Sidebar = ({
   const nav = useNavigate();
 
   const [unread, setUnread] = useState(0);
+  const badgeOf = (item) => (item.view === 'calendar' ? unread : (badges[item.view] || 0));
   // Sprint 17.4: mobile "More" sheet open/closed state.
   const [moreOpen, setMoreOpen] = useState(false);
   // Sprint 15.10: cost optimization. Was a hard 60s poll, which
@@ -58,8 +60,9 @@ const Sidebar = ({
   // Refresh on mount + on window focus instead — the unread count
   // doesn't need to update while the GM has the tab in the
   // background or is on another device.
+  const hasCalendar = navItems.some(i => i.view === 'calendar');   // the old handoff-notes badge only exists on a Calendar item
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasCalendar) return undefined;
     let cancelled = false;
     const refetch = () => {
       apiFetch('/handoff-notes/unread-count').then(({ data }) => {
@@ -73,7 +76,7 @@ const Sidebar = ({
       cancelled = true;
       window.removeEventListener('focus', refetch);
     };
-  }, [user]);
+  }, [user, hasCalendar]);
 
   const handleSignOut = async () => {
     // Sprint 11.2.1: route to the per-tenant combined login. If the
@@ -148,12 +151,12 @@ const Sidebar = ({
                   aria-hidden="true"
                 />
                 <span className="sidebar-nav-label">{item.label}</span>
-                {item.view === 'calendar' && unread > 0 && (
+                {badgeOf(item) > 0 && (
                   <span
                     className="sidebar-unread-badge"
-                    title={`${unread} unread handoff${unread === 1 ? '' : 's'}`}
+                    title={item.view === 'calendar' ? `${unread} unread handoff${unread === 1 ? '' : 's'}` : `${badgeOf(item)} new for you`}
                   >
-                    {unread > 9 ? '9+' : unread}
+                    {badgeOf(item) > 9 ? '9+' : badgeOf(item)}
                   </span>
                 )}
                 {item.live && <span className="live-dot" title="Live" />}
@@ -183,7 +186,7 @@ const Sidebar = ({
         const primary    = navItems.filter(i => i.mobilePrimary);
         const moreItems  = navItems.filter(i => !i.mobilePrimary);
         const moreActive = moreItems.some(i => i.view === currentView);
-        const calendarInMore = moreItems.some(i => i.view === 'calendar');
+        const calendarInMore = moreItems.some(i => badgeOf(i) > 0);   // any badge hiding inside More
 
         const closeMoreThen = (fn) => (...args) => {
           setMoreOpen(false);
@@ -208,8 +211,8 @@ const Sidebar = ({
                       alt=""
                       aria-hidden="true"
                     />
-                    {item.view === 'calendar' && unread > 0 && (
-                      <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
+                    {badgeOf(item) > 0 && (
+                      <span className="bottom-nav-unread-dot" aria-label={`${badgeOf(item)} unread`} />
                     )}
                   </span>
                   <span className="bottom-nav-label">{item.label}</span>
@@ -230,8 +233,8 @@ const Sidebar = ({
                         when Calendar lives inside it — keeps the
                         unread cue visible even when the tab is
                         collapsed. */}
-                    {calendarInMore && unread > 0 && (
-                      <span className="bottom-nav-unread-dot" aria-label={`${unread} unread`} />
+                    {calendarInMore && (
+                      <span className="bottom-nav-unread-dot" aria-label="unread" />
                     )}
                   </span>
                   <span className="bottom-nav-label">More</span>
@@ -263,8 +266,8 @@ const Sidebar = ({
                               alt=""
                               aria-hidden="true"
                             />
-                            {item.view === 'calendar' && unread > 0 && (
-                              <span className="more-sheet-unread-dot" aria-label={`${unread} unread`} />
+                            {badgeOf(item) > 0 && (
+                              <span className="more-sheet-unread-dot" aria-label={`${badgeOf(item)} unread`} />
                             )}
                           </span>
                           <span className="more-sheet-label">{item.label}</span>

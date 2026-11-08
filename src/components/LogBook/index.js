@@ -8,12 +8,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { useViewOptional } from '../../shells/ViewContext';
 import DropdownSelect from '../shared/DropdownSelect';
+import ConfirmModal from '../shared/ConfirmModal';
 import NoteForm from './NoteForm';
+import { RichText } from './RichEditor';
+import { docOfNote } from './richModel';
 import { Ic, ActionMenu } from './pickers';
 import {
   PRIORITIES, PRIORITY, SORTS, todayYmd, addDays, addMonths, monthStart, monthGrid, monthTitle, longDay, shortDay, midDay, fmtTime,
   notesOnDay, countsOf, calendarNotes, monthCounts, audienceFilter, sortNotes, whenLabel, audienceLabel, touchesRange, monthEnd,
-  emptyForm, formFromNote, formToBody, formError,
+  emptyForm, formFromNote, formToBody, formError, stampLabel,
 } from './logbookModel';
 import './LogBook.css';
 
@@ -23,36 +26,52 @@ const stampText = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-
 const PrioPill = ({ p }) => { const I = PRIO_ICON[p]; return <span className={`lb-pill lb-p-${p}`}><I size={13} />{PRIORITY[p].label}</span>; };
 const Dots = ({ c }) => <span className="lb-dots" aria-hidden="true">{PRIORITIES.filter(p => c[p] > 0).map(p => <i key={p} className={`lb-dot lb-d-${p}`} />)}</span>;
 
-const NoteCard = ({ n, departments, staff, onEdit, onAction, archivedView }) => (
-  <article className={`lb-note lb-n-${n.priority}${n.pinned ? ' pinned' : ''}${n.status === 'draft' ? ' draft' : ''}`} data-note={n.id}>
-    <div className="lb-note-main">
-      <header>
-        <PrioPill p={n.priority} />
-        <h3>{n.title}</h3>
-        {n.pinned && <span className="lb-tag" title="Pinned to the top"><Ic.Pin size={12} />Pinned</span>}
-        {n.status === 'draft' && <span className="lb-tag lb-tag-draft">Draft</span>}
-        {n.requireAck && <span className="lb-tag" title="Staff will have to acknowledge this note">Needs ack</span>}
-        {!n.showOnCalendar && <span className="lb-tag" title="Not shown on the month calendar">Hidden on calendar</span>}
-        <span className="lb-note-actions">
-          {archivedView
-            ? <button type="button" className="lb-btn lb-btn-sm" onClick={() => onAction('restore', n)}><Ic.Restore size={14} />Restore</button>
-            : (
-              <>
-                <button type="button" className="lb-iconbtn" aria-label={`Edit ${n.title}`} title="Edit" onClick={() => onEdit(n)}><Ic.Pencil size={16} /></button>
-                <ActionMenu ariaLabel={`More options for ${n.title}`} items={[
-                  { label: 'Duplicate', icon: <Ic.Copy size={15} />, onClick: () => onAction('duplicate', n) },
-                  { label: n.pinned ? 'Unpin' : 'Pin to top', icon: <Ic.Pin size={15} />, onClick: () => onAction('pin', n) },
-                  { label: 'Archive', icon: <Ic.Archive size={15} />, danger: true, onClick: () => onAction('archive', n) },
-                ]} />
-              </>
-            )}
-        </span>
-      </header>
-      <p className="lb-meta"><span><Ic.Calendar size={14} />{whenLabel(n)}</span><span className="lb-aud"><Ic.People size={14} />{audienceLabel(n, departments, staff)}</span></p>
-      {n.body && <p className="lb-body">{n.body}</p>}
-    </div>
-  </article>
-);
+const NoteCard = ({ n, departments, staff, onEdit, onAction, archivedView }) => {
+  const names = (ids) => ids.map(id => (staff.find(p => p.user_id === id) || { name: 'Staff member' }).name).join(', ');
+  const items = [
+    { label: 'Duplicate', icon: <Ic.Copy size={15} />, onClick: () => onAction('duplicate', n) },
+    ...(n.can.edit ? [{ label: n.pinned ? 'Unpin' : 'Pin to top', icon: <Ic.Pin size={15} />, onClick: () => onAction('pin', n) }] : []),
+    ...(n.can.archive ? [{ label: 'Archive', icon: <Ic.Archive size={15} />, onClick: () => onAction('archive', n) }] : []),
+    ...(n.can.delete ? [{ label: 'Delete', icon: <Ic.X size={15} />, danger: true, onClick: () => onAction('delete', n) }] : []),
+  ];
+  return (
+    <article className={`lb-note lb-n-${n.priority}${n.pinned ? ' pinned' : ''}${n.status === 'draft' ? ' draft' : ''}${n.unread ? ' unread' : ''}`} data-note={n.id}>
+      <div className="lb-note-main">
+        <header>
+          <PrioPill p={n.priority} />
+          <h3>{n.title}</h3>
+          {n.unread && <span className="lb-tag lb-tag-new" title="Sent to you — you have not opened it yet">New for you</span>}
+          {n.toYou && !n.unread && <span className="lb-tag lb-tag-you" title="This note was sent to you">For you</span>}
+          {n.pinned && <span className="lb-tag" title="Pinned to the top"><Ic.Pin size={12} />Pinned</span>}
+          {n.status === 'draft' && <span className="lb-tag lb-tag-draft">Draft</span>}
+          {n.requireAck && <span className="lb-tag" title="Staff will have to acknowledge this note">Needs ack</span>}
+          {!n.showOnCalendar && <span className="lb-tag" title="Not shown on the month calendar">Hidden on calendar</span>}
+          <span className="lb-note-actions">
+            {archivedView
+              ? (
+                <>
+                  {n.can.archive && <button type="button" className="lb-btn lb-btn-sm" onClick={() => onAction('restore', n)}><Ic.Restore size={14} />Restore</button>}
+                  {n.can.delete && <button type="button" className="lb-btn lb-btn-sm lb-btn-danger" onClick={() => onAction('delete', n)}>Delete</button>}
+                </>
+              )
+              : (
+                <>
+                  {n.can.edit && <button type="button" className="lb-iconbtn" aria-label={`Edit ${n.title}`} title="Edit" onClick={() => onEdit(n)}><Ic.Pencil size={16} /></button>}
+                  <ActionMenu ariaLabel={`More options for ${n.title}`} items={items} />
+                </>
+              )}
+          </span>
+        </header>
+        <p className="lb-meta"><span><Ic.Calendar size={14} />{whenLabel(n)}</span><span className="lb-aud"><Ic.People size={14} />{audienceLabel(n, departments, staff)}</span>{n.recipients.length > 0 && <span className="lb-aud lb-sent" title="Sent directly to"><Ic.Send size={13} />To {names(n.recipients)}</span>}</p>
+        {(n.bodyRich || n.body) && <div className="lb-body"><RichText doc={docOfNote(n)} /></div>}
+        <p className="lb-byline">
+          <span>{n.status === 'draft' ? 'Drafted' : 'Posted'} by <b>{n.author || 'Unknown'}</b> · {stampLabel(n.postedAt)}</span>
+          {n.modifiedAt && <span className="lb-edited">Edited by <b>{n.modifiedBy || 'someone'}</b> · {stampLabel(n.modifiedAt)}</span>}
+        </p>
+      </div>
+    </article>
+  );
+};
 
 const LogBook = ({ apiBase = '/admin' }) => {
   const view = useViewOptional();
@@ -73,17 +92,28 @@ const LogBook = ({ apiBase = '/admin' }) => {
   const [showArchived, setShowArchived] = useState(false);
   const [archived, setArchived] = useState([]);
   const [panel, setPanel] = useState(null);                  // { id, form, dirty, busy, error } — the note form on the day page
+  const [viewer, setViewer] = useState({ role: 'admin', id: null });   // who is looking (the server decides what they may do; this only hides what would be refused)
+  const [mine, setMine] = useState([]);                      // notes sent to me that I have not opened yet (front desk)
+  const [ask, setAsk] = useState(null);                      // the delete confirmation
 
   const grid = useMemo(() => monthGrid(month), [month]);
   const load = useCallback(async () => {
     const { ok, data } = await apiFetch(`${apiBase}/logbook/notes?from=${grid.start}&to=${grid.end}`);
-    if (ok && data?.success) { setNotes(data.notes || []); setError(null); setStamp(new Date()); } else setError(data?.message || 'Could not load the notes.');
+    if (ok && data?.success) { setNotes(data.notes || []); if (data.viewer) setViewer(data.viewer); setError(null); setStamp(new Date()); } else setError(data?.message || 'Could not load the notes.');
     setLoading(false);
   }, [apiBase, grid.start, grid.end]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     (async () => { const { ok, data } = await apiFetch(`${apiBase}/logbook/audience`); if (ok && data?.success) setMeta({ departments: data.departments || [], staff: data.staff || [] }); })();
   }, [apiBase]);
+  // notes sent to me: the strip on the month page + the badge on the Logbook tab (the portal shell listens for the event). Only the front desk can be sent notes.
+  const announce = useCallback((count) => { try { window.dispatchEvent(new window.CustomEvent('hotelops:logbook-unread', { detail: { count } })); } catch { /* old browser */ } }, []);
+  const loadMine = useCallback(async () => {
+    if (apiBase !== '/frontdesk') return;
+    const { ok, data } = await apiFetch(`${apiBase}/logbook/unread`);
+    if (ok && data?.success) { setMine(data.notes || []); announce(data.count || 0); }
+  }, [apiBase, announce]);
+  useEffect(() => { loadMine(); }, [loadMine]);
   useEffect(() => {
     if (mode !== 'day' || !showArchived) { setArchived([]); return undefined; }
     let alive = true;
@@ -112,6 +142,7 @@ const LogBook = ({ apiBase = '/admin' }) => {
     else setPanel(p => ({ ...p, busy: false, error: data?.message || 'Could not save the note' }));
   };
   const act = async (what, n) => {
+    if (what === 'delete') { setAsk({ title: 'Delete this note?', message: `“${n.title}” will be removed for everyone. This cannot be undone.`, confirmLabel: 'Delete note', tone: 'danger', onConfirm: () => doDelete(n) }); return; }
     const { ok, data } = await apiFetch(`${apiBase}/logbook/notes/${n.id}/${what}`, { method: 'POST', body: JSON.stringify(what === 'pin' ? { pinned: !n.pinned } : {}) });
     if (!(ok && data?.success)) { setError(data?.message || 'That did not work'); return; }
     if (panel && panel.id === n.id && what !== 'pin') setPanel(null);
@@ -119,6 +150,20 @@ const LogBook = ({ apiBase = '/admin' }) => {
     if (what === 'duplicate') { setPanel({ id: data.note.id, form: formFromNote(data.note), dirty: false, busy: false, error: '' }); }
   };
 
+  const doDelete = async (n) => {
+    const { ok, data } = await apiFetch(`${apiBase}/logbook/notes/${n.id}`, { method: 'DELETE' });
+    if (!(ok && data?.success)) { setError(data?.message || 'Could not delete that note'); return; }
+    if (panel && panel.id === n.id) setPanel(null);
+    await load(); setArchived(a => a.filter(x => x.id !== n.id)); loadMine();
+  };
+  // looking at a note that was sent to me clears its notification
+  const markedRef = React.useRef(new Set());
+  useEffect(() => {
+    if (mode !== 'day') return;
+    const fresh = notesOnDay(notes, selected).filter(n => n.unread && !markedRef.current.has(n.id)); if (!fresh.length) return;
+    fresh.forEach(n => markedRef.current.add(n.id));
+    (async () => { await Promise.all(fresh.map(n => apiFetch(`${apiBase}/logbook/notes/${n.id}/read`, { method: 'POST', body: '{}' }))); await loadMine(); })();
+  }, [mode, notes, selected, apiBase, loadMine]);
   const stats = useMemo(() => monthCounts(visible, month), [visible, month]);
   const calVisible = useMemo(() => calendarNotes(visible), [visible]);
   const audOptions = [{ value: 'all', label: 'All audiences' }, { value: 'everyone', label: 'All-staff notes' }, ...meta.departments.map(d => ({ value: `dept:${d.department_id}`, label: d.name }))];
@@ -156,6 +201,14 @@ const LogBook = ({ apiBase = '/admin' }) => {
         <div className="lb-stat lb-p-total"><span className="lb-stat-icon"><Ic.People size={22} /></span><div><strong>{stats.total}</strong><span>Total notes</span></div></div>
       </div>
       {error && <p className="lb-error" role="alert">{error}</p>}
+      {mine.length > 0 && (
+        <section className="lb-foryou" aria-label="Notes sent to you">
+          <h2><Ic.Send size={16} />New for you<span>{mine.length}</span></h2>
+          <ul>{mine.map(n => (
+            <li key={n.id}><button type="button" onClick={() => openDay(n.startDate)}><PrioPill p={n.priority} /><b>{n.title}</b><small>from {n.author || 'someone'} · {stampLabel(n.postedAt)}</small><Ic.ChevR size={14} sw={2.4} /></button></li>
+          ))}</ul>
+        </section>
+      )}
       {layout === 'month' ? (
         <div className="lb-monthbody">
           <div className="lb-cal" role="grid" aria-label={monthTitle(month)}>
@@ -213,7 +266,7 @@ const LogBook = ({ apiBase = '/admin' }) => {
             <div className="lb-chips" role="group" aria-label="Filter by priority">
               <button type="button" aria-pressed={prio === 'all'} className={`lb-chip${prio === 'all' ? ' on' : ''}`} onClick={() => setPrio('all')}>All ({dc.total})</button>
               {PRIORITIES.map(p => <button key={p} type="button" aria-pressed={prio === p} className={`lb-chip lb-c-${p}${prio === p ? ' on' : ''}`} onClick={() => setPrio(p)}><i className={`lb-dot lb-d-${p}`} />{PRIORITY[p].label} ({dc[p]})</button>)}
-              <button type="button" aria-pressed={showArchived} className={`lb-chip${showArchived ? ' on' : ''}`} onClick={() => setShowArchived(a => !a)}><Ic.Archive size={13} />Archived</button>
+              {viewer.role === 'dev' && <button type="button" aria-pressed={showArchived} className={`lb-chip${showArchived ? ' on' : ''}`} onClick={() => setShowArchived(a => !a)}><Ic.Archive size={13} />Archived</button>}
             </div>
             <DropdownSelect className="lb-sort" label="Sort" value={sort} options={SORTS} onChange={setSort} align="right" />
           </div>
@@ -230,7 +283,7 @@ const LogBook = ({ apiBase = '/admin' }) => {
     </>
   );
 
-  return <div className="lb-page">{mode === 'month' ? monthPage : dayPage}</div>;
+  return <div className="lb-page">{mode === 'month' ? monthPage : dayPage}{ask && <ConfirmModal {...ask} onClose={() => setAsk(null)} />}</div>;
 };
 
 /** the month page's List layout: every note that touches the month, searchable and filterable by priority */

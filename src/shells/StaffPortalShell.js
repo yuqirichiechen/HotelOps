@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ViewProvider, useView } from './ViewContext';
-import { useAuth, isFrontDesk } from '../auth';
+import { useAuth, isFrontDesk, apiFetch } from '../auth';
 import Sidebar from '../components/Layout/Sidebar';
 import PortalHome from '../pages/PortalHome';
 import Housekeeping from '../components/Housekeeping';
@@ -58,6 +58,17 @@ const Body = ({ theme, onToggleTheme, preview }) => {
   const { view, goTo } = useView();
   const { user } = useAuth();
   const deskStaff = !!preview || isFrontDesk(user);
+  // Sprint 26.1: notes sent to this front-desk person that they have not looked at yet → a badge on the Logbook tab. Read once when the portal opens (that is "when they
+  // log in"); the Log Book page tells us when the number changes (event below) — no timers.
+  const [logbookNew, setLogbookNew] = useState(0);
+  useEffect(() => {
+    if (!deskStaff || preview) return undefined;
+    let alive = true;
+    apiFetch('/frontdesk/logbook/unread').then(({ ok, data }) => { if (alive && ok && data?.success) setLogbookNew(data.count || 0); }).catch(() => {});
+    const on = (e) => setLogbookNew((e.detail && e.detail.count) || 0);
+    window.addEventListener('hotelops:logbook-unread', on);
+    return () => { alive = false; window.removeEventListener('hotelops:logbook-unread', on); };
+  }, [deskStaff, preview]);
   const navItems = NAV.filter(n => (!n.frontDeskOnly || deskStaff) && !(preview && n.hideInPreview));
   // a view the person's department can't see falls back to Home (the server would refuse the data anyway)
   const allowed = navItems.some(n => n.view === view.name) || !NAV.some(n => n.view === view.name);
@@ -73,6 +84,7 @@ const Body = ({ theme, onToggleTheme, preview }) => {
         role="staff"
         theme={theme}
         onToggleTheme={onToggleTheme}
+        badges={{ logbook: logbookNew }}
       />
       <main className="app-main">
         {preview && preview.bar}
