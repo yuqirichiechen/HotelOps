@@ -518,3 +518,21 @@
   .hk-rc-box { width: 20px; height: 20px; font-size: 13px; line-height: 17px; top: 6px; } .hk-rc.pick { padding-left: 30px; }
   .hk-chip { min-height: 36px; padding: 4px 14px; }
 }
+
+/* Sprint 25.4 — For [Today · Nov 7 | Tomorrow · Nov 8] box, icon steppers / chevrons, rename pencil */
+.hk-modebar .hk-btn, .hk-dayswitch { min-height: 38px; box-sizing: border-box; }
+.hk-dayswitch { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); overflow: hidden; }
+.hk-dayfor { display: inline-flex; align-items: center; padding: 0 12px; font-size: 13.5px; color: var(--text-secondary); background: var(--bg-surface-alt); border-right: 1px solid var(--border); }
+.hk-dayseg { display: inline-flex; align-items: center; gap: 4px; padding: 3px; }
+.hk-dayseg button { font: inherit; font-size: 13.5px; display: inline-flex; align-items: baseline; gap: 7px; padding: 4px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; white-space: nowrap; transition: background .15s ease, color .15s ease; }
+.hk-dayseg button b { font-weight: 600; } .hk-dayseg button span { font-size: 12px; opacity: .8; }
+.hk-dayseg button:hover:not(.on) { background: var(--bg-surface-alt); }
+.hk-dayseg button.on { background: var(--accent-alt); color: #fff; } .hk-dayseg button.on span { opacity: .9; }
+.hk-who-btn svg { color: var(--text-secondary); } .hk-who-btn[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.hk-step svg { display: block; } .hk-carctl .hk-btn { display: inline-flex; align-items: center; gap: 4px; padding-left: 10px; padding-right: 10px; }
+.hk-hk-title { display: flex; align-items: center; gap: 6px; min-width: 0; } .hk-hk-title h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hk-rename-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease; }
+.hk-rename-btn:hover, .hk-rename-btn:focus-visible { background: var(--accent-bg); color: var(--accent-alt); border-color: var(--accent-alt); outline: none; }
+.hk-rename { font-size: 15px; font-weight: 600; padding: 5px 8px; width: 100%; min-width: 0; }
+@media (pointer: coarse) { .hk-rename-btn { width: 36px; height: 36px; } .hk-dayseg button { padding: 8px 14px; } }
+@media (max-width: 560px) { .hk-dayswitch { flex-wrap: wrap; } .hk-dayseg button span { display: none; } }

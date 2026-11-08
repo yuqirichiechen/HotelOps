@@ -22,6 +22,11 @@ export const IcDoc     = (p) => <Svg {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 
 export const IcRefresh = (p) => <Svg {...p}><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" /><path d="M21 3v5h-5" /><path d="M3 21v-5h5" /></Svg>;
 export const IcHand    = (p) => <Svg {...p}><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" /><path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6 7-2.7 0-4-1.4-5.5-4L4 14.5a1.5 1.5 0 0 1 2.4-1.7L8 14" /></Svg>;
 export const IcHourglass = (p) => <Svg {...p}><path d="M6 3h12M6 21h12" /><path d="M7 3c0 5 3 6 5 9-2 3-5 4-5 9" /><path d="M17 3c0 5-3 6-5 9 2 3 5 4 5 9" /></Svg>;
+export const IcMinus = (p) => <Svg {...p}><path d="M5 12h14" /></Svg>;
+export const IcPlus = (p) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>;
+export const IcChevronL = (p) => <Svg {...p}><path d="M15 6l-6 6 6 6" /></Svg>;
+export const IcChevronR = (p) => <Svg {...p}><path d="M9 6l6 6-6 6" /></Svg>;
+export const IcPencil = (p) => <Svg {...p}><path d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></Svg>;
 export const IcChevron = (p) => <Svg {...p}><path d="M6 9l6 6 6-6" /></Svg>;
 
 /** Collapsible floor section: header (floor, room count, caret) + body. The body stays mounted (so cards are always in the DOM, and closing animates). */

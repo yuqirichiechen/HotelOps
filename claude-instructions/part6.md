@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 25.4   | Rename pencil for numbered housekeepers; For [Today · date | Tomorrow · date] box; icon steppers / chevrons | **Built + tested** — UI only |
 | 25.3   | In Progress as its own group; dev setting for plan-by-name (default No name only) + typed names for numbered housekeepers; own chevron / Move-to menu / tick box; floor headers re-flow; touch sizes | **Built + tested** — new dev setting `hk_plan_by_name` (default off); no migration |
 | 25.2   | In Progress carries into tomorrow; floor cards no longer clip; Select rooms mode; edge arrows + auto-scroll between housekeepers; Move here removed; below-min as one line | **Built + tested** — no server / migration change |
 | 25     | First front-desk feedback: whole-floor / multi-select moves, In Progress state, priority room types, Auto-assign rewrite, preferred floors, trimmed all-rooms sheet | **Built + tested** — new route `…/housekeeping/prefs` (app_settings key `hk_prefs`), new colour group `progress`; no migration |
@@ -50,6 +51,13 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-10 — Sprint 25.4
+
+1. **Rename pencil:** next to a numbered housekeeper's name in the assignment column (No-name mode only, not for real staff, not on past days) a small pencil icon opens a box in place of the name: Enter or leaving the box saves, Esc cancels, empty puts "Housekeeper N" back; prefilled with the typed name when there is one. Uses the same `nameAnon()` as the How-many card's Names list (saved with the plan, printed on the sheet).
+2. **For box:** Today / Tomorrow is now one box — "For" label + two tabs "Today · Oct 19" / "Tomorrow · Oct 20" (real dates from the room board's day) — the same height as the Rules / How many buttons next to it (`min-height: 38px` shared). Shared `DayPicker` component for the plan card and the portal layout; classes `.hk-dayswitch / .hk-dayfor / .hk-dayseg` (the old `.hk-seg` is only Names / No name now); the date hides under 560 px, the box wraps on phones; coarse-pointer padding.
+3. **Icons in our style:** How-many − / + are SVG icons (`IcMinus`, `IcPlus`), Prev / Next use chevron icons (`IcChevronL/R`) instead of ‹ ›, the How many / Who's working button has the chevron icon (turns over when open). Added `IcPencil`.
+Tests: `housekeeping` 62 (+For box, rename flow incl. Enter / Esc / blur / empty / print / save / no pencil for staff, icons), `staffportal` 21 (day buttons now "Today Nov 2"), rest green; lint clean; screenshot.
 
 ### 2026-11-09 — Sprint 25.3
 

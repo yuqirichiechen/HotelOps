@@ -14,7 +14,7 @@ import KpiCard from '../shared/KpiCard';
 import SyncBadge from '../shared/SyncBadge';
 import InfoTip from '../Forecast/InfoTip';
 import ForecastHistory from '../Forecasting/ForecastHistory';
-import { IcBroom, IcBed, IcLayers, IcPeople, IcBars, IcCheck, IcUser, IcPrint, IcWand, IcGear, IcClock, IcDoc, IcRefresh, IcHand, IcHourglass, MoveMenu, FloorSection, HkModal, Popover, StaffChecklist } from './HkParts';
+import { IcBroom, IcBed, IcLayers, IcPeople, IcBars, IcCheck, IcUser, IcPrint, IcWand, IcGear, IcClock, IcDoc, IcRefresh, IcHand, IcHourglass, IcMinus, IcPlus, IcChevron, IcChevronL, IcChevronR, IcPencil, MoveMenu, FloorSection, HkModal, Popover, StaffChecklist } from './HkParts';
 import { DEFAULT_ALLOWANCE, addDays, normFloor, floorLabel } from '../Forecast/forecastModel';
 import useFlip from '../shared/useFlip';
 import { buildRoomSheet } from '../Forecast/roomSheet';
@@ -53,9 +53,9 @@ const CountCard = ({ count, draft, setDraft, onApply, disabled, blank, onBlank, 
       <div className="hk-panel-head"><h2>How many housekeepers?</h2></div>
       <div className="hk-count-main">
         <div className="hk-stepper">
-          <button type="button" className="hk-btn hk-step" aria-label="One fewer" disabled={disabled || n <= 1} onClick={() => setDraft(String(clampCount(n - 1)))}>−</button>
+          <button type="button" className="hk-btn hk-step" aria-label="One fewer" disabled={disabled || n <= 1} onClick={() => setDraft(String(clampCount(n - 1)))}><IcMinus size={22} /></button>
           <input className="hk-input hk-count-input" type="number" min="1" max="40" step="1" aria-label="Number of housekeepers" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onApply(draft); }} />
-          <button type="button" className="hk-btn hk-step" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}>+</button>
+          <button type="button" className="hk-btn hk-step" aria-label="One more" disabled={disabled || n >= 40} onClick={() => setDraft(String(clampCount(n + 1)))}><IcPlus size={22} /></button>
         </div>
         <div className="hk-people" aria-hidden="true">{Array.from({ length: n }, (_, i) => <i key={i} className="on" />)}</div>   {/* Sprint 24.6: always blue — one dot per housekeeper in the box */}
       </div>
@@ -83,6 +83,20 @@ const CountCard = ({ count, draft, setDraft, onApply, disabled, blank, onBlank, 
     </section>
   );
 };
+
+/** Sprint 25.4 — "For [ Today · Nov 7 | Tomorrow · Nov 8 ]": one box the same height as the Rules / How many buttons next to it. */
+const DayPicker = ({ offset, today, onChoose }) => (
+  <div className="hk-dayswitch" role="group" aria-label="Plan for">
+    <span className="hk-dayfor">For</span>
+    <span className="hk-dayseg" role="tablist" aria-label="Day">
+      {[0, 1].map(n => { const p = today ? parts(addDays(today, n)) : null; return (
+        <button key={n} type="button" role="tab" aria-selected={offset === n} className={offset === n ? 'on' : ''} onClick={() => onChoose(n)}>
+          <b>{n === 0 ? 'Today' : 'Tomorrow'}</b>{p && <span>{p.m} {p.d}</span>}
+        </button>
+      ); })}
+    </span>
+  </div>
+);
 
 const NumField = ({ label, value, onChange, min, max, step, disabled }) => (
   <label className="hk-field">{label}<input className="hk-input hk-num-in" type="number" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} /></label>
@@ -177,6 +191,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const [namesAllowed, setNamesAllowed] = useState(false);   // dev option (Rules): may managers / front desk plan BY NAME? off = only "No name" (dev always can)
   const canNames = dev || namesAllowed;
   const [anon, setAnon] = useState(!dev);              // plan by NUMBER of housekeepers (no names); the default for everyone but dev until names are switched on
+  const [renaming, setRenaming] = useState(null);       // userId whose name is being typed in the column header (pencil icon)
+  const [renameDraft, setRenameDraft] = useState('');
   const [anonNames, setAnonNames] = useState({});        // Sprint 25.3: names typed for the numbered housekeepers { 'anon-1': 'Maria' } (blank = Housekeeper N)
   const [anonCount, setAnonCount] = useState(null);     // null = not asked yet
   const [countDraft, setCountDraft] = useState('3');
@@ -393,6 +409,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   useEffect(() => { if (confirmTick > 0 && stepRef.current && stepRef.current.scrollIntoView) stepRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [confirmTick]);
   // ── "just a number": Housekeeper 1…N, rooms handed out automatically whenever the number (or the work) changes ──
   const anonHks = (n) => Array.from({ length: n }, (_, i) => ({ userId: `anon-${i + 1}`, name: anonNames[`anon-${i + 1}`] || `Housekeeper ${i + 1}` }));
+  const commitRename = () => { if (renaming) nameAnon(renaming, renameDraft); setRenaming(null); };
   // type a name for a numbered housekeeper (blank puts "Housekeeper N" back); it shows everywhere and prints on the sheet
   const nameAnon = (userId, raw) => {
     const v = String(raw).slice(0, 40), n = Number(userId.replace('anon-', ''));
@@ -738,13 +755,9 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                       </span>
                     </>
                   )}
-                  <span className={canNames ? 'hk-modebar-gap' : ''}>For</span>
-                  <span className="hk-seg" role="tablist" aria-label="Day">
-                    <button type="button" role="tab" aria-selected={offset === 0} className={offset === 0 ? 'on' : ''} onClick={() => chooseDay(0)}>Today</button>
-                    <button type="button" role="tab" aria-selected={offset === 1} className={offset === 1 ? 'on' : ''} onClick={() => chooseDay(1)}>Tomorrow</button>
-                  </span>
+                  <DayPicker offset={offset} today={today} onChoose={chooseDay} />
                   <span className="hk-who-wrap">
-                    <button type="button" className="hk-btn hk-who-btn" data-pop-anchor aria-expanded={whoOpen} onClick={() => setWhoOpen(o => !o)}><IcPeople size={16} />{anon ? 'How many' : "Who's working"}<b>{whoCount}</b><span aria-hidden="true">⌄</span></button>
+                    <button type="button" className="hk-btn hk-who-btn" data-pop-anchor aria-expanded={whoOpen} onClick={() => setWhoOpen(o => !o)}><IcPeople size={16} />{anon ? 'How many' : "Who's working"}<b>{whoCount}</b><IcChevron size={14} sw={2.4} /></button>
                     <Popover open={whoOpen} onClose={() => setWhoOpen(false)} className="hk-who-pop">
                       {anon
                         ? <CountCard count={anonCount} draft={countDraft} setDraft={setCountDraft} onApply={applyCount} disabled={readOnly} blank={!!settings.blankNames} onBlank={(v) => { setSettings(st => ({ ...st, blankNames: v })); touch(); }} people={hks.map(h => ({ userId: h.userId, typed: anonNames[h.userId] || '' }))} onName={nameAnon} />
@@ -853,13 +866,9 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                         </span>
                       </>
                     )}
-                    <span className={canNames ? 'hk-modebar-gap' : ''}>For</span>
-                    <span className="hk-seg" role="tablist" aria-label="Day">
-                      <button type="button" role="tab" aria-selected={offset === 0} className={offset === 0 ? 'on' : ''} onClick={() => chooseDay(0)}>Today</button>
-                      <button type="button" role="tab" aria-selected={offset === 1} className={offset === 1 ? 'on' : ''} onClick={() => chooseDay(1)}>Tomorrow</button>
-                    </span>
+                    <DayPicker offset={offset} today={today} onChoose={chooseDay} />
                     <span className="hk-who-wrap">
-                      <button type="button" className="hk-btn hk-who-btn" data-pop-anchor aria-expanded={whoOpen} onClick={() => setWhoOpen(o => !o)}><IcPeople size={16} />{anon ? 'How many' : "Who's working"}<b>{whoCount}</b><span aria-hidden="true">⌄</span></button>
+                      <button type="button" className="hk-btn hk-who-btn" data-pop-anchor aria-expanded={whoOpen} onClick={() => setWhoOpen(o => !o)}><IcPeople size={16} />{anon ? 'How many' : "Who's working"}<b>{whoCount}</b><IcChevron size={14} sw={2.4} /></button>
                       <Popover open={whoOpen} onClose={() => setWhoOpen(false)} className="hk-who-pop">
                         {anon
                           ? <CountCard count={anonCount} draft={countDraft} setDraft={setCountDraft} onApply={applyCount} disabled={readOnly} blank={!!settings.blankNames} onBlank={(v) => { setSettings(st => ({ ...st, blankNames: v })); touch(); }} people={hks.map(h => ({ userId: h.userId, typed: anonNames[h.userId] || '' }))} onName={nameAnon} />
@@ -880,8 +889,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                     {colCount > 3 && (
                       <>
                         <span className="hk-carcount">Housekeepers {vstart + 1}–{Math.min(colCount, vstart + perView())} of {colCount}</span>
-                        <button type="button" className="hk-btn hk-btn-sm" aria-label="Previous housekeeper" disabled={vstart <= 0} onClick={() => goCol(vstart - 1)}>‹ Prev</button>
-                        <button type="button" className="hk-btn hk-btn-sm" aria-label="Next housekeeper" disabled={vstart + perView() >= colCount} onClick={() => goCol(vstart + 1)}>Next ›</button>
+                        <button type="button" className="hk-btn hk-btn-sm" aria-label="Previous housekeeper" disabled={vstart <= 0} onClick={() => goCol(vstart - 1)}><IcChevronL size={14} sw={2.4} />Prev</button>
+                        <button type="button" className="hk-btn hk-btn-sm" aria-label="Next housekeeper" disabled={vstart + perView() >= colCount} onClick={() => goCol(vstart + 1)}>Next<IcChevronR size={14} sw={2.4} /></button>
                       </>
                     )}
                     {boardFlags.length > 0 && <span className="hk-carflag" role="status">{boardFlags.join(' · ')}</span>}
@@ -915,7 +924,18 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
                         <section key={h.userId} className={`hk-col hk-hkcol${over === h.userId ? ' over' : ''}${flag ? ` flag-${flag}` : ''}`} aria-label={`${h.name}'s rooms`} {...zone(h.userId, h.userId)}>
                           <div className="hk-col-head hk-hk-head">
                             <span className="hk-avatar" aria-hidden="true"><IcUser size={20} /></span>
-                            <div className="hk-hk-title"><h2>{h.name}</h2></div>
+                            <div className="hk-hk-title">
+                              {renaming === h.userId ? (
+                                <input className="hk-input hk-rename" autoFocus type="text" maxLength={40} value={renameDraft} placeholder={`Housekeeper ${h.userId.replace('anon-', '')}`} aria-label={`New name for ${h.name}`} autoComplete="off"
+                                  onChange={(e) => setRenameDraft(e.target.value)} onBlur={commitRename}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitRename(); } else if (e.key === 'Escape') { e.stopPropagation(); setRenaming(null); } }} />
+                              ) : (
+                                <>
+                                  <h2>{h.name}</h2>
+                                  {!readOnly && anon && <button type="button" className="hk-rename-btn" aria-label={`Rename ${h.name}`} title="Type a name" onClick={() => { setRenameDraft(anonNames[h.userId] || ''); setRenaming(h.userId); }}><IcPencil size={14} /></button>}
+                                </>
+                              )}
+                            </div>
                             {!readOnly && !anon && <button type="button" className="hk-x" aria-label={`Remove ${h.name}`} onClick={() => removeHk(h.userId)}>×</button>}
                             <button type="button" className="hk-btn hk-btn-sm hk-print-btn" onClick={() => printNow(h.userId)} disabled={mine.length === 0}><IcPrint size={14} />Print sheet</button>
                           </div>
