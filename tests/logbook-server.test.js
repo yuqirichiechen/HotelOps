@@ -1,0 +1,83 @@
+// Sprint 26 — the Log Book: note validation (pure) and the routes on REAL postgres (migration 032 applied twice, the real SQL, auth, property scoping).
+//   node tests/logbook-server.test.js "$PWD"
+const ROOT = process.argv[2]; const SRV = ROOT + '/server'; const assert = require('assert'); const { execSync } = require('child_process');
+const PGBIN = '/opt/homebrew/opt/postgresql@14/bin', DIR = '/tmp/hopdb_lb', PORT = 5439; const sh = (c) => execSync(c, { stdio: 'pipe' }).toString();
+process.env.PORT = '3995'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.DATABASE_URL = `postgres://postgres@127.0.0.1:${PORT}/t`;
+const jwt = require(SRV + '/node_modules/jsonwebtoken'); const pg = require(SRV + '/node_modules/pg'); const { sanitizeNote, toApi } = require(SRV + '/logbook');
+let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 4).join(' | ')); process.exitCode = 1; } };
+const NOW = new Date('2026-11-20T12:00:00Z'); const U1 = '11111111-1111-4111-8111-111111111111', U2 = '22222222-2222-4222-8222-222222222222';
+const good = { title: 'Lobby deep clean', body: 'Full lobby floor deep clean before the VIP group arrives.', priority: 'high', startDate: '2026-11-20', startTime: '08:00', endDate: '2026-11-20', endTime: '11:00', audience: { all: false, departments: [2], staff: [U1] }, showOnCalendar: true, requireAck: false, pinned: false };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+(async () => {
+  await t('validation: a good note passes (trimmed, flags kept); drafts only need a title + dates; publishing needs a description and an audience', () => {
+    const r = sanitizeNote({ ...good, title: '  Lobby deep clean  ' }, NOW); assert(!r.error, r.error); assert.strictEqual(r.note.title, 'Lobby deep clean'); assert.deepStrictEqual(r.note.audience, { all: false, departments: [2], staff: [U1] }); assert.strictEqual(r.note.status, 'published'); assert.strictEqual(r.note.showOnCalendar, true);
+    const d = sanitizeNote({ title: 'Idea', startDate: '2026-11-21', endDate: '2026-11-21', status: 'draft' }, NOW); assert(!d.error, d.error); assert.strictEqual(d.note.status, 'draft'); assert.strictEqual(d.note.body, ''); assert.strictEqual(d.note.audience.all, true, 'no audience yet → all (a draft is not sent anywhere)');
+    const bad = (patch, re) => { const x = sanitizeNote({ ...good, ...patch }, NOW); assert(x.error && re.test(x.error), JSON.stringify(patch).slice(0, 70) + ' → ' + x.error); };
+    bad({ title: '   ' }, /title/); bad({ title: 'x'.repeat(121) }, /120/); bad({ body: '' }, /description/); bad({ body: 'x'.repeat(4001) }, /4000/); bad({ priority: 'urgent' }, /priority/); bad({ startDate: 'tomorrow' }, /start date/); bad({ endDate: '2026-02-30' }, /end date/); bad({ startDate: '2031-01-01', endDate: '2031-01-02' }, /start date/);
+    bad({ endDate: '2026-11-19' }, /before the start/); bad({ endTime: '08:00' }, /after the start/); bad({ startTime: '25:00' }, /start time and an end time/); bad({ endTime: null }, /start time and an end time/);
+    bad({ audience: { all: false, departments: [], staff: [] } }, /who this note is for/); bad({ audience: { all: false, departments: ['a'] } }, /department/); bad({ audience: { all: false, staff: ['nope'] } }, /staff/); bad({ audience: { all: false, departments: Array.from({ length: 51 }, (_, i) => i + 1) } }, /short list/);
+    assert(!sanitizeNote({ ...good, endDate: '2026-11-22', endTime: '08:00' }, NOW).error, 'a later end DATE may have an earlier time'); assert.strictEqual(sanitizeNote({ ...good, allDay: true }, NOW).note.startTime, null, 'all day clears the times'); assert.strictEqual(sanitizeNote({ title: 'T', body: 'b', startDate: '2026-11-20', endDate: '2026-11-20', audience: { all: true } }, NOW).note.endTime, null, 'no times = all day');
+    assert.deepStrictEqual(sanitizeNote({ ...good, audience: { all: false, departments: [2, 2], staff: [U1.toUpperCase(), U1] } }, NOW).note.audience, { all: false, departments: [2], staff: [U1] }, 'duplicates dropped, ids lower-cased'); assert(sanitizeNote(null, NOW).error);
+    assert.deepStrictEqual(toApi({ note_id: 'n', title: 'T', body: '', priority: 'general', start_date: '2026-11-20', start_time: null, end_date: '2026-11-20', end_time: null, audience_all: true, audience_departments: [], audience_staff: [], show_on_calendar: true, require_ack: false, pinned: false, status: 'draft', author_label: 'a', created_at: 1, updated_at: 2, published_at: null }).allDay, true);
+  });
+  try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* not running */ } sh(`rm -rf ${DIR}`); sh(`${PGBIN}/initdb -D ${DIR} -A trust -U postgres`);
+  sh(`${PGBIN}/pg_ctl -D ${DIR} -o "-p ${PORT} -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" -l /tmp/hopdb_lb.log -w start`);
+  try {
+    const psql = (a) => sh(`${PGBIN}/psql -h 127.0.0.1 -p ${PORT} -U postgres ${a}`); psql('-c "CREATE DATABASE t"');
+    psql(`-d t -v ON_ERROR_STOP=1 -q -f "${ROOT}/tests/real-postgres/base.sql"`);
+    psql(`-d t -q -c "CREATE TABLE departments (department_id SERIAL PRIMARY KEY, name TEXT, color TEXT); CREATE TABLE users (user_id UUID PRIMARY KEY, name TEXT, phone_number TEXT, department_id INT, active BOOLEAN DEFAULT TRUE, deleted_at TIMESTAMPTZ); INSERT INTO departments (name) VALUES ('Front Desk'), ('Housekeeping'); INSERT INTO users VALUES ('${U1}', 'Bryan', '2065550101', 2, TRUE, NULL), ('${U2}', 'Gone', '2065550102', 1, TRUE, now())"`);
+    const real = new pg.Client({ host: '127.0.0.1', port: PORT, user: 'postgres', database: 't' }); await real.connect();
+    await t('migration 032 applies TWICE cleanly; constraints hold (priority, status, end >= start)', async () => {
+      psql(`-d t -v ON_ERROR_STOP=1 -q -f "${ROOT}/database/migrations/032_sprint26_logbook.sql"`); psql(`-d t -v ON_ERROR_STOP=1 -q -f "${ROOT}/database/migrations/032_sprint26_logbook.sql"`);
+      const ins = (extra) => real.query(`INSERT INTO logbook_notes (title, start_date, end_date${extra[0]}) VALUES ('x', $1, $2${extra[1]})`, extra[2]);
+      await assert.rejects(() => ins(['', '', ['2026-11-20', '2026-11-19']]), /logbook_notes_dates_ok/); await assert.rejects(() => ins([', priority', ', $3', ['2026-11-20', '2026-11-20', 'urgent']]), /check/); await assert.rejects(() => ins([', status', ', $3', ['2026-11-20', '2026-11-20', 'gone']]), /check/);
+    });
+    // wrap Pool so server.js (which asks for ssl for Neon) talks to the local cluster
+    const RealPool = pg.Pool; pg.Pool = class extends RealPool { constructor(o) { super({ ...o, ssl: false }); } };
+    require(SRV + '/server.js'); await sleep(900);
+    const sign = (o) => jwt.sign(o, process.env.JWT_SECRET); const T = { admin: sign({ sub: 'mgr-1', role: 'admin', type: 'admin', name: 'Manager' }), dev: sign({ sub: 'dev', role: 'dev', type: 'dev' }), desk: sign({ sub: U1, role: 'employee', type: 'staff', dept: 'Front Desk', name: 'Bryan' }), hk: sign({ sub: U2, role: 'employee', type: 'staff', dept: 'Housekeeping' }) };
+    const http = async (p, o = {}) => { const r = await fetch('http://127.0.0.1:3995' + p, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', ...(o.token ? { Authorization: 'Bearer ' + o.token } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) }; };
+    const A = '/api/admin/logbook', F = '/api/frontdesk/logbook'; let first;
+    await t('access: no token 401; other staff 403; manager + dev on /admin, front desk + manager + dev on /frontdesk; front desk cannot use /admin', async () => {
+      for (const [base, ok, no] of [[A, ['admin', 'dev'], ['hk', 'desk']], [F, ['admin', 'dev', 'desk'], ['hk']]]) { assert.strictEqual((await http(base + '/notes?from=2026-11-01&to=2026-11-30')).status, 401); for (const w of ok) assert.strictEqual((await http(base + '/notes?from=2026-11-01&to=2026-11-30', { token: T[w] })).status, 200, base + ' ' + w); for (const w of no) assert.strictEqual((await http(base + '/notes?from=2026-11-01&to=2026-11-30', { token: T[w] })).status, 403, base + ' ' + w); }
+      assert.strictEqual((await http(A + '/notes', { method: 'POST', token: T.hk, body: good })).status, 403);
+    });
+    await t('create: published + draft; the note comes back mapped (times HH:MM, dates text), author recorded; bad input → 400 and NOTHING stored', async () => {
+      const r = await http(A + '/notes', { method: 'POST', token: T.admin, body: { ...good, startDate: '2026-11-20', endDate: '2026-11-20' } }); assert.strictEqual(r.status, 201, JSON.stringify(r.body)); first = r.body.note;
+      assert.deepStrictEqual([first.title, first.priority, first.startDate, first.startTime, first.endTime, first.allDay, first.status, first.author], ['Lobby deep clean', 'high', '2026-11-20', '08:00', '11:00', false, 'published', 'Manager']); assert.deepStrictEqual(first.audience, { all: false, departments: [2], staff: [U1] }); assert(first.publishedAt);
+      const d = await http(F + '/notes', { method: 'POST', token: T.desk, body: { title: 'Draft idea', startDate: '2026-11-21', endDate: '2026-11-21', status: 'draft' } }); assert.strictEqual(d.status, 201); assert.strictEqual(d.body.note.status, 'draft'); assert.strictEqual(d.body.note.publishedAt, null); assert.strictEqual(d.body.note.author, 'Bryan');
+      assert.strictEqual((await real.query("SELECT author_user_id FROM logbook_notes WHERE title = 'Draft idea'")).rows[0].author_user_id, U1, 'a staff author is linked'); assert.strictEqual((await real.query("SELECT author_user_id FROM logbook_notes WHERE title = 'Lobby deep clean'")).rows[0].author_user_id, null, 'a manager is only a label');
+      const n = (await real.query('SELECT count(*)::int n FROM logbook_notes')).rows[0].n; for (const bad of [{ ...good, title: '' }, { ...good, priority: 'x' }, { ...good, audience: { all: false } }, { ...good, endDate: '2026-11-01' }, null]) assert.strictEqual((await http(A + '/notes', { method: 'POST', token: T.admin, body: bad })).status, 400); assert.strictEqual((await real.query('SELECT count(*)::int n FROM logbook_notes')).rows[0].n, n, 'nothing stored');
+      const inj = await http(A + '/notes', { method: 'POST', token: T.admin, body: { ...good, title: "x'); DROP TABLE logbook_notes;--" } }); assert.strictEqual(inj.status, 201); assert.strictEqual(inj.body.note.title, "x'); DROP TABLE logbook_notes;--");
+    });
+    await t('list: notes that TOUCH the range (a multi-day note shows on every day), drafts included, archived hidden, bad ranges refused, ordered pinned → start → time', async () => {
+      await http(A + '/notes', { method: 'POST', token: T.admin, body: { ...good, title: 'Wedding', startDate: '2026-11-18', startTime: null, endDate: '2026-11-22', endTime: null, audience: { all: true }, priority: 'medium' } });
+      const day = async (d) => (await http(A + `/notes?from=${d}&to=${d}`, { token: T.admin })).body.notes.map(n => n.title);
+      assert.deepStrictEqual(await day('2026-11-19'), ['Wedding']); assert.deepStrictEqual((await day('2026-11-20')).sort(), ["Lobby deep clean", 'Wedding', "x'); DROP TABLE logbook_notes;--"].sort()); assert.deepStrictEqual((await day('2026-11-21')).sort(), ['Draft idea', 'Wedding']); assert.deepStrictEqual(await day('2026-11-23'), []);
+      const all = (await http(A + '/notes?from=2026-11-01&to=2026-11-30', { token: T.admin })).body.notes; assert(all.every(n => n.status !== 'archived')); assert.strictEqual(all[0].startDate <= all[all.length - 1].startDate, true, 'ordered by start');
+      for (const q of ['', 'from=x&to=y', 'from=2026-11-05&to=2026-11-01', 'from=2026-01-01&to=2026-12-31']) assert.strictEqual((await http(A + '/notes?' + q, { token: T.admin })).status, 400, q);
+    });
+    await t('update, pin, duplicate, archive, restore: each does one thing; an archived note cannot be edited; unknown / foreign ids → 404, malformed → 400', async () => {
+      const u = await http(A + '/notes/' + first.id, { method: 'PUT', token: T.dev, body: { ...good, title: 'Lobby deep clean (all day)', startTime: null, endTime: null, audience: { all: true } } }); assert.strictEqual(u.status, 200); assert.deepStrictEqual([u.body.note.title, u.body.note.allDay, u.body.note.audience.all], ['Lobby deep clean (all day)', true, true]);
+      const p = await http(A + `/notes/${first.id}/pin`, { method: 'POST', token: T.admin, body: { pinned: true } }); assert.strictEqual(p.body.note.pinned, true); assert.strictEqual((await http(A + `/notes/${first.id}/pin`, { method: 'POST', token: T.admin, body: { pinned: 'yes' } })).status, 400);
+      const top = (await http(A + '/notes?from=2026-11-20&to=2026-11-20', { token: T.admin })).body.notes[0]; assert.strictEqual(top.id, first.id, 'pinned notes come first');
+      const dup = await http(F + `/notes/${first.id}/duplicate`, { method: 'POST', token: T.desk }); assert.strictEqual(dup.status, 201); assert.deepStrictEqual([dup.body.note.title, dup.body.note.status, dup.body.note.pinned, dup.body.note.startDate], ['Lobby deep clean (all day) (copy)', 'draft', false, '2026-11-20']); assert.notStrictEqual(dup.body.note.id, first.id);
+      const ar = await http(A + `/notes/${first.id}/archive`, { method: 'POST', token: T.admin }); assert.strictEqual(ar.body.note.status, 'archived'); assert.strictEqual((await http(A + `/notes/${first.id}/archive`, { method: 'POST', token: T.admin })).status, 404, 'already archived');
+      assert.strictEqual((await http(A + '/notes/' + first.id, { method: 'PUT', token: T.admin, body: good })).status, 404, 'archived notes are not edited'); assert(!(await http(A + '/notes?from=2026-11-20&to=2026-11-20', { token: T.admin })).body.notes.some(n => n.id === first.id));
+      const arch = (await http(A + '/notes?from=2026-11-20&to=2026-11-20&archived=1', { token: T.admin })).body.notes; assert.deepStrictEqual(arch.map(n => n.id), [first.id], 'the archive lists only archived notes');
+      const re = await http(A + `/notes/${first.id}/restore`, { method: 'POST', token: T.admin }); assert.strictEqual(re.body.note.status, 'published'); const dr = dup.body.note; await http(A + `/notes/${dr.id}/archive`, { method: 'POST', token: T.admin }); assert.strictEqual((await http(A + `/notes/${dr.id}/restore`, { method: 'POST', token: T.admin })).body.note.status, 'draft', 'a never-published note comes back as a draft');
+      assert.strictEqual((await http(A + '/notes/not-a-uuid', { method: 'PUT', token: T.admin, body: good })).status, 400); assert.strictEqual((await http(A + '/notes/99999999-9999-4999-8999-999999999999/archive', { method: 'POST', token: T.admin })).status, 404);
+      const dpub = await http(A + `/notes/${dr.id}`, { method: 'PUT', token: T.admin, body: { ...good, status: 'published' } }); assert.strictEqual(dpub.body.note.status, 'published'); assert(dpub.body.note.publishedAt, 'publishing a draft stamps published_at');
+    });
+    await t('scoped to the property: another property\'s notes are never listed, edited, archived or duplicated', async () => {
+      const o = (await real.query("INSERT INTO logbook_notes (property_id, title, start_date, end_date) VALUES ('other', 'Secret', '2026-11-20', '2026-11-20') RETURNING note_id")).rows[0].note_id;
+      assert(!(await http(A + '/notes?from=2026-11-20&to=2026-11-20', { token: T.admin })).body.notes.some(n => n.title === 'Secret')); for (const [m, p, b] of [['PUT', '', good], ['POST', '/archive'], ['POST', '/duplicate'], ['POST', '/pin', { pinned: true }]]) assert.strictEqual((await http(A + '/notes/' + o + p, { method: m, token: T.admin, body: b })).status, 404, p);
+      assert.strictEqual((await real.query("SELECT status FROM logbook_notes WHERE note_id = $1", [o])).rows[0].status, 'published');
+    });
+    await t('audience: departments and active people, names only (no phone numbers), same for manager and front desk; deleted staff left out', async () => {
+      for (const [base, w] of [[A, 'admin'], [F, 'desk']]) { const r = await http(base + '/audience', { token: T[w] }); assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body.departments.map(d => d.name), ['Front Desk', 'Housekeeping']); assert.deepStrictEqual(r.body.staff.map(s => [s.name, s.department]), [['Bryan', 'Housekeeping']]); assert(!/phone|2065550101/i.test(JSON.stringify(r.body))); }
+    });
+    await real.end();
+  } finally { try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* ignore */ } sh(`rm -rf ${DIR}`); }
+  console.log(`\n${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
+})();
