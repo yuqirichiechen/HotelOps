@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 25.3   | In Progress as its own group; dev setting for plan-by-name (default No name only) + typed names for numbered housekeepers; own chevron / Move-to menu / tick box; floor headers re-flow; touch sizes | **Built + tested** — new dev setting `hk_plan_by_name` (default off); no migration |
 | 25.2   | In Progress carries into tomorrow; floor cards no longer clip; Select rooms mode; edge arrows + auto-scroll between housekeepers; Move here removed; below-min as one line | **Built + tested** — no server / migration change |
 | 25     | First front-desk feedback: whole-floor / multi-select moves, In Progress state, priority room types, Auto-assign rewrite, preferred floors, trimmed all-rooms sheet | **Built + tested** — new route `…/housekeeping/prefs` (app_settings key `hk_prefs`), new colour group `progress`; no migration |
 | 24.11  | Tomorrow's Print all sheets = same one-page sheet; tile text + IP icon/no ring; drag auto-scroll; AM/PM replaced by dev-option return slips | **Built + tested** — setting `hk_print_two_sheets` replaced by `hk_print_slips` (never deployed-claimed; no migration) |
@@ -49,6 +50,18 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-09 — Sprint 25.3
+
+1. **In Progress = its own group** in Not assigned: IP rooms are no longer drawn inside their floors; a dashed grey **"In progress"** block comes after the floors (grey note stays on top). The Not assigned count and Select all leave them out; Auto-assign still skips them; a hand-placed IP room still works. No floor actions on that block.
+2. **Plan by name is a dev setting** — `app_settings.hk_plan_by_name` ('true'/'false', dev-only write via the existing `hk_` guard, read by managers and the front-desk allow-list), switch in Rules (dev only). **Off (default): managers and the front desk only have "No name"** — no Plan by switch, the plan card says "Enter how many". On: the Names / No name switch is back. Dev always has both and starts in Names. A day whose saved plan was made by name stays by name even if the setting is off.
+   **Typed names for the numbered housekeepers:** in the How-many card (after Start) a "Names (optional)" list with a box per housekeeper. A typed name replaces "Housekeeper N" on the cards, preview, sheets and is saved in the plan (`assignments[].name`, userId stays `anon-N`; restored on reload); clearing the box puts the number back. The "leave blank" switch now only affects housekeepers with NO typed name (they print `______`). State `anonNames`; `nameAnon()`.
+3. **UI:**
+   - **Floor headers no longer truncate** ("Grou", "Floo" in the narrow Not assigned columns): floor sections are CSS containers (`container-type: inline-size`); when one is ≤ 335 px wide the buttons wrap under the title (same font size), and the Not assigned grid keeps floors ≥ 290 px wide (`minmax(290px, 1fr)`), wrapping to a second row on smaller desktops. "N rooms" collapses to "N" (title on hover) when the buttons share the row.
+   - **Our own controls:** the text caret is an SVG chevron (`IcChevron`); the browser `<select>` for "Move to…" is replaced by `MoveMenu` (HkParts) — a button that opens the same style of menu as the right-click one, in a portal with fixed coordinates (flips up near the bottom, Esc / outside click / scroll / resize close it); the Select-rooms tick glyph is a CSS-drawn box (em-sized, scales with the font).
+   - **Touch / mobile groundwork:** `@media (pointer: coarse)` raises the header buttons, the menu items, the card tick box and the chips to finger size; the container query keeps headers usable at phone widths; the menu is tap-friendly. Full mobile layout is still for the later sprint.
+Tests: `housekeeping` 59 (+IP group, plan-by-name setting incl. saved named plan, typed names end to end incl. print / blank / save / reload, own controls + CSS, the menu tests rewritten for MoveMenu), `staffportal` 21 (+front desk with names off), `housekeeping-server` 13 and `frontdesk-server` 13 (+hk_plan_by_name); all others green; lint clean; screenshot.
+**Open:** with names off the front desk cannot pick real staff for the time clock / reports from here — only labels typed per day; the setting is global, not per role (dev decides for both); the How-many card is not opened automatically on load (the plan card shows "Enter how many").
 
 ### 2026-11-08 — Sprint 25.2 (follow-up to 25 / "25.1")
 

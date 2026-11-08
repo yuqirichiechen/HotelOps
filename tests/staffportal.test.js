@@ -41,7 +41,7 @@ const stdResponses = () => ({
     return ok({ weekStart: ws, days, entries: [], scheduledHours: 0, totalHours: ws === '2026-11-02' ? 12.5 : 3, currentlyClockedIn: false, idleLogoutSeconds: 15, autoSignoutSeconds: 5,
       recentShifts: ws === '2026-11-02' ? [{ entry_id: 'e1', clock_in_time: '2026-11-02T16:00:00Z', clock_out_time: '2026-11-03T00:00:00Z', hours: 8 }, { entry_id: 'e2', clock_in_time: '2026-10-31T16:00:00Z', clock_out_time: null, hours: 0 }] : [] }); },
   'GET /frontdesk/employees': ok({ employees: [{ user_id: 'u1', name: 'Bryan', active: true, department: 'Housekeeping' }, { user_id: 'u2', name: 'Berta Rangel', active: true, department: 'Housekeeping' }] }),
-  'GET /frontdesk/settings': ok({ settings: {} }), 'GET /frontdesk/housekeeping/plans': ok({ plans: [] }), 'GET /frontdesk/housekeeping/locked-rooms': ok({ rooms: [] }),
+  'GET /frontdesk/settings': ok({ settings: { hk_plan_by_name: 'true' } }), 'GET /frontdesk/housekeeping/plans': ok({ plans: [] }), 'GET /frontdesk/housekeeping/locked-rooms': ok({ rooms: [] }),
   'GET /frontdesk/housekeeping/plan': ok({ plan: null }), 'PUT /frontdesk/housekeeping/plan': ok({ updatedAt: new Date().toISOString() }),
 });
 
@@ -195,6 +195,12 @@ const stdResponses = () => ({
     assert(!h.el.querySelector('.fc-kpi-card, .hk-overview, .hk-links, .hk-donut'), 'no KPI tiles / overview / links row for the front desk'); assert(h.el.querySelector('.hk-pool.hk-pool-wide') && h.el.querySelector('.hk-assign') && !h.el.querySelector('.hk-daycard, .hk-v2-top'), 'Not assigned (wide) then the assignments; no overview / calendar row'); assert(h.btn(/^Today$/) && h.btn(/^Tomorrow$/), 'Today | Tomorrow switch');
     assert(calls.some(c => c.p.startsWith('/frontdesk/housekeeping/plans')) && calls.some(c => c.p === '/frontdesk/employees')); assert(calls.every(c => !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', '));
     assert(!/Print sheet colours/i.test(text), 'dev-only colour card stays hidden'); await h.unmount();
+  });
+  await t('HOUSEKEEPING (portal) with "plan by name" OFF (the default dev setting): the front desk only has No name — no Plan by switch, "Enter how many" starts the plan, and names can be typed for the numbered housekeepers', async () => {
+    AuthMock._user = DESK; responses = stdResponses(); responses['GET /frontdesk/settings'] = ok({ settings: {} }); calls.length = 0; const h = await mount(portal(), 200);
+    await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); });
+    assert(!/Plan by/.test(h.el.querySelector('.hk-modebar').textContent), 'no Plan by switch'); assert(![...h.el.querySelectorAll('.hk-modebar button')].some(b => /^Names$/.test(b.textContent)), 'no Names button'); assert(h.btn(/Enter how many/), 'starts with How many');
+    await h.click(h.btn(/Enter how many/)); assert(h.el.querySelector('.hk-countcard'), 'the How-many card'); await h.unmount(); responses = stdResponses();
   });
   await t('HOUSEKEEPING (portal): same functions as the manager page — add a name, save to /frontdesk, switch to Tomorrow, No-name mode', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 200);

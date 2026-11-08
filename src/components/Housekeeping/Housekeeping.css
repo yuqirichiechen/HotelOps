@@ -490,3 +490,31 @@
 .hk-pv-flags { margin-left: 12px; }
 .hk-acc-bar:has(.hk-acc-actions) .hk-acc-w { display: none; } .hk-acc-bar .hk-acc-head { min-width: 0; overflow: hidden; }
 .hk-acc-actions .hk-btn-xs { padding: 2px 6px; font-size: 10.5px; } .hk-acc-actions .hk-floor-move { max-width: 84px; font-size: 10.5px; }
+
+/* Sprint 25.3 — IP group, our own chevron / Move-to menu / tick box, floor headers that re-flow instead of truncating, typed names, touch sizes */
+.hk-floor[data-floor="ip"] { border-style: dashed; border-color: #94a3b8; background: rgba(148,163,184,.10); }
+.hk-floor[data-floor="ip"] .hk-floor-label { color: #475569; }
+.hk-pool2 .hk-pool-floors.hk-pool-cols { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+.hk-floor { container-type: inline-size; container-name: hkfloor; }
+@container hkfloor (max-width: 335px) {
+  .hk-acc-bar { flex-wrap: wrap; }
+  .hk-acc-bar .hk-acc-head { flex: 1 1 100%; }
+  .hk-acc-bar:has(.hk-acc-actions) .hk-acc-w { display: inline; }
+  .hk-acc-actions { flex: 1 1 100%; padding: 0 10px 8px; flex-wrap: wrap; }
+}
+.hk-acc-caret svg { display: block; }
+.hk-tick { display: inline-block; flex: none; width: 1em; height: 1em; font-size: 12px; border: 1.5px solid currentColor; border-radius: 3px; position: relative; box-sizing: border-box; }
+.hk-tick.on { background: var(--accent-alt); border-color: var(--accent-alt); }
+.hk-tick.on::after { content: ''; position: absolute; left: 30%; top: 8%; width: 28%; height: 56%; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.hk-floor-move { display: inline-flex; align-items: center; gap: 4px; max-width: 120px; } .hk-floor-move .hk-mm-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hk-floor-move svg { flex: none; transition: transform .15s ease; } .hk-floor-move.open svg { transform: rotate(180deg); } .hk-floor-move.open { border-color: var(--accent-alt); }
+.hk-movemenu { min-width: 170px; max-height: min(60vh, 360px); overflow-y: auto; }
+.hk-names { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-light, var(--border)); }
+.hk-names h3 { margin: 0 0 6px; font-size: 13px; } .hk-names h3 small { display: block; font-weight: 400; color: var(--text-muted); font-size: 11.5px; }
+.hk-names ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.hk-names label { display: flex; align-items: center; gap: 8px; } .hk-names label > span { width: 18px; text-align: right; font-size: 12px; color: var(--text-muted); flex: none; } .hk-names .hk-input { flex: 1; min-width: 0; }
+@media (pointer: coarse) {
+  .hk-acc-actions .hk-btn-xs, .hk-floor-move { min-height: 38px; padding: 6px 12px; font-size: 13px; }
+  .hk-movemenu button { padding: 12px 14px; font-size: 15px; }
+  .hk-rc-box { width: 20px; height: 20px; font-size: 13px; line-height: 17px; top: 6px; } .hk-rc.pick { padding-left: 30px; }
+  .hk-chip { min-height: 36px; padding: 4px 14px; }
+}

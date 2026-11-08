@@ -3806,6 +3806,8 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     // Sprint 24.11: dev option — print a return-slips page (Cleaned / Serviced / DND) after each housekeeper's sheet. 'true' | 'false'.
     // Written from the Dev view only (the hk_ prefix is dev-write-only); everyone's prints read it.
     hk_print_slips: v => v === 'true' || v === 'false',
+    // Sprint 25.3: dev option — may managers / the front desk plan BY NAME (staff list)? Off (default) = they only plan with "No name". Dev always can. 'true' | 'false'.
+    hk_plan_by_name: v => v === 'true' || v === 'false',
     // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).
     // enabled: 'true'|'false'; scale: percent of the calibrated table (25..300, 100 = as calibrated);
     // min: minimum extra rooms for a room-type group with 4+ booked arrivals (0..10).

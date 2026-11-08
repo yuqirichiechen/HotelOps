@@ -19,7 +19,7 @@ const PAYLOAD = {
 const LIVE = { forecastDate: '2026-11-02', fetchedAt: '2026-11-02T18:00:00Z', complete: true, rooms: [{ roomNumber: '101', typeCode: 'NQRR', hkStatus: 'VI', occupancyStatus: 'VAC' }], remainingArrivals: [], stillDeparting: [] };
 
 const USERS = { 4155550101: { id: 'a1111111-1111-4111-8111-111111111111', name: 'Fran Desk', role: 'employee', dept: 'Front Desk' }, 4155550102: { id: 'b2222222-2222-4222-8222-222222222222', name: 'Hana HK', role: 'employee', dept: 'Housekeeping' }, 4155550103: { id: 'c3333333-3333-4333-8333-333333333333', name: 'Old Role', role: 'front_desk', dept: 'Housekeeping' } };
-const store = { hk_print_colors: '{"dirty":"#c6f6d5"}', hk_print_slips: 'true', forecast_allowance_scale_pct: '120', login_secret_thing: 'MANAGER-ONLY', overtime_threshold_hours: '40' };
+const store = { hk_print_colors: '{"dirty":"#c6f6d5"}', hk_print_slips: 'true', hk_plan_by_name: 'true', forecast_allowance_scale_pct: '120', login_secret_thing: 'MANAGER-ONLY', overtime_threshold_hours: '40' };
 const plans = new Map(); let queries = 0;
 pg.Pool.prototype.query = async function (sql, params) {
   const q = String(sql).replace(/\s+/g, ' '); queries++;
@@ -61,7 +61,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     assert.strictEqual(fd.redactPayload(null), null); assert.deepStrictEqual(fd.redactCurrentResponse({ snapshot: null }), { snapshot: null });
   });
   await t('pickSettings only passes the allow-listed keys', () => {
-    const out = fd.pickSettings(Object.entries(store).map(([key, value]) => ({ key, value }))); assert.deepStrictEqual(Object.keys(out).sort(), ['forecast_allowance_scale_pct', 'hk_print_colors', 'hk_print_slips']);
+    const out = fd.pickSettings(Object.entries(store).map(([key, value]) => ({ key, value }))); assert.deepStrictEqual(Object.keys(out).sort(), ['forecast_allowance_scale_pct', 'hk_plan_by_name', 'hk_print_colors', 'hk_print_slips']);
   });
 
   require(ROOT + '/server.js'); await sleep(600);
@@ -105,7 +105,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const r = await http('/api/frontdesk/employees', { token: T.desk }); assert.deepStrictEqual(Object.keys(r.body.employees[0]).sort(), ['active', 'department', 'department_id', 'name', 'user_id']);
   });
   await t('settings: only the allow-listed keys (no manager configuration)', async () => {
-    const r = await http('/api/frontdesk/settings', { token: T.desk }); assert.deepStrictEqual(Object.keys(r.body.settings).sort(), ['forecast_allowance_scale_pct', 'hk_print_colors', 'hk_print_slips']); assert(!/MANAGER-ONLY/.test(JSON.stringify(r.body)));
+    const r = await http('/api/frontdesk/settings', { token: T.desk }); assert.deepStrictEqual(Object.keys(r.body.settings).sort(), ['forecast_allowance_scale_pct', 'hk_plan_by_name', 'hk_print_colors', 'hk_print_slips']); assert(!/MANAGER-ONLY/.test(JSON.stringify(r.body)));
   });
   await t('the live board is DB-free for the front desk too (no query, even past the shift-cap throttle) and has no guest data', async () => {
     await http('/api/frontdesk/forecast/live', { token: T.desk }); await sleep(30); const q0 = queries; const calls0 = liveCalls;

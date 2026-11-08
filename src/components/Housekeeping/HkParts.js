@@ -2,6 +2,7 @@
 // Sprint 24.5 — small building blocks of the redesigned Housekeeping page: icons, the donut, the floor accordion, the "who is working" panel
 // (checkbox list / number stepper), and a modal. Presentational only — all assignment logic stays in index.js / hkWork.js.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const Svg = ({ children, size = 20, sw = 2 }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
@@ -21,6 +22,7 @@ export const IcDoc     = (p) => <Svg {...p}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 
 export const IcRefresh = (p) => <Svg {...p}><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" /><path d="M21 3v5h-5" /><path d="M3 21v-5h5" /></Svg>;
 export const IcHand    = (p) => <Svg {...p}><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" /><path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6 7-2.7 0-4-1.4-5.5-4L4 14.5a1.5 1.5 0 0 1 2.4-1.7L8 14" /></Svg>;
 export const IcHourglass = (p) => <Svg {...p}><path d="M6 3h12M6 21h12" /><path d="M7 3c0 5 3 6 5 9-2 3-5 4-5 9" /><path d="M17 3c0 5-3 6-5 9 2 3 5 4 5 9" /></Svg>;
+export const IcChevron = (p) => <Svg {...p}><path d="M6 9l6 6 6-6" /></Svg>;
 
 /** Collapsible floor section: header (floor, room count, caret) + body. The body stays mounted (so cards are always in the DOM, and closing animates). */
 // Sprint 25: `actions` = per-floor controls next to the header (select the whole floor, move it to a housekeeper); `dragProps` makes the header draggable (drag a whole floor).
@@ -30,7 +32,7 @@ export const FloorSection = ({ label, count, open, onToggle, floorId, children, 
       <button type="button" className="hk-acc-head" aria-expanded={open} onClick={onToggle}>
         <span className="hk-floor-label">{label}</span>
         <span className="hk-acc-count" title={count === 0 ? undefined : `${count} room${count === 1 ? '' : 's'}`}>{count === 0 ? 'none' : <>{count}<span className="hk-acc-w"> room{count === 1 ? '' : 's'}</span></>}</span>
-        <span className="hk-acc-caret" aria-hidden="true">⌄</span>
+        <span className="hk-acc-caret" aria-hidden="true"><IcChevron size={15} sw={2.4} /></span>
       </button>
       {actions && <div className="hk-acc-actions">{actions}</div>}
     </div>
@@ -130,5 +132,38 @@ export const StaffChecklist = ({ staff, chosen, onToggle, disabled, hkDept }) =>
         })}
       </ul>
     </section>
+  );
+};
+
+/** Sprint 25.3 — a drop-down in OUR style (replaces the browser's <select>): a small button that opens the same kind of menu as the right-click one.
+ *  options: [{ value, label }]. Rendered in a portal with fixed coordinates so no scrolling / clipping parent can hide it. Esc, outside click, scroll and resize close it. */
+export const MoveMenu = ({ label, options, onPick, ariaLabel, className = '' }) => {
+  const [at, setAt] = useState(null);
+  const btn = useRef(null), menu = useRef(null);
+  useEffect(() => {
+    if (!at) return undefined;
+    const close = () => setAt(null);
+    const down = (e) => { if ((menu.current && menu.current.contains(e.target)) || (btn.current && btn.current.contains(e.target))) return; close(); };
+    const key = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('mousedown', down); window.addEventListener('keydown', key); window.addEventListener('resize', close); window.addEventListener('scroll', close, true);
+    return () => { document.removeEventListener('mousedown', down); window.removeEventListener('keydown', key); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true); };
+  }, [at]);
+  const toggle = () => {
+    if (at) { setAt(null); return; }
+    const r = btn.current.getBoundingClientRect(), vw = window.innerWidth || 1200, vh = window.innerHeight || 800, h = 18 + 36 * options.length;
+    setAt({ left: Math.max(8, Math.min(r.left, vw - 230)), ...(r.bottom + h + 12 > vh && r.top > h ? { bottom: vh - r.top + 4 } : { top: r.bottom + 4 }) });
+  };
+  return (
+    <>
+      <button type="button" ref={btn} className={`hk-btn hk-btn-xs hk-floor-move${at ? ' open' : ''} ${className}`} aria-haspopup="menu" aria-expanded={!!at} aria-label={ariaLabel} onClick={toggle}>
+        <span className="hk-mm-label">{label}</span><IcChevron size={12} sw={2.6} />
+      </button>
+      {at && createPortal(
+        <ul className="hk-menu hk-movemenu" role="menu" ref={menu} style={at}>
+          {options.map(o => <li role="none" key={o.value}><button type="button" role="menuitem" onClick={() => { setAt(null); onPick(o.value); }}>{o.label}</button></li>)}
+        </ul>,
+        document.body
+      )}
+    </>
   );
 };
