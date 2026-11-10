@@ -224,8 +224,6 @@ const ReservationDetailsTable = ({
   const pageEnd   = Math.min(pageStart + pageSize, filtered.length);
   const paged     = filtered.slice(pageStart, pageEnd);
   const toggleOpen = (id) => setOpenIds(m => ({ ...m, [id]: !m[id] }));
-  const allOpen   = paged.length > 0 && paged.every(r => openIds[r.id]);
-  const setAllOpen = (open) => setOpenIds(m => { const n = { ...m }; paged.forEach(r => { n[r.id] = open; }); return n; });
 
   const tabLabel = (RESN_TABS.find(t => t.key === effectiveTab) || {}).label || 'Reservations';
   const viewTitle = searching ? `Search: “${query.trim()}”` : tabLabel;
@@ -373,7 +371,6 @@ const ReservationDetailsTable = ({
       {filtered.length > 0 && (
         <div className="rl-toolbar">
           <span>{filtered.length} reservation{filtered.length === 1 ? '' : 's'}</span>
-          {!lean && <button type="button" onClick={() => setAllOpen(!allOpen)}>{allOpen ? 'Collapse all' : 'Expand all on this page'}</button>}
         </div>
       )}
       {lean

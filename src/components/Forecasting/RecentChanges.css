@@ -15,14 +15,15 @@
 .rc-empty, .rc-error { font-size: 13px; color: var(--text-muted); margin: 8px 0; }
 .rc-error { color: var(--danger-text, #b91c1c); }
 .rc-list { list-style: none; margin: 0; padding: 0; }
-.rc-item { display: grid; grid-template-columns: 92px 128px 1fr; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border-light, var(--border)); align-items: start; }
-.rc-when { font-size: 13px; color: var(--text-primary); display: flex; flex-direction: column; }
+/* Sprint 26.3: one column per card — the type badge on top, the time under it, then the guest (the old 3-column grid squeezed the guest into a sliver) */
+.rc-item { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 0; border-top: 1px solid var(--border-light, var(--border)); }
+.rc-when { font-size: 13px; color: var(--text-primary); display: flex; flex-direction: row; align-items: baseline; gap: 8px; }
 .rc-when small { color: var(--text-muted); font-size: 11px; }
 .rc-type { align-self: start; justify-self: start; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 6px; background: var(--bg-raised); color: var(--text-secondary); white-space: nowrap; }
 .rc-type-new { background: var(--success-bg, #e6f7ec); color: var(--success-text, #166534); }
 .rc-type-cancelled, .rc-type-no_show, .rc-type-gone, .rc-type-moved { background: var(--danger-bg, #fef2f2); color: var(--danger-text, #b91c1c); }
 .rc-type-changed, .rc-type-reappeared { background: var(--warn-bg, #fffbeb); color: var(--warn-text, #92400e); }
-.rc-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rc-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; width: 100%; }
 .rc-main strong { font-size: 14px; }
 .rc-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--text-secondary); }
 .rc-meta code { background: var(--bg-raised); padding: 0 5px; border-radius: 4px; font-size: 11.5px; }
@@ -30,4 +31,3 @@
 .rc-changes { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; }
 .rc-change em { font-style: normal; color: var(--text-muted); margin-right: 3px; }
 .rc-more { margin-top: 8px; font-family: inherit; font-size: 13px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; }
-@media (max-width: 640px) { .rc-item { grid-template-columns: 1fr; gap: 4px; } .rc-when { flex-direction: row; gap: 8px; align-items: baseline; } }

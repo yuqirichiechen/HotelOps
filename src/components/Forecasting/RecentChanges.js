@@ -69,8 +69,8 @@ const RecentChanges = ({ initialOn = DEFAULT_ON, persistOpen = true }) => {
               const stay = stayLabel(ev);
               return (
                 <li key={ev.event_id} className={`rc-item rc-${ev.event_type}`}>
-                  <span className="rc-when" title={new Date(ev.occurred_at).toLocaleString()}>{fmtDayClock(ev.occurred_at)}<small>{ago(ev.occurred_at)}</small></span>
                   <span className={`rc-type rc-type-${ev.event_type}`}>{EVENT_LABEL[ev.event_type] || ev.event_type}</span>
+                  <span className="rc-when" title={new Date(ev.occurred_at).toLocaleString()}>{fmtDayClock(ev.occurred_at)}<small>{ago(ev.occurred_at)}</small></span>
                   <span className="rc-main">
                     <strong>{ev.guest_name || 'Guest'}</strong>
                     <span className="rc-meta">

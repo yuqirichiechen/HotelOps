@@ -16,21 +16,42 @@ export const stampOf = (iso) => {
 };
 const SHOWN = 5;
 
+// Sprint 26.3 — search the audit log by keyword: every word must appear somewhere in the entry (its date, user or any change line), case-insensitive.
+export const entryText = (e) => [stampOf(e.at), e.at, e.user, ...e.lines].join(' ').toLowerCase();
+export const searchAudit = (entries, query) => {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  return words.length ? entries.filter(e => { const t = entryText(e); return words.every(w => t.includes(w)); }) : entries;
+};
+const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const Mark = ({ text, query }) => {
+  const words = String(query || '').split(/\s+/).filter(Boolean);
+  if (!words.length) return text;
+  return String(text).split(new RegExp(`(${words.map(esc).join('|')})`, 'ig')).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part));
+};
+
 const Audit = ({ audit }) => {
-  const [all, setAll] = useState(false);
-  const list = all ? audit.entries : audit.entries.slice(0, SHOWN);
+  const [all, setAll] = useState(false), [q, setQ] = useState('');
+  const searching = q.trim().length > 0;
+  const found = searchAudit(audit.entries, q);
+  const list = searching || all ? found : audit.entries.slice(0, SHOWN);
   if (!audit.entries.length) return <p className="rl-sec-empty">No history recorded for this reservation.</p>;
   return (
     <>
-      <ol className="rx-audit">
-        {list.map((e, i) => (
-          <li key={`${e.at}-${i}`}>
-            <div className="rx-audit-head"><b>{stampOf(e.at)}</b><span>by {e.user}</span></div>
-            <ul>{e.lines.map((l, j) => <li key={j}>{l}</li>)}{e.more > 0 && <li className="rx-muted">…and {e.more} more change{e.more === 1 ? '' : 's'}</li>}</ul>
-          </li>
-        ))}
-      </ol>
-      {audit.entries.length > SHOWN && <button type="button" className="rl-btn rx-more" onClick={() => setAll(a => !a)}>{all ? 'Show fewer' : `Show all ${audit.entries.length}`}</button>}
+      <div className="rx-search">
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the audit log (e.g. room, richie, status)…" aria-label="Search the audit log" />
+        {searching && <span className="rx-muted" role="status">{found.length} of {audit.entries.length} entr{audit.entries.length === 1 ? 'y' : 'ies'}</span>}
+      </div>
+      {list.length === 0 ? <p className="rl-sec-empty">No entries match “{q.trim()}”.</p> : (
+        <ol className="rx-audit">
+          {list.map((e, i) => (
+            <li key={`${e.at}-${i}`}>
+              <div className="rx-audit-head"><b><Mark text={stampOf(e.at)} query={q} /></b><span>by <Mark text={e.user} query={q} /></span></div>
+              <ul>{e.lines.map((l, j) => <li key={j}><Mark text={l} query={q} /></li>)}{e.more > 0 && <li className="rx-muted">…and {e.more} more change{e.more === 1 ? '' : 's'}</li>}</ul>
+            </li>
+          ))}
+        </ol>
+      )}
+      {!searching && audit.entries.length > SHOWN && <button type="button" className="rl-btn rx-more" onClick={() => setAll(a => !a)}>{all ? 'Show fewer' : `Show all ${audit.entries.length}`}</button>}
       {audit.truncated && <p className="rx-muted">Showing the newest {audit.entries.length} of {audit.total} entries.</p>}
     </>
   );

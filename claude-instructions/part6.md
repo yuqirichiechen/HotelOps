@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 26.3   | Dev reservations: Recent changes cards (badge on top, time below), "More details" as a pop-up card, audit-log keyword search | **Done** 2026-11-09 (see entry; no migration) |
 | 26.2   | Reservations (dev card): rGuest audit log, authorization & payment history, and real FD comments are now saved and shown under "More details" | **Done** 2026-11-09 (see entry; no migration) |
 | 26.1   | Log Book: green live dot, rights per role (front desk own notes only, manager edits, dev everything), posted-by / edited-by, send to a front-desk person + Logbook badge, rich-text descriptions | **Built + tested** — **RUN MIGRATION 033 after 032 before deploying** |
 | 26     | **Log Book** — replaces the Logbook prototype: month calendar + list, day page, note form (priority / span / audience / flags / draft-publish-archive); Admin, Dev and Front Desk; other staff "under construction" | **Built + tested** — **RUN MIGRATION 032 before deploying** |
@@ -55,6 +56,14 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-09 — Sprint 26.3: dev layout (Recent changes, details pop-up, audit search)
+
+**No migration, frontend only.**
+1. **Recent changes cards** (`RecentChanges.js/.css`): each card is now one column — the type badge ("New booking") on top, the time + "4 min ago" under it, then guest / room type / dates / conf / source at full width. The old 3-column grid (time | badge | guest) gave the guest a sliver of a narrow column, which wrapped every line.
+2. **"More details" = pop-up card** (`ResnItem.js` `DetailModal`, portal on `document.body`, CSS in `ResnList.css`): the row no longer expands, so the list keeps its shape. Header has the guest name, conf, stay, room, status and ×; body holds the same sections + the rGuest history panel + "Delete saved guest details". Esc, clicking the backdrop and × close it; background scroll is locked and focus returns to the button; full-screen on phones. The rGuest history loads when the pop-up opens. The "Expand all on this page" button was removed (meaningless for pop-ups). The staleness auto-refresh on open is unchanged.
+3. **Audit-log search** (`ResnExtras.js`): box above the log; every word must appear in the entry's date, user or any change line (case-insensitive, regex characters literal); searches ALL entries, not only the first 5; matches highlighted; "N of M entries"; "No entries match …".
+Tests: `reservation-modal` 4 (dialog in a portal / not inside the row / Esc + backdrop + × + inside-click / scroll lock + focus, search incl. AND / case / regex chars / clear, pure `searchAudit`, Recent changes child order); `reservations-lean` updated (no "Expand all"). Full regression green (staffportal run with the clock pinned — see 26.2 open item); build compiles. Not checked visually in a browser this sprint — look at the pop-up and the narrow Recent changes column once.
 
 ### 2026-11-09 — Sprint 26.2: reservation history, payments and comments (dev)
 

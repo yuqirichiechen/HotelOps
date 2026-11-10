@@ -5,6 +5,7 @@
 // changed since the list scrape can't throw an error here.
 
 import React, { useCallback, useEffect, useReducer, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { apiFetch } from '../../auth';
 import {
   fmtStayRange, guestsLabel, asOf, ageText, telHref, mailHref, buildChips, buildSections,
@@ -115,12 +116,38 @@ const Section = ({ sec }) => (
   </section>
 );
 
+// Sprint 26.3 — "More details" is a pop-up card instead of expanding the row in place: the list keeps its shape and the detail (sections, rGuest history, payments,
+// comments) gets the whole screen. Esc, the backdrop and × close it; the page behind does not scroll while it is open.
+const DetailModal = ({ title, subtitle, onClose, children, labelledBy }) => {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    const prev = document.activeElement, overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (closeRef.current) closeRef.current.focus();
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; if (prev && prev.focus) prev.focus(); };
+  }, [onClose]);
+  return createPortal(
+    <div className="rl-modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="rl-modal" role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+        <header className="rl-modal-head">
+          <div><h3 id={labelledBy}>{title}</h3>{subtitle && <div className="rl-sub">{subtitle}</div>}</div>
+          <button type="button" ref={closeRef} className="rl-modal-x" onClick={onClose} aria-label="Close details">×</button>
+        </header>
+        <div className="rl-modal-body">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 /**
  * @param {Object}  p.r            list-level reservation (payload.reservations[i])
  * @param {Object}  p.entry        stored summary entry from useResnSummaries (or null)
  * @param {Array}   p.flags        buildResnFlags(r)
  * @param {string}  p.statusCls    STATUS_PILL_CLASS key
- * @param {boolean} p.open         in-place details expanded
+ * @param {boolean} p.open         details pop-up showing
  * @param {boolean} p.jobRunning   background job still loading details
  * @param {boolean} p.beyondDetailWindow  booking is further out than the guest-detail window (no details stored yet)
  */
@@ -160,11 +187,11 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onFor
   const [forgetting, setForgetting] = React.useState(false);
 
   return (
-    <li className={`rl-item${open ? ' is-open' : ''}${gone ? ' is-gone' : ''}${accent ? ` rl-attn-${accent}` : ''}`}>
+    <li className={`rl-item${gone ? ' is-gone' : ''}${accent ? ` rl-attn-${accent}` : ''}`}>
       <div className="rl-main">
         {/* ── guest + contact ── */}
         <div className="rl-guest">
-          <button type="button" className="rl-name" onClick={onToggle} aria-expanded={open} aria-controls={detailId}>
+          <button type="button" className="rl-name" onClick={onToggle} aria-haspopup="dialog">
             {r.guestName || g.name || '(no name)'}
           </button>
           <div className="rl-sub">
@@ -240,14 +267,14 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onFor
             {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
           <a className="rl-btn" href={rguestUrl} target="_blank" rel="noopener noreferrer">rGuest ↗</a>
-          <button type="button" className="rl-btn rl-btn-primary" onClick={onToggle} aria-expanded={open} aria-controls={detailId} disabled={!s}>
-            {open ? 'Hide details' : 'More details'}
-          </button>
+          <button type="button" className="rl-btn rl-btn-primary" onClick={onToggle} aria-haspopup="dialog" disabled={!s}>More details</button>
         </span>
       </div>
 
       {open && (
-        <div className="rl-detail" id={detailId}>
+        <DetailModal title={r.guestName || g.name || '(no name)'} labelledBy={detailId} onClose={onToggle}
+          subtitle={[r.confirmationId && `Conf. ${r.confirmationId}`, range, roomLabel, r.statusLabel].filter(Boolean).join(' · ')}>
+        <div className="rl-detail">
           {sections.length === 0
             ? <p className="rl-sec-empty">No further details saved for this reservation yet.</p>
             : sections.map(sec => <Section key={sec.title} sec={sec} />)}
@@ -269,6 +296,7 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onFor
             )}
           </div>
         </div>
+        </DetailModal>
       )}
     </li>
   );

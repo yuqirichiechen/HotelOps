@@ -59,7 +59,7 @@ async function mount(mode) { calls.length = 0; sessionStorage.clear(); const el 
   });
   await t('DEV keeps EVERY function: Recent changes, all tiles, "Needs a room" tab, source filter, sort, CSV export, full guest cards (status, room, source), summary lookups, change feed', async () => {
     document.querySelectorAll('.rl-printroot').forEach(n => n.remove()); const h = await mount('dev'); const txt = h.el.textContent;
-    for (const x of [/Recent changes/, /No Room Assigned/, /Needs a room/, /Sort:/, /Export CSV/, /Expand all/, /Snapshot history/, /Forecast settings/, /Raw scraper output/]) assert(x.test(txt), String(x));
+    for (const x of [/Recent changes/, /No Room Assigned/, /Needs a room/, /Sort:/, /Export CSV/, /Snapshot history/, /Forecast settings/, /Raw scraper output/]) assert(x.test(txt), String(x));
     assert([...h.el.querySelectorAll('label span')].some(s => s.textContent === 'Source')); assert(h.el.querySelector('.rl-main') && !h.el.querySelector('.rl-lean'), 'full cards'); assert(/Best Available Rate/.test(h.el.querySelector('.rl-list').textContent) && /Pending/.test(h.el.querySelector('.rl-list').textContent));
     assert(calls.some(c => /reservations\/summaries/.test(c.p)) && calls.some(c => /sync\/events/.test(c.p))); await h.type(h.el.querySelector('input[type=search]'), 'Ann'); assert(calls.some(c => /reservations\/search/.test(c.p)), 'server-side contact/notes search'); await h.unmount();
   });
