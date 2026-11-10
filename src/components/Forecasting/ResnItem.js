@@ -9,6 +9,7 @@ import { apiFetch } from '../../auth';
 import {
   fmtStayRange, guestsLabel, asOf, ageText, telHref, mailHref, buildChips, buildSections,
 } from './resnFormat';
+import ResnExtras from './ResnExtras';
 import './ResnList.css';
 
 // ── stored-summary data hook ────────────────────────────────────────────────
@@ -250,6 +251,7 @@ const ResnItem = ({ r, entry, flags, statusCls, open, onToggle, onRefresh, onFor
           {sections.length === 0
             ? <p className="rl-sec-empty">No further details saved for this reservation yet.</p>
             : sections.map(sec => <Section key={sec.title} sec={sec} />)}
+          <ResnExtras id={r.id} version={entry && entry.fetchedAt} />
           <div className="rl-forget">
             {!confirmForget ? (
               <button type="button" className="rl-forget-btn" onClick={() => setConfirmForget(true)}>Delete saved guest details…</button>

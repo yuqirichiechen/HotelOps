@@ -47,6 +47,11 @@ function fingerprintOf(r) {
 
 const isFuture = (r) => r && r.kind === 'future';
 
+// Sprint 26.2 — sections added after the first detail runs. A stored reservation that has none of them yet (or lacks one) is brought up to date by the next
+// refresh with a light "extras" fetch (~5 calls) instead of a full re-fetch (~25).
+const EXTRA_SECTIONS = ['reservationComments', 'profileComments', 'auditLog', 'authHistory'];
+const lacksExtras = (secs) => EXTRA_SECTIONS.some(k => !secs || !secs[k]);
+
 const DETAIL_WINDOW_DAYS_DEFAULT = 30;
 const addDaysYmd = (ymd, n) => {
   const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
@@ -97,6 +102,7 @@ function selectTargets(reservations, stored, nowMs = Date.now(), force = false) 
       const ttl = isFuture(r) ? TTL_FUTURE_MS : TTL_ACTIVE_MS;
       if (row.remote_state === 'gone')           reason = age > SECTION_RETRY_AFTER_MS ? 'recheck-gone' : null;
       else if (age > ttl)                        reason = 'ttl';
+      else if (lacksExtras(row.sections)) reason = 'new-sections';
       else {
         const secs = row.sections || {};
         const retry = Object.values(secs).some(s =>
@@ -250,10 +256,10 @@ async function runJob({ pool, job, targets, concurrency, createClient, logger })
 
   async function worker() {
     while (queue.length && !abortError) {
-      const { r } = queue.shift();
+      const { r, reason } = queue.shift();
       try {
         const prior = await loadPrior(pool, r.id);
-        const out = await client.deepFetchReservation(r.id, { prior });
+        const out = reason === 'new-sections' ? await client.deepFetchExtras(r.id, { prior }) : await client.deepFetchReservation(r.id, { prior });
         await saveDetail(pool, r, out, prior);
         if (out.remoteState === 'gone') stats.gone++;
         stats.done++;
@@ -344,6 +350,6 @@ async function refreshOne({ pool, reservationId, listItem = null, createClient =
 module.exports = {
   startDetailJob, getLatestJob, refreshOne, loadPrior, pruneGuestDetails, getRetentionDays,
   // exported for tests
-  selectTargets, fingerprintOf, priorityOf, withinDetailWindow,
+  selectTargets, fingerprintOf, priorityOf, withinDetailWindow, EXTRA_SECTIONS, lacksExtras,
   TTL_ACTIVE_MS, TTL_FUTURE_MS,
 };

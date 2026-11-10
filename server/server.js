@@ -4784,6 +4784,19 @@ app.get('/api/admin/reservations/:id/detail', requireAuth, requireRole('admin'),
   }
 });
 
+// GET /api/admin/reservations/:id/extras — DEV only (Sprint 26.2): the reservation's rGuest audit log, the folio's authorization & payment history and the
+// comments (reservation + guest profile). Read from the stored deep fetch — never calls rGuest. Filled in by the next refresh for older rows.
+const { buildExtras } = require('./forecast/extras');
+app.get('/api/admin/reservations/:id/extras', requireAuth, requireRole('dev'), async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) return res.status(400).json({ success: false, message: 'bad reservation id' });
+  try {
+    const { rows } = await pool.query('SELECT detail, sections, fetched_at, remote_state FROM reservation_detail WHERE reservation_id = $1', [id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'No saved details for this reservation yet.' });
+    return res.json({ success: true, extras: buildExtras(rows[0].detail, rows[0].sections), fetchedAt: rows[0].fetched_at, remoteState: rows[0].remote_state });
+  } catch (err) { console.error('[reservation:extras]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
 // POST /api/admin/reservations/:id/refresh — live re-fetch of ONE reservation.
 // Failure-tolerant: if rGuest 404s the stored data is kept and flagged 'gone';
 // if the call fails entirely the stored row is returned with the error.

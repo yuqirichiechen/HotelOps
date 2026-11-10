@@ -149,7 +149,12 @@ function summarizeDetail(detail, listItem = {}) {
   }));
 
   // ── comments / preferences / loyalty (shapes unseen → defensive) ──
-  const comments = collectText(d.comments);
+  // Sprint 26.2: the real comments (reservation + guest profile, archived ones left out). `d.comments` was the "suppress alerts" setting — always empty — and is only a
+  // fallback for rows saved before the new sections existed.
+  const live = (list) => arr(list).filter(c => !(c && c.metadata && c.metadata.deleted));
+  const comments = d.reservationComments !== undefined || d.profileComments !== undefined
+    ? collectText([...live(d.reservationComments), ...live(d.profileComments)])
+    : collectText(d.comments);
   const preferences = [...collectText(R.guestPreferences), ...collectText(R.profilePreferences), ...collectText(P.guestPreferenceDetails)];
   const loyalty = [...collectText(d.loyaltyInfo), ...collectText(R.loyaltyProgramsInfo)];
 

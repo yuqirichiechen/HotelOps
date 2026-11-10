@@ -18,6 +18,7 @@
 | 22.2   | Auto-sync panel (health, run now, schedule, runs) + Recent-changes feed | **Built + tested** (no migration) |
 | 22.4   | Dev area (server-verified dev role): all settings/logs/debug moved out of the manager UI; full Reservations + Forecast replicas for dev; plain freshness badge | **Built + tested** (needs env `DEV_PASSWORD_HASH`) |
 | 22.5   | Manager Forecast simplified (dev keeps the full page) | **Done** 2026-10-20 (see entry) |
+| 26.2   | Reservations (dev card): rGuest audit log, authorization & payment history, and real FD comments are now saved and shown under "More details" | **Done** 2026-11-09 (see entry; no migration) |
 | 26.1   | Log Book: green live dot, rights per role (front desk own notes only, manager edits, dev everything), posted-by / edited-by, send to a front-desk person + Logbook badge, rich-text descriptions | **Built + tested** — **RUN MIGRATION 033 after 032 before deploying** |
 | 26     | **Log Book** — replaces the Logbook prototype: month calendar + list, day page, note form (priority / span / audience / flags / draft-publish-archive); Admin, Dev and Front Desk; other staff "under construction" | **Built + tested** — **RUN MIGRATION 032 before deploying** |
 | 25.5   | Front desk Reservations: "Rooms to sell today" table under Sellable vs arriving; bigger VI / VI + PU key; Refresh no longer pulls rGuest (2-min server cache) | **Built + tested** — no migration |
@@ -54,6 +55,23 @@
 | 22.3   | Pages read the mirror (no full scrape per refresh) + guest-detail refresh hook + forecast-accuracy tracker | **Built + tested** (migration 029) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-09 — Sprint 26.2: reservation history, payments and comments (dev)
+
+**No migration.** Everything is stored in the existing `reservation_detail.detail` / `sections` JSONB (migration 027). Deploy server + frontend together, then press **Refresh** on Reservations once.
+**Probe first** (`tests/probe-reservation-extras.js`, read-only, uses `server/.env`; method: read rGuest's public JS bundle for the endpoint builders, then confirm live). Verified endpoints:
+- **Audit log** (the "enlarge" popup): `GET /reservation-service/tenants/T/properties/P/audit/reservation/{id}?page&size` → Spring page, newest first; entries `{ user, timestamp, changes:[{ path, type ADD|REMOVE|MODIFY, from, to }] }` — matched the 3 rows in the user's screenshot.
+- **Authorization & payment history**: `GET /payment-service/v1/tenants/T/properties/P/accounts/{accountId}/authorizationHistory` (note the **`/v1`** — without it 404). Rows: authCode, cardNumber (last 4), amount, issuer, transactionDate/Time, user, authorizationType, failureReason, success.
+- **Comments**: `GET /comment-service/tenants/T/comments?associatedObjectId={reservationId | profileId}`; type names from `GET …/config/commentTypes`. Archived comments come back with `metadata.deleted = true` (rGuest's "Include Archived" just filters them).
+- **Bug found:** the old `comments` section called `…/comment-service/…/reservation/{id}`, which is only rGuest's "suppress alerts" setting (always `{}`) — so FD comments were never captured before. That section is replaced.
+**What changed**
+1. `server/agilysys/client.js`: new `getReservationAuditLog` (pages 100 at a time, cap 500, `truncated` flag), `getAuthorizationHistory`, `getCommentsFor` (+ cached comment-type catalog); `deepFetchReservation` now stores `reservationComments`, `profileComments`, `auditLog`, `authHistory` (each its own isolated section, previous good data kept on failure); new `deepFetchExtras` = only those four sections for an already-stored reservation (~5 calls instead of ~25).
+2. `server/forecast/detailJob.js`: a stored reservation missing any of the four sections gets reason `new-sections` and the light refetch — so **one manual refresh backfills every existing reservation** (within the detail window); no timers.
+3. `server/forecast/extras.js` (pure): audit entries → readable lines ("Added Disclose Room Type Yes", "Changed … from A to B"; service accounts shown as "Stay integration user"/"System"), payments newest-first with totals (card shown as `************1234` only), comments split reservation / profile with archived flagged. `summarize.js` now sets `hasComments` from the real comments (archived ignored).
+4. `GET /api/admin/reservations/:id/extras` — **dev only** (`requireRole('dev')`; admin and front desk get 403); reads the stored row, never calls rGuest.
+5. `src/components/Forecasting/ResnExtras.js` (+ CSS in `ResnList.css`) inside a card's "More details" (the full card exists only in the dev view): Audit log (newest 5, "Show all N"), Authorization & payment history table (DATE, TIME, USER, AUTH CODE, CARD, TYPE, AMOUNT, ISSUER, STATUS, REASON + totals), Comments (Reservation / Guest profile tabs, "Include archived"). A reservation not yet refreshed says "Not saved yet — press Refresh".
+Tests: `reservation-extras` 10 (simulated rGuest: paging, v1 path, catalog cache, extras refetch makes no core call, failure isolation, formatter, summary flag, job selection, dev-only route), `reservation-extras-ui` 4. Full regression green; build compiles.
+**Open:** Expected Authorization / Available Balance (top of rGuest's modal) is not re-fetched — the numbers already live in `estimatedCharges` / `authDetails`. The comment **History tab** (comment edit trail) could not be probed: no comment with edits was found, so only `metadata.history` length ("edits") is kept. `tests/staffportal.test.js` has fixtures hard-coded to the week of 2026-11-02 and fails once the real week rolls over (passes with the clock pinned to Nov 4) — pre-existing, not caused by this sprint.
 
 ### 2026-11-13 — Sprint 26.1: Log Book additions
 

@@ -46,6 +46,8 @@ const _refCache = {
   // (e.g. "Best Available Rate") in the bulk Reservations table.
   // Same 24h TTL as the other reference catalogs.
   ratePlans:   { data: null, expiresAt: 0, key: null },
+  // Sprint 26.2 — comment type catalog (Check-In, Billing, …): id → name for the reservation comments.
+  commentTypes: { data: null, expiresAt: 0, key: null },
 };
 function _cacheKey(tenantId, propertyId) {
   return `${tenantId}/${propertyId}`;
@@ -905,6 +907,47 @@ function createAgilysysClient(overrides = {}) {
     };
   }
 
+  // ── Sprint 26.2: history / payments / comments (endpoints read out of rGuest's own front-end bundle and verified live with tests/probe-reservation-extras.js) ──
+  //  audit log   GET /reservation-service/tenants/T/properties/P/audit/reservation/{id}?page&size   (the popup behind the "enlarge" icon; Spring page, newest first;
+  //              the page itself POSTs a filter to the same URL — GET returns the same rows)
+  //  auth & payment history   GET /payment-service/v1/tenants/T/properties/P/accounts/{accountId}/authorizationHistory   (the folio's "More → Authorization & Payment History")
+  //  comments    GET /comment-service/tenants/T/comments?associatedObjectId={reservationId | profileId}   (the Comments panel; "Include Profile Comments" = the guest
+  //              profile's list; "Include Archived" = comments with metadata.deleted — the API returns them, the page filters)
+  //  (What deepFetch stored as `comments` before this sprint — GET …/comment-service/…/reservation/{id} — is only the "suppress alerts" setting, always {}.)
+  const AUDIT_PAGE = 100, AUDIT_MAX = 500;
+  async function getReservationAuditLog(reservationId) {
+    const base = `/reservation-service/tenants/${tenantId}/properties/${propertyId}/audit/reservation/${reservationId}`;
+    const entries = []; let total = 0;
+    for (let page = 0; page < AUDIT_MAX / AUDIT_PAGE; page += 1) {
+      const r = await call('GET', `${base}?page=${page}&size=${AUDIT_PAGE}`);
+      const content = Array.isArray(r && r.content) ? r.content : [];
+      total = r && typeof r.totalElements === 'number' ? r.totalElements : content.length;
+      entries.push(...content);
+      if ((r && r.last) || content.length < AUDIT_PAGE || entries.length >= total) break;
+    }
+    return { totalElements: total, truncated: total > AUDIT_MAX, entries: entries.slice(0, AUDIT_MAX) };
+  }
+  async function getAuthorizationHistory(accountId) {
+    const r = await call('GET', `/payment-service/v1/tenants/${tenantId}/properties/${propertyId}/accounts/${accountId}/authorizationHistory`);
+    return Array.isArray(r) ? r : [];
+  }
+  async function getCommentTypeCatalog() {
+    const c = _refCache.commentTypes, key = _cacheKey(tenantId, propertyId);
+    if (c.data && c.key === key && c.expiresAt > Date.now()) return c.data;
+    const list = await call('GET', `/comment-service/tenants/${tenantId}/config/commentTypes`);
+    const map = {}; (Array.isArray(list) ? list : []).forEach(t => { if (t && t.id) map[t.id] = { name: t.name || null, code: t.code || null }; });
+    c.data = map; c.key = key; c.expiresAt = Date.now() + REF_TTL_MS;
+    return map;
+  }
+  /** the comments attached to a reservation or a guest profile, each with its type's name filled in (a catalog failure never costs the comments) */
+  async function getCommentsFor(objectId) {
+    const list = await call('GET', `/comment-service/tenants/${tenantId}/comments?associatedObjectId=${encodeURIComponent(objectId)}`);
+    const comments = Array.isArray(list) ? list : [];
+    if (!comments.length) return [];
+    let types = {}; try { types = await getCommentTypeCatalog(); } catch (e) { if (e && e.fatal) throw e; }
+    return comments.map(x => ({ ...x, commentTypeName: (types[x.commentTypeId] && types[x.commentTypeId].name) || null }));
+  }
+
   // ── Sprint 20.2: deep per-reservation collector ────────────────────────
   //
   // Everything rGuest shows on a reservation page that is specific to ONE
@@ -1004,7 +1047,10 @@ function createAgilysysClient(overrides = {}) {
           : r;
       });
     }
-    add('comments',          () => call('GET', `/comment-service/tenants/${T}/reservation/${reservationId}`));
+    add('reservationComments', () => getCommentsFor(reservationId));
+    add('profileComments',     async () => (profileId ? getCommentsFor(profileId) : []));
+    add('auditLog',            () => getReservationAuditLog(reservationId));
+    add('authHistory',         async () => (accountId ? getAuthorizationHistory(accountId) : []));
     add('additionalGuests',  () => call('GET', `${R_BASE}/${reservationId}/additionalGuestsInfo`));
     add('loyaltyInfo',       () => call('GET', `${R_BASE}/${reservationId}/loyaltyInfo`));
     add('messagesSummary',   () => call('GET', `${R_BASE}/${reservationId}/messages/summary`));
@@ -1044,6 +1090,36 @@ function createAgilysysClient(overrides = {}) {
 
     const failed = Object.entries(sections).filter(([, v]) => !v.ok).map(([k]) => k);
     log('info', 'agilysys.deep.done', { reservationId, sections: Object.keys(sections).length, failed });
+    return { remoteState: 'ok', detail, sections };
+  }
+
+  /**
+   * Sprint 26.2 — only the sections added in this sprint, for a reservation whose other details are already stored: reads the ids from the stored reservation
+   * (no extra rGuest call for them), fetches audit log / payment history / comments and merges them into what was stored. This is what the next refresh runs for
+   * every reservation that was saved before the sprint, so it costs ~5 calls per guest instead of the full ~25.
+   */
+  async function deepFetchExtras(reservationId, { prior = null } = {}) {
+    const priorDetail = (prior && prior.detail) || {}, priorSections = (prior && prior.sections) || {};
+    const R = priorDetail.reservation;
+    if (!R) return deepFetchReservation(reservationId, { prior });
+    const profileId = R.primaryGuestInfo && R.primaryGuestInfo.profileId, accountId = R.accountId;
+    const detail = { ...priorDetail }, sections = { ...priorSections };
+    const now = () => new Date().toISOString();
+    if (!token) await refreshToken(null);
+    const run = async (name, fn) => {
+      try { detail[name] = await fn(); sections[name] = { ok: true, at: now() }; }
+      catch (e) {
+        if (e && e.fatal) throw e;
+        sections[name] = { ok: false, at: now(), status: e && e.status ? e.status : null, error: String((e && e.message) || e).slice(0, 200), hasPrior: Object.prototype.hasOwnProperty.call(priorDetail, name) };
+        log('warn', 'agilysys.deep.section_failed', { reservationId, section: name, status: e && e.status });
+      }
+    };
+    await Promise.all([
+      run('reservationComments', () => getCommentsFor(reservationId)),
+      run('profileComments', async () => (profileId ? getCommentsFor(profileId) : [])),
+      run('auditLog', () => getReservationAuditLog(reservationId)),
+      run('authHistory', async () => (accountId ? getAuthorizationHistory(accountId) : [])),
+    ]);
     return { remoteState: 'ok', detail, sections };
   }
 
@@ -1132,6 +1208,10 @@ function createAgilysysClient(overrides = {}) {
     getServiceRequestsByReservation,
     fetchReservationFullDetail,
     deepFetchReservation,
+    deepFetchExtras,
+    getReservationAuditLog,
+    getAuthorizationHistory,
+    getCommentsFor,
     fetchForecastInputs,
     getLogs: () => logs.slice(),
     // Exposed for testing / introspection — don't rely on these in
