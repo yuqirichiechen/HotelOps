@@ -23,7 +23,7 @@ export const Field = ({ id, label, optional, icon, secret, value, onChange, righ
 };
 
 const SignInScreen = ({ tenant, onChangeProperty, onBack, title, desc, icon, error, canSubmit, loading, onSubmit, children }) => (
-  <AuthFrame step="signin" onAccessOptions={onBack}>
+  <AuthFrame step="signin">
     <PropertyBar tenant={tenant} onChange={onChangeProperty} />
     <h1 className="in-h1">{title}</h1>
     <p className="in-subtitle">Sign in securely to continue at {tenant.name}.</p>

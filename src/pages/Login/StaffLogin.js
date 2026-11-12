@@ -269,7 +269,7 @@ const StaffLogin = ({ onBack, onChangeProperty }) => {
   const now = usePTClock();
 
   return (
-    <AuthFrame step="clock" onAccessOptions={onBack}>
+    <AuthFrame step="clock">
       <PropertyBar tenant={tenant} onChange={onChangeProperty} />
       <h1 className="in-h1">Clock in / out</h1>
       <p className="in-subtitle">A fast, familiar time clock for your shift.</p>

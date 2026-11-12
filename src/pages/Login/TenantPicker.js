@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { KNOWN_TENANTS } from '../../config/tenant';
 import AuthFrame, { PropertyMark } from './InntrioFrame';
 import Icon from './InntrioIcons';
+import { withTransition } from './viewTransition';
 
 // Sprint 27.1: step 1 of the Inntrio login — "Select a property". Same destinations as before (only the look changed):
 //   signed-out visitors:  Continue → /:slug/login   (step 2, the access chooser, lives there)
@@ -20,7 +21,7 @@ const TenantPicker = ({ kind }) => {
     const t = KNOWN_TENANTS[chosen];
     if (!t) return;
     if (isDevPick) { try { localStorage.setItem('hotelops-tenant-slug', t.slug); } catch { /* ignore */ } nav(`/${t.slug}/admin`); return; }
-    nav(`/${t.slug}/login`);
+    withTransition(() => nav(`/${t.slug}/login`), 'forward');   // Sprint 27.3: the property logo glides into the property bar of the next screen
   };
 
   return (
@@ -39,7 +40,7 @@ const TenantPicker = ({ kind }) => {
         </div>
         {shown.map(t => (
           <button key={t.slug} type="button" className={`in-property-row${chosen === t.slug ? ' selected' : ''}`} aria-pressed={chosen === t.slug} onClick={() => setChosen(t.slug)}>
-            <PropertyMark tenant={t} iconSize={23} />
+            <PropertyMark tenant={t} iconSize={23} shared={chosen === t.slug} />
             <span><span className="in-property-title">{t.name}</span><span className="in-property-sub">{t.location || ''}</span></span>
             <span className="in-spacer" />
             {t.status && <span className="in-small-state">{t.status}</span>}

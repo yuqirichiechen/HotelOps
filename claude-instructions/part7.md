@@ -13,8 +13,22 @@
 | 27.1   | Inntrio login revamp: property → access method → sign-in / clock (UI only; auth logic unchanged) | **Done** 2026-11-12 (see entry; no migration) |
 | 27.1.1 | "Blank screen" after the 27.1 deploy → it was the browser's cache (hard refresh fixed it); an app-wide error boundary + load-failure fallback were added anyway | **Done** 2026-11-12 (frontend only) |
 | 27.2   | Login polish: Tiempos fonts, step line removed, top-bar "Secure access" + date/time removed, Snoqualmie Inn logo on the property rows / bar | **Done** 2026-11-12 (frontend only) |
+| 27.3   | Login: tagline logo top-left (no "Property management system", no top-right link), gold "Back to access options", screen-to-screen animation, Clock in / out card no longer gold | **Done** 2026-11-12 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 27.3: login top bar, motion
+
+1. **Top-left** is now only `public/inntrio/inntrio-logo-dark-tagline.svg` (the logo with its tagline built in, ~212 px, 156 px on phones); the separate "PROPERTY MANAGEMENT SYSTEM" text is gone. (The big centred logo on steps 1-2 still has the gold "PROPERTY OPERATIONS, REFINED" line — say if that should go too, since the top-left logo now carries a tagline of its own.)
+2. **Top-right "Access options" removed** (`onAccessOptions` prop deleted everywhere). The way back is the **"Back to access options"** under each card, now **gold** (hover: lighter gold + the arrow nudges left).
+3. **Animation** (`viewTransition.js` + the motion section at the end of `Inntrio.css`):
+   - Screen to screen uses the View Transitions API like the old login did (`withTransition(update, 'forward'|'back')` sets `data-vt` on `<html>`, flushes the update synchronously, clears it when finished). Going into a screen slides + fades the content in from the right, coming back slides from the left (old content leaves in 0.26 s, new arrives in 0.5 s). The top bar and the navy background have their own transition names so they stay perfectly still. The property logo has the shared name `in-property` and glides from the picker row into the property bar (only the CHOSEN row carries it — names must be unique on a page). Used by: picker Continue, access choices, Back to access options, Change property.
+   - No API support (older Firefox/Safari) or no transition running (first load): every block of a screen fades up in a staggered sequence (`in-fade-up`); disabled while a view transition runs so the two never stack.
+   - Always-on touches: the background waves/gold curves drift slowly; choice cards lift + their arrow nudges on hover; the gold buttons get a light sheen sweep on hover; keypad keys press in.
+   - `prefers-reduced-motion` switches all of it off (transition durations ~0, no entrance, no drift, no sheen).
+   - The app already had global `::view-transition-*(*)` rules for the scheduling calendar (320 ms, in `Scheduling.css`); the login's rules are scoped with `html[data-vt]` and named groups so they win only here.
+4. **Clock in / out card on the access chooser is no longer gold** (the "feature" highlight — gold border, glow, gradient — was removed; all four cards look alike). I read "gold surroundings" as that highlight; if you meant something else on the Clock in / out screen (e.g. the gold swoosh line along the bottom-right of every glass card), tell me.
+Tests: `staffportal` 30 (new: transition helper — direction set/cleared, update applied, reduced-motion / no-API / throwing-API fallbacks; motion CSS present, no feature card, back button gold, shared name only on the chosen row; tagline logo + no separate text in the top bar; no top-right link), `devshell` 15. Also verified in headless Chrome against the production build: Continue → Staff sign-in → Back → Change property ran with real transitions and no console errors, and a mid-transition frame showed the old card fading out, the new cards sliding in and the property logo mid-glide. Full regression green; build compiles.
 
 ### 2026-11-12 — Sprint 27.2: login polish
 
