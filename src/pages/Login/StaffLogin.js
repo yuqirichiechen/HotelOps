@@ -2,14 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth, setStaffEntry } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
-import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
-import LoginModeSwitch from './LoginModeSwitch';
-import { TransitionLink } from './TransitionLink';
 import { useT } from '../../i18n';
 import LangCycleHeadline from '../../components/shared/LangCycleHeadline';
-import './Login.css';
-import '../../components/shared/HotelOpsLogo.css';
-import '../../components/shared/RoleIcon.css';
+import AuthFrame, { PropertyBar, usePTClock } from './InntrioFrame';
+import Icon from './InntrioIcons';
 
 // Sprint 11.3: small media-query hook used twice below — once for
 // touch detection (governs whether to lock the numeric input against
@@ -71,64 +67,34 @@ const ROW_1 = ['q','w','e','r','t','y','u','i','o','p'];
 const ROW_2 = ['a','s','d','f','g','h','j','k','l'];
 const ROW_3 = ['z','x','c','v','b','n','m'];
 
-const KeypadNumbers = ({ onKey, onSwitch, hidden }) => (
-  <div className={`login-keypad ${hidden ? 'is-hidden' : ''}`} aria-hidden={hidden || undefined}>
+// Sprint 27.1: Inntrio keypad — 1-9, Clear, 0, ⌫ (the design's 3×4 pad). The ABC / 123 switch sits under it when usernames are allowed.
+const KeypadNumbers = ({ onKey }) => (
+  <div className="in-keypad-grid">
     {['1','2','3','4','5','6','7','8','9'].map(n => (
-      <button key={n} type="button" className="lk-btn" tabIndex={hidden ? -1 : 0} onClick={() => onKey(n)}>
-        {n}
-      </button>
+      <button key={n} type="button" className="in-key" aria-label={n} onClick={() => onKey(n)}>{n}</button>
     ))}
-    <button type="button" className="lk-btn lk-aux" tabIndex={hidden ? -1 : 0} onClick={() => onKey('clear')}>Clear</button>
-    <button type="button" className="lk-btn"        tabIndex={hidden ? -1 : 0} onClick={() => onKey('0')}>0</button>
-    <button type="button" className="lk-btn lk-aux" tabIndex={hidden ? -1 : 0} onClick={() => onKey('back')}>⌫</button>
-    {onSwitch && (
-      <button type="button" className="lk-btn lk-aux lk-kb-switch" tabIndex={hidden ? -1 : 0} onClick={onSwitch}>
-        ABC
-      </button>
-    )}
+    <button type="button" className="in-key special" onClick={() => onKey('clear')}>Clear</button>
+    <button type="button" className="in-key" aria-label="0" onClick={() => onKey('0')}>0</button>
+    <button type="button" className="in-key special" aria-label="Backspace" onClick={() => onKey('back')}><Icon name="backspace" size={24} /></button>
   </div>
 );
 
-const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch, hidden }) => {
-  const xform = (l) => caps ? l.toUpperCase() : l;
-  const tabIdx = hidden ? -1 : 0;
-  const renderLetter = (l) => (
-    <button key={l} type="button" className="lk-btn lk-letter" tabIndex={tabIdx} onClick={() => onKey(xform(l))}>
-      {xform(l)}
-    </button>
-  );
+const KeyboardLetters = ({ onKey, caps, onCaps }) => {
+  const xform = (l) => (caps ? l.toUpperCase() : l);
+  const letter = (l) => <button key={l} type="button" className="in-key" onClick={() => onKey(xform(l))}>{xform(l)}</button>;
   return (
-    <div className={`login-kb-letters ${hidden ? 'is-hidden' : ''}`} aria-hidden={hidden || undefined}>
-      <div className="login-kb-row login-kb-row-1">{ROW_1.map(renderLetter)}</div>
-      <div className="login-kb-row login-kb-row-2">{ROW_2.map(renderLetter)}</div>
-      <div className="login-kb-row login-kb-row-3">
-        <button
-          type="button"
-          className={`lk-btn lk-aux lk-mod ${caps ? 'is-active' : ''}`}
-          tabIndex={tabIdx}
-          onClick={onCaps}
-          aria-pressed={caps}
-          aria-label="Caps lock"
-        >⇧</button>
-        {ROW_3.map(renderLetter)}
-        <button
-          type="button"
-          className="lk-btn lk-aux lk-mod"
-          tabIndex={tabIdx}
-          onClick={() => onKey('back')}
-          aria-label="Backspace"
-        >⌫</button>
+    <div className="in-letters">
+      <div className="in-letters-row in-letters-row-1">{ROW_1.map(letter)}</div>
+      <div className="in-letters-row in-letters-row-2">{ROW_2.map(letter)}</div>
+      <div className="in-letters-row in-letters-row-3">
+        <button type="button" className={`in-key special${caps ? ' is-active' : ''}`} onClick={onCaps} aria-pressed={caps} aria-label="Caps lock">⇧</button>
+        {ROW_3.map(letter)}
+        <button type="button" className="in-key special" onClick={() => onKey('back')} aria-label="Backspace"><Icon name="backspace" size={20} /></button>
       </div>
-      {/* Bottom row: Clear, 123 switcher, then the three legal punctuation
-          chars usernames may contain (._- per the regex). Equal widths so
-          the row reads as a balanced control band rather than one floater
-          in the corner. */}
-      <div className="login-kb-row login-kb-row-4">
-        <button type="button" className="lk-btn lk-aux"            tabIndex={tabIdx} onClick={() => onKey('clear')}>Clear</button>
-        <button type="button" className="lk-btn lk-aux lk-kb-switch" tabIndex={tabIdx} onClick={onSwitch}>123</button>
-        <button type="button" className="lk-btn lk-sym"            tabIndex={tabIdx} onClick={() => onKey('_')}>_</button>
-        <button type="button" className="lk-btn lk-sym"            tabIndex={tabIdx} onClick={() => onKey('-')}>-</button>
-        <button type="button" className="lk-btn lk-sym"            tabIndex={tabIdx} onClick={() => onKey('.')}>.</button>
+      {/* Clear + the three legal punctuation chars usernames may contain (._- per the regex) */}
+      <div className="in-letters-row in-letters-row-4">
+        <button type="button" className="in-key special" onClick={() => onKey('clear')}>Clear</button>
+        {['_', '-', '.'].map(c => <button key={c} type="button" className="in-key" onClick={() => onKey(c)}>{c}</button>)}
       </div>
     </div>
   );
@@ -136,7 +102,7 @@ const KeyboardLetters = ({ onKey, caps, onCaps, onSwitch, hidden }) => {
 
 // Sprint 24.1: this numpad screen is the CLOCK IN door only (kiosk: clock in / out on a pad, then sign out). Staff who want their
 // timesheet / calendar / settings (and the front desk's forecast + housekeeping) use "Staff login" — the PC form, StaffPortalLogin.
-const StaffLogin = ({ onSwitchMode }) => {
+const StaffLogin = ({ onBack, onChangeProperty }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -171,10 +137,6 @@ const StaffLogin = ({ onSwitchMode }) => {
   // numeric-only on-screen keypad (relying on the system keyboard for
   // the username input).
   const [hideAbc,        setHideAbc]        = useState(false);
-  // Sprint 9.1.3: layout sizing strategy — 'hardcode' (breakpoint steps,
-  // default) or 'fluid' (clamp()-based continuous scaling). Admin
-  // configures via Settings. Class on .login-page drives CSS selection.
-  const [layoutMode,     setLayoutMode]     = useState('hardcode');
   // Sprint 11.3: touch-only restrictions on the numeric input.
   // `(pointer: coarse) and (hover: none)` is true on phones/tablets
   // and *false* on touch-screen laptops (those still have a mouse,
@@ -183,12 +145,6 @@ const StaffLogin = ({ onSwitchMode }) => {
   // mouse clicks if they prefer it.
   const isTouchDevice = useMediaQuery('(pointer: coarse) and (hover: none)');
   const lockNumeric = isTouchDevice && kbMode === 'numbers';
-  // Sprint 11.3: 1024px is the same breakpoint the CSS uses for the
-  // two-column shape. We render the keypad inside the form on mobile
-  // (between the error and the Sign-in button — kept close to the
-  // identifier input where the user is looking), and in a sibling
-  // right-hand column on desktop.
-  const isDesktopLayout = useMediaQuery('(min-width: 1024px)');
 
   useEffect(() => {
     fetch('/api/public-config')
@@ -198,19 +154,6 @@ const StaffLogin = ({ onSwitchMode }) => {
           setHideAbc(!!data.config?.hide_abc_keyboard);
           const list = data.config?.enabled_login_methods;
           if (Array.isArray(list) && list.length > 0) setEnabledMethods(new Set(list));
-          if (data.config?.staff_login_layout === 'fluid' || data.config?.staff_login_layout === 'hardcode') {
-            setLayoutMode(data.config.staff_login_layout);
-          }
-          // Sprint 9.2: apply the dev-chosen tenant-logo dark-mode strategy.
-          // 'card' (default) — CSS handles it via the .login-tenant-logo-wrap
-          // white background. 'invert' — set data attr so the invert filter
-          // rule kicks in. 'force-light' — pin the page's theme to light
-          // so the tenant logo never has to deal with dark mode at all.
-          const strat = data.config?.tenant_logo_dark_strategy;
-          if (strat === 'invert' || strat === 'force-light' || strat === 'card') {
-            document.documentElement.dataset.tenantLogoStrategy = strat;
-            if (strat === 'force-light') document.documentElement.dataset.theme = 'light';
-          }
         }
       })
       .catch(() => { /* fall through to defaults */ });
@@ -323,126 +266,53 @@ const StaffLogin = ({ onSwitchMode }) => {
   // Sprint 9: only show letters if username login is enabled. If it isn't,
   // there's no value letters can express — drop ABC entirely.
   const showLetters = lettersAvailable && activeField === 'id' && kbMode === 'letters';
-
-  // Sprint 11.3: keypad markup factored out so we can render it in
-  // either the in-form mobile slot or the right-column desktop slot
-  // without duplicating the prop wiring. The keypad's `onKey`
-  // mutates the shared `identifier` / `pin` state, so it works the
-  // same wherever it sits in the DOM.
-  const renderKeypads = () => (
-    <div className={`login-kb-area ${!lettersAvailable ? 'is-numbers-only' : ''}`}>
-      <KeypadNumbers
-        onKey={onKey}
-        onSwitch={lettersAvailable && activeField === 'id' ? () => setKbMode('letters') : null}
-        hidden={showLetters}
-      />
-      {lettersAvailable && (
-        <KeyboardLetters
-          onKey={onKey}
-          caps={caps}
-          onCaps={() => setCaps(c => !c)}
-          onSwitch={() => setKbMode('numbers')}
-          hidden={!showLetters}
-        />
-      )}
-    </div>
-  );
+  const now = usePTClock();
 
   return (
-    <div className={`login-page login-layout-${layoutMode}`}>
-      {/* Sprint 11.3: explicit two-column shape on desktop —
-          `.login-card-left` holds the brand + headline + form,
-          `.login-card-right` holds the keypad. Mobile (<1024px) the
-          two columns stack naturally. The keypad lives outside the
-          <form> so the form's submit semantics aren't affected by
-          the column wrappers; `onKey` is just a closure that mutates
-          shared state — works the same wherever the keypad sits. */}
-      <div className="login-card login-card-staff">
-        <div className="login-card-left">
-          {/* Sprint 9.2.x: tenant logo as banner-style brand. The
-              `viewTransitionName` on the img matches the picker
-              thumbnail so the picker→login morph still works. */}
-          <div className="login-tenant-brand">
-            {tenant.logoUrl ? (
-              <span className="login-tenant-logo-wrap">
-                <img
-                  src={tenant.logoUrl}
-                  alt={tenant.name}
-                  className="login-tenant-logo"
-                  style={{ viewTransitionName: `tenant-brand-${tenant.slug}` }}
-                />
-              </span>
-            ) : (
-              <span className="login-tenant-name">{tenant.name}</span>
-            )}
+    <AuthFrame step="clock" onAccessOptions={onBack}>
+      <PropertyBar tenant={tenant} onChange={onChangeProperty} />
+      <h1 className="in-h1">Clock in / out</h1>
+      <p className="in-subtitle">A fast, familiar time clock for your shift.</p>
+      <div className="in-gap-md" />
+      {/* the whole card is the form (Enter submits); every keypad key is type="button" */}
+      <form className="in-surface in-clock-card" onSubmit={submit}>
+        <div className="in-clock-detail">
+          {/* Sprint 16.6: the headline fade-cycles through the supported languages; tap to lock. */}
+          <LangCycleHeadline titleKey="login.title" subtitleKey="login.subtitle" />
+          {!t('login.subtitle') && <p className="in-subtitle">{subSentence}</p>}
+
+          <label className="in-field-label" htmlFor="identifier">{fieldLabel}</label>
+          {/* Sprint 11.1.3 + 11.3: on a touch device the input is locked (readOnly + inputMode none) so the OS keyboard / autofill bar stays away —
+              the on-screen keypad is the only input path. With a physical keyboard `lockNumeric` is false and typing works. */}
+          <div className={`in-field ${activeField === 'id' ? 'is-active' : ''}`}>
+            <Icon name="user" size={22} />
+            <input
+              id="identifier"
+                            type="text"
+              autoComplete={lockNumeric ? 'off' : 'username'}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={16}
+              value={identifier}
+              onChange={onIdentifierChange}
+              onFocus={() => setActive('id')}
+              placeholder={fieldPlaceholder}
+              aria-label={fieldLabel}
+              autoFocus
+              readOnly={lockNumeric}
+              inputMode={lockNumeric ? 'none' : 'text'}
+            />
           </div>
 
-          {/* Sprint 16.6: the headline itself fade-cycles
-              through the three supported languages. Replaces
-              the Sprint-16.5 LanguageSwap pill — no separate
-              widget, no "Tap your language" hint. Tap the
-              headline to lock. */}
-          <div className="login-headline-row">
-            <div className="login-headline-text">
-              <LangCycleHeadline
-                titleKey="login.title"
-                subtitleKey="login.subtitle"
-              />
-              {/* Fallback: the dynamic English subSentence is
-                  preserved as a small caption below in case the
-                  i18n keys ever resolve to empty. Hidden by
-                  default to keep the focal headline clean. */}
-              {!t('login.subtitle') && <p className="login-sub">{subSentence}</p>}
-            </div>
-            <div className="login-headline-actions">
-              <TransitionLink
-                to="/"
-                className="login-topbar-brand"
-                aria-label="HotelOps — back to property selection"
-                title="Back to property selection"
-              >
-                <HotelOpsLogo size="lg" />
-              </TransitionLink>
-              {/* Sprint 11.2.1: in-page mode switch — flips the TenantLogin parent's `mode` state; URL stays put.
-                  Sprint 24: shows the other two modes (Manager + the other staff door). */}
-              <LoginModeSwitch current="clockin" onSwitch={onSwitchMode} />
-            </div>
-          </div>
-
-          <form onSubmit={submit} className="login-form">
-            {/* Sprint 11.1.3 + 11.3: on a touch device, lock the
-                numeric input (readOnly + inputMode="none" +
-                autoComplete="off") to suppress the OS keyboard /
-                autofill bar — the on-screen keypad is the only
-                input path. On a desktop with a physical keyboard,
-                `lockNumeric` is false so the user can just type. */}
-            <div className={`login-field ${activeField === 'id' ? 'is-active' : ''}`}>
-              <input
-                id="identifier"
-                className={`is-keypad ${/^[0-9]+$/.test(identifier) ? 'is-numeric' : ''}`}
-                type="text"
-                autoComplete={lockNumeric ? 'off' : 'username'}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                maxLength={16}
-                value={identifier}
-                onChange={onIdentifierChange}
-                onFocus={() => setActive('id')}
-                placeholder={fieldPlaceholder}
-                aria-label={fieldLabel}
-                autoFocus
-                readOnly={lockNumeric}
-                inputMode={lockNumeric ? 'none' : 'text'}
-              />
-            </div>
-
-            {needsPin && (
-              <div className={`login-field ${activeField === 'pin' ? 'is-active' : ''}`}>
+          {needsPin && (
+            <>
+              <label className="in-field-label" htmlFor="pin">PIN</label>
+              <div className={`in-field ${activeField === 'pin' ? 'is-active' : ''}`}>
+                <Icon name="lock" size={22} />
                 <input
                   id="pin"
-                  className="is-keypad is-numeric"
-                  type="password"
+                                    type="password"
                   inputMode={isTouchDevice ? 'none' : 'numeric'}
                   maxLength={4}
                   value={pin}
@@ -454,28 +324,31 @@ const StaffLogin = ({ onSwitchMode }) => {
                   autoComplete="off"
                 />
               </div>
-            )}
+            </>
+          )}
 
-            {err && <div className="login-error">{err}</div>}
+          {err && <div className="in-error" role="alert">{err}</div>}
 
-            {/* Mobile: keypad sits between error and submit (close to
-                the identifier input the user is editing). On desktop
-                this slot stays empty — see `.login-card-right` below. */}
-            {!isDesktopLayout && renderKeypads()}
-
-            <button type="submit" className="login-submit" disabled={loading || !canSubmit}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+          <div className="in-clock-meta">
+            <Icon name="clock" size={16} /> <span>{now}</span><span aria-hidden="true">•</span><Icon name="hotel" size={16} /> {tenant.name}
+          </div>
         </div>
 
-        {isDesktopLayout && (
-          <div className="login-card-right">
-            {renderKeypads()}
-          </div>
-        )}
-      </div>
-    </div>
+        <div className="in-keypad-panel">
+          {showLetters ? <KeyboardLetters onKey={onKey} caps={caps} onCaps={() => setCaps(c => !c)} /> : <KeypadNumbers onKey={onKey} />}
+          {lettersAvailable && activeField === 'id' && (
+            <button type="button" className="in-key special in-kb-switch" onClick={() => setKbMode(showLetters ? 'numbers' : 'letters')}>{showLetters ? '123' : 'ABC'}</button>
+          )}
+        </div>
+
+        <div className="in-action-row">
+          <button type="submit" className="in-primary" disabled={loading || !canSubmit}>
+            {loading ? 'Signing in…' : <>Continue <Icon name="arrow" size={19} /></>}
+          </button>
+        </div>
+      </form>
+      <button className="in-back" type="button" onClick={onBack}><Icon name="left" size={16} /> Back to access options</button>
+    </AuthFrame>
   );
 };
 

@@ -201,7 +201,8 @@ const Home = () => {
     // `/login/staff` pre-launch; now it's `/`.)
     // Sprint 11.2.1: combined login at `/:slug/login` (no role suffix).
     const slug = localStorage.getItem('hotelops-tenant-slug');
-    const loginPath = slug ? `/${slug}/login` : '/';
+    // Sprint 27.1: the clock-in door returns to its keypad (the access chooser stays one tap away via "Access options")
+    const loginPath = slug ? `/${slug}/login?mode=clockin` : '/';
     await logout();
     // Sprint 8.6.2: animate the page swap. The login page's `.login-card`
     // already has its own slide-in animation; this gives the *outer* page

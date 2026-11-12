@@ -1,4 +1,10 @@
-# Claude Instructions — HotelOps (index)
+# Claude Instructions — HotelOps / Inntrio (index)
+
+> **Naming.** The project is **HotelOps internally** (repo, code, `hotelops-*` storage keys, these
+> docs, sprint logs keep that name) and **Inntrio** as the product / SaaS brand shown to users
+> (pronounced "in-tree-oh"; the *io* is a double meaning: input/output in computing and in/out for
+> hotel operations — clock in/out). Logo files: `logo/inntrio/` (4 SVGs). From Sprint 27 on, new
+> user-facing screens say Inntrio; do not rename internal identifiers.
 
 > **Read all files below every iteration before doing any work.** The
 > running log was split for size; nothing is duplicated — each part
@@ -37,6 +43,10 @@
    PC form → `/:tenant/staff` for all staff; Front Desk department adds forecast tiles + Housekeeping via
    `/api/frontdesk/*`)**.
 
+7. **[claude-instructions/part7.md](./claude-instructions/part7.md)** —
+   iteration log for **Sprint 27+** (the **Inntrio** rebrand: new login workflow — property → access
+   method → sign-in / clock). 27.1 = the Inntrio login. Part 6 stays the home of Sprints 21–26.3.
+
 ## Why split
 
 Each file caps around 2,000–3,000 lines before becoming unwieldy to
@@ -47,8 +57,8 @@ valid.
 
 ## When to write where
 
-- **New sprint entry**: append to the most recent part file (`part6.md`
-  as of Sprint 21). Never touch older parts.
+- **New sprint entry**: append to the most recent part file (`part7.md`
+  as of Sprint 27). Never touch older parts.
 - **Updating an old entry / fixing a typo**: edit the original part in
   place.
 - **Architectural decision that changes the project shape** (auth

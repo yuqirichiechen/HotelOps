@@ -1,109 +1,56 @@
-import React, { useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { KNOWN_TENANTS } from '../../config/tenant';
-import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
-import { TransitionLink } from './TransitionLink';
-import './Login.css';
-import '../../components/shared/HotelOpsLogo.css';
+import AuthFrame from './InntrioFrame';
+import Icon from './InntrioIcons';
 
-// Sprint 9.2 / 9.2.1: TenantPicker — full-page property selector.
-// HotelOps platform logo at the top, one row per property in
-// KNOWN_TENANTS with the tenant's logo + name.
-//
-// 9.2.1 dropped the Staff↔Manager toggle from this page: which login
-// roles a property supports is a per-tenant decision (some properties
-// might not even have managers signing in here), so we don't surface
-// the toggle before the user has picked a property. The role choice
-// lives on the post-pick login page instead, where the tenant has
-// been selected and any tenant-specific role visibility can apply.
-//
-// Dev sign-in remains as the only secondary link, styled like the
-// post-pick "Manager sign-in" / "Staff sign-in" link so the visual
-// language stays consistent across the login family.
-
-// Sprint 11.2.1: `kind` is no longer used — the post-pick login is
-// a single combined page at `/:tenant/login`. Kept the prop slot in
-// case future variants want to swap copy. Default subtitle remains
-// kiosk-flavored ("clock in") since that's the dominant path.
+// Sprint 27.1: step 1 of the Inntrio login — "Select a property". Same destinations as before (only the look changed):
+//   signed-out visitors:  Continue → /:slug/login   (step 2, the access chooser, lives there)
+//   `kind="dev"` (after dev sign-in, the /dev route): Continue → /:slug/admin, remembering the slug
+// With one property it is preselected; the search box filters by name or place.
 const TenantPicker = ({ kind }) => {
-  const tenants = Object.values(KNOWN_TENANTS);
-  const isDevPick = kind === 'dev';          // Sprint 22.6: after dev sign-in — choose the property, then open its admin shell with the Dev tools
+  const nav = useNavigate();
+  const isDevPick = kind === 'dev';
+  const tenants = useMemo(() => Object.values(KNOWN_TENANTS), []);
+  const [q, setQ] = useState('');
+  const [chosen, setChosen] = useState(tenants.length === 1 ? tenants[0].slug : null);
+  const shown = tenants.filter(t => `${t.name} ${t.location || ''}`.toLowerCase().includes(q.trim().toLowerCase()));
 
-  // Apply the dev-chosen tenant-logo dark-mode strategy so the picker
-  // row thumbnails honor it (and so the strategy is set before the
-  // user lands on the post-pick login). 'card' is the CSS default and
-  // needs no JS work.
-  useEffect(() => {
-    fetch('/api/public-config')
-      .then(r => r.json())
-      .then(data => {
-        const strat = data?.config?.tenant_logo_dark_strategy;
-        if (strat === 'invert' || strat === 'force-light' || strat === 'card') {
-          document.documentElement.dataset.tenantLogoStrategy = strat;
-          if (strat === 'force-light') document.documentElement.dataset.theme = 'light';
-        }
-      })
-      .catch(() => { /* default to 'card' (CSS) */ });
-  }, []);
+  const go = () => {
+    const t = KNOWN_TENANTS[chosen];
+    if (!t) return;
+    if (isDevPick) { try { localStorage.setItem('hotelops-tenant-slug', t.slug); } catch { /* ignore */ } nav(`/${t.slug}/admin`); return; }
+    nav(`/${t.slug}/login`);
+  };
 
   return (
-    <div className="login-page login-layout-hardcode">
-      {/* Sprint 11.3: two-column shape on desktop — brand intro
-          (logo + title + sub) on the left, property chooser
-          (list + dev sign-in) on the right. With a single tenant
-          the right column shows one tall row; with more tenants
-          the visual still reads cleanly. Mobile (<1024px): the
-          two wrappers stack naturally. */}
-      <div className="login-card tenant-picker-card">
-        <div className="tenant-picker-intro">
-          <div className="tenant-picker-header">
-            <HotelOpsLogo size="xl" />
-          </div>
-          <h1 className="login-title">{isDevPick ? 'Select a property' : 'Select your property'}</h1>
-          <p className="login-sub">
-            {isDevPick ? 'Choose which property to open. You will see its manager layout with the Dev tools added.' : <>Choose where you work to {kind === 'admin' ? 'sign in as a manager' : 'clock in'}.</>}
-          </p>
+    <AuthFrame step="property" hero>
+      <h1 className="in-h1">Select a property</h1>
+      <p className="in-subtitle">{isDevPick ? 'Choose which property to open. You will see its manager layout with the Dev tools added.' : 'Choose where you work to continue.'}</p>
+      <div className="in-gap-lg" />
+      <section className="in-surface in-select-card">
+        <div className="in-card-head">
+          <div className="in-label-small">Available properties</div>
+          <span className="in-count-pill">{tenants.length} {tenants.length === 1 ? 'property' : 'properties'}</span>
         </div>
-
-        <div className="tenant-picker-chooser">
-          <ul className="tenant-picker-list">
-            {tenants.map(t => (
-              <li key={t.slug}>
-                <TransitionLink to={isDevPick ? `/${t.slug}/admin` : `/${t.slug}/login`} className="tenant-picker-row" onClick={isDevPick ? () => { try { localStorage.setItem('hotelops-tenant-slug', t.slug); } catch { /* ignore */ } } : undefined}>
-                  {t.logoUrl ? (
-                    <span className="tenant-picker-logo-wrap">
-                      {/* Sprint 9.2.2: per-tenant view-transition-name so
-                          the row's thumbnail morphs directly into the
-                          post-pick page's big tenant banner. Other rows'
-                          thumbs (different names) just fade out. */}
-                      <img
-                        src={t.logoUrl}
-                        alt=""
-                        className="tenant-picker-logo"
-                        style={{ viewTransitionName: `tenant-brand-${t.slug}` }}
-                      />
-                    </span>
-                  ) : (
-                    <span className="tenant-picker-logo-wrap tenant-picker-logo-empty">
-                      {t.name.charAt(0)}
-                    </span>
-                  )}
-                  <span className="tenant-picker-name">{t.name}</span>
-                  <span className="tenant-picker-arrow" aria-hidden>›</span>
-                </TransitionLink>
-              </li>
-            ))}
-          </ul>
-
-          {/* Sprint 9.2.1: only Dev sign-in here. Manager/Staff toggle
-              moves to the post-pick login pages where it belongs. */}
-          {!isDevPick && (
-            <div className="login-switch">
-              <TransitionLink to="/login/dev">Dev sign-in →</TransitionLink>
-            </div>
-          )}
+        <div className="in-search-wrap">
+          <Icon name="search" size={19} />
+          <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search properties..." aria-label="Search properties" />
         </div>
-      </div>
-    </div>
+        {shown.map(t => (
+          <button key={t.slug} type="button" className={`in-property-row${chosen === t.slug ? ' selected' : ''}`} aria-pressed={chosen === t.slug} onClick={() => setChosen(t.slug)}>
+            <span className="in-tile-ico"><Icon name="hotel" size={23} /></span>
+            <span><span className="in-property-title">{t.name}</span><span className="in-property-sub">{t.location || ''}</span></span>
+            <span className="in-spacer" />
+            {t.status && <span className="in-small-state">{t.status}</span>}
+            <span className="in-selected-circle">{chosen === t.slug && <Icon name="check" size={16} />}</span>
+          </button>
+        ))}
+        {shown.length === 0 && <p className="in-none">No matching properties.</p>}
+        <button type="button" className="in-primary in-property-go" disabled={!chosen || !shown.some(t => t.slug === chosen)} onClick={go}>Continue <Icon name="arrow" size={19} /></button>
+      </section>
+      <div className="in-below-note">One workspace. Every department.</div>
+    </AuthFrame>
   );
 };
 

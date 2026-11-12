@@ -19,6 +19,8 @@ export const KNOWN_TENANTS = {
   snoqualmieinn: {
     slug:         'snoqualmieinn',
     name:         'Snoqualmie Inn',
+    location:     'Snoqualmie, Washington',   // Sprint 27.1: shown on the property rows of the Inntrio login
+    status:       'Active',                   // 'Active' | 'Setup' (pill on the property row)
     logoUrl:      '/snoqualmieinn.png',
     darkLogoUrl:  null,  // no dark variant; fall back to the dev-chosen strategy
   },

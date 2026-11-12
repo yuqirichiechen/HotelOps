@@ -73,54 +73,86 @@ const stdResponses = () => ({
 
   // ── 2. the login screen ──
   const TenantLogin = load(ROOT + '/src/pages/Login/TenantLogin.js', false).default;
-  const loginPage = () => R('/snoqualmieinn/login', [route('/:tenant/login', React.createElement(TenantLogin)), route('/:tenant/staff', txt('PORTAL SHELL')), route('/:tenant/clockin', txt('CLOCKIN SHELL')), route('/set-pin', txt('SET PIN'))]);
-  const sw = (h) => [...h.el.querySelectorAll('.login-headline-actions .login-role-switch')].map(b => b.getAttribute('data-mode'));
-  const signIn = async (h) => { await h.type(h.el.querySelector('#identifier'), '4155550123'); await h.click(h.el.querySelector('.login-submit')); await act(async () => { await sleep(60); }); };
-  const typeStaff = async (h, id, pin) => { await h.type(h.el.querySelector('#staff-identifier'), id); if (pin) await h.type(h.el.querySelector('#staff-pin'), pin); await h.click(h.el.querySelector('.login-submit')); await act(async () => { await sleep(60); }); };
-  await t('LOGIN SCREEN: opens on Clock in (numpad); the buttons are HotelOps, Manager, then Staff login at the far right — ICON ONLY, no names on screen', async () => {
+  const loginPage = (mode) => R('/snoqualmieinn/login' + (mode ? '?mode=' + mode : ''), [route('/:tenant/login', React.createElement(TenantLogin)), route('/:tenant/staff', txt('PORTAL SHELL')), route('/:tenant/clockin', txt('CLOCKIN SHELL')), route('/set-pin', txt('SET PIN'))]);
+  const pick = async (h, mode) => { await h.click(h.el.querySelector(`.in-choice[data-mode="${mode}"]`)); };   // step 2 → the chosen screen
+  const signIn = async (h) => { await h.type(h.el.querySelector('#identifier'), '4155550123'); await h.click(h.el.querySelector('.in-primary')); await act(async () => { await sleep(60); }); };
+  const typeStaff = async (h, id, pin) => { await h.type(h.el.querySelector('#staff-identifier'), id); if (pin) await h.type(h.el.querySelector('#staff-pin'), pin); await h.click(h.el.querySelector('.in-primary')); await act(async () => { await sleep(60); }); };
+  await t('LOGIN FLOW (27.1): the page opens on step 2, "How would you like to continue?" — four access choices (Clock in / out first and highlighted, Staff, Manager, Developer) under the chosen property; nothing is typed yet', async () => {
     localStorage.clear(); meUser = null; const h = await mount(loginPage(), 120);
-    assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad'), 'numpad screen'); assert.deepStrictEqual(sw(h), ['admin', 'staff'], 'Manager first, Staff login to its right');
-    const row = [...h.el.querySelector('.login-headline-actions').children]; assert(row[0].classList.contains('login-topbar-brand'), 'HotelOps mark first'); const last = row[row.length - 1]; assert.strictEqual(last.getAttribute('data-mode'), 'staff');
-    assert.strictEqual(last.getAttribute('aria-label'), 'Staff login', 'the name is only the tooltip'); assert.strictEqual(last.textContent.trim(), '', 'no visible text on the button'); assert(last.querySelector('svg'), 'uses the current badge icon');
-    assert(!h.el.querySelector('.login-entry-tag, .login-role-label'), 'no name tags anywhere'); await h.unmount();
+    assert(/How would you like to continue\?/.test(h.el.textContent)); assert(/Snoqualmie Inn/.test(h.el.querySelector('.in-selected-bar').textContent) && /Snoqualmie, Washington/.test(h.el.querySelector('.in-selected-bar').textContent));
+    const ch = [...h.el.querySelectorAll('.in-choice')]; assert.deepStrictEqual(ch.map(c => c.getAttribute('data-mode')), ['clockin', 'staff', 'admin', 'dev']); assert.deepStrictEqual(ch.map(c => c.querySelector('.in-choice-title').textContent), ['Clock in / out', 'Staff sign-in', 'Manager sign-in', 'Developer sign-in']);
+    assert(ch[0].classList.contains('in-choice-feature') && !ch[1].classList.contains('in-choice-feature')); assert(!h.el.querySelector('input'), 'no form on this step'); assert(h.el.querySelector('.in-step-bubble.active') && /Sign-in \/ clock/.test(h.el.textContent), 'three-step line');
+    assert(h.el.querySelector('img[src="/inntrio/Inntrio-logo-dark.svg"]'), 'Inntrio logo'); assert(!/HotelOps/.test(h.el.textContent) && !h.el.querySelector('.hotelops-logo'), 'no HotelOps brand on the login'); await h.unmount();
   });
-  await t('STAFF LOGIN is the PC form, same design as the manager card — typed identifier + PIN, NO numpad; every mode button is the same square so the logo stays put', async () => {
-    localStorage.clear(); const h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]'));
-    assert(h.el.querySelector('#staff-identifier') && h.el.querySelector('#staff-pin'), 'two typed fields'); assert(!h.el.querySelector('.login-keypad, .lk-btn, #identifier'), 'no numpad'); assert(!h.el.querySelector('.login-card-staff'), 'single-column card like the manager sign-in');
-    assert.strictEqual(h.el.querySelector('.login-title').textContent, 'Staff sign-in'); assert.deepStrictEqual(sw(h), ['clockin', 'admin']); assert(/phone number or employee ID/.test(h.el.querySelector('label[for="staff-identifier"]').textContent), 'label follows the enabled login methods');
-    assert(h.el.querySelector('.login-submit').disabled, 'needs an identifier'); assert(![...h.el.querySelectorAll('.login-role-switch')].some(b => b.textContent.trim()), 'icon-only buttons');
-    assert.strictEqual(h.el.querySelectorAll('.login-headline-actions > *').length, 3, 'always HotelOps + two buttons → same widths on every screen'); await h.unmount();
+  await t('CLOCK IN / OUT is the numpad (same keypad logic): one gold Continue button, no Clock out button; the keys fill the field; ABC appears (and switches to letters) only when usernames are allowed', async () => {
+    localStorage.clear(); const h = await mount(loginPage(), 120); await pick(h, 'clockin');
+    assert(h.el.querySelector('#identifier') && h.el.querySelector('.in-keypad-grid'), 'numpad screen'); assert(/Clock in \/ out/.test(h.el.querySelector('.in-h1').textContent));
+    assert.deepStrictEqual([...h.el.querySelectorAll('.in-action-row button')].map(b => b.textContent.trim()), ['Continue'], 'one button only'); assert(!/Clock out/.test(h.el.querySelector('.in-clock-card').textContent));
+    const keys = [...h.el.querySelectorAll('.in-keypad-grid .in-key')]; assert.strictEqual(keys.length, 12, '1-9, Clear, 0, backspace'); assert(h.el.querySelector('.in-primary').disabled, 'needs a valid identifier');
+    for (const d of ['4', '1', '5', '5']) await h.click(keys.find(k => k.getAttribute('aria-label') === d)); assert.strictEqual(h.el.querySelector('#identifier').value, '4155'); await h.click(keys.find(k => k.textContent === 'Clear')); assert.strictEqual(h.el.querySelector('#identifier').value, '');
+    assert(!h.el.querySelector('.in-kb-switch'), 'this property only allows phone / employee ID (and hides ABC): no letters switch'); await h.unmount();
+    const orig = global.fetch; global.fetch = async (url, init) => (/\/api\/public-config$/.test(url) ? { ok: true, json: async () => ({ success: true, config: { enabled_login_methods: ['phone', 'username'] } }) } : orig(url, init));
+    const h2 = await mount(loginPage('clockin'), 120); await h2.click(h2.el.querySelector('.in-kb-switch')); assert(h2.el.querySelector('.in-letters') && !h2.el.querySelector('.in-keypad-grid'), 'usernames allowed → ABC opens the letters keyboard');
+    await h2.click([...h2.el.querySelectorAll('.in-letters .in-key')].find(k => k.textContent === 'a')); assert.strictEqual(h2.el.querySelector('#identifier').value, 'a'); await h2.click(h2.el.querySelector('.in-kb-switch')); assert(h2.el.querySelector('.in-keypad-grid')); await h2.unmount(); global.fetch = orig;
   });
-  await t('switching modes: all three screens, any order; Manager is the username/password form', async () => {
-    localStorage.clear(); const h = await mount(loginPage(), 120);
-    await h.click(h.el.querySelector('[data-mode="staff"]')); assert(h.el.querySelector('#staff-identifier'));
-    await h.click(h.el.querySelector('[data-mode="admin"]')); assert(h.el.querySelector('#username') && h.el.querySelector('#password') && !h.el.querySelector('#identifier')); assert.deepStrictEqual(sw(h), ['clockin', 'staff']);
-    await h.click(h.el.querySelector('[data-mode="staff"]')); assert(h.el.querySelector('#staff-identifier')); await h.click(h.el.querySelector('[data-mode="clockin"]')); assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad')); await h.unmount();
+  await t('STAFF SIGN-IN is the PC form — typed identifier + optional PIN (with a show/hide eye), NO numpad; the label follows the enabled login methods', async () => {
+    localStorage.clear(); const h = await mount(loginPage(), 120); await pick(h, 'staff');
+    assert(h.el.querySelector('#staff-identifier') && h.el.querySelector('#staff-pin'), 'two typed fields'); assert(!h.el.querySelector('.in-keypad-grid, .in-key, #identifier'), 'no numpad');
+    assert.strictEqual(h.el.querySelector('.in-h1').textContent, 'Staff sign-in'); assert(/phone number or employee ID/.test(h.el.querySelector('label[for="staff-identifier"]').textContent), 'label follows the enabled login methods');
+    assert(h.el.querySelector('.in-primary').disabled, 'needs an identifier'); const pin = h.el.querySelector('#staff-pin'); assert.strictEqual(pin.type, 'password'); await h.click(h.el.querySelector('.in-input-eye')); assert.strictEqual(h.el.querySelector('#staff-pin').type, 'text', 'eye shows the PIN'); await h.unmount();
   });
+  await t('every screen reaches every other: any choice, "Back to access options" and the top-bar "Access options" go to step 2; Manager is username + password; Developer is its own form; "Change property" goes to the property picker', async () => {
+    localStorage.clear(); const h = await mount(R('/snoqualmieinn/login', [route('/:tenant/login', React.createElement(TenantLogin)), route('/', txt('PROPERTY PICKER'))]), 120);
+    await pick(h, 'staff'); assert(h.el.querySelector('#staff-identifier')); await h.click(h.el.querySelector('.in-back')); assert(h.el.querySelector('.in-choice'), 'Back to access options');
+    await pick(h, 'admin'); assert(h.el.querySelector('#username') && h.el.querySelector('#password') && !h.el.querySelector('#identifier')); assert.strictEqual(h.el.querySelector('.in-h1').textContent, 'Manager sign-in');
+    await h.click([...h.el.querySelectorAll('.in-linkish')].find(b => /Access options/.test(b.textContent))); assert(h.el.querySelector('.in-choice'), 'top bar Access options');
+    await pick(h, 'dev'); assert(h.el.querySelector('#dev-username') && h.el.querySelector('#dev-password')); assert.strictEqual(h.el.querySelector('.in-h1').textContent, 'Developer sign-in');
+    await h.click(h.el.querySelector('.in-back')); await pick(h, 'clockin'); assert(h.el.querySelector('#identifier') && h.el.querySelector('.in-keypad-grid'));
+    await h.click(h.el.querySelector('.in-change')); assert(/PROPERTY PICKER/.test(h.el.textContent), 'Change property → /'); await h.unmount();
+  });
+  await t('?mode= opens a screen directly (the kiosk comes back to the keypad); an unknown mode falls back to the chooser; the choice is NOT remembered', async () => {
+    localStorage.clear(); let h = await mount(loginPage('clockin'), 120); assert(h.el.querySelector('#identifier') && h.el.querySelector('.in-keypad-grid')); await h.unmount();
+    h = await mount(loginPage('dev'), 120); assert(h.el.querySelector('#dev-username')); await h.unmount(); h = await mount(loginPage('nonsense'), 120); assert(h.el.querySelector('.in-choice')); await h.unmount();
+    h = await mount(loginPage('staff'), 120); await h.unmount(); h = await mount(loginPage(), 120); assert(h.el.querySelector('.in-choice') && !h.el.querySelector('input'), 'no memory of the last screen'); await h.unmount();
+  });
+  await t('the clock-in door (idle sign-out in ClockInShell and the auto sign-out in Home) returns to /<property>/login?mode=clockin — the keypad — while Settings / manager sign-outs return to the chooser', () => {
+    for (const f of ['src/shells/ClockInShell.js', 'src/pages/Home/index.js']) assert(/login\?mode=clockin/.test(fs.readFileSync(ROOT + '/' + f, 'utf8')), f);
+    for (const f of ['src/pages/Settings/index.js', 'src/components/AdminPanel/AdminSettings.js']) assert(!/mode=clockin/.test(fs.readFileSync(ROOT + '/' + f, 'utf8')), f);
+  });
+
   await t('SAME CREDENTIALS, different door: Clock in (numpad) → /clockin, Staff login (typed) → /staff, one request each to the existing endpoint — and the page still opens on Clock in next time', async () => {
     const user = { user_id: 'u9', name: 'Fran', role: 'employee', department: 'Front Desk', pin_must_set: false }; staffLogin = { status: 200, body: { success: true, token: 'TOK', user } };
-    localStorage.clear(); realFetchLog.length = 0; let h = await mount(loginPage(), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'clockin'); await h.unmount();
-    localStorage.clear(); realFetchLog.length = 0; h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk', '1234'); assert(/PORTAL SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'staff');
+    localStorage.clear(); realFetchLog.length = 0; let h = await mount(loginPage('clockin'), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'clockin'); await h.unmount();
+    localStorage.clear(); realFetchLog.length = 0; h = await mount(loginPage(), 120); await pick(h, 'staff'); await typeStaff(h, 'fran.desk', '1234'); assert(/PORTAL SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'staff');
     const logins = realFetchLog.filter(([u]) => /auth\/staff\/login/.test(u)); assert.strictEqual(logins.length, 1, 'one request, the existing endpoint — no new credential path'); await h.unmount();
-    h = await mount(loginPage(), 120); assert(h.el.querySelector('#identifier') && h.el.querySelector('.login-keypad') && !h.el.querySelector('#staff-identifier'), 'the login page ALWAYS opens on Clock in (the numpad), even right after a Staff login'); await h.unmount();
+    h = await mount(loginPage(), 120); assert(h.el.querySelector('.in-choice') && !h.el.querySelector('#identifier') && !h.el.querySelector('#staff-identifier'), 'the login page ALWAYS opens on the access chooser, even right after a Staff login'); await h.unmount();
   });
   await t('Staff login sends exactly what was typed (username / phone / ID + PIN) and a PIN the person has is optional', async () => {
     let sent = null; const orig = global.fetch; global.fetch = async (url, init = {}) => { if (/auth\/staff\/login$/.test(url)) sent = JSON.parse(init.body); return orig(url, init); };
     staffLogin = { status: 200, body: { success: true, token: 'TOK', user: { user_id: 'u9', name: 'Fran', role: 'employee' } } }; localStorage.clear();
-    let h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk'); assert.deepStrictEqual(sent, { identifier: 'fran.desk' }, 'no PIN → none sent'); await h.unmount();
-    localStorage.clear(); h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, '4155550123', '4321'); assert.deepStrictEqual(sent, { identifier: '4155550123', pin: '4321' }); await h.unmount(); global.fetch = orig;
+    let h = await mount(loginPage(), 120); await pick(h, 'staff'); await typeStaff(h, 'fran.desk'); assert.deepStrictEqual(sent, { identifier: 'fran.desk' }, 'no PIN → none sent'); await h.unmount();
+    localStorage.clear(); h = await mount(loginPage(), 120); await pick(h, 'staff'); await typeStaff(h, '4155550123', '4321'); assert.deepStrictEqual(sent, { identifier: '4155550123', pin: '4321' }); await h.unmount(); global.fetch = orig;
+  });
+  await t('CLOCK IN pad: when the server asks for a PIN the PIN field appears (keypad then fills it), and the existing endpoint gets identifier + PIN; wrong person → the server message', async () => {
+    const orig = global.fetch; const sent = []; global.fetch = async (url, init = {}) => { if (/auth\/staff\/login$/.test(url)) sent.push(JSON.parse(init.body)); return orig(url, init); };
+    staffLogin = { status: 400, body: { success: false, message: 'PIN required', pin_required: true } }; localStorage.clear(); let h = await mount(loginPage('clockin'), 120);
+    await h.type(h.el.querySelector('#identifier'), '4155550123'); await h.click(h.el.querySelector('.in-primary')); await act(async () => { await sleep(60); });
+    assert(h.el.querySelector('#pin'), 'PIN field appears'); assert(h.el.querySelector('#pin').type === 'password'); const keys = [...h.el.querySelectorAll('.in-keypad-grid .in-key')];
+    for (const d of ['1', '2', '3', '4']) await h.click(keys.find(k => k.getAttribute('aria-label') === d)); assert.strictEqual(h.el.querySelector('#pin').value, '1234', 'the keypad fills the PIN once it is the active field');
+    staffLogin = { status: 200, body: { success: true, token: 'TOK', user: { user_id: 'u9', name: 'Fran', role: 'employee', pin_must_set: false } } }; await h.click(h.el.querySelector('.in-primary')); await act(async () => { await sleep(60); });
+    assert.deepStrictEqual(sent[sent.length - 1], { identifier: '4155550123', pin: '1234' }); assert(/CLOCKIN SHELL/.test(h.el.textContent)); await h.unmount(); global.fetch = orig;
   });
   await t('a person who needs a PIN is told so on the form; an unknown person gets the server message; neither leaves the screen', async () => {
-    staffLogin = { status: 400, body: { success: false, message: 'PIN required', pin_required: true } }; localStorage.clear(); let h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk');
+    staffLogin = { status: 400, body: { success: false, message: 'PIN required', pin_required: true } }; localStorage.clear(); let h = await mount(loginPage(), 120); await pick(h, 'staff'); await typeStaff(h, 'fran.desk');
     assert(/Enter your PIN/.test(h.el.textContent)); assert(!/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
-    staffLogin = { status: 404, body: { success: false, message: 'Employee not found' } }; h = await mount(loginPage(), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'nobody');
+    staffLogin = { status: 404, body: { success: false, message: 'Employee not found' } }; h = await mount(loginPage(), 120); await pick(h, 'staff'); await typeStaff(h, 'nobody');
     assert(/Employee not found/.test(h.el.textContent)); assert(!/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
   });
   await t('a stale deep link to the OTHER staff shell does not override the door just chosen', async () => {
     staffLogin = { status: 200, body: { success: true, token: 'TOK', user: { user_id: 'u9', name: 'Fran', role: 'employee' } } }; localStorage.clear(); meUser = null;
-    const page = (state) => R({ pathname: '/snoqualmieinn/login', state }, [route('/:tenant/login', React.createElement(TenantLogin)), route('/:tenant/staff', txt('PORTAL SHELL')), route('/:tenant/clockin', txt('CLOCKIN SHELL'))]);
-    let h = await mount(page({ from: { pathname: '/snoqualmieinn/staff' } }), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), 'Clock in screen → clock-in door even though the link said /staff'); await h.unmount();
-    localStorage.clear(); h = await mount(page({ from: { pathname: '/snoqualmieinn/clockin' } }), 120); await h.click(h.el.querySelector('[data-mode="staff"]')); await typeStaff(h, 'fran.desk'); assert(/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
+    const page = (state, search) => R({ pathname: '/snoqualmieinn/login', search, state }, [route('/:tenant/login', React.createElement(TenantLogin)), route('/:tenant/staff', txt('PORTAL SHELL')), route('/:tenant/clockin', txt('CLOCKIN SHELL'))]);
+    let h = await mount(page({ from: { pathname: '/snoqualmieinn/staff' } }, '?mode=clockin'), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), 'Clock in screen → clock-in door even though the link said /staff'); await h.unmount();
+    localStorage.clear(); h = await mount(page({ from: { pathname: '/snoqualmieinn/clockin' } }), 120); await pick(h, 'staff'); await typeStaff(h, 'fran.desk'); assert(/PORTAL SHELL/.test(h.el.textContent)); await h.unmount();
   });
 
   // ── 3. the portal shell ──
@@ -248,7 +280,7 @@ const stdResponses = () => ({
   });
   if (process.env.DUMP_DIR) {   // screenshots: DUMP_DIR=somewhere node tests/staffportal.test.js "$PWD"  → login-*.html, home.html, reservations.html, housekeeping.html (wrap with the built CSS)
     const out = (n, h) => fs.writeFileSync(path.join(process.env.DUMP_DIR, n + '.html'), h.el.innerHTML);
-    localStorage.clear(); let h = await mount(loginPage(), 150); out('login-clockin', h); await h.click(h.el.querySelector('[data-mode="staff"]')); out('login-staff', h); await h.unmount();
+    localStorage.clear(); let h = await mount(loginPage(), 150); out('login-access', h); await pick(h, 'staff'); out('login-staff', h); await h.unmount();
     AuthMock._user = DESK; responses = stdResponses(); h = await mount(portal(), 250); out('home', h); await openTab(h, 'Reservations'); await h.click(h.el.querySelector('.fb-sum-row')); out('reservations', h);
     await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === 'Housekeeping')); await act(async () => { await sleep(250); }); await h.click(h.btn(/Who's working/)); await h.click(h.el.querySelector('input[aria-label="Bryan is working"]')); await h.key('Escape'); out('housekeeping', h); await h.unmount();
   }

@@ -2,17 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
-import HotelOpsLogo from '../../components/shared/HotelOpsLogo';
-import LoginModeSwitch from './LoginModeSwitch';
-import { TransitionLink } from './TransitionLink';
-import './Login.css';
-import '../../components/shared/HotelOpsLogo.css';
-import '../../components/shared/RoleIcon.css';
+import SignInScreen, { Field } from './SignInScreen';
 
-const AdminLogin = ({ onSwitchMode }) => {
+// Manager sign-in (username + password → the manager shell). Sprint 27.1: new Inntrio look; the logic is unchanged.
+const AdminLogin = ({ onBack, onChangeProperty }) => {
   const { loginAdmin } = useAuth();
   const nav = useNavigate();
-  // Sprint 9: same /:tenant slug treatment as StaffLogin.
   const { tenant: tenantSlug } = useParams();
   const tenant = resolveTenant(tenantSlug) || TENANT;
 
@@ -27,15 +22,9 @@ const AdminLogin = ({ onSwitchMode }) => {
     setLoading(true);
     const res = await loginAdmin(username, password);
     setLoading(false);
-
     if (res.success) {
-      // Sprint 9.3.2: persist tenant slug — same rationale as
-      // StaffLogin (auto-signout / manual-signout should return to
-      // this property's login page, not the picker).
-      if (tenant?.slug) {
-        localStorage.setItem('hotelops-tenant-slug', tenant.slug);
-      }
-      // Sprint 11.2.1: post-login lands on the per-tenant admin shell.
+      // Sprint 9.3.2: persist the tenant slug so sign-out returns to this property's login page, not the picker.
+      if (tenant?.slug) localStorage.setItem('hotelops-tenant-slug', tenant.slug);
       nav(`/${tenant.slug}/admin`, { replace: true });
       return;
     }
@@ -43,83 +32,13 @@ const AdminLogin = ({ onSwitchMode }) => {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        {/* Sprint 9.3.4: brand + role-switch moved into the headline
-            row (see below). See StaffLogin for the full rationale. */}
-
-        <div className="login-tenant-brand">
-          {tenant.logoUrl ? (
-            <span className="login-tenant-logo-wrap">
-              <img
-                src={tenant.logoUrl}
-                alt={tenant.name}
-                className="login-tenant-logo"
-                style={{ viewTransitionName: `tenant-brand-${tenant.slug}` }}
-              />
-            </span>
-          ) : (
-            <span className="login-tenant-name">{tenant.name}</span>
-          )}
-        </div>
-
-        <div className="login-headline-row">
-          <div className="login-headline-text">
-            <h1 className="login-title">Manager sign-in</h1>
-            <p className="login-sub">
-              Admin access for staff management, scheduling, and operations.
-            </p>
-          </div>
-          <div className="login-headline-actions">
-            <TransitionLink
-              to="/"
-              className="login-topbar-brand"
-              aria-label="HotelOps — back to property selection"
-              title="Back to property selection"
-            >
-              <HotelOpsLogo size="lg" />
-            </TransitionLink>
-            {/* Sprint 11.2.1: in-page mode switch — flips the TenantLogin parent's `mode` state; URL stays put.
-                Sprint 24: two staff doors ("Clock in" and "Staff login"). */}
-            <LoginModeSwitch current="admin" onSwitch={onSwitchMode} />
-          </div>
-        </div>
-
-        <form onSubmit={submit} className="login-form">
-          <div className="login-field">
-            <label htmlFor="username">Username</label>
-            <input
-              id="username"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              autoComplete="username"
-              autoFocus
-              required
-            />
-          </div>
-
-          <div className="login-field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-
-          {err && <div className="login-error">{err}</div>}
-
-          <button type="submit" className="login-submit" disabled={loading || !username || !password}>
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-
-        {/* Role-switch moved to the top-bar icon (9.2.3). */}
-      </div>
-    </div>
+    <SignInScreen tenant={tenant} onBack={onBack} onChangeProperty={onChangeProperty} title="Manager sign-in" icon="shield"
+      desc="Manage staff, scheduling, and operations." error={err} canSubmit={!!username && !!password} loading={loading} onSubmit={submit}>
+      <Field id="username" label="Username" icon="user" value={username} onChange={e => setUsername(e.target.value)}
+        placeholder="Enter your username" autoComplete="username" autoFocus required />
+      <Field id="password" label="Password" icon="lock" secret value={password} onChange={e => setPassword(e.target.value)}
+        placeholder="Enter your password" autoComplete="current-password" required />
+    </SignInScreen>
   );
 };
 

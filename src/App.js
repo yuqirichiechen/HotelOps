@@ -6,7 +6,6 @@ import { DEFAULT_TENANT_SLUG } from './config/tenant';
 import ShiftsView from './components/ShiftsView';
 import TenantLogin from './pages/Login/TenantLogin';
 import TenantPicker from './pages/Login/TenantPicker';
-import DevLogin from './pages/Login/DevLogin';
 import SetPin from './pages/SetPin';
 import ClockInShell from './shells/ClockInShell';         // Sprint 24.1: the Clock in door — only the clock (/:tenant/clockin)
 import StaffPortalShell from './shells/StaffPortalShell'; // Sprint 24: staff portal (/:tenant/staff)
@@ -36,6 +35,12 @@ const RootRoute = () => {
   const slug = stored || DEFAULT_TENANT_SLUG;
   if (user.role === 'dev') return <Navigate to="/dev" replace />;   // Sprint 22.4
   return <Navigate to={homePathFor(user, slug)} replace />;
+};
+
+// Sprint 27.1: the old out-of-band dev sign-in URL → the property's login page, already on "Developer sign-in".
+const DevLoginRedirect = () => {
+  const slug = (typeof window !== 'undefined' && localStorage.getItem('hotelops-tenant-slug')) || DEFAULT_TENANT_SLUG;
+  return <Navigate to={`/${slug}/login?mode=dev`} replace />;
 };
 
 // Sprint 16.2: bridges the authed user's `preferred_language`
@@ -117,7 +122,8 @@ const App = () => {
           } />
 
           {/* ── Dev sign-in + panel (out-of-band) ───────────────────────── */}
-          <Route path="/login/dev" element={<DevLogin />} />
+          {/* Sprint 27.1: Developer sign-in is one of the Inntrio access choices (`/:tenant/login`); this old URL (and RequireDev's redirect) lands there. */}
+          <Route path="/login/dev" element={<DevLoginRedirect />} />
           {/* Sprint 22.6: dev sign-in → choose a property → the SAME admin shell as managers, plus the Dev tools group. */}
           <Route path="/dev"       element={<RequireDev><TenantPicker kind="dev" /></RequireDev>} />
 

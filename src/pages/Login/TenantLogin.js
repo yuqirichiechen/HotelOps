@@ -1,45 +1,63 @@
 import React, { useState } from 'react';
-import { flushSync } from 'react-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { resolveTenant, TENANT } from '../../config/tenant';
 import StaffLogin from './StaffLogin';
 import StaffPortalLogin from './StaffPortalLogin';
 import AdminLogin from './AdminLogin';
+import DevLogin from './DevLogin';
+import AuthFrame, { PropertyBar } from './InntrioFrame';
+import Icon from './InntrioIcons';
 
-// Sprint 11.2.1: `/:tenant/login` is a single URL that hosts both
-// the staff and the manager sign-in. Mode is internal state — the
-// URL doesn't change when the user taps the role-switch icon.
-// Defaults to 'staff' (the kiosk path; managers are the rare case).
-//
-// Sprint 11.3: restore the staff <-> admin morph animation we lost
-// when 11.2.1 collapsed the two URLs into one. TransitionLink (the
-// old role-switch implementation) wrapped its `navigate()` in
-// `document.startViewTransition` — that's gone now because the
-// switch is a `setState`, not a route change. Wrap the state update
-// directly so the browser still snapshots before/after and animates
-// the `view-transition-name` elements (the card, the HotelOps mark,
-// the tenant banner). `flushSync` is required: React batches state
-// updates and without it `startViewTransition` would snapshot the
-// "after" DOM before React has actually updated it. Browsers that
-// don't implement the API fall through to a plain `setMode`.
+// Sprint 27.1 — `/:tenant/login` is steps 2 and 3 of the Inntrio login (step 1, the property, is `/`):
+//   'access'  — "How would you like to continue?": Clock in / out · Staff sign-in · Manager sign-in · Developer sign-in
+//   'clockin' — the numpad (clock in / out door)        'staff' — Staff sign-in (PC form → staff portal)
+//   'admin'   — Manager sign-in                         'dev'   — Developer sign-in
+// The mode is internal state, so the URL stays put while moving between the screens (as before, Sprint 11.2.1). The page opens on the access
+// chooser; `?mode=clockin|staff|admin|dev` opens a screen directly — the clock-in door uses it to bring the kiosk straight back to the keypad
+// after a session ends (Sprint 27.1). Nothing is remembered between visits. The credentials/redirect logic lives in the four screens, unchanged.
+export const MODES = ['clockin', 'staff', 'admin', 'dev'];
 
-// Sprint 24 / 24.1 / 24.2: three modes — 'clockin' (numpad: clock in / out only), 'staff' (PC form → the staff portal: timesheet, calendar,
-// settings; front desk adds forecast + housekeeping) and 'admin'. Same staff credentials for the first two. The screen ALWAYS opens on
-// Clock in (the numpad); the other modes are one click away and are not remembered for the next visit.
+export const CHOICES = [
+  { mode: 'clockin', title: 'Clock in / out',    desc: 'Use the familiar keypad to record your shift.', icon: 'clock',  feature: true },
+  { mode: 'staff',   title: 'Staff sign-in',     desc: 'Schedules, hours, and team updates.',            icon: 'users' },
+  { mode: 'admin',   title: 'Manager sign-in',   desc: 'Staff management and hotel operations.',         icon: 'shield' },
+  { mode: 'dev',     title: 'Developer sign-in', desc: 'Authorized developer tools and integrations.',   icon: 'code' },
+];
+
+const AccessChooser = ({ tenant, onPick, onChangeProperty }) => (
+  <AuthFrame step="access" hero onAccessOptions={() => {}}>
+    <PropertyBar tenant={tenant} onChange={onChangeProperty} />
+    <h1 className="in-h1">How would you like to continue?</h1>
+    <p className="in-subtitle">Choose an access method for {tenant.name}.</p>
+    <div className="in-gap-lg" />
+    <div className="in-choices-wrap">
+      <div className="in-choices-grid">
+        {CHOICES.map(c => (
+          <button key={c.mode} type="button" data-mode={c.mode} className={`in-choice${c.feature ? ' in-choice-feature' : ''}`} onClick={() => onPick(c.mode)}>
+            <span className="in-choice-icon"><Icon name={c.icon} size={27} /></span>
+            <span><span className="in-choice-title">{c.title}</span><span className="in-choice-desc">{c.desc}</span></span>
+            <Icon name="arrow" size={22} />
+          </button>
+        ))}
+      </div>
+    </div>
+  </AuthFrame>
+);
+
 const TenantLogin = () => {
-  const [mode, setMode] = useState('clockin');
+  const nav = useNavigate();
+  const { tenant: slug } = useParams();
+  const tenant = resolveTenant(slug) || TENANT;
+  const [params] = useSearchParams();
+  const [mode, setMode] = useState(() => (MODES.includes(params.get('mode')) ? params.get('mode') : 'access'));
+  const toAccess = () => setMode('access');
+  const toProperty = () => nav('/');
 
-  const switchMode = (next) => {
-    if (typeof document !== 'undefined' && document.startViewTransition) {
-      document.startViewTransition(() => {
-        flushSync(() => setMode(next));
-      });
-    } else {
-      setMode(next);
-    }
-  };
-
-  if (mode === 'admin') return <AdminLogin onSwitchMode={switchMode} />;
-  if (mode === 'staff') return <StaffPortalLogin onSwitchMode={switchMode} />;
-  return <StaffLogin onSwitchMode={switchMode} />;
+  if (mode === 'clockin') return <StaffLogin onBack={toAccess} onChangeProperty={toProperty} />;
+  if (mode === 'staff')   return <StaffPortalLogin onBack={toAccess} onChangeProperty={toProperty} />;
+  if (mode === 'admin')   return <AdminLogin onBack={toAccess} onChangeProperty={toProperty} />;
+  if (mode === 'dev')     return <DevLogin onBack={toAccess} onChangeProperty={toProperty} />;
+  return <AccessChooser tenant={tenant} onPick={setMode} onChangeProperty={toProperty} />;
 };
 
 export default TenantLogin;

@@ -54,7 +54,8 @@ const useShellIdleLogout = () => {
     if (firedRef.current) return;
     firedRef.current = true;
     const slug = localStorage.getItem('hotelops-tenant-slug');
-    const loginPath = slug ? `/${slug}/login` : '/';
+    // Sprint 27.1: the clock-in door returns to its keypad (the access chooser stays one tap away via "Access options")
+    const loginPath = slug ? `/${slug}/login?mode=clockin` : '/';
     await logout();
     if (typeof document !== 'undefined' && document.startViewTransition) {
       document.documentElement.dataset.signingOut = 'true';
