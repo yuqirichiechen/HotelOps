@@ -44,3 +44,6 @@
 .dvb-prop:hover { background: rgba(255,255,255,.18); }
 @media (max-width: 900px) { .dvb { padding: 8px 12px; } .dvb-now { display: none; } .dvb-txt small { display: none; } .dvb-switch button { min-height: 44px; padding: 6px 12px; } .dvb-prop { padding: 6px 10px; } }
 @media (prefers-reduced-motion: reduce) { .dvb, .dvb-switch button, .dvb-prop { transition: none; } }
+
+/* Sprint 27.6 — login light / dark card */
+.dv-time-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; } .dv-time-row label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); } .dv-time-row input[type="time"] { font: inherit; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); } .dv-time-row[aria-disabled="true"] { opacity: .55; }

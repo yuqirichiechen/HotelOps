@@ -16,15 +16,16 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms)); let pass = 0; const t
 const mount = async (el) => { const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host); await act(async () => { root.render(el); }); return { host, root }; };
 const picker = (kind) => React.createElement(RR.MemoryRouter, { initialEntries: ['/'] }, React.createElement(RR.Routes, null, React.createElement(RR.Route, { path: '/', element: React.createElement(Picker, { kind }) })));
 (async () => {
-  await t('ENTRANCE ANIMATION: a screen mounted normally gets in-enter; a screen mounted DURING a view transition does not — and still does not after data-vt is cleared (clearing it used to restart the animation = animation + transition)', async () => {
+  await t('ENTRANCE (27.6): every screen mounts with in-enter, fixed at mount (nothing can restart it); only the FIRST screen of a page load also animates the top bar; a screen reached by going back (navDir) settles from above', async () => {
     const A = Frame.default; const root = document.documentElement;
-    let m = await mount(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'x'))); assert(m.host.querySelector('.in-root.in-enter'), 'normal mount animates');
-    root.dataset.vt = 'forward'; m = await mount(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'x'))); const el = m.host.querySelector('.in-root'); assert(!el.classList.contains('in-enter'), 'arriving via a view transition: no entrance animation');
-    delete root.dataset.vt; await act(async () => { await sleep(10); m.root.render(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'y'))); }); assert(!m.host.querySelector('.in-root').classList.contains('in-enter'), 'class is fixed at mount — nothing re-triggers the animation when the transition ends');
+    let m = await mount(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'x'))); const el = m.host.querySelector('.in-root'); assert(el.classList.contains('in-enter') && el.classList.contains('in-enter-top'), 'first screen: content + top bar'); assert(!el.classList.contains('in-from-back'));
+    m = await mount(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'x'))); assert(m.host.querySelector('.in-root.in-enter') && !m.host.querySelector('.in-root').classList.contains('in-enter-top'), 'later screens: the top bar stays still');
+    root.dataset.navDir = 'back'; m = await mount(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'x'))); assert(m.host.querySelector('.in-root').classList.contains('in-from-back'), 'going back'); delete root.dataset.navDir;
+    await act(async () => { m.root.render(React.createElement(A, { step: 'access' }, React.createElement('p', null, 'y'))); }); assert(m.host.querySelector('.in-root').classList.contains('in-from-back') && m.host.querySelector('.in-root').classList.contains('in-enter'), 'classes fixed at mount — a re-render changes nothing');
   });
   await t('top bar: plain Inntrio logo left, gold "Hospitality management platform" right; no big logo, no "One workspace" note, no step line', async () => {
-    const m = await mount(React.createElement(Frame.default, { step: 'property' }, React.createElement('p', null, 'x')));
-    const top = m.host.querySelector('.in-topnav'); assert(top.querySelector('img').getAttribute('src') === '/inntrio/Inntrio-logo-dark.svg'); assert.strictEqual(top.querySelector('.in-tagline').textContent, 'Hospitality management platform');
+    localStorage.setItem('inntrio-login-cfg', JSON.stringify({ mode: 'dark' })); const m = await mount(React.createElement(Frame.default, { step: 'property' }, React.createElement('p', null, 'x')));
+    const top = m.host.querySelector('.in-topnav'); assert(top.querySelector('img').getAttribute('src') === '/inntrio/Inntrio-logo-dark.svg'); localStorage.clear(); assert.strictEqual(top.querySelector('.in-tagline').textContent, 'Hospitality management platform');
     assert(!m.host.querySelector('.in-masthead, .in-hero-logo, .in-steps')); const css = fs.readFileSync(ROOT + '/src/pages/Login/Inntrio.css', 'utf8'); assert(/\.in-tagline \{ color: var\(--in-gold\)/.test(css), 'gold');
     const picker = fs.readFileSync(ROOT + '/src/pages/Login/TenantPicker.js', 'utf8'); assert(!/One workspace/.test(picker));
   });
@@ -48,7 +49,7 @@ const picker = (kind) => React.createElement(RR.MemoryRouter, { initialEntries: 
     SplashMod._resetSplash(); const mm = window.matchMedia; window.matchMedia = (q) => ({ matches: /reduce/.test(q), addEventListener() {}, removeEventListener() {} }); m = await mount(picker('staff')); window.matchMedia = mm; assert(!m.host.querySelector('.in-splash') && m.host.querySelector('.in-property-row'), 'reduced motion');
   });
   await t('light mode (27.5): with a saved light theme the splash and the picker come up light with the navy logo', async () => {
-    localStorage.setItem('hotelops-theme', 'light'); SplashMod._resetSplash(); const m = await mount(picker('staff'));
+    localStorage.setItem('inntrio-login-cfg', JSON.stringify({ mode: 'light' })); SplashMod._resetSplash(); const m = await mount(picker('staff'));
     assert(m.host.querySelector('.in-splash.in-light') && m.host.querySelector('.in-splash-logo').getAttribute('src') === '/inntrio/inntrio-logo-light.svg', 'light splash'); await act(async () => { m.host.querySelector('.in-splash').dispatchEvent(new w.MouseEvent('click', { bubbles: true })); });
     assert(m.host.querySelector('.in-root.in-light .in-property-row') && m.host.querySelector('.in-topnav img').getAttribute('src') === '/inntrio/inntrio-logo-light.svg', 'light picker'); localStorage.clear();
   });

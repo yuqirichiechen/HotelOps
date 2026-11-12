@@ -25,7 +25,11 @@
 .in-brand { display: flex; align-items: center; gap: 16px; min-width: 0; background: none; border: 0; padding: 4px 6px; margin-left: -6px; border-radius: 12px; cursor: pointer; transition: transform .2s, filter .2s; }
 .in-brand:hover { transform: scale(1.03); filter: brightness(1.1); } .in-brand:active { transform: scale(.98); }
 .in-brand img { width: 177px; height: auto; display: block; }
-.in-tagline { color: var(--in-gold); text-transform: uppercase; letter-spacing: 3px; font-size: 11px; font-weight: 700; text-align: right; white-space: nowrap; }
+.in-topnav { container-type: inline-size; }
+.in-tagline { color: var(--in-gold); text-transform: uppercase; letter-spacing: .27em; font-size: 11px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 0; overflow: hidden; }
+/* one line at any width: the type shrinks with the room that is left beside the logo (≈ 29 em of text) */
+@container (max-width: 760px) { .in-tagline { font-size: clamp(5px, calc((100cqi - 190px) / 29), 11px); } }
+@container (max-width: 420px) { .in-tagline { font-size: clamp(5px, calc((100cqi - 146px) / 29), 9px); letter-spacing: .22em; } }
 
 /* page body */
 .in-layout { min-height: calc(100vh - 94px); min-height: calc(100dvh - 94px); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 38px 0 44px; }
@@ -140,7 +144,7 @@
 
 @media (max-width: 730px) {
   .in-container { width: min(100% - 28px, 540px); }
-  .in-topnav { height: 69px; } .in-brand img { width: 128px; } .in-tagline { white-space: normal; max-width: 200px; font-size: 8.5px; letter-spacing: 2px; line-height: 1.5; } 
+  .in-topnav { height: 69px; } .in-brand img { width: 128px; }  
   .in-layout { min-height: calc(100vh - 69px); min-height: calc(100dvh - 69px); justify-content: flex-start; padding: 25px 0 22px; }
   .in-root h1.in-h1 { font-size: clamp(27px, 7vw, 35px); margin: 6px 0; } .in-subtitle { font-size: 13px; }
   .in-surface { border-radius: 19px; } .in-select-card { padding: 19px 16px; } .in-property-row { padding: 11px 12px; min-height: 67px; gap: 9px; } .in-logo-chip { width: 84px; height: 42px; } .in-tile-ico { width: 40px; height: 40px; } .in-property-title { font-size: 14px; } .in-small-state { display: none; } .in-count-pill { font-size: 10px; }
@@ -157,39 +161,29 @@
 @media (min-width: 731px) and (max-height: 800px) { .in-layout { justify-content: flex-start; padding-top: 21px; } .in-root h1.in-h1 { font-size: 34px; } .in-select-card { padding: 22px; } .in-choice { min-height: 107px; padding: 15px; } .in-clock-card { padding: 21px; } }
 @media (prefers-reduced-motion: reduce) { .in-root *, .in-root *::before, .in-root *::after { transition: none !important; } }
 
-/* ── Sprint 27.3 / 27.5: motion ──────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
-/* One motion language, borrowed from the welcome splash: things arrive out of a soft blur, scaling up into place; they leave with a quick fade. */
-/* 1. entrance: every block of a screen arrives (first load, and browsers without the View Transitions API), staggered. Only on `.in-enter`, which AuthFrame
-      sets ONCE at mount when the screen is not arriving through a view transition — never toggled later (that restarted the animation: the 27.3 bug). */
+/* ── Sprint 27.3 / 27.5 / 27.6: motion ────────────────────────────────────────────────────────────────────────────────────────────────────── */
+/* One motion language, borrowed from the welcome splash: things arrive out of a soft blur, scaling up into place; they leave with a quick fade.
+   Screen changes (viewTransition.js withTransition): the current screen gets `data-leave` and melts away, the change is applied after LEAVE_MS (240 ms), and the
+   new screen arrives with the `.in-enter` entrance below. Plain CSS animations — they work in every browser (27.3-27.5 tried the View Transitions API for this
+   with selectors that never matched, so only the browser's default cross-fade ever ran). */
 @keyframes in-fade-up { from { opacity: 0; transform: translateY(14px) scale(.975); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes in-fade-down { from { opacity: 0; transform: translateY(-10px) scale(1.03); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes in-leave { to { opacity: 0; transform: scale(.985); filter: blur(6px); } }
+/* arriving: every block of the screen, staggered. Decided once at mount (AuthFrame) — never toggled later. */
 .in-enter .in-layout > * { animation: in-fade-up .7s cubic-bezier(.22, .8, .3, 1) both; }
 .in-enter .in-layout > *:nth-child(2) { animation-delay: .07s; } .in-enter .in-layout > *:nth-child(3) { animation-delay: .14s; } .in-enter .in-layout > *:nth-child(4) { animation-delay: .21s; }
 .in-enter .in-layout > *:nth-child(5) { animation-delay: .28s; } .in-enter .in-layout > *:nth-child(6) { animation-delay: .35s; } .in-enter .in-layout > *:nth-child(7) { animation-delay: .42s; }
-.in-enter .in-brand, .in-enter .in-tagline { animation: in-fade-up .7s cubic-bezier(.22, .8, .3, 1) both; }
-/* 2. screen to screen (View Transitions): the top bar and the background stay put; the old content melts away, the new content arrives from a blur,
-      scaling up into place (forward) or settling down into place (back). `data-vt` on <html> (forward | back | theme) is set by viewTransition.js. */
-.in-scene { view-transition-name: in-scene; }
-.in-topnav { view-transition-name: in-topnav; }
-.in-layout { view-transition-name: in-main; }
-html[data-vt="forward"] ::view-transition-old(root), html[data-vt="forward"] ::view-transition-new(root),
-html[data-vt="forward"] ::view-transition-old(in-scene), html[data-vt="forward"] ::view-transition-new(in-scene),
-html[data-vt="forward"] ::view-transition-old(in-topnav), html[data-vt="forward"] ::view-transition-new(in-topnav),
-html[data-vt="back"] ::view-transition-old(root), html[data-vt="back"] ::view-transition-new(root),
-html[data-vt="back"] ::view-transition-old(in-scene), html[data-vt="back"] ::view-transition-new(in-scene),
-html[data-vt="back"] ::view-transition-old(in-topnav), html[data-vt="back"] ::view-transition-new(in-topnav) { animation: none; mix-blend-mode: normal; }
-html[data-vt="forward"] ::view-transition-old(in-main), html[data-vt="forward"] ::view-transition-new(in-main),
-html[data-vt="back"] ::view-transition-old(in-main), html[data-vt="back"] ::view-transition-new(in-main) { mix-blend-mode: normal; animation-fill-mode: both; animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
-html[data-vt="forward"] ::view-transition-old(in-main), html[data-vt="back"] ::view-transition-old(in-main) { animation-name: in-leave; animation-duration: .26s; }
-html[data-vt="forward"] ::view-transition-new(in-main) { animation-name: in-arrive; animation-duration: .7s; animation-delay: .08s; }
-html[data-vt="back"] ::view-transition-new(in-main) { animation-name: in-arrive-back; animation-duration: .7s; animation-delay: .08s; }
-@keyframes in-leave { to { opacity: 0; transform: scale(.985); filter: blur(6px); } }
-@keyframes in-arrive { from { opacity: 0; transform: translateY(14px) scale(.965); filter: blur(10px); } }
-@keyframes in-arrive-back { from { opacity: 0; transform: translateY(-10px) scale(1.03); filter: blur(10px); } }
-/* 3. light / dark switch: a circle grows from the logo and paints the new theme (the three named parts are un-named for this one so everything is in the root snapshot) */
-html[data-vt="theme"] .in-scene, html[data-vt="theme"] .in-topnav, html[data-vt="theme"] .in-layout { view-transition-name: none; }
-html[data-vt="theme"] ::view-transition-old(root), html[data-vt="theme"] ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-html[data-vt="theme"] ::view-transition-new(root) { z-index: 2; animation: in-reveal .75s cubic-bezier(.4, 0, .2, 1) both; }
-html[data-vt="theme"] ::view-transition-old(root) { z-index: 1; }
+/* arriving by going back: settles down from above instead of rising from below */
+.in-from-back .in-layout > * { animation-name: in-fade-down; }
+/* the very first screen of a page load also brings in the top bar; later screens leave it still */
+.in-enter-top .in-brand, .in-enter-top .in-tagline { animation: in-fade-up .7s cubic-bezier(.22, .8, .3, 1) both; }
+/* leaving: the whole screen melts away (the top bar and background do not move) */
+.in-layout[data-leave] { animation: in-leave .24s cubic-bezier(.4, 0, 1, 1) both; pointer-events: none; }
+/* light / dark switch (View Transitions, viewTransition.js 'theme'): a circle grows from the logo and paints the new theme. NOTE the pseudo-elements belong to
+   <html> itself, so the selector is `html[data-vt="theme"]::view-transition-new(root)` — with a space before `::` it never matches. */
+html[data-vt="theme"]::view-transition-old(root), html[data-vt="theme"]::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html[data-vt="theme"]::view-transition-new(root) { z-index: 2; animation: in-reveal .75s cubic-bezier(.4, 0, .2, 1) both; }
+html[data-vt="theme"]::view-transition-old(root) { z-index: 1; }
 @keyframes in-reveal { from { clip-path: circle(0 at var(--vt-x, 6%) var(--vt-y, 4%)); } to { clip-path: circle(150vmax at var(--vt-x, 6%) var(--vt-y, 4%)); } }
 /* 4. small touches: gold button sheen, keys that press in */
 .in-primary { position: relative; overflow: hidden; }
@@ -197,8 +191,7 @@ html[data-vt="theme"] ::view-transition-old(root) { z-index: 1; }
 .in-primary:hover:not(:disabled)::after { left: 130%; }
 .in-key { transition: transform .12s, background .12s; }
 @media (prefers-reduced-motion: reduce) {
-  .in-enter .in-layout > *, .in-enter .in-brand, .in-enter .in-tagline { animation: none !important; }
-  html[data-vt] ::view-transition-group(*), html[data-vt] ::view-transition-old(*), html[data-vt] ::view-transition-new(*) { animation-duration: .01s !important; animation-delay: 0s !important; }
+  .in-enter .in-layout > *, .in-enter-top .in-brand, .in-enter-top .in-tagline, .in-layout[data-leave] { animation: none !important; }
   .in-primary::after { display: none; }
 }
 
@@ -264,3 +257,25 @@ html[data-vt="theme"] ::view-transition-old(root) { z-index: 1; }
 .in-light .in-splash-logo { filter: drop-shadow(0 14px 30px rgba(90, 68, 20, .16)); }
 .in-light .in-clock-detail .lang-cycle-headline:hover { background: rgba(15, 37, 64, .04); } .in-light .in-clock-detail .lang-cycle-headline:active { background: rgba(15, 37, 64, .07); }
 .in-light .in-clock-detail .lang-cycle-check { color: #9a6f2a; }
+
+/* ── Sprint 27.6: the Clock in / out screen fills the screen on phones and tablets: the card takes all the height that is left, the keypad takes all of the card,
+      so the keys are as big as the screen allows (Continue and Back to access options stay in reach at the bottom). ─────────────────────────────────────────── */
+@media (max-width: 1023px) {
+  .in-step-clock { justify-content: flex-start; padding-top: 16px; padding-bottom: 14px; }
+  .in-step-clock .in-h1 { font-size: clamp(24px, 6vw, 34px); margin: 2px 0 2px; }
+  .in-step-clock .in-subtitle { font-size: 13px; }
+  .in-step-clock .in-gap-md { height: 12px; }
+  .in-step-clock .in-clock-card { flex: 1 1 auto; align-self: center; display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; min-height: 0; }
+  .in-step-clock .in-clock-detail { padding: 0; }
+  .in-step-clock .in-clock-detail .lang-cycle-title { font-size: 26px; }
+  .in-step-clock .in-clock-meta { display: none; }
+  .in-step-clock .in-keypad-panel { flex: 1 1 auto; min-height: 240px; display: flex; flex-direction: column; padding: 10px; }
+  .in-step-clock .in-keypad-grid { flex: 1 1 auto; grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .in-step-clock .in-key { min-height: 0; font-size: clamp(24px, 5.5vh, 40px); }
+  .in-step-clock .in-key.special { font-size: 15px; }
+  .in-step-clock .in-letters { flex: 1 1 auto; }
+  .in-step-clock .in-letters-row { flex: 1 1 0; } .in-step-clock .in-letters { gap: 6px; } .in-step-clock .in-letters .in-key { min-height: 0; height: 100%; font-size: clamp(16px, 3.2vh, 24px); }
+  .in-step-clock .in-kb-switch { min-height: 44px; flex: 0 0 auto; }
+  .in-step-clock .in-action-row { margin-top: 0; }
+  .in-step-clock .in-back { margin-top: 12px; }
+}

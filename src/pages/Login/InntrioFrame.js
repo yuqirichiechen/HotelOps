@@ -57,13 +57,20 @@ export const Scene = () => (
 );
 
 // step: 'property' | 'access' | 'signin' | 'clock'
+// The first screen of a page load animates the top bar too; later screens keep it still (only the content below changes).
+let firstFrame = true;
+
 const AuthFrame = ({ step, children }) => {
-  // Entrance animation (staggered fade-up) only for a screen that is NOT arriving through a view transition (first load / browsers without the API).
-  // Decided ONCE at mount: toggling it later would restart the CSS animation and make the screen animate twice (the 27.3 bug).
-  const [enter] = useState(() => typeof document === 'undefined' || !document.documentElement.dataset.vt);
+  // Entrance (blur + scale + rise, staggered) — decided ONCE at mount, so nothing can restart it later (the 27.3 double-animation bug). `navDir` is left on
+  // <html> by withTransition for the screen that arrives: a screen reached by going back settles down from above instead of rising from below.
+  const [mount] = useState(() => {
+    const top = firstFrame; firstFrame = false;
+    const back = typeof document !== 'undefined' && document.documentElement.dataset.navDir === 'back';
+    return { top, back };
+  });
   const { light, toggle } = useLoginTheme();
   return (
-    <div className={`in-root${light ? ' in-light' : ''}${enter ? ' in-enter' : ''}`}>
+    <div className={`in-root in-enter${mount.top ? ' in-enter-top' : ''}${mount.back ? ' in-from-back' : ''}${light ? ' in-light' : ''}`}>
       <Scene />
       <div className="in-container">
         <header className="in-topnav">

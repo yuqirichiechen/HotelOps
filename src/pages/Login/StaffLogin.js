@@ -4,7 +4,7 @@ import { useAuth, setStaffEntry } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import { useT } from '../../i18n';
 import LangCycleHeadline from '../../components/shared/LangCycleHeadline';
-import AuthFrame, { PropertyBar, usePTClock } from './InntrioFrame';
+import AuthFrame, { usePTClock } from './InntrioFrame';
 import Icon from './InntrioIcons';
 
 // Sprint 11.3: small media-query hook used twice below — once for
@@ -102,7 +102,7 @@ const KeyboardLetters = ({ onKey, caps, onCaps }) => {
 
 // Sprint 24.1: this numpad screen is the CLOCK IN door only (kiosk: clock in / out on a pad, then sign out). Staff who want their
 // timesheet / calendar / settings (and the front desk's forecast + housekeeping) use "Staff login" — the PC form, StaffPortalLogin.
-const StaffLogin = ({ onBack, onChangeProperty }) => {
+const StaffLogin = ({ onBack }) => {
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -270,7 +270,6 @@ const StaffLogin = ({ onBack, onChangeProperty }) => {
 
   return (
     <AuthFrame step="clock">
-      <PropertyBar tenant={tenant} onChange={onChangeProperty} />
       <h1 className="in-h1">Clock in / out</h1>
       <p className="in-subtitle">A fast, familiar time clock for your shift.</p>
       <div className="in-gap-md" />

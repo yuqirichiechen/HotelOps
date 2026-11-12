@@ -3814,7 +3814,7 @@ app.get('/api/shifts/daily', requireAuth, async (req, res) => {
 app.get('/api/public-config', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods','staff_login_layout','tenant_logo_dark_strategy')`
+      `SELECT key, value FROM app_settings WHERE key IN ('hide_abc_keyboard','enabled_login_methods','staff_login_layout','tenant_logo_dark_strategy','login_theme_mode','login_dark_from','login_dark_to')`
     );
     const out = {
       hide_abc_keyboard: false,
@@ -3829,6 +3829,11 @@ app.get('/api/public-config', async (req, res) => {
       // tenant logos. Dev can switch to invert or force-light per tenant
       // in the Dev Panel.
       tenant_logo_dark_strategy: 'card',
+      // Sprint 27.6: the Inntrio login's light / dark. 'auto' = dark from `login_dark_from` until `login_dark_to` (device local time), light otherwise;
+      // 'dark' / 'light' pin it. Dev sets it (Dev → Platform).
+      login_theme_mode: 'auto',
+      login_dark_from: '18:00',
+      login_dark_to: '06:00',
     };
     rows.forEach(r => {
       if (r.key === 'hide_abc_keyboard') out.hide_abc_keyboard = r.value === 'true';
@@ -3841,6 +3846,8 @@ app.get('/api/public-config', async (req, res) => {
       if (r.key === 'tenant_logo_dark_strategy' && ['card', 'invert', 'force-light'].includes(r.value)) {
         out.tenant_logo_dark_strategy = r.value;
       }
+      if (r.key === 'login_theme_mode' && ['auto', 'dark', 'light'].includes(r.value)) out.login_theme_mode = r.value;
+      if ((r.key === 'login_dark_from' || r.key === 'login_dark_to') && /^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.value))) out[r.key] = r.value;
     });
     return res.json({ success: true, config: out });
   } catch (err) {
@@ -3900,6 +3907,11 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     //   'force-light' — keep the page in light theme for this tenant
     // Set via the Dev Panel; reachable from the bare /login/dev URL.
     tenant_logo_dark_strategy:  v => ['card', 'invert', 'force-light'].includes(v),
+    // Sprint 27.6: the Inntrio login's light / dark (dev-only: the `login_` prefix is in the dev-write list below). mode 'auto' | 'dark' | 'light';
+    // dark window 'HH:MM' (24 h, device local time) — dark from `login_dark_from` until `login_dark_to` (default 18:00 → 06:00, wraps midnight).
+    login_theme_mode:           v => ['auto', 'dark', 'light'].includes(v),
+    login_dark_from:            v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v)),
+    login_dark_to:              v => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v)),
     // Sprint 9.4: day of the week (0=Sun, 6=Sat) on which biweekly
     // pay periods reset. Used by the payroll-CSV/XLSX export to align
     // the "biweekly" range to the most recently completed 14-day pay
@@ -4015,8 +4027,11 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
   // before because that signals a real bug or attack, not version drift.
   const writes = [];
   // Sprint 22.4: forecast / sync / guest-data settings live in the Dev area only.
-  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_|hk_)/.test(k) || k === 'guest_detail_retention_days')) {
+  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_|hk_|login_)/.test(k) || k === 'guest_detail_retention_days')) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+  if (updates.login_dark_from !== undefined && updates.login_dark_from === updates.login_dark_to) {
+    return res.status(400).json({ success: false, message: 'The dark window needs different start and end times' });
   }
   for (const [k, v] of Object.entries(updates)) {
     if (!(k in ALLOWED)) {
