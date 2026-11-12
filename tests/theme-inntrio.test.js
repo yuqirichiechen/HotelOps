@@ -23,10 +23,23 @@ t('contrast is readable: primary + secondary text ≥ 4.5:1 and muted ≥ 3.4:1 
   assert(ratio('#ffffff', light['--brand-bg']) >= 4.5 && ratio('#ffffff', dark['--brand-bg']) >= 4.5, 'white on the primary button colour');
   assert(ratio(light['--accent-alt'], light['--bg-surface']) >= 3.5, 'gold text on a light card'); assert(ratio(dark['--accent'], dark['--bg-surface']) >= 4.5, 'accent on a dark card');
 });
-t('the Dev view bar is on-brand: one dark navy bar for every view, the view shown by an accent colour (gold Dev, teal Manager, copper Front desk) — no purple / teal / amber banners', () => {
-  const dv = fs.readFileSync(ROOT + '/src/pages/Dev/DevPages.css', 'utf8'); const tail = dv.slice(dv.indexOf('Sprint 28.2 — the Dev view bar'));
-  for (const x of [/\.dvb\.is-full \{ --dvb-accent: #dfc184/, /\.dvb\.is-manager \{ --dvb-accent: #5fd0c2/, /\.dvb\.is-frontdesk \{ --dvb-accent: #f0a35e/, /\.dvb-switch button\.on \{ background: var\(--dvb-accent\)/, /\.dvb \{ background: linear-gradient\(90deg, #0c1c31/]) assert(x.test(tail), String(x));
-  assert(!/#5b21b6|#7c3aed|#0f766e|#b45309/.test(tail.replace(/\/\*[\s\S]*?\*\//g, '')), 'the old banner colours are not re-used');
+t('the Dev view bar follows the theme (28.3): rice-white bar with navy text in light mode, dark navy glass in dark mode (explicit toggle AND system setting); the view is shown by an accent colour per theme; none of the old purple / teal / amber banner rules are left', () => {
+  const dv = fs.readFileSync(ROOT + '/src/pages/Dev/DevPages.css', 'utf8'); const tail = dv.slice(dv.indexOf('Sprint 28.2 / 28.3 — the Dev view bar'));
+  assert(/\.dvb \{\s*--dvb-bg: linear-gradient\(90deg, #fbf6e9/.test(tail) && /--dvb-fg: #0f2540/.test(tail), 'light default'); assert(/\[data-theme="dark"\] \.dvb \{ --dvb-bg: linear-gradient\(90deg, #0c1c31/.test(tail), 'explicit dark'); assert(/prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \.dvb \{ --dvb-bg: linear-gradient\(90deg, #0c1c31/.test(tail), 'system dark');
+  for (const x of [/\.dvb\.is-full \{ --dvb-accent: #d8b266/, /\.dvb\.is-manager \{ --dvb-accent: #4fb9ac/, /\.dvb\.is-frontdesk \{ --dvb-accent: #e8955a/, /\[data-theme="dark"\] \.dvb\.is-full \{ --dvb-accent: #dfc184/, /\.dvb-switch button\.on[^{]*\{ background: var\(--dvb-accent\)/, /background: var\(--dvb-bg\)/]) assert(x.test(tail), String(x));
+  assert(!/#5b21b6|#7c3aed|#0f766e|#b45309|#d97706|#0d9488/.test(dv.replace(/\/\*[\s\S]*?\*\//g, '')), 'the old banner colours are gone from the whole file — they out-ranked the theme rules (28.3 bug: bar stayed dark in light mode)');
+});
+t('the page text colour (28.3 root cause): body sets color: var(--text-primary), so elements without their own colour are not browser-black on the dark theme; each theme block sets color-scheme so native controls match', () => {
+  const idx = fs.readFileSync(ROOT + '/src/index.css', 'utf8'); assert(/body \{[^}]*color: var\(--text-primary\);/.test(idx));
+  assert.deepStrictEqual([...css.matchAll(/color-scheme: (light|dark);/g)].map(m => m[1]), ['light', 'dark', 'dark', 'light'], 'light default, system-dark, explicit dark, explicit light');
+});
+t('dark-mode audit fixes (28.3): pale hard-coded panels get dark ones, light-theme text colours are lightened on dark, solid primary controls use the primary blue; every rule exists for BOTH the explicit toggle and the system setting', () => {
+  const df = fs.readFileSync(ROOT + '/src/darkFixes.css', 'utf8'); const blk = df.slice(df.indexOf('Sprint 28.3 — dark-mode audit fixes'));
+  for (const sel of ['.fb-infotip-pop', '.fc-note-card', '.fc-svc-row', '.adm-overdue-row.adm-overdue-row-closed', '.sp-pill-running', '.hk-rc-iptag', '.hk-btn-primary', '.lb-btn-primary', '.hk-seg button.on', '.entry-edit-conflict', '.home-auto-close-warning']) { assert(blk.includes(`:root[data-theme="dark"] ${sel}`) || blk.includes(`:root[data-theme="dark"] ${sel.split(',')[0]}`), 'explicit: ' + sel); assert(blk.includes(`:root:not([data-theme="light"]) ${sel}`) || blk.includes(`:root:not([data-theme="light"]) ${sel.split(',')[0]}`), 'system: ' + sel); }
+  assert(/\.fb-infotip-pop \{ background:var\(--bg-surface\); \}/.test(blk)); assert(/\.hk-btn-primary[^{]*\{ background:var\(--brand-bg\);color:#fff; \}/.test(blk));
+  const all = require('child_process').execSync(`grep -rnE "(^|[ ;{])color:\\s*var\\(--accent[,)]" "${ROOT}/src" --include=*.css || true`, { encoding: 'utf8', shell: '/bin/bash' }).split('\n').filter(l => l && !/Sidebar\.css|inntrioApp\.css|pages\/Login\//.test(l)); assert.deepStrictEqual(all, [], 'gold --accent is a FILL colour; text uses --accent-alt (gold #c9a05a on a light card is ~2.4:1)');
+  assert(/\.adm-working-clockout \{[^}]*color: var\(--danger-hover\)/.test(fs.readFileSync(ROOT + '/src/pages/AdminHome/AdminHome.css', 'utf8')), 'Clock out button readable on dark');
+  assert(/\.rx-audit mark \{[^}]*color: #1a202c/.test(fs.readFileSync(ROOT + '/src/components/Forecasting/ResnList.css', 'utf8')), 'highlighted audit-log matches keep dark text');
 });
 t('the scene background (navy waves + gold curves / rice + gold) is on every shell: the app pages and the Clock in door; the tokens are defined for both', () => {
   const ia = fs.readFileSync(ROOT + '/src/inntrioApp.css', 'utf8');

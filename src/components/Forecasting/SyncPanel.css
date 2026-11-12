@@ -28,7 +28,7 @@
 .sp-btn-primary:hover:not(:disabled) { background: var(--brand-hover, #2a4a7f); }
 .sp-btn-warn { border-color: #ecc94b; color: var(--warn-text, #92400e); }
 .sp-confirm { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
-.sp-link { background: none; border: 0; padding: 0; color: var(--accent, #2b6cb0); font-size: 13px; cursor: pointer; margin-top: 8px; }
+.sp-link { background: none; border: 0; padding: 0; color: var(--accent-alt, #2b6cb0); font-size: 13px; cursor: pointer; margin-top: 8px; }
 .sp-head .sp-link { margin-top: 0; }
 .sp-hint, .sp-hint-inline { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
 .sp-hint-inline { margin: 0 0 0 4px; }

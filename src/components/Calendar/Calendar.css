@@ -1351,7 +1351,7 @@
 .cal-week-deptgrid-mini-more {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 11px;
-  color: var(--accent, var(--brand-text));
+  color: var(--accent-alt, var(--brand-text));
   font-style: italic;
   background: transparent;
   border: 0;

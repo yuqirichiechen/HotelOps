@@ -3,6 +3,7 @@
 /* ── Light theme (default) ───────────────────────────────────────────────── */
 
 :root {
+  color-scheme: light;
   /* Backgrounds */
   --bg-base:        #f7f2e6;
   --bg-surface:     #fffdf8;
@@ -26,7 +27,7 @@
   --text-secondary: #3d4f66;
   --text-muted:     #6b7a90;
   --text-faint:     #7d8aa0;
-  --text-lightest:  #a8b3c4;
+  --text-lightest:  #96a3b8;
 
   /* Borders */
   --border:       #e2dac6;
@@ -73,6 +74,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+  color-scheme: dark;
     --bg-base:        #0b1828;
     --bg-surface:     #12263d;
     --bg-surface-alt: #17304a;
@@ -92,7 +94,7 @@
     --text-secondary: #bed0e3;
     --text-muted:     #8ea4bc;
     --text-faint:     #6f86a0;
-    --text-lightest:  #46607c;
+    --text-lightest:  #5d7894;
 
     --border:       #27425f;
     --border-light: #1b3350;
@@ -133,6 +135,7 @@
 /* ── Explicit overrides (user toggle — beats media query) ────────────────── */
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg-base:        #0b1828;
   --bg-surface:     #12263d;
   --bg-surface-alt: #17304a;
@@ -152,7 +155,7 @@
   --text-secondary: #bed0e3;
   --text-muted:     #8ea4bc;
   --text-faint:     #6f86a0;
-  --text-lightest:  #46607c;
+  --text-lightest:  #5d7894;
 
   --border:       #27425f;
   --border-light: #1b3350;
@@ -190,6 +193,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg-base:        #f7f2e6;
   --bg-surface:     #fffdf8;
   --bg-surface-alt: #faf5ea;
@@ -209,7 +213,7 @@
   --text-secondary: #3d4f66;
   --text-muted:     #6b7a90;
   --text-faint:     #7d8aa0;
-  --text-lightest:  #a8b3c4;
+  --text-lightest:  #96a3b8;
 
   --border:       #e2dac6;
   --border-light: #efe8d8;

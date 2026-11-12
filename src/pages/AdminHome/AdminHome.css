@@ -225,7 +225,7 @@
   border-radius: 8px;
   border: 1px solid rgba(197, 48, 48, 0.4);
   background: var(--bg-surface);
-  color: #c53030;
+  color: var(--danger-hover);   /* 28.3: was a fixed dark red — unreadable on the dark theme */
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease;
 }

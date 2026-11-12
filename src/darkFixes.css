@@ -159,3 +159,81 @@
   :root[data-theme="dark"] .hk-rt tr.open td { box-shadow:inset 3px 0 0 #b7791f; }
   :root[data-theme="dark"] .hk-rt-open { color:#f6e05e; }
 }
+
+/* Sprint 28.3 — dark-mode audit fixes. (a) panels that hard-code a PALE background now get a dark one (their text inherits the light page colour); (b) dark text colours picked
+   for the light theme are lightened where they sit on dark / translucent backgrounds; (c) solid primary controls use the primary button blue instead of the light-blue accent
+   (white on it was ~2:1). Screen only. */
+@media screen {
+  :root[data-theme="dark"] .fb-infotip-pop { background:var(--bg-surface); }
+  :root[data-theme="dark"] .ap-result.is-warn { background:var(--warn-bg);border-color:#8a6d1a; }
+  :root[data-theme="dark"] .ap-conflict { background:rgba(236,201,75,.12);border-color:#8a6d1a;color:var(--text-primary); }
+  :root[data-theme="dark"] .ap-conflict-list { color:#f6e05e; }
+  :root[data-theme="dark"] .ap-conflict-help { color:#f6ad55; }
+  :root[data-theme="dark"] .week-summary-cell.is-over-ot { background:rgba(236,201,75,.14);color:#f6e05e; }
+  :root[data-theme="dark"] .admin-field-warn { background:rgba(236,201,75,.12);border-color:#8a6d1a;color:#f6ad55; }
+  :root[data-theme="dark"] .entry-edit-conflict { background:rgba(252,129,129,.12);border-color:#742a2a;color:#fc8181; }
+  :root[data-theme="dark"] .entry-edit-conflict-meta { color:#feb2b2; }
+  :root[data-theme="dark"] .fc-selected-error, :root[data-theme="dark"] .fc-resn-card-error { background:rgba(252,129,129,.12);border-color:#742a2a;color:#fc8181; }
+  :root[data-theme="dark"] .fc-card-chip-empty { background:var(--bg-raised);color:var(--text-muted); }
+  :root[data-theme="dark"] .fc-note-card { background:rgba(236,201,75,.12);border-color:#8a6d1a;color:var(--text-primary); }
+  :root[data-theme="dark"] .fc-note-type { color:#f6ad55; }
+  :root[data-theme="dark"] .fc-svc-row { background:var(--bg-surface-alt);border-color:var(--border); }
+  :root[data-theme="dark"] .fc-log-level-info { background:var(--accent-bg);color:#90cdf4; }
+  :root[data-theme="dark"] .home-auto-close-warning { background:rgba(236,201,75,.12);border-color:#8a6d1a; }
+  :root[data-theme="dark"] .home-auto-close-warning-title { color:#f6ad55; }
+  :root[data-theme="dark"] .home-auto-close-warning-text { color:#fbd38d; }
+  :root[data-theme="dark"] .home-auto-close-warning-text strong { color:#f6ad55; }
+  :root[data-theme="dark"] .adm-overdue-row.adm-overdue-row-closed { background:rgba(236,201,75,.1);border-color:#8a6d1a; }
+  :root[data-theme="dark"] .adm-overdue-row.adm-overdue-row-closed:hover { background:rgba(236,201,75,.16);border-color:#d69e2e; }
+  :root[data-theme="dark"] .adm-overdue-row.adm-overdue-row-closed .adm-overdue-over { color:#f6ad55; }
+  :root[data-theme="dark"] .hop-dtp-clear { color:#fc8181; }
+  :root[data-theme="dark"] .hop-dtp-clear:hover { background:rgba(252,129,129,.12);color:#fc8181;border-color:#742a2a; }
+  :root[data-theme="dark"] .fb-infotip-btn:hover, :root[data-theme="dark"] .fb-infotip-btn[aria-expanded="true"], :root[data-theme="dark"] .fb-pill-prio-early, :root[data-theme="dark"] .acc-suggest, :root[data-theme="dark"] .sp-pill-running { color:#90cdf4; }
+  :root[data-theme="dark"] .emp-entry-system-badge { color:#f6ad55; }
+  :root[data-theme="dark"] .day-resource-live-pill, :root[data-theme="dark"] .day-shift-detail-live-pill, :root[data-theme="dark"] .day-card-live-pill { color:#9ae6b4; }
+  :root[data-theme="dark"] .hk-rc-iptag { color:#a0aec0;border-color:#64748b; }
+  :root[data-theme="dark"] .hk-floor[data-floor="ip"] .hk-floor-label { color:#a0aec0; }
+  :root[data-theme="dark"] .notes-center-tile-icon-unread, :root[data-theme="dark"] .cal-week-stat-icon-shifts, :root[data-theme="dark"] .cal-week-notes-badge { color:#90cdf4; }
+  :root[data-theme="dark"] .notes-center-tile-icon-general, :root[data-theme="dark"] .cal-week-stat-icon-dept, :root[data-theme="dark"] .cal-week-deptgrid-mini-more:hover { color:#9ae6b4; }
+  :root[data-theme="dark"] .notes-center-tile-icon-carry, :root[data-theme="dark"] .cal-week-stat-icon-all, :root[data-theme="dark"] .notes-drawer-note-badge.is-carry { color:#f6ad55; }
+  :root[data-theme="dark"] .notes-drawer-note-badge.is-pinned, :root[data-theme="dark"] .notes-drawer-note-badge.is-all, :root[data-theme="dark"] .cal-week-notes-badge.is-all, :root[data-theme="dark"] .assistant-badge { color:#f6e05e; }
+  :root[data-theme="dark"] .sheet-publish-btn.is-published, :root[data-theme="dark"] .sheet-row-menu.is-published, :root[data-theme="dark"] .sheet-overview-card-count.is-accent { color:#9ae6b4; }
+  :root[data-theme="dark"] .emp-entry-add, :root[data-theme="dark"] .staff-mgr-add-inline, :root[data-theme="dark"] .staff-mgr-add-tile:hover .staff-mgr-add-icon, :root[data-theme="dark"] .mini-month-day-today .mini-month-day-num, :root[data-theme="dark"] .week-tl-day-num.is-today, :root[data-theme="dark"] .sched-assign-btn:hover, :root[data-theme="dark"] .hk-btn-primary, :root[data-theme="dark"] .hk-btn-primary:hover:not(:disabled), :root[data-theme="dark"] .hk-seg button.on, :root[data-theme="dark"] .hk-dayseg button.on, :root[data-theme="dark"] .lb-btn-primary, :root[data-theme="dark"] .lb-seg button.on, :root[data-theme="dark"] .lb-chip.on, :root[data-theme="dark"] .lb-dp-day.sel, :root[data-theme="dark"] .lb-timepop button.sel, :root[data-theme="dark"] .lb-tag-new, :root[data-theme="dark"] .lb-foryou h2 span, :root[data-theme="dark"] .hop-dtp-cell.is-selected, :root[data-theme="dark"] .hop-dtp-ampm-btn.is-active, :root[data-theme="dark"] .hop-dtp-action.is-primary, :root[data-theme="dark"] .rx-seg button.on { background:var(--brand-bg);color:#fff; }
+}
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .fb-infotip-pop { background:var(--bg-surface); }
+  :root:not([data-theme="light"]) .ap-result.is-warn { background:var(--warn-bg);border-color:#8a6d1a; }
+  :root:not([data-theme="light"]) .ap-conflict { background:rgba(236,201,75,.12);border-color:#8a6d1a;color:var(--text-primary); }
+  :root:not([data-theme="light"]) .ap-conflict-list { color:#f6e05e; }
+  :root:not([data-theme="light"]) .ap-conflict-help { color:#f6ad55; }
+  :root:not([data-theme="light"]) .week-summary-cell.is-over-ot { background:rgba(236,201,75,.14);color:#f6e05e; }
+  :root:not([data-theme="light"]) .admin-field-warn { background:rgba(236,201,75,.12);border-color:#8a6d1a;color:#f6ad55; }
+  :root:not([data-theme="light"]) .entry-edit-conflict { background:rgba(252,129,129,.12);border-color:#742a2a;color:#fc8181; }
+  :root:not([data-theme="light"]) .entry-edit-conflict-meta { color:#feb2b2; }
+  :root:not([data-theme="light"]) .fc-selected-error, :root:not([data-theme="light"]) .fc-resn-card-error { background:rgba(252,129,129,.12);border-color:#742a2a;color:#fc8181; }
+  :root:not([data-theme="light"]) .fc-card-chip-empty { background:var(--bg-raised);color:var(--text-muted); }
+  :root:not([data-theme="light"]) .fc-note-card { background:rgba(236,201,75,.12);border-color:#8a6d1a;color:var(--text-primary); }
+  :root:not([data-theme="light"]) .fc-note-type { color:#f6ad55; }
+  :root:not([data-theme="light"]) .fc-svc-row { background:var(--bg-surface-alt);border-color:var(--border); }
+  :root:not([data-theme="light"]) .fc-log-level-info { background:var(--accent-bg);color:#90cdf4; }
+  :root:not([data-theme="light"]) .home-auto-close-warning { background:rgba(236,201,75,.12);border-color:#8a6d1a; }
+  :root:not([data-theme="light"]) .home-auto-close-warning-title { color:#f6ad55; }
+  :root:not([data-theme="light"]) .home-auto-close-warning-text { color:#fbd38d; }
+  :root:not([data-theme="light"]) .home-auto-close-warning-text strong { color:#f6ad55; }
+  :root:not([data-theme="light"]) .adm-overdue-row.adm-overdue-row-closed { background:rgba(236,201,75,.1);border-color:#8a6d1a; }
+  :root:not([data-theme="light"]) .adm-overdue-row.adm-overdue-row-closed:hover { background:rgba(236,201,75,.16);border-color:#d69e2e; }
+  :root:not([data-theme="light"]) .adm-overdue-row.adm-overdue-row-closed .adm-overdue-over { color:#f6ad55; }
+  :root:not([data-theme="light"]) .hop-dtp-clear { color:#fc8181; }
+  :root:not([data-theme="light"]) .hop-dtp-clear:hover { background:rgba(252,129,129,.12);color:#fc8181;border-color:#742a2a; }
+  :root:not([data-theme="light"]) .fb-infotip-btn:hover, :root:not([data-theme="light"]) .fb-infotip-btn[aria-expanded="true"], :root:not([data-theme="light"]) .fb-pill-prio-early, :root:not([data-theme="light"]) .acc-suggest, :root:not([data-theme="light"]) .sp-pill-running { color:#90cdf4; }
+  :root:not([data-theme="light"]) .emp-entry-system-badge { color:#f6ad55; }
+  :root:not([data-theme="light"]) .day-resource-live-pill, :root:not([data-theme="light"]) .day-shift-detail-live-pill, :root:not([data-theme="light"]) .day-card-live-pill { color:#9ae6b4; }
+  :root:not([data-theme="light"]) .hk-rc-iptag { color:#a0aec0;border-color:#64748b; }
+  :root:not([data-theme="light"]) .hk-floor[data-floor="ip"] .hk-floor-label { color:#a0aec0; }
+  :root:not([data-theme="light"]) .notes-center-tile-icon-unread, :root:not([data-theme="light"]) .cal-week-stat-icon-shifts, :root:not([data-theme="light"]) .cal-week-notes-badge { color:#90cdf4; }
+  :root:not([data-theme="light"]) .notes-center-tile-icon-general, :root:not([data-theme="light"]) .cal-week-stat-icon-dept, :root:not([data-theme="light"]) .cal-week-deptgrid-mini-more:hover { color:#9ae6b4; }
+  :root:not([data-theme="light"]) .notes-center-tile-icon-carry, :root:not([data-theme="light"]) .cal-week-stat-icon-all, :root:not([data-theme="light"]) .notes-drawer-note-badge.is-carry { color:#f6ad55; }
+  :root:not([data-theme="light"]) .notes-drawer-note-badge.is-pinned, :root:not([data-theme="light"]) .notes-drawer-note-badge.is-all, :root:not([data-theme="light"]) .cal-week-notes-badge.is-all, :root:not([data-theme="light"]) .assistant-badge { color:#f6e05e; }
+  :root:not([data-theme="light"]) .sheet-publish-btn.is-published, :root:not([data-theme="light"]) .sheet-row-menu.is-published, :root:not([data-theme="light"]) .sheet-overview-card-count.is-accent { color:#9ae6b4; }
+  :root:not([data-theme="light"]) .emp-entry-add, :root:not([data-theme="light"]) .staff-mgr-add-inline, :root:not([data-theme="light"]) .staff-mgr-add-tile:hover .staff-mgr-add-icon, :root:not([data-theme="light"]) .mini-month-day-today .mini-month-day-num, :root:not([data-theme="light"]) .week-tl-day-num.is-today, :root:not([data-theme="light"]) .sched-assign-btn:hover, :root:not([data-theme="light"]) .hk-btn-primary, :root:not([data-theme="light"]) .hk-btn-primary:hover:not(:disabled), :root:not([data-theme="light"]) .hk-seg button.on, :root:not([data-theme="light"]) .hk-dayseg button.on, :root:not([data-theme="light"]) .lb-btn-primary, :root:not([data-theme="light"]) .lb-seg button.on, :root:not([data-theme="light"]) .lb-chip.on, :root:not([data-theme="light"]) .lb-dp-day.sel, :root:not([data-theme="light"]) .lb-timepop button.sel, :root:not([data-theme="light"]) .lb-tag-new, :root:not([data-theme="light"]) .lb-foryou h2 span, :root:not([data-theme="light"]) .hop-dtp-cell.is-selected, :root:not([data-theme="light"]) .hop-dtp-ampm-btn.is-active, :root:not([data-theme="light"]) .hop-dtp-action.is-primary, :root:not([data-theme="light"]) .rx-seg button.on { background:var(--brand-bg);color:#fff; }
+}

@@ -270,4 +270,4 @@
 .rx-search { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .rx-search input { flex: 1 1 260px; min-width: 0; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); color: var(--text-primary); }
 .rx-search input:focus { outline: 2px solid var(--accent-alt, #3182ce); outline-offset: 1px; }
-.rx-audit mark { background: #fef08a; color: inherit; border-radius: 3px; padding: 0 1px; }
+.rx-audit mark { background: #fef08a; color: #1a202c; border-radius: 3px; padding: 0 1px; }

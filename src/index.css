@@ -11,6 +11,9 @@ body {
   font-family: 'TiemposText', Georgia, serif;
   font-weight: 400;
   background: var(--bg-base);
+  /* Sprint 28.3: the page text colour. Without it every element that sets no colour of its own fell back to the browser's black — invisible on the dark theme
+     (housekeeping room table, the Auto-sync panel …). Pages that set a colour keep it. */
+  color: var(--text-primary);
   height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

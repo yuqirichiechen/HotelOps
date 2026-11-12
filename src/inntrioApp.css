@@ -102,3 +102,6 @@
 
 @media (max-width: 880px) { .app-shell .adm-page, .app-shell .ph-page { padding: 22px 16px 90px; } .app-shell .adm-greeting-title, .app-shell .ph-title { font-size: 28px; } .app-shell .adm-stat-num { font-size: 34px; } }
 @media (prefers-reduced-motion: reduce) { .app-shell .adm-page, .app-shell .ph-page { animation: none; } }
+
+/* Sprint 28.3 — the light theme's gold --accent with white text is too faint (hover state of the Assign button): use the primary navy */
+.sched-assign-btn:hover { background: var(--brand-bg); color: #fff; }

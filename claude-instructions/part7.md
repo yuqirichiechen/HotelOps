@@ -21,8 +21,25 @@
 | 27.8   | Tab icon follows the mode (inntrio-icon-dark / -light); Snoqualmie Inn logo back in the sidebar | **Done** 2026-11-12 (frontend only) |
 | 28.1   | Signed-in app redesign, part 1: the sidebar and the Home pages (dev / manager, staff, front desk) in the Inntrio look, dark + light | **Done** 2026-11-12 (frontend only; pure restyle) |
 | 28.2   | Signed-in app redesign, part 2: every page in the Inntrio palette (dark + light) via the global theme tokens; Dev bar on-brand | **Done** 2026-11-12 (frontend only; pure restyle) |
+| 28.3   | Display fixes: Dev bar follows light/dark, black-on-dark text (root cause: no page text colour), Auto-sync + Housekeeping tables, dark-mode / contrast audit across the app | **Done** 2026-11-12 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 28.3: display fixes + a UI audit
+
+**Frontend only; CSS fixes, no behaviour changes.**
+1. **Dev bar did not change with light / dark.** My 28.2 version was dark navy in both themes on purpose, which read as "not changing". Now it follows the theme: a rice-white bar with navy text in light mode, the dark navy glass in dark mode (explicit toggle and system setting); the accent per view (Dev gold, Manager teal, Front desk copper) is a deeper tone in light mode. A second, hidden bug: the ORIGINAL purple / teal / amber `.dvb.is-*` gradient rules were still in the file and out-ranked the new theme rules (two classes vs one) — they are deleted.
+2. **Black text in dark mode (Housekeeping "Rooms and who is cleaning them", the Auto-sync page).** Root cause: `body` never set a text colour, so every element without its own colour rule fell back to the browser's black. Fixed globally: `body { color: var(--text-primary) }`, and every theme block now sets `color-scheme` (native controls, scrollbars and defaults follow the theme). That fixes all such tables / panels at once, including places nobody has reported yet.
+3. **Audit — contrast scanner.** I wrote a scanner that runs in the browser on every page and flags any visible text whose contrast against its real background is below 3:1 (it walks up to the first opaque background, skipping gradients), and ran it on every dev-shell and front-desk-portal page in dark and light (with realistic generated data for Reservations / Forecast / Housekeeping / Auto-sync). Findings and fixes:
+   - the **"Clock out" button** on the dark Home used a fixed dark red → `var(--danger-hover)`;
+   - **gold `--accent` used as TEXT** (e.g. "Refresh" on the Auto-sync card, 2.4:1 on a light card) → text now uses `--accent-alt` (gold is a fill colour only);
+   - the **Settings check mark** (`--success` → `--success-text`);
+   - the faintest text token `--text-lightest` raised in both themes (decorative dots / chevrons / "└" were ~2.1:1; now ~2.5–3.3:1, still decorative);
+   - Result: the scan is clean except decorative glyphs (· › └ ★).
+4. **Audit — hard-coded colours** (static scan of every stylesheet): ~25 rules hard-coded a PALE background (so their text, now inheriting the light page colour, would vanish in dark mode) or dark text colours chosen for light mode that sat on dark / translucent backgrounds. New block "Sprint 28.3" at the end of `darkFixes.css` (for both the explicit toggle and the system setting): the Forecast info-tip popover, plan conflict boxes, entry-edit conflict, forecast note card / service rows / error boxes, "Past scheduled end" closed rows on the Home, the clock-in kiosk's auto-close warning, date-picker clear, Calendar notes / week badges, Assistant badge, shift-sheet published pills, the Auto-sync "running" pill, Housekeeping IP tags, the accuracy suggestion box … Also **solid primary controls** (Housekeeping primary / segmented buttons, Log Book primary / chips / date-picker selection, Staff "Add", Calendar today markers, the date-time picker) used white text on the dark theme's light-blue accent (~2:1) → they use the primary button blue (white on it is ~6:1). The light theme's Assign-button hover (white on gold) → primary navy. The audit-log search highlight keeps dark text.
+5. Status chips, department colours, print sheets are unchanged by design.
+Tests: `theme-inntrio` 7 (new: the Dev bar for both themes and the old banner rules gone, body colour + color-scheme order, the dark-mode override block for explicit AND system dark, no gold-accent text left, the specific fixes). Full regression green; build compiles.
+**How to review:** open Housekeeping and Auto-sync in dark mode, flip the mode with the sidebar button, and watch the Dev bar. If you find another element that looks off, a screenshot tells me the class name to fix. **Known limits:** the scan only sees what is on screen after loading, so modals / popovers / error and empty states you have not opened yet were covered by the static colour audit, not by screenshots.
 
 ### 2026-11-12 — Sprint 28.2: the signed-in app, part 2 — every page
 
