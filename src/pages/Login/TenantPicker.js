@@ -30,7 +30,7 @@ const TenantPicker = ({ kind }) => {
     const t = KNOWN_TENANTS[chosen];
     if (!t) return;
     if (isDevPick) { try { localStorage.setItem('hotelops-tenant-slug', t.slug); } catch { /* ignore */ } nav(`/${t.slug}/admin`); return; }
-    withTransition(() => nav(`/${t.slug}/login`), 'forward');   // Sprint 27.3: the property logo glides into the property bar of the next screen
+    withTransition(() => nav(`/${t.slug}/login`), 'forward');
   };
 
   const picker = (
@@ -49,7 +49,7 @@ const TenantPicker = ({ kind }) => {
         </div>
         {shown.map(t => (
           <button key={t.slug} type="button" className={`in-property-row${chosen === t.slug ? ' selected' : ''}`} aria-pressed={chosen === t.slug} onClick={() => setChosen(t.slug)}>
-            <PropertyMark tenant={t} iconSize={23} shared={chosen === t.slug} />
+            <PropertyMark tenant={t} iconSize={23} />
             <span><span className="in-property-title">{t.name}</span><span className="in-property-sub">{t.location || ''}</span></span>
             <span className="in-spacer" />
             {t.status && <span className="in-small-state">{t.status}</span>}

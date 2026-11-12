@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, RequireRole, RequireDev, RedirectIfAuthed, useAuth, homePathFor } from './auth';
 import { LanguageProvider } from './i18n';
+import { LoginThemeContext, THEME_KEY } from './pages/Login/loginTheme';
 import { DEFAULT_TENANT_SLUG } from './config/tenant';
 import ShiftsView from './components/ShiftsView';
 import TenantLogin from './pages/Login/TenantLogin';
@@ -66,6 +67,12 @@ const App = () => {
     else       html.removeAttribute('data-theme');
   }, [theme]);
 
+  // Sprint 27.5: the Inntrio login picks light / dark explicitly (click the logo); same saved key as the in-app toggle
+  const chooseTheme = (next) => {
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* storage unavailable */ }
+    setTheme(next);
+  };
+
   const toggleTheme = () => {
     setTheme(prev => {
       const osDark        = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -80,6 +87,7 @@ const App = () => {
     <BrowserRouter>
       <AuthProvider>
         <I18nBridge>
+        <LoginThemeContext.Provider value={{ theme, setTheme: chooseTheme }}>
         <Routes>
           {/* ── Root: picker or redirect to per-tenant shell ────────────── */}
           <Route path="/" element={<RootRoute />} />
@@ -143,6 +151,7 @@ const App = () => {
           {/* ── Catch-all ───────────────────────────────────────────────── */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </LoginThemeContext.Provider>
         </I18nBridge>
       </AuthProvider>
     </BrowserRouter>

@@ -47,5 +47,10 @@ const picker = (kind) => React.createElement(RR.MemoryRouter, { initialEntries: 
     SplashMod._resetSplash(); let m = await mount(picker('dev')); assert(!m.host.querySelector('.in-splash') && m.host.querySelector('.in-property-row'), 'dev picker');
     SplashMod._resetSplash(); const mm = window.matchMedia; window.matchMedia = (q) => ({ matches: /reduce/.test(q), addEventListener() {}, removeEventListener() {} }); m = await mount(picker('staff')); window.matchMedia = mm; assert(!m.host.querySelector('.in-splash') && m.host.querySelector('.in-property-row'), 'reduced motion');
   });
+  await t('light mode (27.5): with a saved light theme the splash and the picker come up light with the navy logo', async () => {
+    localStorage.setItem('hotelops-theme', 'light'); SplashMod._resetSplash(); const m = await mount(picker('staff'));
+    assert(m.host.querySelector('.in-splash.in-light') && m.host.querySelector('.in-splash-logo').getAttribute('src') === '/inntrio/inntrio-logo-light.svg', 'light splash'); await act(async () => { m.host.querySelector('.in-splash').dispatchEvent(new w.MouseEvent('click', { bubbles: true })); });
+    assert(m.host.querySelector('.in-root.in-light .in-property-row') && m.host.querySelector('.in-topnav img').getAttribute('src') === '/inntrio/inntrio-logo-light.svg', 'light picker'); localStorage.clear();
+  });
   console.log(`\n${pass} passed`); process.exit(process.exitCode || 0);
 })();

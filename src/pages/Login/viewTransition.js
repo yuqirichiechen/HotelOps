@@ -8,13 +8,14 @@ export const prefersReducedMotion = () => {
   try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch { return false; }
 };
 
-/** @param {() => void} update  the state / navigation change   @param {'forward'|'back'} dir */
-export const withTransition = (update, dir = 'forward') => {
+/** @param {() => void} update  the state / navigation change   @param {'forward'|'back'|'theme'} dir   @param {{x:number,y:number}} [point] origin of the 'theme' reveal */
+export const withTransition = (update, dir = 'forward', point = null) => {
   const doc = typeof document !== 'undefined' ? document : null;
   if (!doc || typeof doc.startViewTransition !== 'function' || prefersReducedMotion()) { update(); return; }
   const root = doc.documentElement;
   root.dataset.vt = dir;
-  const clear = () => { delete root.dataset.vt; };
+  if (point) { root.style.setProperty('--vt-x', `${point.x}px`); root.style.setProperty('--vt-y', `${point.y}px`); }
+  const clear = () => { delete root.dataset.vt; root.style.removeProperty('--vt-x'); root.style.removeProperty('--vt-y'); };
   try {
     const t = doc.startViewTransition(() => { flushSync(update); });
     t.finished.then(clear, clear);

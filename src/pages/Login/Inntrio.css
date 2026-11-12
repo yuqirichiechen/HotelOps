@@ -3,6 +3,8 @@
 
 .in-root {
   --in-night: #0b1420; --in-gold: #dfc184; --in-gold-light: #f4dca5; --in-muted: #a9bdd3; --in-border: rgba(176, 211, 244, .20);
+  --in-wave-1: #245889; --in-wave-2: #1b3c60; --in-wave-3: #051525;
+  --in-gold-0: #7f5830; --in-gold-1: #d2a967; --in-gold-2: #fff1c7; --in-gold-3: #d4a65a; --in-gold-4: #b38a4b; --in-gold-5: #d5b379;
   color-scheme: dark; position: relative; isolation: isolate; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; color: #f7f8fb;
   font-family: 'TiemposText', Georgia, serif;
   background: radial-gradient(ellipse 95% 110% at 100% 10%, #19416a 0%, transparent 52%), radial-gradient(ellipse 78% 80% at -8% 84%, #153456 0%, transparent 62%), linear-gradient(133deg, #081321 1%, #12263d 51%, #0b182a 100%);
@@ -20,7 +22,8 @@
 
 /* top bar — the Inntrio logo on the left, the platform line in gold on the right */
 .in-topnav { height: 94px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
-.in-brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.in-brand { display: flex; align-items: center; gap: 16px; min-width: 0; background: none; border: 0; padding: 4px 6px; margin-left: -6px; border-radius: 12px; cursor: pointer; transition: transform .2s, filter .2s; }
+.in-brand:hover { transform: scale(1.03); filter: brightness(1.1); } .in-brand:active { transform: scale(.98); }
 .in-brand img { width: 177px; height: auto; display: block; }
 .in-tagline { color: var(--in-gold); text-transform: uppercase; letter-spacing: 3px; font-size: 11px; font-weight: 700; text-align: right; white-space: nowrap; }
 
@@ -154,34 +157,40 @@
 @media (min-width: 731px) and (max-height: 800px) { .in-layout { justify-content: flex-start; padding-top: 21px; } .in-root h1.in-h1 { font-size: 34px; } .in-select-card { padding: 22px; } .in-choice { min-height: 107px; padding: 15px; } .in-clock-card { padding: 21px; } }
 @media (prefers-reduced-motion: reduce) { .in-root *, .in-root *::before, .in-root *::after { transition: none !important; } }
 
-/* ── Sprint 27.3: motion ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
-/* 1. entrance: each block of a screen rises into place, staggered (first load, and browsers without the View Transitions API). Only on `.in-enter`, which
-      AuthFrame sets ONCE at mount when the screen is not arriving through a view transition — never toggled later (that restarted the animation: the 27.3 bug). */
-@keyframes in-fade-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-.in-enter .in-layout > * { animation: in-fade-up .6s cubic-bezier(.22, .8, .3, 1) both; }
-.in-enter .in-layout > *:nth-child(2) { animation-delay: .06s; } .in-enter .in-layout > *:nth-child(3) { animation-delay: .12s; } .in-enter .in-layout > *:nth-child(4) { animation-delay: .18s; }
-.in-enter .in-layout > *:nth-child(5) { animation-delay: .24s; } .in-enter .in-layout > *:nth-child(6) { animation-delay: .30s; } .in-enter .in-layout > *:nth-child(7) { animation-delay: .36s; }
-.in-enter .in-brand, .in-enter .in-tagline { animation: in-fade-up .6s cubic-bezier(.22, .8, .3, 1) both; }
-/* 3. screen to screen (View Transitions): the top bar and the background stay put, the content slides + fades in the direction of travel, the
-      property logo glides from the picker row into the property bar. `data-vt` on <html> (forward | back) is set by viewTransition.js. */
+/* ── Sprint 27.3 / 27.5: motion ──────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
+/* One motion language, borrowed from the welcome splash: things arrive out of a soft blur, scaling up into place; they leave with a quick fade. */
+/* 1. entrance: every block of a screen arrives (first load, and browsers without the View Transitions API), staggered. Only on `.in-enter`, which AuthFrame
+      sets ONCE at mount when the screen is not arriving through a view transition — never toggled later (that restarted the animation: the 27.3 bug). */
+@keyframes in-fade-up { from { opacity: 0; transform: translateY(14px) scale(.975); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+.in-enter .in-layout > * { animation: in-fade-up .7s cubic-bezier(.22, .8, .3, 1) both; }
+.in-enter .in-layout > *:nth-child(2) { animation-delay: .07s; } .in-enter .in-layout > *:nth-child(3) { animation-delay: .14s; } .in-enter .in-layout > *:nth-child(4) { animation-delay: .21s; }
+.in-enter .in-layout > *:nth-child(5) { animation-delay: .28s; } .in-enter .in-layout > *:nth-child(6) { animation-delay: .35s; } .in-enter .in-layout > *:nth-child(7) { animation-delay: .42s; }
+.in-enter .in-brand, .in-enter .in-tagline { animation: in-fade-up .7s cubic-bezier(.22, .8, .3, 1) both; }
+/* 2. screen to screen (View Transitions): the top bar and the background stay put; the old content melts away, the new content arrives from a blur,
+      scaling up into place (forward) or settling down into place (back). `data-vt` on <html> (forward | back | theme) is set by viewTransition.js. */
 .in-scene { view-transition-name: in-scene; }
 .in-topnav { view-transition-name: in-topnav; }
 .in-layout { view-transition-name: in-main; }
-html[data-vt] ::view-transition-old(root), html[data-vt] ::view-transition-new(root),
-html[data-vt] ::view-transition-old(in-scene), html[data-vt] ::view-transition-new(in-scene),
-html[data-vt] ::view-transition-old(in-topnav), html[data-vt] ::view-transition-new(in-topnav) { animation: none; mix-blend-mode: normal; }
-html[data-vt] ::view-transition-group(in-property) { animation-duration: .55s; animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
-html[data-vt] ::view-transition-old(in-main), html[data-vt] ::view-transition-new(in-main) { mix-blend-mode: normal; animation-fill-mode: both; animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
-html[data-vt] ::view-transition-old(in-main) { animation-duration: .26s; }
-html[data-vt] ::view-transition-new(in-main) { animation-duration: .5s; animation-delay: .06s; }
-@keyframes in-out-left  { to { opacity: 0; transform: translateX(-42px) scale(.985); } }
-@keyframes in-out-right { to { opacity: 0; transform: translateX(42px) scale(.985); } }
-@keyframes in-in-right  { from { opacity: 0; transform: translateX(42px) scale(.985); } }
-@keyframes in-in-left   { from { opacity: 0; transform: translateX(-42px) scale(.985); } }
-html[data-vt="forward"] ::view-transition-old(in-main) { animation-name: in-out-left; }
-html[data-vt="forward"] ::view-transition-new(in-main) { animation-name: in-in-right; }
-html[data-vt="back"] ::view-transition-old(in-main) { animation-name: in-out-right; }
-html[data-vt="back"] ::view-transition-new(in-main) { animation-name: in-in-left; }
+html[data-vt="forward"] ::view-transition-old(root), html[data-vt="forward"] ::view-transition-new(root),
+html[data-vt="forward"] ::view-transition-old(in-scene), html[data-vt="forward"] ::view-transition-new(in-scene),
+html[data-vt="forward"] ::view-transition-old(in-topnav), html[data-vt="forward"] ::view-transition-new(in-topnav),
+html[data-vt="back"] ::view-transition-old(root), html[data-vt="back"] ::view-transition-new(root),
+html[data-vt="back"] ::view-transition-old(in-scene), html[data-vt="back"] ::view-transition-new(in-scene),
+html[data-vt="back"] ::view-transition-old(in-topnav), html[data-vt="back"] ::view-transition-new(in-topnav) { animation: none; mix-blend-mode: normal; }
+html[data-vt="forward"] ::view-transition-old(in-main), html[data-vt="forward"] ::view-transition-new(in-main),
+html[data-vt="back"] ::view-transition-old(in-main), html[data-vt="back"] ::view-transition-new(in-main) { mix-blend-mode: normal; animation-fill-mode: both; animation-timing-function: cubic-bezier(.22, .8, .3, 1); }
+html[data-vt="forward"] ::view-transition-old(in-main), html[data-vt="back"] ::view-transition-old(in-main) { animation-name: in-leave; animation-duration: .26s; }
+html[data-vt="forward"] ::view-transition-new(in-main) { animation-name: in-arrive; animation-duration: .7s; animation-delay: .08s; }
+html[data-vt="back"] ::view-transition-new(in-main) { animation-name: in-arrive-back; animation-duration: .7s; animation-delay: .08s; }
+@keyframes in-leave { to { opacity: 0; transform: scale(.985); filter: blur(6px); } }
+@keyframes in-arrive { from { opacity: 0; transform: translateY(14px) scale(.965); filter: blur(10px); } }
+@keyframes in-arrive-back { from { opacity: 0; transform: translateY(-10px) scale(1.03); filter: blur(10px); } }
+/* 3. light / dark switch: a circle grows from the logo and paints the new theme (the three named parts are un-named for this one so everything is in the root snapshot) */
+html[data-vt="theme"] .in-scene, html[data-vt="theme"] .in-topnav, html[data-vt="theme"] .in-layout { view-transition-name: none; }
+html[data-vt="theme"] ::view-transition-old(root), html[data-vt="theme"] ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html[data-vt="theme"] ::view-transition-new(root) { z-index: 2; animation: in-reveal .75s cubic-bezier(.4, 0, .2, 1) both; }
+html[data-vt="theme"] ::view-transition-old(root) { z-index: 1; }
+@keyframes in-reveal { from { clip-path: circle(0 at var(--vt-x, 6%) var(--vt-y, 4%)); } to { clip-path: circle(150vmax at var(--vt-x, 6%) var(--vt-y, 4%)); } }
 /* 4. small touches: gold button sheen, keys that press in */
 .in-primary { position: relative; overflow: hidden; }
 .in-primary::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent); transition: left .6s ease; pointer-events: none; }
@@ -203,3 +212,55 @@ html[data-vt="back"] ::view-transition-new(in-main) { animation-name: in-in-left
 .in-splash-tagline { color: var(--in-gold); text-transform: uppercase; font-size: 11px; font-weight: 700; letter-spacing: 4px; animation: in-splash-line 1s ease .5s both; }
 @media (max-width: 730px) { .in-splash-tagline { font-size: 9px; letter-spacing: 3px; } }
 @media (prefers-reduced-motion: reduce) { .in-splash-logo, .in-splash-tagline { animation: none; } }
+
+/* ── Sprint 27.5: light mode — rice white + gold (the dark scene reversed). Switched by clicking the logo; `.in-light` is set by AuthFrame / Splash. ───────────── */
+.in-root.in-light {
+  --in-gold: #9a6f2a; --in-gold-light: #7d5a1c; --in-muted: #5b6b82; --in-border: rgba(15, 37, 64, .14);
+  --in-wave-1: #e6d9b8; --in-wave-2: #efe6d0; --in-wave-3: #f6efe0;
+  --in-gold-0: #b8893f; --in-gold-1: #c9a05a; --in-gold-2: #e8c880; --in-gold-3: #b98c50; --in-gold-4: #a97a37; --in-gold-5: #c9a05a;
+  color-scheme: light; color: #0f2540;
+  background: radial-gradient(ellipse 95% 110% at 100% 10%, #f1e6c9 0%, transparent 52%), radial-gradient(ellipse 78% 80% at -8% 84%, #ece3cf 0%, transparent 62%), linear-gradient(133deg, #fbf8f1 1%, #f6f0e2 51%, #fbf7ee 100%);
+}
+.in-light .in-scene { opacity: 1; }
+.in-light .in-topnav { border-bottom-color: rgba(15, 37, 64, .09); }
+.in-light .in-tagline, .in-light .in-splash-tagline { color: #9a6f2a; }
+.in-light h1.in-h1, .in-light .in-login-header h2, .in-light .in-clock-detail .lang-cycle-title { color: #0f2540; }
+.in-light .in-subtitle, .in-light .in-login-header p, .in-light .in-clock-detail .lang-cycle-sub { color: #51627a; }
+.in-light .in-surface { background: linear-gradient(150deg, rgba(255, 255, 255, .94), rgba(250, 246, 236, .96) 55%, rgba(255, 252, 245, .95)); border-color: rgba(15, 37, 64, .12); box-shadow: 0 24px 60px rgba(90, 68, 20, .13), inset 0 1px 0 rgba(255, 255, 255, .9); }
+.in-light .in-surface::before { background: linear-gradient(90deg, transparent, rgba(201, 160, 90, .55), transparent); }
+.in-light .in-surface::after { box-shadow: 0 0 18px 2px rgba(201, 160, 90, .3); }
+.in-light .in-label-small { color: #6b7a90; }
+.in-light .in-count-pill { color: #7d5a1c; background: rgba(201, 160, 90, .14); border-color: rgba(154, 111, 42, .3); }
+.in-light .in-search-wrap { background: rgba(15, 37, 64, .035); border-color: rgba(15, 37, 64, .14); }
+.in-light .in-search-wrap svg, .in-light .in-field svg { color: #7b8ba1; }
+.in-light .in-search-wrap input, .in-light .in-field input { color: #0f2540; }
+.in-light .in-search-wrap input::placeholder, .in-light .in-field input::placeholder { color: #8a98ab; }
+.in-light .in-property-row { background: rgba(255, 255, 255, .85); border-color: rgba(15, 37, 64, .13); }
+.in-light .in-property-row.selected { border-color: #c9a05a; background: linear-gradient(100deg, rgba(250, 236, 200, .7), rgba(255, 255, 255, .9)); box-shadow: 0 0 0 1px rgba(201, 160, 90, .22), 0 6px 18px rgba(154, 111, 42, .1); }
+.in-light .in-property-row:hover, .in-light .in-choice:hover { border-color: rgba(154, 111, 42, .6); background-color: #fff; }
+.in-light .in-property-sub, .in-light .in-choice-desc { color: #5b6b82; }
+.in-light .in-tile-ico { background: rgba(154, 111, 42, .08); border-color: rgba(154, 111, 42, .18); color: #9a6f2a; }
+.in-light .in-choice-icon { background: rgba(15, 37, 64, .045); border-color: rgba(15, 37, 64, .1); color: #0f2540; }
+.in-light .in-small-state { color: #1d7a52; background: rgba(42, 132, 98, .1); border-color: rgba(42, 132, 98, .28); }
+.in-light .in-selected-circle { border-color: #b4c0d0; }
+.in-light .in-logo-chip { box-shadow: inset 0 0 0 1px rgba(15, 37, 64, .1), 0 2px 8px rgba(15, 37, 64, .12); }
+.in-light .in-selected-bar { background: rgba(255, 255, 255, .8); border-color: rgba(15, 37, 64, .13); }
+.in-light .in-change { color: #8a5a12; }
+.in-light .in-choice { background: linear-gradient(110deg, rgba(255, 255, 255, .95), rgba(250, 246, 237, .9)); border-color: rgba(15, 37, 64, .13); color: #0f2540; }
+.in-light .in-choice:hover { box-shadow: 0 16px 34px rgba(90, 68, 20, .16); }
+.in-light .in-choice > svg:last-child { color: #9a6f2a; }
+.in-light .in-login-header { border-bottom-color: rgba(15, 37, 64, .1); }
+.in-light .in-field-label { color: #33445c; }
+.in-light .in-field { background: #fff; border-color: rgba(15, 37, 64, .18); }
+.in-light .in-field:focus-within, .in-light .in-field.is-active { border-color: #c9a05a; box-shadow: 0 0 0 3px rgba(201, 160, 90, .2); }
+.in-light .in-input-eye { color: #7b8ba1; } .in-light .in-optional { color: #8a98ab; }
+.in-light .in-error { background: #fdecec; border-color: #f0b3b3; color: #9b1c1c; }
+.in-light .in-back { color: #9a6f2a; } .in-light .in-back:hover { color: #7d5a1c; }
+.in-light .in-clock-meta { color: #6b7a90; }
+.in-light .in-keypad-panel { background: linear-gradient(155deg, rgba(255, 255, 255, .95), rgba(244, 238, 222, .9)); border-color: rgba(15, 37, 64, .13); }
+.in-light .in-key { background: linear-gradient(145deg, #fff, #f1ecde); color: #0f2540; border-color: rgba(15, 37, 64, .14); box-shadow: 0 1px 0 rgba(255, 255, 255, .9) inset, 0 2px 6px rgba(15, 37, 64, .07); }
+.in-light .in-key:active { background: #e8dfc6; }
+.in-light .in-key.is-active { background: linear-gradient(145deg, #e8c880, #c9a05a); color: #0f2540; }
+.in-light .in-splash-logo { filter: drop-shadow(0 14px 30px rgba(90, 68, 20, .16)); }
+.in-light .in-clock-detail .lang-cycle-headline:hover { background: rgba(15, 37, 64, .04); } .in-light .in-clock-detail .lang-cycle-headline:active { background: rgba(15, 37, 64, .07); }
+.in-light .in-clock-detail .lang-cycle-check { color: #9a6f2a; }

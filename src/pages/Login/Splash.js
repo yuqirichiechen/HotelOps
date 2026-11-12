@@ -3,7 +3,8 @@
 //   phase 'show'      — only the splash (the picker is not mounted yet)
 //   phase 'revealing' — the picker mounts underneath (its own entrance animation runs) while the splash fades out
 import React, { useEffect } from 'react';
-import { Scene, LOGO_SRC, TAGLINE } from './InntrioFrame';
+import { Scene, LOGO_SRC, LOGO_LIGHT_SRC, TAGLINE } from './InntrioFrame';
+import { useLoginTheme } from './loginTheme';
 import './Inntrio.css';
 
 export const SPLASH_HOLD_MS = 1500;   // logo + tagline on screen before the fade starts (the logo itself takes ~0.8 s to appear)
@@ -15,6 +16,7 @@ export const markSplashSeen = () => { seen = true; };
 export const _resetSplash = () => { seen = false; };
 
 const Splash = ({ fading, onReveal, onDone, holdMs = SPLASH_HOLD_MS, fadeMs = SPLASH_FADE_MS }) => {
+  const { light } = useLoginTheme();
   // hold, then ask the parent to mount the picker
   useEffect(() => {
     if (fading) return undefined;
@@ -31,10 +33,10 @@ const Splash = ({ fading, onReveal, onDone, holdMs = SPLASH_HOLD_MS, fadeMs = SP
   }, [fading, onDone, fadeMs]);
 
   return (
-    <div className={`in-root in-splash${fading ? ' is-fading' : ''}`} style={{ '--in-splash-fade': `${fadeMs}ms` }} role="presentation" onClick={onReveal} data-testid="splash">
+    <div className={`in-root in-splash${light ? ' in-light' : ''}${fading ? ' is-fading' : ''}`} style={{ '--in-splash-fade': `${fadeMs}ms` }} role="presentation" onClick={onReveal} data-testid="splash">
       <Scene />
       <div className="in-splash-center">
-        <img className="in-splash-logo" src={LOGO_SRC} alt="Inntrio" />
+        <img className="in-splash-logo" src={light ? LOGO_LIGHT_SRC : LOGO_SRC} alt="Inntrio" />
         <div className="in-splash-tagline">{TAGLINE}</div>
       </div>
     </div>
