@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KNOWN_TENANTS } from '../../config/tenant';
 import AuthFrame, { PropertyMark } from './InntrioFrame';
 import Icon from './InntrioIcons';
-import { withTransition } from './viewTransition';
+import { withTransition, prefersReducedMotion } from './viewTransition';
+import Splash, { splashSeen, markSplashSeen } from './Splash';
 
 // Sprint 27.1: step 1 of the Inntrio login — "Select a property". Same destinations as before (only the look changed):
 //   signed-out visitors:  Continue → /:slug/login   (step 2, the access chooser, lives there)
@@ -13,6 +14,14 @@ const TenantPicker = ({ kind }) => {
   const nav = useNavigate();
   const isDevPick = kind === 'dev';
   const tenants = useMemo(() => Object.values(KNOWN_TENANTS), []);
+  // Sprint 27.4: the welcome splash plays once per page load, before the first property screen (never for the dev picker, never with reduced motion)
+  const [phase, setPhase] = useState(() => {
+    if (isDevPick || splashSeen() || prefersReducedMotion()) return 'ready';
+    markSplashSeen();
+    return 'splash';
+  });
+  const reveal = useCallback(() => setPhase(p => (p === 'splash' ? 'revealing' : p)), []);
+  const done = useCallback(() => setPhase('ready'), []);
   const [q, setQ] = useState('');
   const [chosen, setChosen] = useState(tenants.length === 1 ? tenants[0].slug : null);
   const shown = tenants.filter(t => `${t.name} ${t.location || ''}`.toLowerCase().includes(q.trim().toLowerCase()));
@@ -24,8 +33,8 @@ const TenantPicker = ({ kind }) => {
     withTransition(() => nav(`/${t.slug}/login`), 'forward');   // Sprint 27.3: the property logo glides into the property bar of the next screen
   };
 
-  return (
-    <AuthFrame step="property" hero>
+  const picker = (
+    <AuthFrame step="property">
       <h1 className="in-h1">Select a property</h1>
       <p className="in-subtitle">{isDevPick ? 'Choose which property to open. You will see its manager layout with the Dev tools added.' : 'Choose where you work to continue.'}</p>
       <div className="in-gap-lg" />
@@ -50,8 +59,14 @@ const TenantPicker = ({ kind }) => {
         {shown.length === 0 && <p className="in-none">No matching properties.</p>}
         <button type="button" className="in-primary in-property-go" disabled={!chosen || !shown.some(t => t.slug === chosen)} onClick={go}>Continue <Icon name="arrow" size={19} /></button>
       </section>
-      <div className="in-below-note">One workspace. Every department.</div>
     </AuthFrame>
+  );
+
+  return (
+    <>
+      {phase !== 'splash' && picker}
+      {phase !== 'ready' && <Splash fading={phase === 'revealing'} onReveal={reveal} onDone={done} />}
+    </>
   );
 };
 

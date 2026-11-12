@@ -1,13 +1,12 @@
-// Sprint 27.1 — the shell every Inntrio login screen shares: the navy scene, the top bar (just the Inntrio logo with its tagline built in), the optional
-// masthead (logo + tagline) and the property bar. (27.2: "Secure access" + date/time and the 1-2-3 step line removed; 27.3: "Property management system" and
-// the top-right "Access options" removed — "Back to access options" under each card is the way back.)
-// Pure UI: no auth, no routing — screens pass callbacks.
+// Sprint 27.1 — the shell every Inntrio login screen shares: the navy scene, the top bar (the Inntrio logo on the left, "Hospitality management platform" in
+// gold on the right) and the property bar. History: 27.2 removed "Secure access" + date/time and the 1-2-3 step line; 27.3 the top-right "Access options";
+// 27.4 the big centred logo (masthead) and the tagline-in-logo variant. Pure UI: no auth, no routing — screens pass callbacks.
 import React, { useEffect, useState } from 'react';
 import Icon from './InntrioIcons';
 import './Inntrio.css';
 
 export const LOGO_SRC = '/inntrio/Inntrio-logo-dark.svg';   // the white-and-gold wordmark for dark backgrounds (public/inntrio/*)
-export const LOGO_TAGLINE_SRC = '/inntrio/inntrio-logo-dark-tagline.svg';   // the same with its tagline built in (top-left of every screen)
+export const TAGLINE = 'Hospitality management platform';
 
 // "Thu, Nov 12, 1:23 AM PT" — the property's wall clock (the hotel is in Pacific time)
 export const formatPT = (d = new Date()) => {
@@ -30,13 +29,6 @@ export const PropertyMark = ({ tenant, iconSize = 25, shared = false }) => {
     : <span className="in-tile-ico" style={style}><Icon name="hotel" size={iconSize} /></span>;
 };
 
-export const Masthead = () => (
-  <div className="in-masthead">
-    <img className="in-hero-logo" src={LOGO_SRC} alt="Inntrio" />
-    <div className="in-eyebrow">Property operations, refined</div>
-  </div>
-);
-
 export const PropertyBar = ({ tenant, onChange }) => (
   <div className="in-selected-bar">
     <PropertyMark tenant={tenant} shared />
@@ -46,11 +38,9 @@ export const PropertyBar = ({ tenant, onChange }) => (
   </div>
 );
 
-// step: 'property' | 'access' | 'signin' | 'clock'
-const AuthFrame = ({ step, hero = false, children }) => {
-  return (
-    <div className="in-root">
-      <div className="in-scene" aria-hidden="true">
+// the navy waves + gold curves (also the backdrop of the welcome splash)
+export const Scene = () => (
+  <div className="in-scene" aria-hidden="true">
         <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="inBlueWave" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#245889" stopOpacity=".56" /><stop offset=".58" stopColor="#1b3c60" stopOpacity=".22" /><stop offset="1" stopColor="#051525" stopOpacity=".17" /></linearGradient>
@@ -64,13 +54,23 @@ const AuthFrame = ({ step, hero = false, children }) => {
           <path d="M-80 895 Q280 760 530 895 T1130 877 Q1360 790 1515 702" fill="none" stroke="url(#inGoldCurve)" strokeWidth="7" filter="url(#inGoldGlow)" opacity=".53" />
           <path d="M-80 895 Q280 760 530 895 T1130 877 Q1360 790 1515 702" fill="none" stroke="url(#inGoldCurve)" strokeWidth="1.35" opacity=".82" />
         </svg>
-      </div>
+  </div>
+);
+
+// step: 'property' | 'access' | 'signin' | 'clock'
+const AuthFrame = ({ step, children }) => {
+  // Entrance animation (staggered fade-up) only for a screen that is NOT arriving through a view transition (first load / browsers without the API).
+  // Decided ONCE at mount: toggling it later would restart the CSS animation and make the screen animate twice (the 27.3 bug).
+  const [enter] = useState(() => typeof document === 'undefined' || !document.documentElement.dataset.vt);
+  return (
+    <div className={`in-root${enter ? ' in-enter' : ''}`}>
+      <Scene />
       <div className="in-container">
         <header className="in-topnav">
-          <div className="in-brand"><img src={LOGO_TAGLINE_SRC} alt="Inntrio — Hospitality operations platform" /></div>
+          <div className="in-brand"><img src={LOGO_SRC} alt="Inntrio" /></div>
+          <div className="in-tagline">{TAGLINE}</div>
         </header>
         <main className={`in-layout in-step-${step}`}>
-          {hero && <Masthead />}
           {children}
         </main>
       </div>

@@ -26,7 +26,7 @@ export const CHOICES = [
 ];
 
 const AccessChooser = ({ tenant, onPick, onChangeProperty }) => (
-  <AuthFrame step="access" hero>
+  <AuthFrame step="access">
     <PropertyBar tenant={tenant} onChange={onChangeProperty} />
     <h1 className="in-h1">How would you like to continue?</h1>
     <p className="in-subtitle">Choose an access method for {tenant.name}.</p>

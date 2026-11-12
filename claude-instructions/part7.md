@@ -14,8 +14,18 @@
 | 27.1.1 | "Blank screen" after the 27.1 deploy → it was the browser's cache (hard refresh fixed it); an app-wide error boundary + load-failure fallback were added anyway | **Done** 2026-11-12 (frontend only) |
 | 27.2   | Login polish: Tiempos fonts, step line removed, top-bar "Secure access" + date/time removed, Snoqualmie Inn logo on the property rows / bar | **Done** 2026-11-12 (frontend only) |
 | 27.3   | Login: tagline logo top-left (no "Property management system", no top-right link), gold "Back to access options", screen-to-screen animation, Clock in / out card no longer gold | **Done** 2026-11-12 (frontend only) |
+| 27.4   | Login: fixed the double animation, plain logo + gold "Hospitality management platform" in the top bar, big centred logo and "One workspace…" removed, welcome splash | **Done** 2026-11-12 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 27.4: login — animation bug, top bar, welcome splash
+
+1. **Bug: screens animated twice (transition, then again).** Cause: the staggered fade-up entrance was switched off with `html[data-vt] .in-layout > * { animation: none }` while a view transition ran. When `data-vt` was removed at the end, the rule stopped applying and the CSS `animation` property went from `none` back to `in-fade-up`, which **restarts the animation** on the already-visible screen. Fix: the entrance is now opt-in per mount — `AuthFrame` sets the `in-enter` class ONCE (`useState` initialiser) only if the screen is NOT arriving through a view transition (no `data-vt` at mount), and every entrance rule is scoped to `.in-enter`. Nothing toggles it later, so nothing can restart. I also removed the slow background "drift" animation: each screen mounts its own copy of the scene, so the new copy started from frame 0 and would visibly jump at the end of a transition. Verified in headless Chrome on the production build: after Continue the access screen has no `in-enter` and **0** running `in-fade-up` animations.
+2. **Top bar:** back to the plain Inntrio logo (`Inntrio-logo-dark.svg`, 177 px / 128 px) on the left and, on the right, **"HOSPITALITY MANAGEMENT PLATFORM"** in gold small caps (two lines on phones). The tagline-in-logo variant is no longer used (file stays in `public/inntrio/`).
+3. **Big centred logo + "PROPERTY OPERATIONS, REFINED" removed** from the picker and the access screen (`Masthead` / `hero` deleted, with the `in-hero` transition name).
+4. **"One workspace. Every department." removed.**
+5. **Welcome splash** (`Splash.js`, used by `TenantPicker`): when the app opens at the property picker, the Inntrio logo appears alone in the middle (blur + scale in, then the gold "Hospitality management platform" line letter-spacing in), holds 1.5 s, then the picker mounts underneath (its own entrance animation runs) while the splash fades out over 0.7 s — about 2.2 s in total. Tap or any key skips straight to the fade. It plays **once per page load** (module flag — not when you come back to `/` inside the app, e.g. Change property), **never** for the dev property picker, deep links like `/:slug/login` or `?mode=clockin` (kiosk returns), or with reduced motion. Timings are the exported constants `SPLASH_HOLD_MS` / `SPLASH_FADE_MS`.
+Tests: new `login-splash` (6: entrance class fixed at mount incl. the regression of clearing `data-vt`; top bar; splash show → reveal → removed; once per load; tap / key skip; dev picker + reduced motion), `staffportal` 30 (updated for the plain logo, gold tagline, no hero / note, CSS rules), `devshell` 15. Full regression green; build compiles; screenshots checked (desktop, splash frame).
 
 ### 2026-11-12 — Sprint 27.3: login top bar, motion
 
