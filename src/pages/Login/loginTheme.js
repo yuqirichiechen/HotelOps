@@ -76,9 +76,10 @@ const loadConfig = () => {
   }).catch(() => { /* offline / old server: the cached or default config stays */ });
 };
 
-export const useLoginTheme = () => {
+/** @param {{fetchConfig?: boolean}} [opts] fetchConfig=false: use the cached config only (the app-wide favicon sync must not add a request to every page load) */
+export const useLoginTheme = ({ fetchConfig = true } = {}) => {
   const [tick, bump] = useReducer(x => x + 1, 0);
-  useEffect(() => { listeners.add(bump); loadConfig(); return () => { listeners.delete(bump); }; }, []);
+  useEffect(() => { listeners.add(bump); if (fetchConfig) loadConfig(); return () => { listeners.delete(bump); }; }, [fetchConfig]);
   const theme = resolveTheme(getCfg());
   // one timer to the next change (the window's edge, or the end of a click override) — re-armed after every render that follows it
   useEffect(() => {

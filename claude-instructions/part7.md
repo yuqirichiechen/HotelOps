@@ -18,8 +18,15 @@
 | 27.5   | Login: splash-style blur/scale transition between screens (no more glide), light mode (click the logo) | **Done** 2026-11-12 (frontend only) |
 | 27.6   | Login: every screen change animates (root-cause fix), clock screen without Change property + full-screen keypad, automatic dark 18:00-06:00 (Dev → Platform setting), one-line tagline | **Done** 2026-11-12 (no migration; server + frontend) |
 | 27.7   | Sidebar (dev, manager, front desk): Inntrio logo with the property name beneath | **Done** 2026-11-12 (frontend only) |
+| 27.8   | Tab icon follows the mode (inntrio-icon-dark / -light); Snoqualmie Inn logo back in the sidebar | **Done** 2026-11-12 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 27.8: tab icon, sidebar property logo
+
+1. **Tab icon follows the mode.** `logo/Inntrio/inntrio-icon-dark.svg` (white mark, for dark mode) and `inntrio-icon-light.svg` (navy mark, for light mode) are copied to `public/inntrio/`; `index.html` has the `<link rel="icon">` (dark by default) and `src/lib/favicon.js` `setFavicon(mode)` swaps it (the `<link>` is replaced, not re-pointed, because Safari ignores a changed href). `FaviconSync` in `App.js` decides the mode: on the sign-in screens (`/`, `/:slug/login`, `/login/dev` — `isLoginPath`) it follows the **login theme** (automatic by the clock, Dev's pinned mode, or the logo-click override), everywhere else the **app theme** (saved `hotelops-theme`, else the system setting, live). It calls `useLoginTheme({ fetchConfig: false })` — the new option keeps the app-wide sync from adding a `/api/public-config` request to every page load (the login screens fetch it themselves). Verified in headless Chrome: login dark → dark icon, logo click → light icon, again → dark; pinned light → light; app with `hotelops-theme` dark → dark icon, light → light icon; no errors. (A browser may cache a tab icon for a while; reload if the tab still shows the old one.)
+2. **Sidebar:** under the Inntrio logo the property's own logo is back (`snoqualmieinn.png` on its white rounded card, 52 px, `.sidebar-brand-tenant`); a property without a logo falls back to the name text. Replaces the 27.7 name line.
+Tests: new `favicon` (4: files + marks, swap / replace / create, login paths, wiring), `devshell` 16 (sidebar: Inntrio logo above the property logo, no "powered by"). Full regression green; build compiles.
 
 ### 2026-11-12 — Sprint 27.7: sidebar brand
 

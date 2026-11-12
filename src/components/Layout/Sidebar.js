@@ -116,10 +116,12 @@ const Sidebar = ({
     <>
       {/* Desktop sidebar */}
       <nav className="sidebar">
-        {/* Sprint 27.7: the brand block is the Inntrio logo (white + gold — the sidebar is navy in both themes) with the property's name beneath */}
+        {/* Sprint 27.7: the brand block is the Inntrio logo (white + gold — the sidebar is navy in both themes) with the property's own logo beneath (27.8; the name when it has none) */}
         <div className="sidebar-brand">
           <img src="/inntrio/Inntrio-logo-dark.svg" alt="Inntrio" className="sidebar-brand-logo" />
-          <div className="sidebar-brand-property">{tenant?.name || 'Snoqualmie Inn'}</div>
+          {tenant?.logoUrl
+            ? <span className="sidebar-brand-tenant"><img src={tenant.logoUrl} alt={tenant.name} /></span>
+            : <div className="sidebar-brand-property">{tenant?.name || 'Snoqualmie Inn'}</div>}
         </div>
         <ul className="sidebar-nav">
           {navItems.map((item) => (

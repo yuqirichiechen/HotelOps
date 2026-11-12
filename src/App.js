@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, RequireRole, RequireDev, RedirectIfAuthed, useAuth, homePathFor } from './auth';
 import { LanguageProvider } from './i18n';
+import { setFavicon, isLoginPath } from './lib/favicon';
+import { useLoginTheme } from './pages/Login/loginTheme';
 import { DEFAULT_TENANT_SLUG } from './config/tenant';
 import ShiftsView from './components/ShiftsView';
 import TenantLogin from './pages/Login/TenantLogin';
@@ -57,6 +59,23 @@ const I18nBridge = ({ children }) => {
   );
 };
 
+// Sprint 27.8: the tab icon follows the mode — the login theme (automatic by the clock, or the logo-click override) on the sign-in screens, the app's own
+// theme (saved choice, else the system setting) everywhere else.
+const FaviconSync = ({ appTheme }) => {
+  const { pathname } = useLocation();
+  const { light: loginLight } = useLoginTheme({ fetchConfig: false });
+  const [osDark, setOsDark] = useState(() => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches));
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)'); const on = (e) => setOsDark(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', on); else mq.addListener(on);
+    return () => { if (mq.removeEventListener) mq.removeEventListener('change', on); else mq.removeListener(on); };
+  }, []);
+  const light = isLoginPath(pathname) ? loginLight : (appTheme === 'light' || (appTheme !== 'dark' && !osDark));
+  useEffect(() => { setFavicon(light ? 'light' : 'dark'); }, [light]);
+  return null;
+};
+
 const App = () => {
   const [theme, setTheme] = useState(getInitialTheme);
 
@@ -78,6 +97,7 @@ const App = () => {
 
   return (
     <BrowserRouter>
+      <FaviconSync appTheme={theme} />
       <AuthProvider>
         <I18nBridge>
         <Routes>
