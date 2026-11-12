@@ -105,11 +105,8 @@ const Sidebar = ({
   // Sprint 11.6.2 log).
   const iconSrc = (base) => `/logo/${base}.png`;
 
-  // Sprint 11.6: desktop brand block now shows the tenant logo (the
-  // property the user is signed into) with a small "powered by
-  // HotelOps" tagline beneath. Tenant resolved from the same
-  // localStorage slug the rest of the app uses; fall through to the
-  // default tenant if the slug is missing.
+  // Sprint 11.6 / 27.7: the brand block names the property the user is signed into (the Inntrio logo sits above it). Tenant resolved from the same
+  // localStorage slug the rest of the app uses; falls through to the default tenant if the slug is missing.
   const slug = (typeof window !== 'undefined'
     && localStorage.getItem('hotelops-tenant-slug'))
     || DEFAULT_TENANT_SLUG;
@@ -119,19 +116,10 @@ const Sidebar = ({
     <>
       {/* Desktop sidebar */}
       <nav className="sidebar">
+        {/* Sprint 27.7: the brand block is the Inntrio logo (white + gold — the sidebar is navy in both themes) with the property's name beneath */}
         <div className="sidebar-brand">
-          {tenant?.logoUrl ? (
-            <span className="sidebar-brand-logo-wrap">
-              <img
-                src={tenant.logoUrl}
-                alt={tenant.name}
-                className="sidebar-brand-logo"
-              />
-            </span>
-          ) : (
-            <span className="sidebar-brand-name">{tenant?.name || 'HotelOps'}</span>
-          )}
-          <div className="sidebar-brand-powered">powered by HotelOps</div>
+          <img src="/inntrio/Inntrio-logo-dark.svg" alt="Inntrio" className="sidebar-brand-logo" />
+          <div className="sidebar-brand-property">{tenant?.name || 'Snoqualmie Inn'}</div>
         </div>
         <ul className="sidebar-nav">
           {navItems.map((item) => (

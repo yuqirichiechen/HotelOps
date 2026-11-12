@@ -17,8 +17,13 @@
 | 27.4   | Login: fixed the double animation, plain logo + gold "Hospitality management platform" in the top bar, big centred logo and "One workspace…" removed, welcome splash | **Done** 2026-11-12 (frontend only) |
 | 27.5   | Login: splash-style blur/scale transition between screens (no more glide), light mode (click the logo) | **Done** 2026-11-12 (frontend only) |
 | 27.6   | Login: every screen change animates (root-cause fix), clock screen without Change property + full-screen keypad, automatic dark 18:00-06:00 (Dev → Platform setting), one-line tagline | **Done** 2026-11-12 (no migration; server + frontend) |
+| 27.7   | Sidebar (dev, manager, front desk): Inntrio logo with the property name beneath | **Done** 2026-11-12 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 27.7: sidebar brand
+
+The sidebar's brand block (desktop, shared by the dev, manager and front-desk portal shells — they all render `components/Layout/Sidebar.js`) was the tenant logo on a white card with "powered by HotelOps" underneath. It is now the **Inntrio logo** (`Inntrio-logo-dark.svg`, white + gold; the sidebar is navy in both light and dark theme) with the **property name** ("Snoqualmie Inn", from `KNOWN_TENANTS` via the saved slug) beneath it in Tiempos. The tenant logo PNG and "powered by HotelOps" are gone from the sidebar (the PNG is still used on the login). Test: `devshell` 16 (new: logo above the name, no tenant card / "powered by", for dev and manager). Frontend only; full regression green; build compiles.
 
 ### 2026-11-12 — Sprint 27.6: animations that actually run, clock screen, auto dark mode, tagline
 
