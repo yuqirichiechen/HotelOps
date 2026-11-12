@@ -7,42 +7,11 @@
      group the list is longer than a laptop screen — before, Dark mode / Sign out were pushed off the bottom. */
   height: 100vh;
   overflow: hidden;
-  background: var(--bg-sidebar);
+  background: var(--ia-side-bg, var(--bg-sidebar));
+  border-right: 1px solid var(--ia-side-border, transparent);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-}
-
-/* Sprint 27.7: brand block = the Inntrio logo with the property's name beneath (was the tenant logo on a white card + "powered by HotelOps"). The sidebar is
-   navy in light and dark theme alike, so the white-and-gold logo works in both. */
-.sidebar-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 20px 16px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-.sidebar-brand-logo {
-  width: 150px;
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-.sidebar-brand-tenant {
-  /* Sprint 27.8: the property's own logo, on the white card its PNG needs (white background) */
-  display: flex; align-items: center; justify-content: center; width: 100%; height: 52px;
-  background: #ffffff; border-radius: 10px; padding: 5px 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-.sidebar-brand-tenant img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.sidebar-brand-property {
-  font-family: 'TiemposHeadline', Georgia, serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
-  letter-spacing: 0.01em;
-  text-align: center;
-  line-height: 1.25;
 }
 
 .sidebar-nav {
@@ -449,3 +418,40 @@
 
 /* Sprint 22.6 — section heading inside the nav (Dev tools group) */
 .sidebar-section { list-style: none; margin: 14px 14px 4px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.18); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55); }
+
+
+/* ── Sprint 28.1: Inntrio sidebar ─────────────────────────────────────────────────────────────────────────────────────────────────────────── */
+/* colours come from the tokens in inntrioApp.css (navy + gold in dark, rice white + gold in light); the old white-on-navy values above are the fallback */
+.sidebar { width: 236px; }
+.sidebar-brand { display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 22px 18px 16px; border-bottom: 0; }
+.sidebar-brand-logo { width: 148px; max-width: 100%; height: auto; display: block; margin: 0 0 0 4px; }
+/* the property card — a glass card holding the property's own logo on its white plate, with the place beneath. No selector: the property is chosen at sign-in. */
+.sidebar-brand-tenant { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 10px 9px; border-radius: 14px; background: var(--ia-card, rgba(255,255,255,.06)); border: 1px solid var(--ia-card-border, rgba(255,255,255,.12)); box-shadow: var(--ia-card-shadow, none); }
+.sbt-plate { display: flex; align-items: center; justify-content: center; width: 100%; height: 50px; padding: 5px 10px; border-radius: 10px; background: #ffffff; box-shadow: var(--ia-plate-shadow, 0 2px 6px rgba(0,0,0,.2)); }
+.sbt-plate img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sbt-place { font-size: 9.5px; letter-spacing: .1em; white-space: nowrap; text-transform: uppercase; color: var(--ia-muted, rgba(255,255,255,.6)); font-weight: 600; }
+.sidebar-brand-property { font-family: 'TiemposHeadline', Georgia, serif; font-size: 16px; font-weight: 600; color: var(--ia-text, #fff); text-align: center; padding: 10px; border-radius: 14px; background: var(--ia-card); border: 1px solid var(--ia-card-border); }
+/* a thin rule between the brand block and the links */
+.sidebar-nav { padding: 6px 12px 12px; gap: 2px; border-top: 1px solid var(--ia-side-border, rgba(255,255,255,.1)); margin-top: 2px; }
+.sidebar-section { color: var(--ia-muted, rgba(255,255,255,.5)); font-size: 10.5px; letter-spacing: .16em; padding: 16px 12px 6px; list-style: none; text-transform: uppercase; font-weight: 700; }
+
+.sidebar-link { position: relative; gap: 13px; padding: 11px 14px; border-radius: 12px; color: var(--ia-nav, #fff); font-weight: 500; transition: background .18s, color .18s; }
+.sidebar-link:hover { background: var(--ia-nav-hover, rgba(255,255,255,.12)); color: var(--ia-nav-active, #fff); }
+/* the active page: a filled row with a gold edge */
+.sidebar-link.active { background: var(--ia-nav-active-bg, rgba(255,255,255,.15)); color: var(--ia-nav-active, #fff); border-left: 0; font-weight: 600; box-shadow: inset 0 0 0 1px var(--ia-card-border, transparent); }
+.sidebar-link.active::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: linear-gradient(180deg, #f4dca5, #c9a05a); box-shadow: 0 0 10px rgba(223, 193, 132, .55); }
+/* the icon is a mask painted with the text colour (set inline: --icon) */
+.nav-icon-img { width: 22px; height: 22px; flex-shrink: 0; display: block; background-color: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; opacity: .82; }
+.sidebar-link.active .nav-icon-img, .sidebar-link:hover .nav-icon-img { opacity: 1; }
+.sidebar-link.active .nav-icon-img { color: var(--ia-gold, #dfc184); }
+/* no status dots in the redesigned sidebar (the "live" markers are kept in the markup, just not shown) */
+.sidebar .live-dot, .more-sheet-livedot { display: none; }
+.sidebar-unread-badge { background: linear-gradient(180deg, #f4dca5, #c9a05a); color: #11263e; }
+
+.sidebar-footer { padding: 10px 12px 16px; border-top: 1px solid var(--ia-side-border, rgba(255,255,255,.1)); display: flex; flex-direction: column; gap: 2px; }
+.theme-toggle, .sidebar-signout { gap: 12px; padding: 10px 14px; margin-top: 0; border-radius: 12px; color: var(--ia-nav, rgba(255,255,255,.85)); }
+.theme-toggle:hover, .sidebar-signout:hover { background: var(--ia-nav-hover, rgba(255,255,255,.12)); color: var(--ia-nav-active, #fff); }
+.sidebar-signout:hover { background: rgba(229, 62, 62, .12); color: var(--danger, #fc8181); }
+.theme-toggle-icon, .sidebar-signout-icon { display: inline-flex; width: 22px; justify-content: center; font-size: 0; color: var(--ia-gold, currentColor); }
+.sidebar-signout-icon { color: inherit; }
+.theme-toggle-label, .sidebar-signout-label { font-size: 14px; }

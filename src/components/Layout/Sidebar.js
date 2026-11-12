@@ -36,6 +36,12 @@ const MoreIcon = () => (
   </svg>
 );
 
+// Sprint 28.1: small outline icons for the footer actions (were an emoji and a ↩ glyph)
+const iconProps = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', focusable: 'false' };
+const SunIcon = () => (<svg {...iconProps}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>);
+const MoonIcon = () => (<svg {...iconProps}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>);
+const SignOutIcon = () => (<svg {...iconProps}><path d="m14 7 5 5-5 5M19 12H7M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" /></svg>);
+
 const Sidebar = ({
   navItems = [],
   currentView,
@@ -116,11 +122,17 @@ const Sidebar = ({
     <>
       {/* Desktop sidebar */}
       <nav className="sidebar">
-        {/* Sprint 27.7: the brand block is the Inntrio logo (white + gold — the sidebar is navy in both themes) with the property's own logo beneath (27.8; the name when it has none) */}
+        {/* Sprint 27.7 / 28.1: the Inntrio logo (white + gold on the dark sidebar, navy + gold on the light one) and the property card: the property's own
+            logo on a white plate with its place beneath (the name when it has no logo). There is deliberately no property selector — the property was chosen at sign-in. */}
         <div className="sidebar-brand">
-          <img src="/inntrio/Inntrio-logo-dark.svg" alt="Inntrio" className="sidebar-brand-logo" />
+          <img src={isDark ? '/inntrio/Inntrio-logo-dark.svg' : '/inntrio/inntrio-logo-light.svg'} alt="Inntrio" className="sidebar-brand-logo" />
           {tenant?.logoUrl
-            ? <span className="sidebar-brand-tenant"><img src={tenant.logoUrl} alt={tenant.name} /></span>
+            ? (
+              <span className="sidebar-brand-tenant" title={tenant.name}>
+                <span className="sbt-plate"><img src={tenant.logoUrl} alt={tenant.name} /></span>
+                {tenant.location && <span className="sbt-place">{tenant.location}</span>}
+              </span>
+            )
             : <div className="sidebar-brand-property">{tenant?.name || 'Snoqualmie Inn'}</div>}
         </div>
         <ul className="sidebar-nav">
@@ -134,12 +146,8 @@ const Sidebar = ({
                 className={`sidebar-link${isActive(item) ? ' active' : ''}`}
                 aria-current={isActive(item) ? 'page' : undefined}
               >
-                <img
-                  className="nav-icon-img"
-                  src={iconSrc(item.icon)}
-                  alt=""
-                  aria-hidden="true"
-                />
+                {/* 28.1: the icon is a mask painted with the text colour, so it turns gold-white when active and works on the dark and the light sidebar */}
+                <span className="nav-icon-img" style={{ '--icon': `url(${iconSrc(item.icon)})` }} aria-hidden="true" />
                 <span className="sidebar-nav-label">{item.label}</span>
                 {badgeOf(item) > 0 && (
                   <span
@@ -157,11 +165,11 @@ const Sidebar = ({
         </ul>
         <div className="sidebar-footer">
           <button className="theme-toggle" onClick={onToggleTheme} title="Toggle theme">
-            <span className="theme-toggle-icon">{isDark ? '☀️' : '🌙'}</span>
+            <span className="theme-toggle-icon" aria-hidden="true">{isDark ? <SunIcon /> : <MoonIcon />}</span>
             <span className="theme-toggle-label">{isDark ? 'Light mode' : 'Dark mode'}</span>
           </button>
           <button className="sidebar-signout" onClick={handleSignOut} title="Sign out">
-            <span className="sidebar-signout-icon" aria-hidden>↩</span>
+            <span className="sidebar-signout-icon" aria-hidden="true"><SignOutIcon /></span>
             <span className="sidebar-signout-label">Sign out</span>
           </button>
         </div>
