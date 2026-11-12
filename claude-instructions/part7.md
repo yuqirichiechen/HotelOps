@@ -20,8 +20,23 @@
 | 27.7   | Sidebar (dev, manager, front desk): Inntrio logo with the property name beneath | **Done** 2026-11-12 (frontend only) |
 | 27.8   | Tab icon follows the mode (inntrio-icon-dark / -light); Snoqualmie Inn logo back in the sidebar | **Done** 2026-11-12 (frontend only) |
 | 28.1   | Signed-in app redesign, part 1: the sidebar and the Home pages (dev / manager, staff, front desk) in the Inntrio look, dark + light | **Done** 2026-11-12 (frontend only; pure restyle) |
+| 28.2   | Signed-in app redesign, part 2: every page in the Inntrio palette (dark + light) via the global theme tokens; Dev bar on-brand | **Done** 2026-11-12 (frontend only; pure restyle) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 28.2: the signed-in app, part 2 — every page
+
+**Pure restyle: no markup, data, routes or API changed.** The whole signed-in app (Staff, Calendar, Reservations, Forecast, Housekeeping, Logbook, Assistant, Settings, the Dev pages, the staff portal, the Clock in door, modals and pickers) now wears the Inntrio look of 28.1.
+**How:** every page already read its colours from the shared variables in `theme.css`, so the palette was re-toned THERE (same variable names) in all four places — light default, `[data-theme="light"]`, system-dark, `[data-theme="dark"]` — instead of restyling each page. That also reaches portals (modals, pickers, print dialogs), which sit outside the shell.
+- **Light = rice white + gold:** page `#f7f2e6`, cards `#fffdf8`, raised `#f1e9d6`, navy text `#0f2540` / `#3d4f66` / `#6b7a90`, warm borders `#e2dac6`, gold accent (`#c9a05a`, text-safe `#9a6f2a`), primary buttons navy `#0f2540`, warm shadows.
+- **Dark = navy + steel blue:** page `#0b1828`, cards `#12263d`, raised `#1d3a58`, text `#f4f6fb` / `#bed0e3` / `#8ea4bc`, borders `#27425f`, primary buttons `#2f5f94`, accent blue `#63b3ed` (selected states, as in the concept); the gold lives in the sidebar and Home accents.
+- Status colours (success / danger / warn, the forecast and housekeeping status chips, `darkFixes.css`) are unchanged — they carry meaning.
+- The phone bottom nav and "More" sheet stay navy in both themes (their icons are white PNGs); the desktop sidebar is the light / dark one from 28.1.
+- **Scene background** (the login's navy waves + gold curves, rice + gold in light) is now also behind the **Clock in door** (`.clockin-shell`) — same tokens.
+- **Dev view bar** (`.dvb`): was a bright purple / teal / amber banner; now one dark navy glass bar for every view with an accent colour per view — gold = Dev, teal = Manager, copper = Front desk — on the DEV tag, the bar's bottom edge and the pressed button.
+**Checked:** headless Chrome, 1440 px, dark + light, every page of the dev shell and the front-desk portal (generic fake data) and, with a realistic computed forecast payload (24 rooms, 10 reservations), the data-heavy pages — Reservations, Forecast, Housekeeping — plus the Clock in kiosk. All coherent; no layout changes. Contrast verified by test.
+Tests: new `theme-inntrio` (5: the four blocks agree, the palette values, WCAG contrast ≥ 4.5 for text / buttons and ≥ 3.4 muted in both themes, the Dev bar, the scene on every shell). Full regression green; build compiles.
+**Not covered / worth a look on real data:** I could not exercise every state of every page (modals, empty / error / loading variants, the Calendar's coloured shifts, printed sheets). Print sheets keep their own light styles; the Calendar's department colours and the status chips are untouched by design. Anything that still looks off (a hard-coded colour I did not catch) is a quick follow-up fix — send a screenshot. The Assistant "under construction" and the Dev pages got the palette only. Next candidates: the Clock in kiosk layout itself and any page-by-page polish you want to the concept's level (the Home pages already match it).
 
 ### 2026-11-12 — Sprint 28.1: the signed-in app, part 1 — sidebar + Home pages
 

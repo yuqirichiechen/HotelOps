@@ -47,3 +47,18 @@
 
 /* Sprint 27.6 — login light / dark card */
 .dv-time-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; } .dv-time-row label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); } .dv-time-row input[type="time"] { font: inherit; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); } .dv-time-row[aria-disabled="true"] { opacity: .55; }
+
+/* Sprint 28.2 — the Dev view bar in the Inntrio look: a dark navy glass bar for every view (it used to be a bright purple / teal / amber banner), the view you are in
+   is shown by an accent colour — gold = Dev, teal = Manager, copper = Front desk — on the DEV tag, the bar's edge and the pressed button. */
+.dvb { background: linear-gradient(90deg, #0c1c31, #12304f 60%, #0e2440); color: #f4f6fb; border-bottom: 2px solid var(--dvb-accent, #dfc184); box-shadow: 0 6px 22px rgba(0, 5, 18, .28); backdrop-filter: blur(6px); }
+.dvb.is-full { --dvb-accent: #dfc184; background: linear-gradient(90deg, #0c1c31, #12304f 60%, #0e2440); }
+.dvb.is-manager { --dvb-accent: #5fd0c2; background: linear-gradient(90deg, #0c1c31, #12304f 60%, #0e2440); }
+.dvb.is-frontdesk { --dvb-accent: #f0a35e; background: linear-gradient(90deg, #0c1c31, #12304f 60%, #0e2440); }
+.dvb-tag { background: var(--dvb-accent); border-color: transparent; color: #0c1c31; }
+.dvb-switch { background: rgba(255, 255, 255, .07); border: 1px solid rgba(176, 211, 244, .16); }
+.dvb-switch button { color: #cfdbea; }
+.dvb-switch button:hover:not(.on) { background: rgba(255, 255, 255, .1); }
+.dvb-switch button.on { background: var(--dvb-accent); color: #0c1c31; box-shadow: 0 2px 10px rgba(0, 0, 0, .35); }
+.dvb.is-full .dvb-switch button.on, .dvb.is-manager .dvb-switch button.on, .dvb.is-frontdesk .dvb-switch button.on { color: #0c1c31; }
+.dvb-prop { border-color: rgba(176, 211, 244, .3); color: #f4f6fb; }
+.dvb-prop:hover { background: rgba(255, 255, 255, .1); }
