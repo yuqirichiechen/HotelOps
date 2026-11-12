@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KNOWN_TENANTS } from '../../config/tenant';
-import AuthFrame from './InntrioFrame';
+import AuthFrame, { PropertyMark } from './InntrioFrame';
 import Icon from './InntrioIcons';
 
 // Sprint 27.1: step 1 of the Inntrio login — "Select a property". Same destinations as before (only the look changed):
@@ -39,7 +39,7 @@ const TenantPicker = ({ kind }) => {
         </div>
         {shown.map(t => (
           <button key={t.slug} type="button" className={`in-property-row${chosen === t.slug ? ' selected' : ''}`} aria-pressed={chosen === t.slug} onClick={() => setChosen(t.slug)}>
-            <span className="in-tile-ico"><Icon name="hotel" size={23} /></span>
+            <PropertyMark tenant={t} iconSize={23} />
             <span><span className="in-property-title">{t.name}</span><span className="in-property-sub">{t.location || ''}</span></span>
             <span className="in-spacer" />
             {t.status && <span className="in-small-state">{t.status}</span>}

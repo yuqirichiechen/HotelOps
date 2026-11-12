@@ -1,8 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import AppErrorBoundary from './AppErrorBoundary';
 import './index.css';
 import './darkFixes.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+root.render(<AppErrorBoundary><App /></AppErrorBoundary>);

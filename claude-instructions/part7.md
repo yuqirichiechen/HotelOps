@@ -11,8 +11,22 @@
 | Sprint | Focus | Status |
 |--------|-------|--------|
 | 27.1   | Inntrio login revamp: property → access method → sign-in / clock (UI only; auth logic unchanged) | **Done** 2026-11-12 (see entry; no migration) |
+| 27.1.1 | "Blank screen" after the 27.1 deploy → it was the browser's cache (hard refresh fixed it); an app-wide error boundary + load-failure fallback were added anyway | **Done** 2026-11-12 (frontend only) |
+| 27.2   | Login polish: Tiempos fonts, step line removed, top-bar "Secure access" + date/time removed, Snoqualmie Inn logo on the property rows / bar | **Done** 2026-11-12 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-12 — Sprint 27.2: login polish
+
+1. **Tiempos fonts.** The Inntrio screens use the app's own fonts (headings `TiemposHeadline` 600, everything else `TiemposText`) instead of the concept's sans. The global element rules do not reach every element, so `Inntrio.css` states the families explicitly under `.in-root`; heading letter-spacing was relaxed for the serif.
+2. **Step line removed** (the "1 Property — 2 Access — 3 Sign-in / clock" row) from every screen (`Steps` deleted from `InntrioFrame.js`, CSS removed).
+3. **Property logo.** `public/snoqualmieinn.png` (white background, so it sits on a white rounded chip) replaces the generic building tile on the property row and the property bar (`PropertyMark` in `InntrioFrame.js`; a property without `logoUrl` still gets the building tile). Smaller chip on phones so the name does not wrap.
+4. **Top bar:** "Secure access" and the date/time removed; only the logo, "PROPERTY MANAGEMENT SYSTEM" and (steps 2-3) "Access options" remain. NOTE: the clock-in card still has its own small "date/time • property" line under the ID field — left in on purpose because it is part of the Clock in / out card; say if it should go too.
+Tests: `staffportal` / `devshell` login assertions updated (no step line, no secure-access/time in the top bar, the property logo is shown on the bar and on the picker row). Full regression green; build compiles; screenshots checked at 1440 px and 390 px.
+
+### 2026-11-12 — Sprint 27.1.1: blank screen after the 27.1 deploy
+
+The blank page right after a deploy was the user's **browser cache** (a hard refresh / clearing the cache fixed it) — not a code bug. While investigating I found the app had no error boundary (any render exception = blank page with nothing to report), so I added one regardless: `src/AppErrorBoundary.js` wraps `<App />` in `src/index.js` (panel with the real error + component stack; Reload / Sign out and reload / Copy details), and `public/index.html` shows "Inntrio could not load — try a hard refresh" if nothing has rendered after 10 s. Test: `tests/error-boundary.test.js` (5). Frontend only. Tip for after deploys: hard refresh (Cmd+Shift+R) before assuming something is broken.
 
 ### 2026-11-12 — Sprint 27.1: the Inntrio login
 

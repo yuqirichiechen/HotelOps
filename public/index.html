@@ -10,5 +10,14 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <!-- Sprint 27.1.1: if the app script never starts (stale cache after a deploy, blocked script, unsupported browser) the page used to stay blank -->
+    <script>
+      setTimeout(function () {
+        var r = document.getElementById('root');
+        if (r && !r.firstChild) {
+          r.innerHTML = '<div style="font-family:-apple-system,Segoe UI,sans-serif;padding:32px;max-width:520px;margin:10vh auto;color:#1a365d"><h2 style="margin:0 0 8px">Inntrio could not load</h2><p style="line-height:1.5">Try a hard refresh (Cmd+Shift+R on Mac, Ctrl+Shift+R on Windows). If it still does not load, open the browser console and send the first red error to the developer.</p><p><a href="/" style="color:#1a365d;font-weight:700">Reload</a></p></div>';
+        }
+      }, 10000);
+    </script>
   </body>
 </html>

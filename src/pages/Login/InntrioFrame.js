@@ -1,5 +1,5 @@
-// Sprint 27.1 — the shell every Inntrio login screen shares: the navy scene, the top bar (logo · "Property management system" · secure-access
-// indicator · clock · "Access options"), the optional masthead (logo + tagline), the property bar, and the 1-2-3 step line.
+// Sprint 27.1 — the shell every Inntrio login screen shares: the navy scene, the top bar (logo · "Property management system" · "Access options"),
+// the optional masthead (logo + tagline) and the property bar. (27.2: the "Secure access" + date/time in the top bar and the 1-2-3 step line were removed.)
 // Pure UI: no auth, no routing — screens pass callbacks.
 import React, { useEffect, useState } from 'react';
 import Icon from './InntrioIcons';
@@ -19,20 +19,10 @@ export const usePTClock = () => {
   return now;
 };
 
-export const Steps = ({ step }) => {
-  const three = step !== 'property';
-  return (
-    <div className="in-steps" aria-label="Workflow: property, access, sign-in">
-      <div className={`in-step-bubble${step === 'property' ? ' active' : ''}`}>1</div><span className="in-step-label">Property</span>
-      <span className="in-step-dash" />
-      <div className={`in-step-bubble${three ? ' active' : ''}`}>2</div><span className="in-step-label">Access</span>
-      {three && <>
-        <span className="in-step-dash" />
-        <div className={`in-step-bubble${step === 'signin' || step === 'clock' ? ' active' : ''}`}>3</div><span className="in-step-label">Sign-in / clock</span>
-      </>}
-    </div>
-  );
-};
+// the property's mark: its own logo on a white chip when it has one, else the generic building tile
+export const PropertyMark = ({ tenant, iconSize = 25 }) => (tenant && tenant.logoUrl
+  ? <span className="in-logo-chip"><img src={tenant.logoUrl} alt={tenant.name} /></span>
+  : <span className="in-tile-ico"><Icon name="hotel" size={iconSize} /></span>);
 
 export const Masthead = () => (
   <div className="in-masthead">
@@ -43,7 +33,7 @@ export const Masthead = () => (
 
 export const PropertyBar = ({ tenant, onChange }) => (
   <div className="in-selected-bar">
-    <span className="in-tile-ico"><Icon name="hotel" size={25} /></span>
+    <PropertyMark tenant={tenant} />
     <span className="in-bar-text"><b className="in-property-title">{tenant.name}</b><small className="in-property-sub">{tenant.location || ''}</small></span>
     <div className="in-spacer" />
     <button className="in-change" type="button" onClick={onChange}><Icon name="swap" size={17} /> <span>Change property</span></button>
@@ -52,7 +42,6 @@ export const PropertyBar = ({ tenant, onChange }) => (
 
 // step: 'property' | 'access' | 'signin' | 'clock'
 const AuthFrame = ({ step, onAccessOptions, hero = false, children }) => {
-  const now = usePTClock();
   return (
     <div className="in-root">
       <div className="in-scene" aria-hidden="true">
@@ -74,15 +63,12 @@ const AuthFrame = ({ step, onAccessOptions, hero = false, children }) => {
         <header className="in-topnav">
           <div className="in-brand"><img src={LOGO_SRC} alt="Inntrio" /><small>PROPERTY MANAGEMENT SYSTEM</small></div>
           <div className="in-nav-side">
-            <span className="in-live" /><span className="in-status">Secure access</span>
-            <span className="in-desktop-note">{now}</span>
             {step !== 'property' && <button className="in-linkish" type="button" onClick={onAccessOptions}>Access options</button>}
           </div>
         </header>
         <main className={`in-layout in-step-${step}`}>
           {hero && <Masthead />}
           {children}
-          <Steps step={step} />
         </main>
       </div>
     </div>

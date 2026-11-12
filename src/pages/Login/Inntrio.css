@@ -4,14 +4,15 @@
 .in-root {
   --in-night: #0b1420; --in-gold: #dfc184; --in-gold-light: #f4dca5; --in-muted: #a9bdd3; --in-border: rgba(176, 211, 244, .20);
   color-scheme: dark; position: relative; isolation: isolate; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; color: #f7f8fb;
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: 'TiemposText', Georgia, serif;
   background: radial-gradient(ellipse 95% 110% at 100% 10%, #19416a 0%, transparent 52%), radial-gradient(ellipse 78% 80% at -8% 84%, #153456 0%, transparent 62%), linear-gradient(133deg, #081321 1%, #12263d 51%, #0b182a 100%);
 }
 .in-root *, .in-root *::before, .in-root *::after { box-sizing: border-box; }
 :where(.in-root) button, :where(.in-root) input { font: inherit; }
 :where(.in-root) button { cursor: pointer; }
-/* the app's global element rules set a serif family on headings / form controls — the Inntrio screens use the sans stack */
-.in-root button, .in-root input, .in-root h1, .in-root h2, .in-root h3, .in-root p, .in-root label, .in-root .lang-cycle-title, .in-root .lang-cycle-sub { font-family: inherit; }
+/* Sprint 27.2: the Inntrio screens use the app's Tiempos fonts (the global element rules do not reach every element, so say it explicitly) */
+.in-root button, .in-root input, .in-root p, .in-root label, .in-root small, .in-root .lang-cycle-sub { font-family: 'TiemposText', Georgia, serif; }
+.in-root h1, .in-root h2, .in-root h3, .in-root .lang-cycle-title { font-family: 'TiemposHeadline', Georgia, serif; }
 .in-root button:focus-visible, .in-root input:focus-visible, .in-root a:focus-visible { outline: 2px solid var(--in-gold-light); outline-offset: 3px; }
 .in-scene { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; opacity: .94; }
 .in-scene svg { width: 100%; height: 100%; position: absolute; inset: 0; }
@@ -23,7 +24,6 @@
 .in-brand img { width: 177px; height: auto; display: block; }
 .in-brand small { color: #bdcfe2; letter-spacing: 2.6px; font-size: 10px; font-weight: 650; border-left: 1px solid rgba(244, 220, 165, .40); padding-left: 16px; white-space: nowrap; }
 .in-nav-side { display: flex; gap: 16px; align-items: center; color: #b8cbdd; font-size: 13px; }
-.in-live { width: 6px; height: 6px; background: #5cc69a; border-radius: 50%; box-shadow: 0 0 10px rgba(92, 198, 154, .6); }
 .in-linkish { color: var(--in-gold-light); background: none; border: 0; padding: 7px; font-size: 13px; }
 .in-linkish:hover { text-decoration: underline; }
 
@@ -32,7 +32,7 @@
 .in-masthead { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 9px; margin-bottom: 24px; }
 .in-hero-logo { width: min(320px, 70vw); display: block; filter: drop-shadow(0 10px 20px rgba(0, 0, 0, .18)); }
 .in-eyebrow { color: var(--in-gold); text-transform: uppercase; letter-spacing: 4.3px; font-size: 10px; font-weight: 750; }
-.in-root h1.in-h1 { font-size: clamp(30px, 3.2vw, 48px); line-height: 1.1; letter-spacing: -1.5px; margin: 8px 0 5px; font-weight: 760; text-align: center; color: #fff; }
+.in-root h1.in-h1 { font-size: clamp(30px, 3.2vw, 48px); line-height: 1.1; letter-spacing: -.5px; margin: 8px 0 5px; font-weight: 600; text-align: center; color: #fff; }
 .in-subtitle { font-size: 15px; color: #bed0e3; line-height: 1.6; text-align: center; margin: 0; }
 .in-gap-lg { height: 25px; } .in-gap-md { height: 22px; }
 
@@ -70,6 +70,11 @@
 .in-none { color: #b9cde0; font-size: 13px; margin: 4px 0 0; }
 .in-below-note { font-size: 12px; color: #8ca5ba; text-align: center; margin-top: 19px; }
 
+/* the property's own logo (white chip — the PNG has a white background) */
+.in-logo-chip { flex: none; width: 104px; height: 52px; border-radius: 11px; background: #fff; display: flex; align-items: center; justify-content: center; padding: 4px 8px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), 0 2px 8px rgba(0, 0, 0, .22); }
+.in-logo-chip img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.in-selected-bar .in-logo-chip { width: 88px; height: 44px; }
+
 /* property bar (steps 2-3) */
 .in-selected-bar { width: min(870px, 100%); display: flex; align-items: center; gap: 14px; border: 1px solid rgba(196, 224, 244, .25); background: rgba(66, 111, 155, .17); padding: 10px 13px; border-radius: 14px; margin: 9px 0 25px; }
 .in-selected-bar .in-tile-ico { width: 44px; height: 43px; } .in-selected-bar .in-property-title { font-size: 14px; } .in-selected-bar .in-property-sub { font-size: 11px; }
@@ -91,7 +96,7 @@
 /* step 3 — role sign-in */
 .in-login-card { width: min(560px, 100%); padding: 29px 34px 28px; }
 .in-login-header { display: flex; align-items: center; gap: 13px; padding-bottom: 17px; border-bottom: 1px solid rgba(217, 231, 249, .12); margin-bottom: 21px; }
-.in-login-header h2 { font-size: 27px; letter-spacing: -.8px; margin: 0 0 3px; font-weight: 760; color: #fff; }
+.in-login-header h2 { font-size: 27px; letter-spacing: -.3px; margin: 0 0 3px; font-weight: 600; color: #fff; }
 .in-login-header p { margin: 0; color: #a8bdd1; font-size: 13px; }
 .in-field-label { display: block; color: #dae4ef; font-size: 11px; letter-spacing: 1px; font-weight: 760; margin: 17px 0 8px; text-transform: uppercase; }
 .in-field { width: 100%; border: 1px solid rgba(173, 206, 236, .29); border-radius: 11px; display: flex; align-items: center; gap: 12px; padding: 0 15px; min-height: 50px; background: rgba(93, 138, 178, .11); }
@@ -109,7 +114,7 @@
 .in-clock-detail { padding: 10px 2px; grid-column: 1; grid-row: 1; min-width: 0; }
 .in-clock-detail .lang-cycle-headline { margin: 0 -12px 8px; }
 .in-clock-detail .lang-cycle-headline:hover { background: rgba(255, 255, 255, .05); } .in-clock-detail .lang-cycle-headline:active { background: rgba(255, 255, 255, .09); }
-.in-clock-detail .lang-cycle-title { font-family: inherit; font-size: clamp(28px, 3vw, 40px); letter-spacing: -1px; color: #fff; }
+.in-clock-detail .lang-cycle-title { font-size: clamp(28px, 3vw, 40px); letter-spacing: -.5px; color: #fff; font-weight: 600; }
 .in-clock-detail .lang-cycle-sub { color: #b4c7dc; font-size: 14px; line-height: 1.6; }
 .in-clock-detail .lang-cycle-check { color: var(--in-gold); }
 .in-clock-detail .in-field { min-height: 61px; }
@@ -135,29 +140,21 @@
 .in-letters .in-key { min-height: 48px; font-size: 18px; border-radius: 9px; }
 .in-letters .in-key.special { font-size: 12px; }
 
-/* step line / footnote */
-.in-steps { margin-top: 25px; display: flex; justify-content: center; align-items: center; gap: 15px; }
-.in-step-label { color: #8ca7bf; font-size: 11px; }
-.in-step-bubble { border: 1px solid rgba(229, 196, 136, .55); color: #ebce92; border-radius: 50%; height: 24px; width: 24px; display: grid; place-items: center; font-size: 11px; }
-.in-step-bubble.active { color: #11263e; background: var(--in-gold); }
-.in-step-dash { width: 34px; height: 1px; background: rgba(223, 193, 132, .4); }
-
 @media (max-width: 730px) {
   .in-container { width: min(100% - 28px, 540px); }
-  .in-topnav { height: 69px; } .in-brand img { width: 128px; } .in-brand small { display: none; } .in-nav-side { font-size: 10px; } .in-status, .in-live { display: none; }
+  .in-topnav { height: 69px; } .in-brand img { width: 128px; } .in-brand small { display: none; } .in-nav-side { font-size: 10px; } 
   .in-layout { min-height: calc(100vh - 69px); min-height: calc(100dvh - 69px); justify-content: flex-start; padding: 25px 0 22px; }
   .in-masthead { margin-bottom: 16px; gap: 7px; } .in-hero-logo { width: 230px; } .in-eyebrow { font-size: 8px; letter-spacing: 2.5px; }
   .in-root h1.in-h1 { font-size: clamp(27px, 7vw, 35px); margin: 6px 0; } .in-subtitle { font-size: 13px; }
-  .in-surface { border-radius: 19px; } .in-select-card { padding: 19px 16px; } .in-property-row { padding: 11px 12px; min-height: 67px; gap: 9px; } .in-tile-ico { width: 40px; height: 40px; } .in-property-title { font-size: 14px; } .in-small-state { display: none; } .in-count-pill { font-size: 10px; }
-  .in-selected-bar { margin: 7px 0 19px; padding: 9px; gap: 9px; } .in-change { font-size: 11px; }
+  .in-surface { border-radius: 19px; } .in-select-card { padding: 19px 16px; } .in-property-row { padding: 11px 12px; min-height: 67px; gap: 9px; } .in-logo-chip { width: 84px; height: 42px; } .in-tile-ico { width: 40px; height: 40px; } .in-property-title { font-size: 14px; } .in-small-state { display: none; } .in-count-pill { font-size: 10px; }
+  .in-selected-bar { margin: 7px 0 19px; padding: 9px; gap: 9px; } .in-selected-bar .in-logo-chip { width: 68px; height: 36px; padding: 3px 5px; } .in-change { font-size: 11px; }
   .in-choices-grid { grid-template-columns: 1fr; gap: 10px; } .in-choice { min-height: 78px; padding: 13px; gap: 12px; } .in-choice-icon { width: 43px; height: 43px; } .in-choice-title { font-size: 15px; } .in-choice-desc { font-size: 11px; margin-top: 2px; } .in-choice > svg:last-child { width: 18px; }
   .in-login-card { padding: 21px 19px; } .in-login-header h2 { font-size: 23px; } .in-login-header { margin-bottom: 15px; padding-bottom: 13px; }
   .in-clock-card { display: flex; flex-direction: column; gap: 13px; padding: 16px; align-items: stretch; }
   .in-clock-detail { padding: 0; } .in-clock-detail .lang-cycle-title { font-size: 27px; } .in-clock-detail .lang-cycle-sub { font-size: 12px; } .in-field-label { margin: 10px 0 5px; } .in-clock-detail .in-field { min-height: 45px; } .in-clock-meta { display: none; }
   .in-keypad-panel { padding: 10px; } .in-keypad-grid { gap: 7px; } .in-key { min-height: 61px; border-radius: 9px; font-size: 24px; } .in-letters .in-key { min-height: 44px; font-size: 16px; }
   .in-action-row { margin-top: 0; }
-  .in-steps { margin-top: 18px; } .in-step-clock .in-steps, .in-step-signin .in-steps { display: none; } .in-below-note { margin-top: 16px; }
-  .in-desktop-note { display: none; }
+  .in-below-note { margin-top: 16px; }
 }
 @media (max-width: 360px) { .in-container { width: calc(100% - 22px); } .in-key { min-height: 53px; } .in-clock-card { padding: 13px; } }
 @media (min-width: 731px) and (max-height: 800px) { .in-layout { justify-content: flex-start; padding-top: 21px; } .in-masthead { margin-bottom: 12px; } .in-hero-logo { width: 220px; } .in-root h1.in-h1 { font-size: 34px; } .in-select-card { padding: 22px; } .in-choice { min-height: 107px; padding: 15px; } .in-clock-card { padding: 21px; } }
