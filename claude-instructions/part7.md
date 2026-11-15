@@ -25,8 +25,17 @@
 | 28.4   | Housekeeping sheets: Dev option for stay dates on check-out rooms; priority rooms yellow + red side lines (housekeepers' sheets and Print all sheets) | **Done** 2026-11-14 (server + frontend; no migration) |
 | 28.5   | Priority red lines drawn inside each row's own cells (right-hand line was ambiguous / lost); Dev room table + CSV say WHY a room is priority | **Done** 2026-11-14 (frontend only) |
 | 28.6   | Housekeeping: priority = a room the front desk locked to a guest (pre-assigned or do-not-move) — room-type rule retired; check-out dates option now OFF by default (individual HK page) | **Done** 2026-11-15 (server comment + frontend; no migration) |
+| 28.7   | Housekeeping: the forecast's "clean first" list was still marking rooms priority (209, 211, 212 …) — it is now ordering only; priority = locked to a guest and still dirty | **Done** 2026-11-15 (frontend only) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-15 — Sprint 28.7: priority really means locked (the leftover rule removed)
+
+**Frontend only (`hkWork.js`); no migration.**
+- **Your example:** rGuest showed three arrivals with a room assigned today — 224, G32, 130 — and all three are vacant clean, so there are NO priority rooms today. The sheet still showed 209, 211, 212 (check-outs, no arrival holding them). A read-only rGuest probe confirmed it: the only RES arrivals with a room today are exactly those three, and no RES row from an earlier day is still pending.
+- **Cause:** a second, older source was still feeding `priority`: for today the work list set `priority` on every dirty/check-out room the **room-type forecast** lists under "turn these first" (more booked arrivals of a type than ready rooms of that type — a demand estimate for the type, not a lock to a guest). Before 28.6 the colour/lines only looked at pre-assigned / room-type; my 28.6 change made them follow `priority`, so those forecast rooms lit up (and the first-day 28.6 fix removed only the room-TYPE setting, not this one). Same for tomorrow's second-night plan.
+- **Fix:** `priority` is now set ONLY by (a) a room pre-assigned to an arrival that day or (b) do-not-move — and only while the room still needs cleaning (so a locked room that is already vacant clean is never priority). The forecast list became a separate `first` flag that only nudges the order of the cards (sorted after priority ones); nothing is starred, coloured, or labelled "CLEAN FIRST" for it, and it is not saved as priority. `first` is dropped for In Progress rooms.
+- Test: `hkwork` 25 — a fixture with more arrivals than ready rooms (so the forecast really lists clean-first rooms) must show no priority, no yellow-with-lines on the all-rooms sheet and nothing saved as priority; the same test FAILS (101, 102 flagged) with the old behaviour restored. Full regression green; lint clean; build compiles.
 
 ### 2026-11-15 — Sprint 28.6: what "priority room" means; check-out dates default OFF
 

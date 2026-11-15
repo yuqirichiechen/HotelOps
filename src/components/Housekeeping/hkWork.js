@@ -2,8 +2,8 @@
 //
 // Work list (one item per room):
 //   today     vacant Dirty / In-progress rooms → clean · rooms still occupied by a guest checking out today → clean · every other occupied room → stay-over SERVICE.
-//             Rooms the forecast says must be ready first (dirty rooms a booked arrival needs) are flagged priority; so is a room a guest
-//             LOCKED / requested (reservation.roomLocked — see isRoomLocked).
+//             Priority = a room locked to a guest (pre-assigned to an arrival, or do-not-move — see the 28.6 note below); the forecast's own
+//             "clean first" list only nudges the order (28.7).
 //   tomorrow  from the second-night plan (forecastModel dayTwo): "clean first" rooms (priority), the remaining check-outs, leftover dirty rooms → clean;
 //             rooms staying over → service. Reservations without a room number yet still count BY ROOM TYPE: each becomes a placeholder card
 //             ("TBD · NQRR") that can be handed out like a room and gets its number later.
@@ -23,6 +23,8 @@ export const KIND_LABEL = { clean: 'Clean', service: 'Service' };
 //   assigned on a reservation arriving that day (pre-assigned, seen when scraping) or the guest's record carries Do Not Move (seen in the guest detail). Nothing else makes a
 //   room priority. The Sprint-25 "priority room types" rule (every room of a ticked type) was RETIRED: it marked 10+ rooms that nobody had locked. A room rGuest shows
 //   as In Progress (someone is already on it) is its own grey group.
+//   Sprint 28.7: the forecast's own "clean first" list (dirty rooms of a type a booked arrival will need) is NOT a lock — it had been feeding `priority` and marked rooms
+//   (209, 211, 212 …) no guest was locked to. It now only nudges the ORDER (`first`); nothing is coloured or starred for it.
 //   Sprint 28.4: priority rooms are YELLOW like the check-outs (they used to be pink) and are marked by a thick RED line on each side of the row, the way the
 //   housekeepers bracket them by hand with a red pen (the 'hk-cat-priority' print CSS; the legend shows the same marks).
 export const CATS = ['dirty', 'departure', 'priority', 'progress', 'inhouse'];
@@ -54,7 +56,7 @@ const WHY_TOMORROW = { dirty: 'Dirty now — needed for a booked arrival', tonig
 // floors are always normalised ('02' and '2' are the same floor — the stay-over rooms of the plan carry the reservation's raw floor id)
 const mkItem = (roomNumber, typeCode, floorId, kind, why, priority, tbd = false) => {
   const f = tbd ? 'unknown' : normFloor(floorId, roomNumber);
-  return { roomNumber: String(roomNumber), typeCode: typeCode || '', floorId: f, floorLabel: floorLabel(f), kind, why, priority: !!priority, tbd };
+  return { roomNumber: String(roomNumber), typeCode: typeCode || '', floorId: f, floorLabel: floorLabel(f), kind, why, priority: false, first: !!priority, tbd };   // Sprint 28.7: the 6th argument is the forecast's "clean this soon" hint (`first`, ordering only). `priority` is NEVER set here — only a room locked to a guest is priority (see buildWorkList)
 };
 
 /** A guest asked NOT to be moved out of the room they were given (rGuest "Do not move", stored as summary.stay.doNotMoveRoom). The server lists those rooms
@@ -99,7 +101,7 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   // plan (someone is on it; nobody is assigned to clean it), instead of being assumed "done by tomorrow" and handed out as a dirty room.
   if (offset > 0) {
     const ipNow = new Set(); buildRoomSheet(payload, live).floors.forEach(f => f.rooms.forEach(r => { if (r.tone === 'progress') ipNow.add(r.roomNumber); }));
-    items.forEach(i => { if (!i.tbd && i.kind === 'clean' && ipNow.has(i.roomNumber)) { i.ip = true; i.why = 'In progress'; i.priority = false; } });
+    items.forEach(i => { if (!i.tbd && i.kind === 'clean' && ipNow.has(i.roomNumber)) { i.ip = true; i.why = 'In progress'; i.priority = false; i.first = false; } });
   }
   // rooms a guest has locked: clean those first
   const locked = new Set([...(lockedRooms || [])].map(String));
@@ -296,7 +298,7 @@ export function toAssignments(items, assign, hks, pinned = {}) {
   return hks.map(h => ({
     userId: h.userId, name: h.name,
     rooms: items.filter(i => assign[i.roomNumber] === h.userId)
-      .sort((a, b) => (b.priority - a.priority) || ((b.pre ? 1 : 0) - (a.pre ? 1 : 0)) || byRoom(a, b))
+      .sort((a, b) => ((b.priority ? 1 : 0) - (a.priority ? 1 : 0)) || ((b.first ? 1 : 0) - (a.first ? 1 : 0)) || ((b.pre ? 1 : 0) - (a.pre ? 1 : 0)) || byRoom(a, b))
       .map(i => {
         const o = { roomNumber: i.roomNumber, kind: i.kind };
         if (i.priority) o.priority = true;

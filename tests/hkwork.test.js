@@ -158,6 +158,16 @@ t('PREFERRED FLOORS (25): a housekeeper who asked for a floor gets it when the d
   const none = HK.balance(real, H('a', 'b', 'c', 'd'), {}, S, {}); assert.deepStrictEqual(none, HK.balance(real, H('a', 'b', 'c', 'd'), {}, S), 'no preferences = same as before');
   const conflict = HK.balance(real, H('a', 'b', 'c', 'd'), {}, S, { a: ['2'], b: ['2'], c: ['2'], d: ['2'] }); assert.strictEqual(Object.keys(conflict).length, real.length, 'everybody wanting the same floor still gets a full, fair split');
 });
+t('FORECAST "CLEAN FIRST" IS NOT PRIORITY (28.7): dirty rooms the room-type forecast wants ready for booked arrivals (more booked arrivals without a room than ready rooms of that type) stay ordinary dirty / check-out rooms — no star, no yellow-with-red-lines — and only nudge the order; only a room locked to a guest is priority', () => {
+  const rooms2 = rooms.map(r => (r.roomNumber === '101' ? { ...r, housekeepingRoomStatus: 'D' } : r));
+  const p2 = computeForecast({ rooms: rooms2, roomTypes, reservations: [...resv.filter(r => r.id !== 'r3'), ...['x1', 'x2', 'x3', 'x4', 'x5'].map(id => ({ id, status: 'RES', roomType: 'rt1', arrivalDateLocalDate: TODAY, departureDateLocalDate: '2026-10-21', arrivalDate: TODAY + 'T15:00:00Z', departureDate: '2026-10-21T07:00:00Z', confirmationId: id, primaryGuestInfo: { firstName: 'X', lastName: id } }))], metrics: { remainingArrivalsSummary: { total: 1, remaining: 1 }, remainingDeparturesSummary: { total: 1, remaining: 1 }, totalGuestsSummary: { total: 3 }, roomConditionSummary: [] }, vipStatuses: [], ratePlans: [], roomTypeMapping: [], config: {}, forecastDate: TODAY });
+  const w = HK.buildWorkList({ payload: p2, live: null, allowance: allow, offset: 0 }); const firsts = w.items.filter(i => i.first);
+  assert(firsts.length > 0, 'fixture really has forecast clean-first rooms: ' + w.items.map(i => i.roomNumber + (i.first ? '*' : '')).join(','));
+  assert(w.items.every(i => !i.priority && i.cat !== 'priority' && !(i.prioWhy || []).length), 'none of them is priority: ' + w.items.filter(i => i.priority).map(i => i.roomNumber).join(','));
+  const m = HK.buildMasterSheet({ payload: p2, live: null, items: w.items }); assert.strictEqual(m.counts.priority, 0, 'the all-rooms sheet shows no priority room');
+  const tm = HK.buildWorkList({ payload: p2, live: null, allowance: allow, offset: 1 }); assert(tm.items.every(i => !i.priority || i.pre || i.locked), 'tomorrow: only locked / pre-assigned rooms are priority');
+  const out = HK.toAssignments(w.items, Object.fromEntries(w.items.map(i => [i.roomNumber, 'a'])), H('a'), {}); assert(out[0].rooms.every(r => !r.priority), 'and nothing is saved as priority');
+});
 t('PRIORITY = LOCKED TO A GUEST (28.6): only a pre-assigned arrival room or a do-not-move room that still needs cleaning is priority; the Sprint-25 priority ROOM TYPES rule is retired (passing types changes nothing); stay-overs and In Progress rooms are never priority; every priority room says why', () => {
   const noPre = { ...payload, reservations: payload.reservations.filter(r => r.id !== 'r3') };
   const base = HK.buildWorkList({ payload: noPre, live: null, allowance: allow, offset: 0 }); assert(base.items.every(i => i.cat !== 'priority' && !i.priority && !(i.prioWhy || []).length), 'nothing locked → nothing priority');
