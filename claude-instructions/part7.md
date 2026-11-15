@@ -24,8 +24,20 @@
 | 28.3   | Display fixes: Dev bar follows light/dark, black-on-dark text (root cause: no page text colour), Auto-sync + Housekeeping tables, dark-mode / contrast audit across the app | **Done** 2026-11-12 (frontend only) |
 | 28.4   | Housekeeping sheets: Dev option for stay dates on check-out rooms; priority rooms yellow + red side lines (housekeepers' sheets and Print all sheets) | **Done** 2026-11-14 (server + frontend; no migration) |
 | 28.5   | Priority red lines drawn inside each row's own cells (right-hand line was ambiguous / lost); Dev room table + CSV say WHY a room is priority | **Done** 2026-11-14 (frontend only) |
+| 28.6   | Housekeeping: priority = a room the front desk locked to a guest (pre-assigned or do-not-move) — room-type rule retired; check-out dates option now OFF by default (individual HK page) | **Done** 2026-11-15 (server comment + frontend; no migration) |
 
 ## Sprint logs (newest first)
+
+### 2026-11-15 — Sprint 28.6: what "priority room" means; check-out dates default OFF
+
+**Frontend (+ one comment/setting-doc in the server); no migration.**
+1. **Priority redefined: a room the FRONT DESK LOCKED to a guest that still needs cleaning.** rGuest shows a lock two ways, and these are now the ONLY two reasons: (a) the room is **pre-assigned** on a reservation arriving that day (seen when scraping: the list row has a `roomId`), (b) the guest's record says **Do Not Move** (`doNotMoveRoom`, seen in the guest detail; the server's locked-rooms list and the list data both feed it). Such a room is cleaned first, printed yellow with the red side lines, and shows the star on the cards. A stay-over, an In Progress room, and a plain dirty / check-out room are never priority. A do-not-move check-out room IS now priority (before 28.6 it was only cleaned first, with no colour or marks).
+   - **What was wrong:** the 10+ priority rooms were the Sprint-25 **"Priority room types"** rule — every room of a ticked type (in your print: the NKRR family — G28, 209–212, earlier 309–316) was priority although nobody had locked them. **That rule is retired**: the box is gone from Housekeeping → Rules, `buildWorkList` ignores `priorityTypes`, and nothing reads the stored list. The stored preference itself is left untouched (never rewritten), so it can come back if you ever want it as its own feature.
+   - **Real data check (read-only probe of rGuest, today's arrivals):** 13 arrivals on Nov 15 and only 3 had a room assigned (8 on Nov 16 and 0 had one; 1 of 1 on Nov 18); of 4 sampled assigned reservations 2 had Do Not Move. So the locked-room rule yields a handful of rooms a day, not 10+.
+   - The Dev room table / CSV from 28.5 keep saying why a room is priority — now only "pre-assigned to an arrival" or "guest asked not to be moved".
+   - Open question for you: should a pre-assigned room WITHOUT do-not-move still count? (rGuest can pre-assign without the front desk locking.) I followed your description ("pre-assigned room when scraping OR do-not-move"). If only do-not-move should count, it is a one-line change.
+2. **Individual housekeeper page: no dates on departing rooms, by default.** The Dev option from 28.4 ("Show stay dates on check-out rooms", `hk_print_checkout_dates`) is now **OFF by default** (nothing saved = off; it was ON), so the dates on a housekeeper's sheet print only for rooms with a STAYING (in-house) guest — check-out rooms have none (your Nov 15 print still showed "Nov 14 → Nov 15" on check-outs because the old default was on). Dev can switch it back ON in Rules; managers and the front desk follow the saved value. A value saved as `'false'` earlier is still off.
+Tests: `hkwork` 24 (the locked-to-a-guest definition incl. do-not-move check-outs, stay-overs / In Progress never priority, types ignored, reasons), `housekeeping` 66 (Rules no longer has the room-type box and stored types mark nothing; a do-not-move room prints as priority; default dates OFF, ON works; colours / legend label updated). Full regression green; lint clean; build compiles.
 
 ### 2026-11-14 — Sprint 28.5: priority marks fixed; why-is-it-priority
 

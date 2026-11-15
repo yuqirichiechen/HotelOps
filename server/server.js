@@ -3952,8 +3952,8 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     // Sprint 24.11: dev option — print a return-slips page (Cleaned / Serviced / DND) after each housekeeper's sheet. 'true' | 'false'.
     // Written from the Dev view only (the hk_ prefix is dev-write-only); everyone's prints read it.
     hk_print_slips: v => v === 'true' || v === 'false',
-    // Sprint 28.4: dev option — keep the stay dates (check-in → check-out) on the printed sheets for rooms whose guest checks out TODAY ('true', the default) or show
-    // them for staying (in-house) guests only ('false'). Written from the Dev view only (hk_ prefix); everyone's prints read it.
+    // Sprint 28.4 / 28.6: dev option — also show the stay dates (check-in → check-out) on the printed sheets for rooms whose guest checks out TODAY ('true'); unset / 'false'
+    // (the default since 28.6) = dates for staying (in-house) guests only. Written from the Dev view only (hk_ prefix); everyone's prints read it.
     hk_print_checkout_dates: v => v === 'true' || v === 'false',
     // Sprint 25.3: dev option — may managers / the front desk plan BY NAME (staff list)? Off (default) = they only plan with "No name". Dev always can. 'true' | 'false'.
     hk_plan_by_name: v => v === 'true' || v === 'false',

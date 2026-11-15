@@ -41,9 +41,9 @@ const Slips = ({ sh, dateLabel }) => {
   );
 };
 
-// `checkoutDates` (Sprint 28.4, Dev option hk_print_checkout_dates, default on): keep the stay dates (check-in → check-out) on rooms whose guest checks OUT today;
-// off = dates only for staying (in-house) guests, check-out rooms show no dates.
-const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_COLOR_DEFAULTS, slips = false, checkoutDates = true, onDone }) => {
+// `checkoutDates` (Sprint 28.4 / 28.6, Dev option hk_print_checkout_dates, default OFF): show the stay dates (check-in → check-out) on rooms whose guest checks OUT
+// today as well; off (default) = dates only for staying (in-house) guests, check-out rooms show no dates.
+const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_COLOR_DEFAULTS, slips = false, checkoutDates = false, onDone }) => {
   usePrintSheet();
   useEffect(() => {
     const id = setTimeout(() => window.print(), 80);

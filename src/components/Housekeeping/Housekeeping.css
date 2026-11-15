@@ -456,8 +456,6 @@
 .hk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .hk-chip { font: inherit; font-size: 12px; font-weight: 600; min-width: 28px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; transition: background .15s ease, border-color .15s ease; }
 .hk-chip:hover:not(:disabled) { border-color: var(--accent-alt); } .hk-chip.on { background: var(--accent-bg); border-color: var(--accent-alt); color: var(--accent-alt); } .hk-chip:disabled { opacity: .55; cursor: default; }
-.hk-chip-type small { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); line-height: 1.1; }
-.hk-prio-row .hk-chips { margin-top: 2px; }
 @media print { .hk-page-table tr.hk-cat-progress td { color: #333; } }
 
 /* Sprint 25.2 — floors never clip or shrink (the column grows / scrolls with its content), compact floor header, "Select rooms" mode, edge arrows, flag line */

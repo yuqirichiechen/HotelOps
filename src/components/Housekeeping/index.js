@@ -228,7 +228,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const [acc, setAcc] = useState({});                   // floor accordions the user opened / closed: { 'pool|2': true, 'userId|3': false }
   const [prefs, setPrefs] = useState({ floors: {}, priorityTypes: [] });   // Sprint 25: housekeepers' preferred floors + priority room types (saved for the whole property)
   const [slips, setSlips] = useState(false);       // dev option (Rules): print the return slips after each housekeeper's sheet
-  const [checkoutDates, setCheckoutDates] = useState(true);   // dev option (Rules, Sprint 28.4): keep the stay dates on check-out rooms of the printed sheets (off = in-house only)
+  const [checkoutDates, setCheckoutDates] = useState(false);   // dev option (Rules, 28.4 / 28.6): show the stay dates on check-out rooms of the printed sheets (default OFF = dates for in-house guests only)
   const [confirmed, setConfirmed] = useState(false);   // step 1 → step 2: the plan has been confirmed, the rooms board is shown (manager / dev; the portal has no steps yet)
   const [confirmTick, setConfirmTick] = useState(0);
   const stepRef = useRef(null);
@@ -248,7 +248,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     if (lv.ok && lv.data?.success) setLive(lv.data.live);
     const s = st.ok && st.data && st.data.settings;
     if (s) {
-      setColors(parseColors(s.hk_print_colors)); setSlips(s.hk_print_slips === 'true'); setCheckoutDates(s.hk_print_checkout_dates !== 'false'); setNamesAllowed(s.hk_plan_by_name === 'true');
+      setColors(parseColors(s.hk_print_colors)); setSlips(s.hk_print_slips === 'true'); setCheckoutDates(s.hk_print_checkout_dates === 'true'); setNamesAllowed(s.hk_plan_by_name === 'true');
       const num = (v, d) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
       setAllowance({ enabled: s.forecast_allowance_enabled == null ? DEFAULT_ALLOWANCE.enabled : s.forecast_allowance_enabled !== 'false', scalePct: num(s.forecast_allowance_scale_pct, DEFAULT_ALLOWANCE.scalePct), minExtra: num(s.forecast_allowance_min_extra, DEFAULT_ALLOWANCE.minExtra) });
     }
@@ -280,7 +280,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     })();
     return () => { alive = false; };
   }, [date, readOnly, apiBase]);
-  const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset, lockedRooms, priorityTypes: prefs.priorityTypes })), [payload, live, allowance, offset, readOnly, date, lockedRooms, prefs.priorityTypes]);
+  const work = useMemo(() => (readOnly ? { date, offset, items: [], unplaced: { clean: 0, service: 0 } } : buildWorkList({ payload, live, allowance, offset, lockedRooms })), [payload, live, allowance, offset, readOnly, date, lockedRooms]);
   const pastItems = useMemo(() => {
     if (!past) return [];
     return past.assignments.flatMap(a => a.rooms.map(r => { const f = normFloor(null, r.roomNumber); return { roomNumber: r.roomNumber, typeCode: r.typeCode || '', floorId: f, floorLabel: floorLabel(f), kind: r.kind, why: r.why || '', priority: !!r.priority, tbd: false, cat: r.cat, stay: r.stay, _owner: a.userId }; }));
@@ -385,10 +385,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     const cur = prefs.floors[userId] || [], nextList = cur.includes(floor) ? cur.filter(f => f !== floor) : [...cur, floor];
     const floors = { ...prefs.floors }; if (nextList.length) floors[userId] = nextList; else delete floors[userId];
     savePrefs({ ...prefs, floors });
-  };
-  const togglePriorityType = (code) => {
-    const cur = prefs.priorityTypes, next = cur.includes(code) ? cur.filter(c => c !== code) : [...cur, code];
-    savePrefs({ ...prefs, priorityTypes: next });
   };
   const addHk = (h) => { setHks(prev => (prev.some(x => x.userId === h.userId) ? prev : [...prev, h])); touch(); };
   const removeHk = (id) => {
@@ -638,11 +634,6 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const boardFlags = readOnly ? [] : flagLines(sum.hks, warn.perHk, viewSettings);
   const previewFlags = readOnly ? [] : flagLines(previewSum.hks, pvWarn.perHk, viewSettings);
   const floorChoices = useMemo(() => [...new Set([...PRESET_FLOORS, ...items.map(i => i.floorId).filter(f => f && f !== 'unknown')])].sort((a, b) => floorRank(a) - floorRank(b)), [items]);
-  const typeChoices = useMemo(() => {
-    const m = new Map(); if (payload) buildRoomSheet(payload, live).floors.forEach(f => f.rooms.forEach(r => { if (r.typeCode && !m.has(r.typeCode)) m.set(r.typeCode, r.typeLabel || r.typeCode); }));
-    prefs.priorityTypes.forEach(c => { if (!m.has(c)) m.set(c, c); });
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [payload, live, prefs.priorityTypes]);
 
   return (
     <div className="hk-page-wrap hk-v2" ref={boardRef}>
@@ -975,20 +966,12 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             <NumField label="Service =" value={settings.serviceWeight} min={0} max={5} step={0.1} disabled={readOnly} onChange={(v) => setNum('serviceWeight', v)} />
           </div>
           {readOnly && <p className="hk-muted">This is a past day — its rules can't be changed.</p>}
-          <div className="hk-opt-row hk-prio-row" aria-label="Priority room types">
-            <b>Priority room types</b>
-            <small>Every room of a ticked type that needs cleaning is cleaned first and printed yellow with a red line on each side — in addition to rooms already pre-assigned to an arriving guest. Kept for every day.</small>
-            <div className="hk-chips">
-              {typeChoices.length === 0 && <small>Room types appear once the room data has loaded.</small>}
-              {typeChoices.map(([code, label]) => { const on = prefs.priorityTypes.includes(code); return <button key={code} type="button" className={`hk-chip hk-chip-type${on ? ' on' : ''}`} aria-pressed={on} title={label} disabled={readOnly} onClick={() => togglePriorityType(code)}>{code}<small>{label !== code ? label : ''}</small></button>; })}
-            </div>
-          </div>
           {dev && <HkDevSwitch settingKey="hk_plan_by_name" aria="Planning options (dev)" value={namesAllowed} onChange={setNamesAllowed} label="Managers and the front desk may plan by name"
             hint="Off (the default): they only plan with “No name” — the numbered housekeepers, whose names can be typed in before printing. On: they also get the Names mode with the staff list. Dev always has both." />}
           {dev && <HkDevSwitch settingKey="hk_print_slips" aria="Print options (dev)" value={slips} onChange={setSlips} label="Print return slips after each sheet"
             hint="One extra page per housekeeper with two half-page slips (to hand back during and at the end of the shift). Each has three columns — Cleaned, Serviced, DND — with the housekeeper's own rooms already listed to tick, and blank lines for DND rooms." />}
           {dev && <HkDevSwitch settingKey="hk_print_checkout_dates" aria="Print options: stay dates (dev)" value={checkoutDates} onChange={setCheckoutDates} label="Show stay dates on check-out rooms"
-            hint="On (the default): a room whose guest checks out today shows their stay (check-in → check-out) on the housekeeper's sheet. Off: the dates are kept only for rooms with a STAYING (in-house) guest; check-out rooms print without dates." />}
+            hint="Off (the default): the stay dates (check-in → check-out) print only for rooms with a STAYING (in-house) guest; check-out rooms print without dates. On: a room whose guest checks out today also shows their stay on the housekeeper's sheet." />}
           {dev && <HkPrintColors colors={colors} onSaved={setColors} />}
         </HkModal>
       )}

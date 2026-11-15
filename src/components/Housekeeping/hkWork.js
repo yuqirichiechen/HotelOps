@@ -19,11 +19,14 @@ export const KIND_LABEL = { clean: 'Clean', service: 'Service' };
 // Colour groups of the PRINTED sheets (the one-page "all rooms" sheet and each housekeeper's). Defaults (Dev can change them):
 //   green  = dirty VACANT room (dirty / in progress) · yellow = a guest is checking out that day · PRIORITY = the room is pre-assigned to an arriving
 //   reservation (Sprint 24.10; an arrival that has no room yet can take ANY room of its type, so it makes nothing priority) · in-house stay-overs no colour.
-//   Sprint 25: priority also marks every room of a PRIORITY ROOM TYPE (set in Rules); a room rGuest shows as In Progress (someone is already on it) is its own grey group.
+//   Sprint 28.6 — WHAT "priority" means: a room the FRONT DESK HAS LOCKED TO A GUEST, and that still needs cleaning. rGuest tells us two ways: the room is already
+//   assigned on a reservation arriving that day (pre-assigned, seen when scraping) or the guest's record carries Do Not Move (seen in the guest detail). Nothing else makes a
+//   room priority. The Sprint-25 "priority room types" rule (every room of a ticked type) was RETIRED: it marked 10+ rooms that nobody had locked. A room rGuest shows
+//   as In Progress (someone is already on it) is its own grey group.
 //   Sprint 28.4: priority rooms are YELLOW like the check-outs (they used to be pink) and are marked by a thick RED line on each side of the row, the way the
 //   housekeepers bracket them by hand with a red pen (the 'hk-cat-priority' print CSS; the legend shows the same marks).
 export const CATS = ['dirty', 'departure', 'priority', 'progress', 'inhouse'];
-export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — pre-assigned or a priority room type (red line each side)', progress: 'In progress (being cleaned)', inhouse: 'In-house (stay-over)' };
+export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — room held for a guest: pre-assigned or do-not-move (red line each side)', progress: 'In progress (being cleaned)', inhouse: 'In-house (stay-over)' };
 export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fefcbf', progress: '#e2e8f0', inhouse: '' };
 /** the priority default before 28.4 (pink): a saved colour equal to it was never chosen by a person, so it moves to the new default */
 export const OLD_PRIORITY_DEFAULT = '#fed7e2';
@@ -42,7 +45,7 @@ export function preAssignedRooms(payload, date, live) {
   if (live && Array.isArray(live.remainingArrivals)) live.remainingArrivals.forEach(a => { if (a && a.roomNumber) pre.add(String(a.roomNumber)); });
   return pre;
 }
-export const catOf = (it) => (it.ip ? 'progress' : (it.pre || it.ptype) && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|Checks out today)/.test(it.why || '') ? 'dirty' : 'departure');
+export const catOf = (it) => (it.ip ? 'progress' : it.priority && it.kind === 'clean' ? 'priority' : it.kind === 'service' ? 'inhouse' : /^(Dirty|Checks out today)/.test(it.why || '') ? 'dirty' : 'departure');
 
 const floorRank = (f) => (f === 'G' ? -1 : parseInt(f, 10) || 99);
 const byRoom = (a, b) => floorRank(a.floorId) - floorRank(b.floorId) || String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true });
@@ -59,7 +62,7 @@ const mkItem = (roomNumber, typeCode, floorId, kind, why, priority, tbd = false)
 export const isRoomLocked = (r) => !!(r && (r.doNotMoveRoom || r.roomLocked || r.roomAssignmentLocked || r.lockedRoom));
 
 /** @returns {{date, offset, items, unplaced:{clean:number, service:number}}} */
-export function buildWorkList({ payload, live, allowance, offset = 0, lockedRooms, priorityTypes }) {
+export function buildWorkList({ payload, live, allowance, offset = 0, lockedRooms /* , priorityTypes — retired in 28.6, see the PRIORITY note above */ }) {
   const today = (live && live.forecastDate) || (payload && payload.forecastDate) || '';
   const date = today ? addDays(today, offset) : '';   // before the room data has loaded there is no date yet
   const items = [], unplaced = { clean: 0, service: 0 };
@@ -103,16 +106,14 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date) locked.add(String(r.roomNumber)); });
   // every locked room that has work gets the lock mark; clean ones also go first
   items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean' && !i.ip) { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
-  // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (yellow + red side lines) when they still need cleaning.
+  // pre-assigned arrivals: a reservation (arriving that day) that already holds THIS room. Together with the do-not-move rooms above, these are the PRIORITY rooms.
   const pre = preAssignedRooms(payload, date, offset === 0 ? live : null);
-  const ptypes = new Set((priorityTypes || []).map(String));
   items.forEach(i => {
-    i.pre = !i.tbd && !i.ip && pre.has(i.roomNumber); i.ptype = !i.tbd && !i.ip && i.kind === 'clean' && ptypes.has(i.typeCode);
-    if ((i.pre || i.ptype) && i.kind === 'clean') i.priority = true;                // pre-assigned arrival / priority room type: cleaned first, pink
+    i.pre = !i.tbd && !i.ip && pre.has(i.roomNumber);
+    if (i.pre && i.kind === 'clean') i.priority = true;                // a room the front desk has held for an arriving guest: cleaned first, yellow + red side lines
   });
-  // Sprint 28.5: WHY a room is priority (shown to Dev in the room table + CSV, so an unexpectedly long priority list can be explained): a reservation arriving that
-  // day already holds the room · its room type is one of the priority types set in Rules · the guest asked not to be moved
-  items.forEach(i => { const w = []; if (i.pre && i.kind === 'clean') w.push('pre-assigned to an arrival'); if (i.ptype) w.push(`priority room type ${i.typeCode}`); if (i.locked && i.kind === 'clean' && !i.ip) w.push('guest asked not to be moved'); i.prioWhy = w; });
+  // Sprint 28.5 / 28.6: WHY a room is priority (shown to Dev in the room table + CSV). There are exactly two reasons — both mean the front desk locked the room to a guest.
+  items.forEach(i => { const w = []; if (i.pre && i.kind === 'clean') w.push('pre-assigned to an arrival'); if (i.locked && i.kind === 'clean' && !i.ip) w.push('guest asked not to be moved'); i.prioWhy = w; });
   // colour group + the stay (check-in → check-out) of whoever is in the room
   const stayBy = new Map();
   ((payload && payload.reservations) || []).filter(r => r.status === 'INH' && r.roomNumber).forEach(r => { const k = String(r.roomNumber), prev = stayBy.get(k); if (!prev || String(r.departureDate) > prev.dep) stayBy.set(k, { dep: String(r.departureDate), text: `${shortDate(r.arrivalDate)} → ${shortDate(r.departureDate)}` }); });
