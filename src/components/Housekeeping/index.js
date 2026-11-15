@@ -228,6 +228,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
   const [acc, setAcc] = useState({});                   // floor accordions the user opened / closed: { 'pool|2': true, 'userId|3': false }
   const [prefs, setPrefs] = useState({ floors: {}, priorityTypes: [] });   // Sprint 25: housekeepers' preferred floors + priority room types (saved for the whole property)
   const [slips, setSlips] = useState(false);       // dev option (Rules): print the return slips after each housekeeper's sheet
+  const [checkoutDates, setCheckoutDates] = useState(true);   // dev option (Rules, Sprint 28.4): keep the stay dates on check-out rooms of the printed sheets (off = in-house only)
   const [confirmed, setConfirmed] = useState(false);   // step 1 → step 2: the plan has been confirmed, the rooms board is shown (manager / dev; the portal has no steps yet)
   const [confirmTick, setConfirmTick] = useState(0);
   const stepRef = useRef(null);
@@ -247,7 +248,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
     if (lv.ok && lv.data?.success) setLive(lv.data.live);
     const s = st.ok && st.data && st.data.settings;
     if (s) {
-      setColors(parseColors(s.hk_print_colors)); setSlips(s.hk_print_slips === 'true'); setNamesAllowed(s.hk_plan_by_name === 'true');
+      setColors(parseColors(s.hk_print_colors)); setSlips(s.hk_print_slips === 'true'); setCheckoutDates(s.hk_print_checkout_dates !== 'false'); setNamesAllowed(s.hk_plan_by_name === 'true');
       const num = (v, d) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
       setAllowance({ enabled: s.forecast_allowance_enabled == null ? DEFAULT_ALLOWANCE.enabled : s.forecast_allowance_enabled !== 'false', scalePct: num(s.forecast_allowance_scale_pct, DEFAULT_ALLOWANCE.scalePct), minExtra: num(s.forecast_allowance_min_extra, DEFAULT_ALLOWANCE.minExtra) });
     }
@@ -976,7 +977,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
           {readOnly && <p className="hk-muted">This is a past day — its rules can't be changed.</p>}
           <div className="hk-opt-row hk-prio-row" aria-label="Priority room types">
             <b>Priority room types</b>
-            <small>Every room of a ticked type that needs cleaning is cleaned first and printed pink — in addition to rooms already pre-assigned to an arriving guest. Kept for every day.</small>
+            <small>Every room of a ticked type that needs cleaning is cleaned first and printed yellow with a red line on each side — in addition to rooms already pre-assigned to an arriving guest. Kept for every day.</small>
             <div className="hk-chips">
               {typeChoices.length === 0 && <small>Room types appear once the room data has loaded.</small>}
               {typeChoices.map(([code, label]) => { const on = prefs.priorityTypes.includes(code); return <button key={code} type="button" className={`hk-chip hk-chip-type${on ? ' on' : ''}`} aria-pressed={on} title={label} disabled={readOnly} onClick={() => togglePriorityType(code)}>{code}<small>{label !== code ? label : ''}</small></button>; })}
@@ -986,6 +987,8 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
             hint="Off (the default): they only plan with “No name” — the numbered housekeepers, whose names can be typed in before printing. On: they also get the Names mode with the staff list. Dev always has both." />}
           {dev && <HkDevSwitch settingKey="hk_print_slips" aria="Print options (dev)" value={slips} onChange={setSlips} label="Print return slips after each sheet"
             hint="One extra page per housekeeper with two half-page slips (to hand back during and at the end of the shift). Each has three columns — Cleaned, Serviced, DND — with the housekeeper's own rooms already listed to tick, and blank lines for DND rooms." />}
+          {dev && <HkDevSwitch settingKey="hk_print_checkout_dates" aria="Print options: stay dates (dev)" value={checkoutDates} onChange={setCheckoutDates} label="Show stay dates on check-out rooms"
+            hint="On (the default): a room whose guest checks out today shows their stay (check-in → check-out) on the housekeeper's sheet. Off: the dates are kept only for rooms with a STAYING (in-house) guest; check-out rooms print without dates." />}
           {dev && <HkPrintColors colors={colors} onSaved={setColors} />}
         </HkModal>
       )}
@@ -1011,7 +1014,7 @@ const Housekeeping = ({ mode = 'manager', apiBase = '/admin', simple = false }) 
 
       {ask && <ConfirmModal {...ask} onClose={() => setAsk(null)} />}
       {menu && <CardMenu menu={menu} hks={hks} canPaste={clip.length > 0} clipCount={clip.length} onMove={moveCards} onCopy={copyCards} onPaste={(g) => { pasteTo(g); setMenu(null); }} onClose={() => setMenu(null)} />}
-      {printing && <HkSheets dateLabel={dayText(date)} master={master} sheets={sheets} settings={viewSettings} colors={colors} slips={slips} onDone={() => setPrinting(null)} />}
+      {printing && <HkSheets dateLabel={dayText(date)} master={master} sheets={sheets} settings={viewSettings} colors={colors} slips={slips} checkoutDates={checkoutDates} onDone={() => setPrinting(null)} />}
     </div>
   );
 };

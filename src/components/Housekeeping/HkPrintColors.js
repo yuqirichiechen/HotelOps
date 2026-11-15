@@ -1,5 +1,5 @@
 // Sprint 23.4 — DEV ONLY: the colours of the printed housekeeping sheets, one per room group. Defaults: dirty green · check-out (leaving that day)
-// yellow · priority / pre-assigned pink · in-house no colour (it shows check-in → check-out). Saved as the dev-only setting `hk_print_colors`.
+// yellow · priority / pre-assigned yellow too, marked by a red line on each side · in-house no colour (it shows check-in → check-out). Saved as the dev-only setting `hk_print_colors`.
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../auth';
 import { CATS, CAT_LABEL, PRINT_COLOR_DEFAULTS } from './hkWork';
@@ -28,7 +28,7 @@ const HkPrintColors = ({ colors, onSaved }) => {
   return (
     <section className="hk-panel hk-colors" aria-label="Print colours (dev)">
       <div className="hk-panel-head"><h2>Print sheet colours</h2><span className="hk-tag-dev">DEV</span></div>
-      <p className="hk-help">Colour of each room group on the printed sheets. Leave "No colour" for rooms that should stay white.</p>
+      <p className="hk-help">Colour of each room group on the printed sheets. Leave "No colour" for rooms that should stay white. Priority rooms are also marked with a red line on each side (the preview shows it).</p>
       <div className="hk-colors-grid">
         {CATS.map(c => (
           <div className="hk-color-row" key={c}>
@@ -41,7 +41,7 @@ const HkPrintColors = ({ colors, onSaved }) => {
       </div>
       <table className="hk-colors-preview" aria-label="Preview">
         <tbody>
-          {CATS.map(c => <tr key={c} style={draft[c] ? { backgroundColor: draft[c] } : undefined}><td><b>{SAMPLE[c].room}</b></td><td>{SAMPLE[c].task}</td><td>{SAMPLE[c].note}</td></tr>)}
+          {CATS.map(c => <tr key={c} className={c === 'priority' ? 'is-priority' : undefined} style={draft[c] ? { backgroundColor: draft[c] } : undefined}><td><b>{SAMPLE[c].room}</b></td><td>{SAMPLE[c].task}</td><td>{SAMPLE[c].note}</td></tr>)}
         </tbody>
       </table>
       <div className="hk-colors-actions">

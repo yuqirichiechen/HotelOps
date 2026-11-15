@@ -17,16 +17,21 @@ export const DEFAULT_SETTINGS = { min: 10, max: 15, cleanWeight: 1, serviceWeigh
 export const KIND_LABEL = { clean: 'Clean', service: 'Service' };
 
 // Colour groups of the PRINTED sheets (the one-page "all rooms" sheet and each housekeeper's). Defaults (Dev can change them):
-//   green  = dirty VACANT room (dirty / in progress) · yellow = a guest is checking out that day · pink = PRIORITY = the room is pre-assigned to an arriving
+//   green  = dirty VACANT room (dirty / in progress) · yellow = a guest is checking out that day · PRIORITY = the room is pre-assigned to an arriving
 //   reservation (Sprint 24.10; an arrival that has no room yet can take ANY room of its type, so it makes nothing priority) · in-house stay-overs no colour.
-//   Sprint 25: pink also marks every room of a PRIORITY ROOM TYPE (set in Rules); a room rGuest shows as In Progress (someone is already on it) is its own grey group.
+//   Sprint 25: priority also marks every room of a PRIORITY ROOM TYPE (set in Rules); a room rGuest shows as In Progress (someone is already on it) is its own grey group.
+//   Sprint 28.4: priority rooms are YELLOW like the check-outs (they used to be pink) and are marked by a thick RED line on each side of the row, the way the
+//   housekeepers bracket them by hand with a red pen (the 'hk-cat-priority' print CSS; the legend shows the same marks).
 export const CATS = ['dirty', 'departure', 'priority', 'progress', 'inhouse'];
-export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — pre-assigned or a priority room type', progress: 'In progress (being cleaned)', inhouse: 'In-house (stay-over)' };
-export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fed7e2', progress: '#e2e8f0', inhouse: '' };
+export const CAT_LABEL = { dirty: 'Dirty (vacant)', departure: 'Checking out that day', priority: 'Priority — pre-assigned or a priority room type (red line each side)', progress: 'In progress (being cleaned)', inhouse: 'In-house (stay-over)' };
+export const PRINT_COLOR_DEFAULTS = { dirty: '#c6f6d5', departure: '#fefcbf', priority: '#fefcbf', progress: '#e2e8f0', inhouse: '' };
+/** the priority default before 28.4 (pink): a saved colour equal to it was never chosen by a person, so it moves to the new default */
+export const OLD_PRIORITY_DEFAULT = '#fed7e2';
 /** Stored setting (JSON string) → a full colour map; anything missing/invalid falls back to the default. '' = no colour. */
 export function parseColors(raw) {
   let o = {}; try { o = typeof raw === 'string' ? JSON.parse(raw) : (raw || {}); } catch { o = {}; }
   const out = {}; CATS.forEach(k => { out[k] = (o && Object.prototype.hasOwnProperty.call(o, k) && (o[k] === '' || /^#[0-9A-Fa-f]{6}$/.test(o[k]))) ? o[k] : PRINT_COLOR_DEFAULTS[k]; });
+  if (String(out.priority).toLowerCase() === OLD_PRIORITY_DEFAULT) out.priority = PRINT_COLOR_DEFAULTS.priority;   // 28.4: the old pink default → yellow
   return out;
 }
 /** Which colour group a work item belongs to. */
@@ -98,7 +103,7 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
   ((payload && payload.reservations) || []).forEach(r => { if (r.status === 'RES' && r.roomNumber && isRoomLocked(r) && String(r.arrivalDate).slice(0, 10) <= date) locked.add(String(r.roomNumber)); });
   // every locked room that has work gets the lock mark; clean ones also go first
   items.forEach(i => { if (!i.tbd && locked.has(i.roomNumber)) { i.locked = true; if (i.kind === 'clean' && !i.ip) { i.priority = true; i.why = `${i.why} — guest asked not to be moved (do not move)`; } } });
-  // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (pink) when they still need cleaning.
+  // pre-assigned arrivals: a reservation (arriving that day) that already has THIS room. Those rooms are the priority (yellow + red side lines) when they still need cleaning.
   const pre = preAssignedRooms(payload, date, offset === 0 ? live : null);
   const ptypes = new Set((priorityTypes || []).map(String));
   items.forEach(i => {
@@ -305,7 +310,7 @@ export { normFloor };
 
 // ── The one-page "all rooms" sheet (Sprint 24.10, trimmed in 25) ───────────────────────────────────────────────────────────────────────────────
 // Every room of the hotel in floor / room-number order (Ground first), 3 groups of [Room | Status] filled down each group like a newspaper column.
-// Room cell colour: green = dirty vacant · yellow = a guest checks out that day · pink = priority (pre-assigned to an arrival or a priority room type,
+// Room cell colour: green = dirty vacant · yellow = a guest checks out that day · priority = yellow + a red line each side (pre-assigned to an arrival or a priority room type,
 // still needs work) · grey = in progress; anything else white. The STATUS column is deliberately almost empty (front desk: "unnecessary information"):
 // only a staying guest's stay span, "In progress" and "Out of service" are written; departures stay blank so a late check-out can be pencilled in.
 export const MASTER_GROUPS = 3;

@@ -58,6 +58,11 @@ const NOW = new Date('2026-10-19T12:00:00Z'); const good = { date: '2026-10-19',
     for (const bad of ['not json', '[]', JSON.stringify({ dirty: 'green' }), JSON.stringify({ dirty: '#c6f6d5', evil: '#000000' }), JSON.stringify({ dirty: '#12345' }), '"x"']) assert.strictEqual((await put(T.dev, bad)).status, 400, bad);
     assert.strictEqual((await put(T.dev, JSON.stringify({ dirty: '#00ff00' }))).status, 200, 'a partial map is fine (the rest fall back to defaults in the page)');
   });
+  await t('28.4 setting hk_print_checkout_dates: only DEV can write it, managers can READ it, only "true" / "false" are accepted, and the front-desk allow-list passes it on', async () => {
+    const put = (token, v) => http('/api/admin/settings', { method: 'PUT', token, body: { hk_print_checkout_dates: v } });
+    assert.strictEqual((await put(T.admin, 'false')).status, 403, 'a manager cannot change it'); assert.strictEqual((await put(T.dev, 'false')).status, 200); assert.strictEqual((await put(T.dev, 'maybe')).status, 400); assert.strictEqual((await put(T.dev, '')).status, 400);
+    assert(require(ROOT + '/server/frontdesk').SETTINGS_ALLOWED.includes('hk_print_checkout_dates'), 'the front desk portal reads it too');
+  });
   await t('24.9 TWO SHEETS: setting hk_print_slips — only DEV can write it, managers can READ it, only "true" / "false" are accepted; the front-desk allow-list passes it through', async () => {
     const put = (token, v) => http('/api/admin/settings', { method: 'PUT', token, body: { hk_print_slips: v } });
     assert.strictEqual((await put(T.admin, 'true')).status, 403, 'a manager cannot change it'); assert.strictEqual((await put(T.dev, 'true')).status, 200); assert.strictEqual((await http('/api/admin/settings', { token: T.admin })).body.settings.hk_print_slips, 'true', 'managers read it');

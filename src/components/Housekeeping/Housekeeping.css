@@ -536,3 +536,14 @@
 .hk-rename { font-size: 15px; font-weight: 600; padding: 5px 8px; width: 100%; min-width: 0; }
 @media (pointer: coarse) { .hk-rename-btn { width: 36px; height: 36px; } .hk-dayseg button { padding: 8px 14px; } }
 @media (max-width: 560px) { .hk-dayswitch { flex-wrap: wrap; } .hk-dayseg button span { display: none; } }
+
+/* Sprint 28.4 — priority rooms: yellow (the default colour, like check-outs) AND a thick red line on each side of the row — on the housekeepers' sheets, on the
+   one-page "all rooms" sheet (left of the room cell, right of its status cell) and in the colour key. The Dev colour preview shows the same. */
+.hk-colors-preview tr.is-priority td:first-child { border-left: 4px solid #d62828; } .hk-colors-preview tr.is-priority td:last-child { border-right: 4px solid #d62828; }
+@media print {
+  .hk-page-table tr.hk-cat-priority td:first-child { border-left: 4px solid #d62828; }
+  .hk-page-table tr.hk-cat-priority td:last-child { border-right: 4px solid #d62828; }
+  .hk-master-table td.hk-m-room.hk-cat-priority { border-left: 4px solid #d62828; }
+  .hk-master-table td.hk-m-status.hk-pri { border-right: 4px solid #d62828; }
+  .hk-page-legend i.hk-leg-priority { border-left: 3px solid #d62828; border-right: 3px solid #d62828; }
+}

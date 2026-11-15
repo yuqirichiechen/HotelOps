@@ -41,6 +41,7 @@ const SETTINGS_ALLOWED = [
   'hk_print_colors',
   'hk_plan_by_name',   // Sprint 25.3
   'hk_print_slips',   // Sprint 24.11 (return slips; replaced 24.9's AM/PM option)
+  'hk_print_checkout_dates',   // Sprint 28.4 (stay dates on check-out rooms)
   'forecast_allowance_enabled',
   'forecast_allowance_scale_pct',
   'forecast_allowance_min_extra',

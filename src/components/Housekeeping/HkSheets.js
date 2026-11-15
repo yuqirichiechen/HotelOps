@@ -1,11 +1,11 @@
 // Sprint 23 / 23.4 — printable housekeeping sheets: one page per housekeeper (their rooms, priority first, tick-boxes), or all of them.
 // Top of each page: a small summary (rooms to clean · rooms to service). Rows are coloured by group (dirty / check-out / priority — colours set
-// in Dev, defaults green / yellow / pink); in-house (stay-over) rooms have no colour and show check-in → check-out.
+// in Dev, defaults green / yellow / yellow + red side lines); in-house (stay-over) rooms have no colour and show check-in → check-out.
 // Sprint 24.9/24.11 — `slips` (a Dev option in Rules): after each housekeeper's sheet comes a RETURN-SLIPS page: two half-page slips the housekeeper hands
 // back (one during, one at the end of the shift), each with three columns — Cleaned (vacant dirty / check-outs), Serviced (stay-overs), DND (guest has Do Not
 // Disturb on the door). Their own rooms are pre-listed with a tick box so they only tick; DND is a few blank lines to write in.
 // Sprint 24.10 — `master`: the ONE-PAGE sheet of every room ("Print all sheets"): 3 × [Room | Status] side by side, room cell coloured green = dirty vacant ·
-// yellow = a guest checks out that day · pink = priority (pre-assigned to an arrival, still needs work); status = what the room is now, the stay span
+// yellow = a guest checks out that day · priority = yellow with a red line on each side (pre-assigned to an arrival, still needs work); status = what the room is now, the stay span
 // for a staying guest, "Check-out 12 PM" for a departure. Same colours (and Dev colour settings) as the housekeepers' sheets.
 // Portaled to <body>; hidden on screen, the only thing on paper while printing (see Housekeeping.css + usePrintSheet).
 import React, { useEffect } from 'react';
@@ -41,7 +41,9 @@ const Slips = ({ sh, dateLabel }) => {
   );
 };
 
-const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_COLOR_DEFAULTS, slips = false, onDone }) => {
+// `checkoutDates` (Sprint 28.4, Dev option hk_print_checkout_dates, default on): keep the stay dates (check-in → check-out) on rooms whose guest checks OUT today;
+// off = dates only for staying (in-house) guests, check-out rooms show no dates.
+const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_COLOR_DEFAULTS, slips = false, checkoutDates = true, onDone }) => {
   usePrintSheet();
   useEffect(() => {
     const id = setTimeout(() => window.print(), 80);
@@ -51,7 +53,7 @@ const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_C
   }, [onDone]);
   const printed = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   if (master) {
-    const present = CATS.filter(c => colors[c] && master.rooms.some(r => r.cat === c));
+    const present = CATS.filter(c => (colors[c] || c === 'priority') && master.rooms.some(r => r.cat === c));   // priority always has its red-line mark, even with no colour
     const n = (c) => master.rooms.filter(r => r.cat === c).length;
     return createPortal(
       <div className="hk-printroot fc-print-root" aria-hidden="true">
@@ -66,7 +68,7 @@ const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_C
             </div>
           </header>
           {present.length > 0 && (
-            <p className="hk-page-legend">{present.map(c => <span key={c}><i style={{ background: colors[c], backgroundColor: colors[c] }} />{CAT_LABEL[c]}</span>)}</p>
+            <p className="hk-page-legend">{present.map(c => <span key={c}><i className={`hk-leg-${c}`} style={{ background: colors[c], backgroundColor: colors[c] }} />{CAT_LABEL[c]}</span>)}</p>
           )}
           <table className="hk-page-table hk-master-table">
             <thead><tr>{Array.from({ length: master.rows[0] ? master.rows[0].length : 0 }, (_, g) => <React.Fragment key={g}><th className="hk-m-room">Room</th><th className={`hk-m-status${g === 2 ? '' : ' hk-m-gap'}`}>Status</th></React.Fragment>)}</tr></thead>
@@ -76,7 +78,7 @@ const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_C
                   {row.map((c, g) => c ? (
                     <React.Fragment key={g}>
                       <td className={`hk-num hk-m-room${c.cat ? ` hk-cat-${c.cat}` : ''}`} style={c.cat && colors[c.cat] ? { backgroundColor: colors[c.cat] } : undefined}>{c.room}</td>
-                      <td className={`hk-m-status${g === row.length - 1 ? '' : ' hk-m-gap'}`}>{c.status}</td>
+                      <td className={`hk-m-status${g === row.length - 1 ? '' : ' hk-m-gap'}${c.cat === 'priority' ? ' hk-pri' : ''}`}>{c.status}</td>
                     </React.Fragment>
                   ) : <React.Fragment key={g}><td className="hk-m-room" /><td className={`hk-m-status${g === row.length - 1 ? '' : ' hk-m-gap'}`} /></React.Fragment>)}
                 </tr>
@@ -94,7 +96,7 @@ const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_C
       {sheets.map(sh => {
         const clean = sh.rooms.filter(r => r.kind === 'clean').length, service = sh.rooms.length - clean;
         const units = sh.rooms.reduce((n, r) => n + weightOf(r, settings), 0);
-        const present = CATS.filter(c => colors[c] && sh.rooms.some(r => (r.cat || catOf(r)) === c));
+        const present = CATS.filter(c => (colors[c] || c === 'priority') && sh.rooms.some(r => (r.cat || catOf(r)) === c));
         return (
           <React.Fragment key={sh.userId}>
           <section className="hk-page">
@@ -107,7 +109,7 @@ const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_C
               </div>
             </header>
             {present.length > 0 && (
-              <p className="hk-page-legend">{present.map(c => <span key={c}><i style={{ background: colors[c], backgroundColor: colors[c] }} />{CAT_LABEL[c]}</span>)}</p>
+              <p className="hk-page-legend">{present.map(c => <span key={c}><i className={`hk-leg-${c}`} style={{ background: colors[c], backgroundColor: colors[c] }} />{CAT_LABEL[c]}</span>)}</p>
             )}
             {sh.rooms.length === 0 ? <p className="hk-page-empty">No rooms assigned.</p> : (
               <table className="hk-page-table">
@@ -125,7 +127,7 @@ const HkSheets = ({ dateLabel, master = null, sheets, settings, colors = PRINT_C
                           {KIND_LABEL[r.kind]}{r.kind === 'clean' ? '' : ' (stay-over)'}
                           {r.priority ? <b className="hk-firsttag"> · CLEAN FIRST</b> : null}
                           {r.kind === 'clean' && r.why ? <span className="hk-why"> {r.why}</span> : null}
-                          {r.stay ? <span className="hk-stay"> {r.stay}</span> : null}
+                          {r.stay && (r.kind !== 'clean' || checkoutDates) ? <span className="hk-stay"> {r.stay}</span> : null}
                         </td>
                         <td className="hk-notes" />
                       </tr>
