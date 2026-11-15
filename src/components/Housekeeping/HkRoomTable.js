@@ -16,7 +16,7 @@ const HkRoomTable = ({ sheet, items, assign, hks, pinned, guestOf, offset, date 
       return {
         room: r.roomNumber, floor: floorLabel, type: r.typeCode, tone: r.tone, status: r.toneLabel, stay: r.checkout || '', guest: guestOf(r.roomNumber) || '',
         task: it ? (it.kind === 'clean' ? 'Clean' : 'Service') : '', why: it ? it.why : '', who: owner ? name.get(owner) || '' : '', work: !!it,
-        open: !!it && !owner, star: !!(it && it.priority), lock: !!(it && it.locked), hand: !!it && Object.prototype.hasOwnProperty.call(pinned, it.roomNumber),
+        open: !!it && !owner, star: !!(it && it.priority), prio: it && it.priority ? ((it.prioWhy || []).join(' · ') || 'clean first') : '', lock: !!(it && it.locked), hand: !!it && Object.prototype.hasOwnProperty.call(pinned, it.roomNumber),
       };
     };
     const secs = ((sheet && sheet.floors) || []).map(f => ({ key: f.floorId, label: f.label, rows: f.rooms.map(r => rowOf(r, f.label)) }));
@@ -28,8 +28,8 @@ const HkRoomTable = ({ sheet, items, assign, hks, pinned, guestOf, offset, date 
   const shown = sections.map(s => ({ ...s, rows: s.rows.filter(keep) })).filter(s => s.rows.length);
   const all = sections.flatMap(s => s.rows);
   const download = () => {
-    const lines = [['Floor', 'Room', 'Type', 'Status now', 'Stay (check-in → check-out)', 'Guest', 'Task', 'Why', 'Assigned to', 'Clean first', 'Do not move', 'Placed by hand'].join(',')];
-    all.forEach(r => lines.push([r.floor, r.room, r.type, r.status, r.stay, r.guest, r.task, r.why, r.who, r.star ? 'yes' : '', r.lock ? 'yes' : '', r.hand ? 'yes' : ''].map(csvCell).join(',')));
+    const lines = [['Floor', 'Room', 'Type', 'Status now', 'Stay (check-in → check-out)', 'Guest', 'Task', 'Why', 'Assigned to', 'Clean first', 'Clean first because', 'Do not move', 'Placed by hand'].join(',')];
+    all.forEach(r => lines.push([r.floor, r.room, r.type, r.status, r.stay, r.guest, r.task, r.why, r.who, r.star ? 'yes' : '', r.prio, r.lock ? 'yes' : '', r.hand ? 'yes' : ''].map(csvCell).join(',')));
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' }), url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = `housekeeping-rooms-${date}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -55,12 +55,12 @@ const HkRoomTable = ({ sheet, items, assign, hks, pinned, guestOf, offset, date 
               <tbody>
                 {sec.rows.map((r, i) => (
                   <tr key={r.room + i} className={`${r.work ? 'work' : ''}${r.open ? ' open' : ''}`}>
-                    <td className="hk-rt-room">{r.room}{r.star && <i className="hk-rt-star" title="Clean first">★</i>}{r.lock && <i className="hk-rt-lock" title="Guest asked not to be moved">⚑</i>}</td>
+                    <td className="hk-rt-room">{r.room}{r.star && <i className="hk-rt-star" title={r.prio ? `Clean first — ${r.prio}` : 'Clean first'}>★</i>}{r.lock && <i className="hk-rt-lock" title="Guest asked not to be moved">⚑</i>}</td>
                     <td>{r.type}</td>
                     <td><span className={`rs-dot rs-dot-${r.tone}`} />{r.status}</td>
                     <td>{r.stay}</td>
                     <td className="hk-rt-guest">{r.guest}</td>
-                    <td>{r.task ? <><b>{r.task}</b><small>{r.why}</small></> : <span className="hk-muted">—</span>}</td>
+                    <td>{r.task ? <><b>{r.task}</b><small>{r.why}</small>{r.prio && <small className="hk-rt-prio">★ {r.prio}</small>}</> : <span className="hk-muted">—</span>}</td>
                     <td>{r.who ? <>{r.who}{r.hand && <i className="hk-rt-hand" title="Placed by hand">●</i>}</> : r.work ? <span className="hk-rt-open">not assigned</span> : <span className="hk-muted">—</span>}</td>
                   </tr>
                 ))}

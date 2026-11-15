@@ -537,13 +537,17 @@
 @media (pointer: coarse) { .hk-rename-btn { width: 36px; height: 36px; } .hk-dayseg button { padding: 8px 14px; } }
 @media (max-width: 560px) { .hk-dayswitch { flex-wrap: wrap; } .hk-dayseg button span { display: none; } }
 
-/* Sprint 28.4 — priority rooms: yellow (the default colour, like check-outs) AND a thick red line on each side of the row — on the housekeepers' sheets, on the
-   one-page "all rooms" sheet (left of the room cell, right of its status cell) and in the colour key. The Dev colour preview shows the same. */
-.hk-colors-preview tr.is-priority td:first-child { border-left: 4px solid #d62828; } .hk-colors-preview tr.is-priority td:last-child { border-right: 4px solid #d62828; }
+/* Sprint 28.4 / 28.5 — priority rooms: yellow (the default colour, like check-outs) AND a thick red line on each side of the row — on the housekeepers' sheets, on the
+   one-page "all rooms" sheet and in the colour key. The Dev colour preview shows it too.
+   28.5: the lines are painted INSIDE the first / last cell as a background stripe, not as cell borders. The tables use border-collapse, where a border between two
+   columns is shared: a room's right-hand line sat exactly on the border of the next column's room cell, so it looked like THAT room's left line (and the middle
+   column's right-hand line was easy to lose against the thick black column divider). Inside the cell, every priority row shows its own left AND right line. */
+.hk-colors-preview tr.is-priority td:first-child { background-image: linear-gradient(#d62828, #d62828); background-size: 4px 100%; background-repeat: no-repeat; background-position: left top; }
+.hk-colors-preview tr.is-priority td:last-child { background-image: linear-gradient(#d62828, #d62828); background-size: 4px 100%; background-repeat: no-repeat; background-position: right top; }
 @media print {
-  .hk-page-table tr.hk-cat-priority td:first-child { border-left: 4px solid #d62828; }
-  .hk-page-table tr.hk-cat-priority td:last-child { border-right: 4px solid #d62828; }
-  .hk-master-table td.hk-m-room.hk-cat-priority { border-left: 4px solid #d62828; }
-  .hk-master-table td.hk-m-status.hk-pri { border-right: 4px solid #d62828; }
+  .hk-page-table tr.hk-cat-priority td:first-child, .hk-master-table td.hk-m-room.hk-cat-priority { background-image: linear-gradient(#d62828, #d62828); background-size: 4px 100%; background-repeat: no-repeat; background-position: left top; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hk-page-table tr.hk-cat-priority td:last-child, .hk-master-table td.hk-m-status.hk-pri { background-image: linear-gradient(#d62828, #d62828); background-size: 4px 100%; background-repeat: no-repeat; background-position: right top; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hk-master-table td.hk-m-room.hk-cat-priority { padding-left: 9px; }   /* the stripe is inside the cell: keep the room number clear of it */
   .hk-page-legend i.hk-leg-priority { border-left: 3px solid #d62828; border-right: 3px solid #d62828; }
 }
+.hk-rt-prio { color: var(--warn-text) !important; font-weight: 600; }   /* 28.5: why a room is priority (dev room table) */

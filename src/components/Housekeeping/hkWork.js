@@ -110,6 +110,9 @@ export function buildWorkList({ payload, live, allowance, offset = 0, lockedRoom
     i.pre = !i.tbd && !i.ip && pre.has(i.roomNumber); i.ptype = !i.tbd && !i.ip && i.kind === 'clean' && ptypes.has(i.typeCode);
     if ((i.pre || i.ptype) && i.kind === 'clean') i.priority = true;                // pre-assigned arrival / priority room type: cleaned first, pink
   });
+  // Sprint 28.5: WHY a room is priority (shown to Dev in the room table + CSV, so an unexpectedly long priority list can be explained): a reservation arriving that
+  // day already holds the room · its room type is one of the priority types set in Rules · the guest asked not to be moved
+  items.forEach(i => { const w = []; if (i.pre && i.kind === 'clean') w.push('pre-assigned to an arrival'); if (i.ptype) w.push(`priority room type ${i.typeCode}`); if (i.locked && i.kind === 'clean' && !i.ip) w.push('guest asked not to be moved'); i.prioWhy = w; });
   // colour group + the stay (check-in → check-out) of whoever is in the room
   const stayBy = new Map();
   ((payload && payload.reservations) || []).filter(r => r.status === 'INH' && r.roomNumber).forEach(r => { const k = String(r.roomNumber), prev = stayBy.get(k); if (!prev || String(r.departureDate) > prev.dep) stayBy.set(k, { dep: String(r.departureDate), text: `${shortDate(r.arrivalDate)} → ${shortDate(r.departureDate)}` }); });
