@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DropdownSelect from '../../shared/DropdownSelect';
+import Icon from '../../shared/Icon';
 
 // Sprint 8.4: DayView now supports two render modes — `timeline` (iOS-Calendar
 // hours-on-Y, lane-packed shifts) and `resource` (staff-on-Y / hours-on-X,
@@ -252,7 +253,7 @@ const ShiftDetailModal = ({ shift, onClose }) => {
           className="day-shift-detail-close"
           onClick={onClose}
           aria-label="Close"
-        >✕</button>
+        ><Icon name="close" size="1em" /></button>
         <div
           className="day-shift-detail-dept-bar"
           style={{ background: color.border }}
@@ -619,7 +620,7 @@ const ShiftCard = ({ shift, onClick, compact = false }) => {
           {role && <> · {role}</>}
         </span>
         <span className="day-card-time">
-          <span className="day-card-time-icon" aria-hidden>⏱</span>
+          <span className="day-card-time-icon" aria-hidden><Icon name="clock" size="1em" /></span>
           {range}
           <span className="day-card-hours"> · {hours}h</span>
         </span>

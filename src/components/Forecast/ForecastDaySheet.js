@@ -8,6 +8,7 @@ import React, { useEffect } from 'react';
 import '../Forecasting/ForecastSheet.css';
 import './ForecastDaySheet.css';
 import { PRIORITY_LABEL } from './forecastModel';
+import Icon from '../shared/Icon';
 
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -52,7 +53,7 @@ const ForecastDaySheet = ({ model, propertyName = 'Snoqualmie Inn', onClose }) =
             <span className="fc-sheet-controls-hint">Press Esc or click outside to close</span>
           </div>
           <div className="fc-sheet-controls-right">
-            <button className="fc-sheet-btn fc-sheet-btn-primary" onClick={() => window.print()}>▤ Print</button>
+            <button className="fc-sheet-btn fc-sheet-btn-primary" onClick={() => window.print()}><Icon name="printer" size="1em" /> Print</button>
             <button className="fc-sheet-btn fc-sheet-btn-secondary" onClick={onClose}>Close</button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import './Settings.css';
+import Icon from '../../components/shared/Icon';
 
 const ROLE_LABELS = {
   employee:   'Employee',
@@ -91,7 +92,7 @@ const Settings = ({ theme, onToggleTheme }) => {
           <h2 className="settings-card-title">Appearance</h2>
           <div className="settings-theme-row">
             <div className="settings-theme-info">
-              <span className="theme-icon">{isDark ? '🌙' : '☀️'}</span>
+              <span className="theme-icon"><Icon name={isDark ? 'moon' : 'sun'} size="1em" /></span>
               <div>
                 <div className="settings-theme-label">{isDark ? 'Dark mode' : 'Light mode'}</div>
                 <div className="settings-theme-meta">Currently {themeSource}.</div>

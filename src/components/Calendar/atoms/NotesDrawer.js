@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../../auth';
 import DepartmentChips from './DepartmentChips';
+import Icon from '../../shared/Icon';
 
 // Sprint 11: NotesDrawer (renamed + restructured from HandoffsDrawer).
 // Four tabs:
@@ -428,10 +429,10 @@ const NotesDrawer = ({
           />
           <span className="notes-drawer-note-author">{n.author_name}</span>
           {n.pinned_at && (
-            <span className="notes-drawer-note-badge is-pinned">📌 Pinned</span>
+            <span className="notes-drawer-note-badge is-pinned"><Icon name="pin" size="1em" /> Pinned</span>
           )}
           {n.resolved_at && (
-            <span className="notes-drawer-note-badge is-resolved">✓ Resolved</span>
+            <span className="notes-drawer-note-badge is-resolved"><Icon name="check" size="1em" /> Resolved</span>
           )}
           {n.scope === 'shift' && n.schedule_user_name && (
             <span
@@ -644,7 +645,7 @@ const NotesDrawer = ({
                 className="notes-drawer-visibility-trigger"
                 onClick={() => setVisMenuOpen(v => !v)}
               >
-                <span className="notes-drawer-visibility-glyph" aria-hidden>👥</span>
+                <span className="notes-drawer-visibility-glyph" aria-hidden><Icon name="users" size="1em" /></span>
                 <span>{visLabel}</span>
                 <span className="notes-drawer-visibility-caret" aria-hidden>▾</span>
               </button>
@@ -735,7 +736,7 @@ const NotesDrawer = ({
               title="Attachments land in a future sprint"
               aria-label="Attach"
             >
-              <span aria-hidden>📎</span> Attach
+              <span aria-hidden><Icon name="paperclip" size="1em" /></span> Attach
             </button>
             <button
               type="button"
@@ -743,7 +744,7 @@ const NotesDrawer = ({
               onClick={onPost}
               disabled={composeBusy || !composeBody.trim()}
             >
-              {composeBusy ? 'Posting…' : (<><span aria-hidden>✈</span> Post</>)}
+              {composeBusy ? 'Posting…' : (<><span aria-hidden><Icon name="send" size="1em" /></span> Post</>)}
             </button>
           </div>
           {error && <div className="notes-drawer-error">{error}</div>}

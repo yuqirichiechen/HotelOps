@@ -27,10 +27,10 @@ import { PortalPreviewContext, usePortalPreview } from './PortalPreview';
 // `preview` (dev only, from the AdminShell's "View as → Front desk"): the dev sees exactly this portal as a front-desk employee would.
 const NAV = [
   { view: 'home',         label: 'Home',         icon: 'home',      live: true, mobilePrimary: true },
-  { view: 'reservations', label: 'Reservations', icon: 'calendar',  live: true, mobilePrimary: true, frontDeskOnly: true },
-  { view: 'housekeeping', label: 'Housekeeping', icon: 'timesheet', live: true, mobilePrimary: true, frontDeskOnly: true },
-  { view: 'logbook',      label: 'Logbook',      icon: 'logbook',   live: true, mobilePrimary: true },
-  { view: 'settings',     label: 'Settings',     icon: 'settings',  hideInPreview: true },   // a dev has no staff profile to edit
+  { view: 'reservations', label: 'Reservations', icon: 'ticket',    live: true, mobilePrimary: true, frontDeskOnly: true },
+  { view: 'housekeeping', label: 'Housekeeping', icon: 'bed',       live: true, mobilePrimary: true, frontDeskOnly: true },
+  { view: 'logbook',      label: 'Logbook',      icon: 'notebook',  live: true, mobilePrimary: true },
+  { view: 'settings',     label: 'Settings',     icon: 'gear',      hideInPreview: true },   // a dev has no staff profile to edit
 ];
 
 // Housekeeping reads/writes through the front-desk routes and uses the simplified layout (see Housekeeping `simple`).

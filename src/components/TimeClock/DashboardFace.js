@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import Icon from '../shared/Icon';
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ const DashboardFace = ({ employee, entries, histLoading, loading, onClockIn, onC
           </>
         ) : (
           <>
-            <div className="dash-status-icon">⏸</div>
+            <div className="dash-status-icon"><Icon name="pause" size="1em" /></div>
             <div className="dash-timer-label">Not clocked in</div>
             <button className="dash-action-btn dash-btn-in" onClick={onClockIn} disabled={loading}>
               {loading ? '…' : 'Clock In'}

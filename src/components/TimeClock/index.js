@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, apiFetch } from '../../auth';
 import './TimeClock.css';
+import Icon from '../shared/Icon';
 
 // Two-face flip card. Front = ready to clock in; back = active timer + clock
 // out. Page strictly handles clocking in/out — week strip, history, and
@@ -99,7 +100,7 @@ const TimeClock = () => {
       {notif && (
         <div className="notif-overlay" onClick={() => setNotif(null)}>
           <div className={`notif-card notif-${notif.type}`}>
-            <div className="notif-icon">{notif.type === 'success' ? '✓' : '✕'}</div>
+            <div className="notif-icon">{notif.type === 'success' ? <Icon name="check" size="1em" /> : <Icon name="close" size="1em" />}</div>
             <div className="notif-message">{notif.text}</div>
           </div>
         </div>

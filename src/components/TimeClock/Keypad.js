@@ -1,4 +1,5 @@
 import React from 'react';
+import Icon from '../shared/Icon';
 
 const Keypad = ({ onKeyPress }) => (
   <div className="keypad">
@@ -12,7 +13,7 @@ const Keypad = ({ onKeyPress }) => (
     <div className="keypad-row">
       <button className="keypad-btn clear-btn" onClick={() => onKeyPress('clear')}>Clear</button>
       <button className="keypad-btn" onClick={() => onKeyPress('0')}>0</button>
-      <button className="keypad-btn back-btn" onClick={() => onKeyPress('back')}>⌫</button>
+      <button className="keypad-btn back-btn" onClick={() => onKeyPress('back')} aria-label="Backspace"><Icon name="backspace" size="1em" /></button>
     </div>
   </div>
 );

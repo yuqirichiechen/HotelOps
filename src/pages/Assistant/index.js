@@ -1,5 +1,6 @@
 import React from 'react';
 import './Assistant.css';
+import Icon from '../../components/shared/Icon';
 
 // Sprint 10.3: Assistant placeholder. The real surface (locally-
 // deployed small-param LLM + RAG/function-calling hybrid against the
@@ -32,7 +33,7 @@ const Assistant = () => {
       </p>
 
       <section className="assistant-empty">
-        <div className="assistant-empty-icon" aria-hidden>🤖</div>
+        <div className="assistant-empty-icon" aria-hidden><Icon name="bot" size="1em" /></div>
         <div className="assistant-empty-title">Not wired up yet</div>
         <div className="assistant-empty-desc">
           The Assistant model + RAG pipeline is planned for the next

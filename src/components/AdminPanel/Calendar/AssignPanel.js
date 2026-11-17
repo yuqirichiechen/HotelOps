@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import Icon from '../../shared/Icon';
 
 // Sprint 8.1: docked side panel for rapid shift assignment. Right-side
 // drawer on desktop, full-width bottom sheet on mobile (<720px). Stays
@@ -366,7 +367,7 @@ const AssignPanel = ({ open, employees, departments, templates, schedules = [], 
 
           {lastResult && (
             <div className={`ap-result ${lastResult.fail > 0 ? 'is-warn' : 'is-ok'}`}>
-              {lastResult.ok > 0 && <>✓ Added {lastResult.ok} shift{lastResult.ok === 1 ? '' : 's'}</>}
+              {lastResult.ok > 0 && <><Icon name="check" size="1em" /> Added {lastResult.ok} shift{lastResult.ok === 1 ? '' : 's'}</>}
               {lastResult.fail > 0 && (
                 <div className="ap-result-detail">
                   {lastResult.fail} failed{lastResult.message ? ` — ${lastResult.message}` : ''}
@@ -378,7 +379,7 @@ const AssignPanel = ({ open, employees, departments, templates, schedules = [], 
           {conflicts && conflicts.length > 0 ? (
             <div className="ap-conflict">
               <div className="ap-conflict-head">
-                ⚠ {conflicts.length} overlap{conflicts.length === 1 ? '' : 's'} with existing shift{conflicts.length === 1 ? '' : 's'}
+                <Icon name="warning" size="1em" /> {conflicts.length} overlap{conflicts.length === 1 ? '' : 's'} with existing shift{conflicts.length === 1 ? '' : 's'}
               </div>
               <ul className="ap-conflict-list">
                 {conflicts.slice(0, 5).map(c => (

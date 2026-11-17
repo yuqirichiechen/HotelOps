@@ -12,6 +12,7 @@ import {
   matchesList, attentionOf, ATTENTION_DEFS, SORT_OPTIONS, applySort, attentionCounts, filterByAttention, toCsv,
 } from './resnSearch';
 import { fmtMD } from './resnFormat';
+import Icon from '../shared/Icon';
 
 // ── helpers moved from index.js ────────────────────────────────────────────
 const STATUS_PILL_CLASS = {
@@ -308,7 +309,7 @@ const ReservationDetailsTable = ({
       {/* ── search / sort / print / export ── */}
       <div className="rl-tools">
         <div className="rl-search">
-          <span className="rl-search-icon" aria-hidden="true">⌕</span>
+          <span className="rl-search-icon" aria-hidden="true"><Icon name="search" size="1em" /></span>
           <input
             ref={searchRef}
             type="search"

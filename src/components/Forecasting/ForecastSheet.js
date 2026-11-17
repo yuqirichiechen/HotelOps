@@ -8,6 +8,7 @@
 
 import React, { useEffect } from 'react';
 import './ForecastSheet.css';
+import Icon from '../shared/Icon';
 
 const ACTION_LABEL = {
   checkoutClean:   'Check-out clean',
@@ -66,7 +67,7 @@ const ForecastSheet = ({ snapshot, propertyName = 'Snoqualmie Inn', onClose }) =
               className="fc-sheet-btn fc-sheet-btn-primary"
               onClick={() => window.print()}
             >
-              ▤ Print
+              <Icon name="printer" size="1em" /> Print
             </button>
             <button
               className="fc-sheet-btn fc-sheet-btn-secondary"

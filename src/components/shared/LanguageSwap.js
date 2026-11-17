@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLang, SUPPORTED_LANGS, LANG_LABELS } from '../../i18n';
 import './LanguageSwap.css';
+import Icon from './Icon';
 
 // Sprint 16.5: iPhone-setup-style language picker. Replaces the
 // 3-button row on the login card. A single big pill rotates
@@ -91,7 +92,7 @@ const LanguageSwap = () => {
       >
         <span className="lang-swap-pill-label">{displayLabel}</span>
         {locked && (
-          <span className="lang-swap-pill-check" aria-hidden>✓</span>
+          <span className="lang-swap-pill-check" aria-hidden><Icon name="check" size="1em" /></span>
         )}
       </button>
       <div className="lang-swap-hint">

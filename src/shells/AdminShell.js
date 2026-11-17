@@ -26,11 +26,8 @@ import '../pages/Dev/DevPages.css';
 // Sub-views (StaffDetail, NotesPage) carry their identifiers through
 // view params instead of URL params.
 
-// Sprint 11.6: nav `icon` is now an icon *base name* — Sidebar
-// resolves it to `/logo/<base>_<dark|light>.png` based on the
-// active theme. PNGs live in /public/logo/. "Reports" relabelled
-// to "Logbook" in step with the icon swap (a Sprint 12 surface
-// rebuild lands in the next iteration).
+// Sprint 28.8: nav `icon` is the NAME of an icon in the shared set (src/components/shared/Icon.js) — every item has its own; to add a page, add its icon
+// there (one entry) and name it here. tests/icons.test.js checks the names exist and are unique within a menu.
 // Sprint 17.4: `mobilePrimary` marks items that show in the mobile
 // bottom tab bar. Items without the flag collapse into a "More"
 // sheet (slides up from the bottom nav). Desktop sidebar still
@@ -41,27 +38,27 @@ const NAV = [
   // the most-used admin page on phones — manual time-entry adds,
   // OT approval, recent-hires lookups). Forecast moves into the More
   // sheet since the GM rarely opens it from a phone.
-  { view: 'staff',     label: 'Staff',     icon: 'stafficon',  live: true, mobilePrimary: true },
+  { view: 'staff',     label: 'Staff',     icon: 'users',      live: true, mobilePrimary: true },
   { view: 'calendar',  label: 'Calendar',  icon: 'calendar',   live: true, mobilePrimary: true },
   // Sprint 17.11: split the prior "Forecast" nav item in two.
   // "Reservations" = booking-list / arrivals-detail view (the page
   // previously labelled Forecast). "Forecast" = room-type
   // availability projection (new page). Both share the same scrape.
-  { view: 'reservations', label: 'Reservations', icon: 'calendar', live: true, mobilePrimary: true },
-  { view: 'forecast',     label: 'Forecast',     icon: 'calendar', live: true },
-  { view: 'housekeeping', label: 'Housekeeping', icon: 'timesheet', live: true },   // Sprint 23
-  { view: 'reports',   label: 'Logbook',   icon: 'logbook',    live: true },   // Sprint 26.1: the green "live" dot, like the other live pages
-  { view: 'assistant', label: 'Assistant', icon: 'assistant' },
-  { view: 'settings',  label: 'Settings',  icon: 'settings',   live: true },
+  { view: 'reservations', label: 'Reservations', icon: 'ticket',   live: true, mobilePrimary: true },
+  { view: 'forecast',     label: 'Forecast',     icon: 'trend',    live: true },
+  { view: 'housekeeping', label: 'Housekeeping', icon: 'bed',       live: true },   // Sprint 23
+  { view: 'reports',   label: 'Logbook',   icon: 'notebook',  live: true },   // Sprint 26.1: the green "live" dot, like the other live pages
+  { view: 'assistant', label: 'Assistant', icon: 'sparkles' },
+  { view: 'settings',  label: 'Settings',  icon: 'gear',       live: true },
 ];
 
 // Sprint 22.6 — the "Dev tools" group: ONE shell for managers and dev. A dev session sees these extra items (and may switch the pages
 // between the full dev view and what a manager sees); a manager session never gets them, and the server refuses their data routes.
 const DEV_NAV = [
-  { view: 'devsync',     label: 'Auto-sync',         icon: 'settings', section: 'Dev tools' },
-  { view: 'devlogs',     label: 'Logs',              icon: 'logbook' },
-  { view: 'devsettings', label: 'Forecast settings', icon: 'settings' },
-  { view: 'devplatform', label: 'Platform',          icon: 'settings' },
+  { view: 'devsync',     label: 'Auto-sync',         icon: 'refresh', section: 'Dev tools' },
+  { view: 'devlogs',     label: 'Logs',              icon: 'terminal' },
+  { view: 'devsettings', label: 'Forecast settings', icon: 'sliders' },
+  { view: 'devplatform', label: 'Platform',          icon: 'layers' },
 ];
 
 const VIEWS = {

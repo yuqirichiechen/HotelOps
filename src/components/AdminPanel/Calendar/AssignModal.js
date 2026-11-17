@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { findConflicts } from './AssignPanel';
+import Icon from '../../shared/Icon';
 
 const DAY_NAMES   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -148,7 +149,7 @@ const AssignModal = ({ modal, templates, schedules = [], onSave, onDelete, onClo
           {conflicts && conflicts.length > 0 && (
             <div className="ap-conflict modal-conflict">
               <div className="ap-conflict-head">
-                ⚠ Overlaps {conflicts.length === 1 ? 'an existing shift' : `${conflicts.length} existing shifts`}
+                <Icon name="warning" size="1em" /> Overlaps {conflicts.length === 1 ? 'an existing shift' : `${conflicts.length} existing shifts`}
               </div>
               <ul className="ap-conflict-list">
                 {conflicts.slice(0, 3).map(c => (

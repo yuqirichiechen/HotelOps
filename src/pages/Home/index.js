@@ -8,6 +8,7 @@ import FocusedAction from '../../components/TimeClock/FocusedAction';
 import { useT, useLang } from '../../i18n';
 import '../../components/TimeClock/TimeClock.css'; // for .clock-widget styles
 import './Home.css';
+import Icon from '../../components/shared/Icon';
 
 // Sprint 16.1: a single sessionStorage key remembers that the
 // staff member has already engaged with the focused-action screen
@@ -290,7 +291,7 @@ const Home = () => {
 
       {notif && (
         <div className={`home-notif ${notif.type}`}>
-          <div className="home-notif-icon">{notif.type === 'success' ? '✓' : '✕'}</div>
+          <div className="home-notif-icon">{notif.type === 'success' ? <Icon name="check" size="1em" /> : <Icon name="close" size="1em" />}</div>
           <div className="home-notif-text">{notif.text}</div>
         </div>
       )}
@@ -410,7 +411,7 @@ const Home = () => {
       {clockEvent && (
         <section className="home-confirm" aria-live="polite">
           <div className="home-hero-event">
-            <div className={`home-hero-event-icon ${clockEvent.type || ''}`}>✓</div>
+            <div className={`home-hero-event-icon ${clockEvent.type || ''}`}><Icon name="check" size="1em" /></div>
             <div className="home-hero-event-title">{clockEvent.type === 'out' ? t('notif.clocked_out') : t('notif.clocked_in')}</div>
             <div className="home-hero-event-sub">{clockEvent.type === 'out' ? '' : t('home.on_clock')}</div>
           </div>

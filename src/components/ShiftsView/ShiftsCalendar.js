@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authFetch } from '../../auth';
+import Icon from '../shared/Icon';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -413,7 +414,7 @@ const ShiftsCalendar = ({ employee, onBack }) => {
         <div className="sv-loading">Loading shifts…</div>
       ) : visibility === 'none' ? (
         <div className="sv-hidden-msg">
-          <div className="sv-hidden-icon">📋</div>
+          <div className="sv-hidden-icon"><Icon name="clipboard" size="1em" /></div>
           <div>Schedule is not available right now.</div>
         </div>
       ) : schedules.length === 0 ? (

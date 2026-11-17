@@ -14,6 +14,7 @@ import AssignPanel from './AssignPanel';
 // affordances moved to the Logbook surface (AdminReports).
 import './Scheduling.css';
 import '../../Calendar/Calendar.css';
+import Icon from '../../shared/Icon';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -78,7 +79,7 @@ const computeDayStats = (entries, notesCount = 0, scheduledCount = 0) => {
 const AtAGlanceCard = ({ title, stats }) => (
   <section className="sched-glance-card" aria-label={title}>
     <header className="sched-glance-header">
-      <span className="sched-glance-icon" aria-hidden>📋</span>
+      <span className="sched-glance-icon" aria-hidden><Icon name="clipboard" size="1em" /></span>
       <h3 className="sched-glance-title">{title}</h3>
     </header>
     <div className="sched-glance-stats">
@@ -134,7 +135,7 @@ const NotesUpdatesCard = ({ title, notes, loading, onOpenLogbook }) => {
   return (
     <section className="sched-notes-card" aria-label={title}>
       <header className="sched-notes-header">
-        <span className="sched-notes-icon" aria-hidden>📝</span>
+        <span className="sched-notes-icon" aria-hidden><Icon name="edit" size="1em" /></span>
         <h3 className="sched-notes-title">{title}</h3>
       </header>
       {loading ? (

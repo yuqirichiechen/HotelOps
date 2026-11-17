@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import HopDateTimePicker from '../shared/HopDateTimePicker';
+import Icon from '../shared/Icon';
 
 const ROLES = ['employee', 'front_desk', 'admin'];
 
@@ -939,7 +940,7 @@ const StaffDetail = ({ userId, editEntryId, mode }) => {
           <form className="entry-edit-modal" onClick={e => e.stopPropagation()} onSubmit={saveEntryEdit}>
             <div className="entry-edit-header">
               <h3>{entryMode === 'create' ? 'Add Time Entry' : 'Override Hours'}</h3>
-              <button type="button" className="entry-edit-close" onClick={closeEntryEdit}>✕</button>
+              <button type="button" className="entry-edit-close" onClick={closeEntryEdit}><Icon name="close" size="1em" /></button>
             </div>
             <p className="entry-edit-sub">
               {entryMode === 'create'

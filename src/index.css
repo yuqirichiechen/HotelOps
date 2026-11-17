@@ -100,3 +100,6 @@ input, select, textarea {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Sprint 28.8 — shared icons (src/components/shared/Icon.js): never shrink in a flex row, sit on the text baseline when used inline, inherit the text colour */
+.ic { flex: none; vertical-align: -0.16em; }

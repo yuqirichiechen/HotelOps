@@ -65,13 +65,6 @@
 /* Sprint 11.6: nav icon was an emoji span; now a PNG <img>. Sized
    to roughly match the visual weight of the old emoji. `flex-shrink:
    0` so a long label doesn't shrink the icon. */
-.nav-icon-img {
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
-  flex-shrink: 0;
-  display: block;
-}
 .sidebar-nav-label { flex: 1; }
 
 .sidebar-admin-item {
@@ -264,14 +257,7 @@
     line-height: 1;
   }
 
-  /* Sprint 11.6: bottom-nav icon is a PNG now; size it to roughly
-     match what the old 20px emoji occupied. */
-  .bottom-nav-icon-img {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
-    display: block;
-  }
+  .bottom-nav-icon-img { display: block; }
 
   .bottom-nav-label {
     font-size: 10px;
@@ -350,7 +336,6 @@
   }
   .more-sheet-item:active   { background: rgba(255, 255, 255, 0.08); }
   .more-sheet-item.active   { color: var(--accent); font-weight: 600; }
-  .more-sheet-item.active .more-sheet-icon img { filter: brightness(1.2); }
 
   .more-sheet-icon {
     position: relative;
@@ -361,7 +346,7 @@
     align-items: center;
     justify-content: center;
   }
-  .more-sheet-icon img { width: 24px; height: 24px; object-fit: contain; }
+  .more-sheet-icon .ic { display: block; }
   .more-sheet-unread-dot {
     position: absolute;
     top: -2px; right: -2px;
@@ -403,7 +388,7 @@
     text-align: left;
   }
   .more-sheet-action:active { background: rgba(255, 255, 255, 0.08); }
-  .more-sheet-action-icon { width: 26px; text-align: center; }
+  .more-sheet-action-icon { width: 26px; display: inline-flex; justify-content: center; }
   .more-sheet-signout { color: rgba(255, 255, 255, 0.7); }
 
   @keyframes fc-more-fade-in {
@@ -441,7 +426,7 @@
 .sidebar-link.active { background: var(--ia-nav-active-bg, rgba(255,255,255,.15)); color: var(--ia-nav-active, #fff); border-left: 0; font-weight: 600; box-shadow: inset 0 0 0 1px var(--ia-card-border, transparent); }
 .sidebar-link.active::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: linear-gradient(180deg, #f4dca5, #c9a05a); box-shadow: 0 0 10px rgba(223, 193, 132, .55); }
 /* the icon is a mask painted with the text colour (set inline: --icon) */
-.nav-icon-img { width: 22px; height: 22px; flex-shrink: 0; display: block; background-color: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; opacity: .82; }
+.nav-icon-img { flex-shrink: 0; display: block; opacity: .82; }
 .sidebar-link.active .nav-icon-img, .sidebar-link:hover .nav-icon-img { opacity: 1; }
 .sidebar-link.active .nav-icon-img { color: var(--ia-gold, #dfc184); }
 /* no status dots in the redesigned sidebar (the "live" markers are kept in the markup, just not shown) */

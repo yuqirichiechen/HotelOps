@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../../auth';
+import Icon from '../../shared/Icon';
 
 // Sprint 11: Notes Center — the top-of-Day-view summary card.
 // Mirrors mockup #25 with three clickable stat tiles:
@@ -81,7 +82,7 @@ const NotesCenter = ({
     <section className="notes-center">
       <header className="notes-center-header">
         <div className="notes-center-head">
-          <span className="notes-center-icon" aria-hidden>📋</span>
+          <span className="notes-center-icon" aria-hidden><Icon name="clipboard" size="1em" /></span>
           <div>
             <h2 className="notes-center-title">Notes Center</h2>
             <p className="notes-center-sub">Stay ahead of shift updates, handoffs, and cross-day notes.</p>
@@ -105,7 +106,7 @@ const NotesCenter = ({
           onClick={() => onTileClick && onTileClick('all')}
           disabled={loading}
         >
-          <span className="notes-center-tile-icon notes-center-tile-icon-unread" aria-hidden>📨</span>
+          <span className="notes-center-tile-icon notes-center-tile-icon-unread" aria-hidden><Icon name="mail" size="1em" /></span>
           <div className="notes-center-tile-text">
             <div className="notes-center-tile-num">{counts.unread}</div>
             <div className="notes-center-tile-label">
@@ -123,7 +124,7 @@ const NotesCenter = ({
           onClick={() => onTileClick && onTileClick('general')}
           disabled={loading}
         >
-          <span className="notes-center-tile-icon notes-center-tile-icon-general" aria-hidden>💬</span>
+          <span className="notes-center-tile-icon notes-center-tile-icon-general" aria-hidden><Icon name="message" size="1em" /></span>
           <div className="notes-center-tile-text">
             <div className="notes-center-tile-num">{counts.general}</div>
             <div className="notes-center-tile-label">General Notes</div>
@@ -137,7 +138,7 @@ const NotesCenter = ({
           onClick={() => onTileClick && onTileClick('cross-day')}
           disabled={loading}
         >
-          <span className="notes-center-tile-icon notes-center-tile-icon-carry" aria-hidden>↺</span>
+          <span className="notes-center-tile-icon notes-center-tile-icon-carry" aria-hidden><Icon name="undo" size="1em" /></span>
           <div className="notes-center-tile-text">
             <div className="notes-center-tile-num">{counts.carryovers}</div>
             <div className="notes-center-tile-label">Carryovers</div>

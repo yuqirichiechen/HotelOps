@@ -6,6 +6,7 @@ import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../../components/shared/DropdownSelect';
 import StaffAvatar from '../../components/shared/StaffAvatar';
 import './ShiftSheet.css';
+import Icon from '../../components/shared/Icon';
 
 // Sprint 14: Shift Sheet — Excel-style weekly grid for shift
 // planning, replacing the side-panel AssignPanel + AssignModal flow
@@ -846,23 +847,23 @@ const ShiftSheet = () => {
           type="button"
           className="sheet-tool-btn"
           onClick={() => setShowTemplates(true)}
-        >☰ Shift Templates</button>
+        ><Icon name="menu" size="1em" /> Shift Templates</button>
         <button
           type="button"
           className="sheet-tool-btn"
           onClick={() => { setShowCopyConfirm(true); setToolError(null); }}
-        >⎘ Copy Previous Week</button>
+        ><Icon name="copy" size="1em" /> Copy Previous Week</button>
         <button
           type="button"
           className="sheet-tool-btn"
           onClick={() => { setToolError(null); setShowAutoFill(true); }}
           disabled={autoFillBusy}
-        >{autoFillBusy ? '…' : '★ Auto-Fill'}</button>
+        >{autoFillBusy ? '…' : <><Icon name="sparkles" size="1em" /> Auto-Fill</>}</button>
         <button
           type="button"
           className="sheet-tool-btn"
           onClick={() => setShowValidate(true)}
-        >✓ Validate Schedule</button>
+        ><Icon name="check" size="1em" /> Validate Schedule</button>
         {toolError && (
           <span className="sheet-tool-err">{toolError}</span>
         )}
@@ -1259,7 +1260,7 @@ const ShiftSheet = () => {
                 className="sheet-row-menu-item"
                 onClick={() => { copyRowToNextWeek(userId); setOpenRowMenu(null); }}
               >
-                <span className="sheet-row-menu-icon">⎘</span>
+                <span className="sheet-row-menu-icon"><Icon name="copy" size="1em" /></span>
                 Copy row to next week
               </button>
             )}
@@ -1284,7 +1285,7 @@ const ShiftSheet = () => {
                 setOpenRowMenu(null);
               }}
             >
-              <span className="sheet-row-menu-icon">✕</span>
+              <span className="sheet-row-menu-icon"><Icon name="close" size="1em" /></span>
               Remove from sheet
             </button>
           </div>
@@ -1398,7 +1399,7 @@ const ShiftSheet = () => {
             className="sheet-mobile-dock-btn"
             onClick={() => setShowTemplates(true)}
           >
-            <span className="sheet-mobile-dock-ico">☰</span>
+            <span className="sheet-mobile-dock-ico"><Icon name="menu" size="1em" /></span>
             <span className="sheet-mobile-dock-lbl">Templates</span>
           </button>
           <button
@@ -1406,7 +1407,7 @@ const ShiftSheet = () => {
             className="sheet-mobile-dock-btn"
             onClick={() => { setShowCopyConfirm(true); setToolError(null); }}
           >
-            <span className="sheet-mobile-dock-ico">⎘</span>
+            <span className="sheet-mobile-dock-ico"><Icon name="copy" size="1em" /></span>
             <span className="sheet-mobile-dock-lbl">Copy week</span>
           </button>
           <button
@@ -1415,7 +1416,7 @@ const ShiftSheet = () => {
             onClick={() => { setToolError(null); setShowAutoFill(true); }}
             disabled={autoFillBusy}
           >
-            <span className="sheet-mobile-dock-ico">{autoFillBusy ? '…' : '★'}</span>
+            <span className="sheet-mobile-dock-ico">{autoFillBusy ? '…' : <Icon name="sparkles" size="1em" />}</span>
             <span className="sheet-mobile-dock-lbl">Auto-Fill</span>
           </button>
           <button
@@ -1423,7 +1424,7 @@ const ShiftSheet = () => {
             className="sheet-mobile-dock-btn"
             onClick={() => setShowValidate(true)}
           >
-            <span className="sheet-mobile-dock-ico">✓</span>
+            <span className="sheet-mobile-dock-ico"><Icon name="check" size="1em" /></span>
             <span className="sheet-mobile-dock-lbl">Validate</span>
           </button>
         </nav>
@@ -1523,7 +1524,7 @@ const ShiftTemplatesModal = ({ templates, departments, onClose, onRefresh }) => 
       <div className="sheet-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-modal-head">
           <h3>Shift Templates</h3>
-          <button type="button" className="sheet-modal-close" onClick={onClose}>✕</button>
+          <button type="button" className="sheet-modal-close" onClick={onClose}><Icon name="close" size="1em" /></button>
         </div>
         <div className="sheet-modal-body">
           <p className="sheet-modal-help">
@@ -1644,7 +1645,7 @@ const CopyPrevWeekDialog = ({ weekStart, onCancel, onConfirm }) => {
       <div className="sheet-modal sheet-modal-narrow" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-modal-head">
           <h3>Copy Previous Week</h3>
-          <button type="button" className="sheet-modal-close" onClick={onCancel}>✕</button>
+          <button type="button" className="sheet-modal-close" onClick={onCancel}><Icon name="close" size="1em" /></button>
         </div>
         <div className="sheet-modal-body">
           <p>
@@ -1690,14 +1691,14 @@ const ValidateScheduleModal = ({ overview, loading, onClose }) => {
       <div className="sheet-modal sheet-modal-narrow" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-modal-head">
           <h3>Validate Schedule</h3>
-          <button type="button" className="sheet-modal-close" onClick={onClose}>✕</button>
+          <button type="button" className="sheet-modal-close" onClick={onClose}><Icon name="close" size="1em" /></button>
         </div>
         <div className="sheet-modal-body">
           {loading ? (
             <div className="sheet-overview-empty">Checking…</div>
           ) : conflicts.length === 0 ? (
             <div className="sheet-validate-clean">
-              <div className="sheet-validate-clean-icon">✓</div>
+              <div className="sheet-validate-clean-icon"><Icon name="check" size="1em" /></div>
               <div className="sheet-validate-clean-title">No conflicts detected</div>
               <div className="sheet-validate-clean-sub">Every published cell parses cleanly.</div>
             </div>
@@ -1746,7 +1747,7 @@ const AutoFillModal = ({ busy, weekStart, onClose, onPreview }) => {
       <div className="sheet-modal sheet-modal-narrow" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-modal-head">
           <h3>Auto-Fill</h3>
-          <button type="button" className="sheet-modal-close" onClick={onClose}>✕</button>
+          <button type="button" className="sheet-modal-close" onClick={onClose}><Icon name="close" size="1em" /></button>
         </div>
         <div className="sheet-modal-body">
           <p>
@@ -2121,7 +2122,7 @@ const CellEditPopover = ({ state, templates, statusCodes, fgForBg, onSave, onClo
             className="sheet-edit-close"
             onClick={onClose}
             aria-label="Close"
-          >✕</button>
+          ><Icon name="close" size="1em" /></button>
         </div>
 
         {templates.length > 0 && (

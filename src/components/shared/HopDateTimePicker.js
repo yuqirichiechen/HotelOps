@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './HopDateTimePicker.css';
+import Icon from './Icon';
 
 // Sprint 18.12 — themed datetime picker for HotelOps. Replaces the
 // native <input type="datetime-local"> in places where the OS picker
@@ -241,7 +242,7 @@ const HopDateTimePicker = ({
         className={`hop-dtp-trigger ${!parsed && required ? 'is-empty-required' : ''}`}
         onClick={() => setOpen(o => !o)}
       >
-        <span className="hop-dtp-trigger-icon" aria-hidden>📅</span>
+        <span className="hop-dtp-trigger-icon" aria-hidden><Icon name="calendar" size="1em" /></span>
         <span className="hop-dtp-trigger-label">
           {parsed ? fmtTrigger(parsed) : <span className="hop-dtp-placeholder">{placeholder}</span>}
         </span>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useT } from '../../i18n';
 import './FocusedAction.css';
+import Icon from '../shared/Icon';
 
 // Sprint 16.1: the focused-action screen the GM asked for. Staff
 // who log in to clock in/out land here first — one giant button
@@ -148,7 +149,7 @@ const FocusedAction = ({
           aria-label={loading ? 'Loading' : label}
         >
           {tapped
-            ? <span className="focused-action-btn-check" aria-hidden>✓</span>
+            ? <span className="focused-action-btn-check" aria-hidden><Icon name="check" size="1em" /></span>
             : loading
               ? <span className="focused-action-btn-label">…</span>
               : <span className="focused-action-btn-label">{label}</span>}

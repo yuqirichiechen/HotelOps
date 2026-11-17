@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../../auth';
 import { KNOWN_TENANTS, DEFAULT_TENANT_SLUG } from '../../config/tenant';
+import Icon from '../shared/Icon';
 import './Sidebar.css';
 
 // Sprint 11.2.1: sidebar is now props-driven. The owning shell
@@ -22,25 +23,8 @@ import './Sidebar.css';
 // Polled every 60s while the sidebar is mounted; light enough not
 // to need WebSocket plumbing for the capstone surface.
 
-// Sprint 17.4: 3-dots SVG for the mobile "More" tab. Inline so we
-// don't need a new PNG in /public/logo. Stroke uses currentColor so
-// the active/inactive color of the tab applies automatically.
-const MoreIcon = () => (
-  <svg
-    width="22" height="22" viewBox="0 0 24 24" fill="none"
-    aria-hidden="true" focusable="false"
-  >
-    <circle cx="5"  cy="12" r="1.6" fill="currentColor" />
-    <circle cx="12" cy="12" r="1.6" fill="currentColor" />
-    <circle cx="19" cy="12" r="1.6" fill="currentColor" />
-  </svg>
-);
-
-// Sprint 28.1: small outline icons for the footer actions (were an emoji and a ↩ glyph)
-const iconProps = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', focusable: 'false' };
-const SunIcon = () => (<svg {...iconProps}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>);
-const MoonIcon = () => (<svg {...iconProps}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>);
-const SignOutIcon = () => (<svg {...iconProps}><path d="m14 7 5 5-5 5M19 12H7M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" /></svg>);
+// Sprint 28.8: every icon here comes from the shared set (src/components/shared/Icon.js) — nav items just name theirs (`icon: 'calendar'`).
+const MoreIcon = () => <Icon name="more" size={22} stroke={2.4} />;
 
 const Sidebar = ({
   navItems = [],
@@ -102,14 +86,6 @@ const Sidebar = ({
 
   const isActive = (item) => currentView === item.view;
 
-  // Sprint 11.6.2: icons are theme-agnostic now — single white-on-
-  // transparent PNG per nav item, no `_dark` / `_light` suffix. The
-  // sidebar bg is dark in both themes so a single light icon set is
-  // legible everywhere. Files live in `/public/logo/<base>.png`,
-  // pre-trimmed so each icon's content fills the canvas (the GM's
-  // AI-generated source had inconsistent inner padding — see
-  // Sprint 11.6.2 log).
-  const iconSrc = (base) => `/logo/${base}.png`;
 
   // Sprint 11.6 / 27.7: the brand block names the property the user is signed into (the Inntrio logo sits above it). Tenant resolved from the same
   // localStorage slug the rest of the app uses; falls through to the default tenant if the slug is missing.
@@ -146,8 +122,8 @@ const Sidebar = ({
                 className={`sidebar-link${isActive(item) ? ' active' : ''}`}
                 aria-current={isActive(item) ? 'page' : undefined}
               >
-                {/* 28.1: the icon is a mask painted with the text colour, so it turns gold-white when active and works on the dark and the light sidebar */}
-                <span className="nav-icon-img" style={{ '--icon': `url(${iconSrc(item.icon)})` }} aria-hidden="true" />
+                {/* 28.8: a coded icon painted with the text colour — it turns gold when active and works on the dark and the light sidebar */}
+                <Icon name={item.icon} size={22} className="nav-icon-img" />
                 <span className="sidebar-nav-label">{item.label}</span>
                 {badgeOf(item) > 0 && (
                   <span
@@ -165,11 +141,11 @@ const Sidebar = ({
         </ul>
         <div className="sidebar-footer">
           <button className="theme-toggle" onClick={onToggleTheme} title="Toggle theme">
-            <span className="theme-toggle-icon" aria-hidden="true">{isDark ? <SunIcon /> : <MoonIcon />}</span>
+            <span className="theme-toggle-icon" aria-hidden="true"><Icon name={isDark ? 'sun' : 'moon'} size={18} /></span>
             <span className="theme-toggle-label">{isDark ? 'Light mode' : 'Dark mode'}</span>
           </button>
           <button className="sidebar-signout" onClick={handleSignOut} title="Sign out">
-            <span className="sidebar-signout-icon" aria-hidden="true"><SignOutIcon /></span>
+            <span className="sidebar-signout-icon" aria-hidden="true"><Icon name="signout" size={18} /></span>
             <span className="sidebar-signout-label">Sign out</span>
           </button>
         </div>
@@ -203,12 +179,7 @@ const Sidebar = ({
                   aria-current={isActive(item) ? 'page' : undefined}
                 >
                   <span className="bottom-nav-icon">
-                    <img
-                      className="bottom-nav-icon-img"
-                      src={iconSrc(item.icon)}
-                      alt=""
-                      aria-hidden="true"
-                    />
+                    <Icon name={item.icon} size={22} className="bottom-nav-icon-img" />
                     {badgeOf(item) > 0 && (
                       <span className="bottom-nav-unread-dot" aria-label={`${badgeOf(item)} unread`} />
                     )}
@@ -259,11 +230,7 @@ const Sidebar = ({
                           className={`more-sheet-item${isActive(item) ? ' active' : ''}`}
                         >
                           <span className="more-sheet-icon">
-                            <img
-                              src={iconSrc(item.icon)}
-                              alt=""
-                              aria-hidden="true"
-                            />
+                            <Icon name={item.icon} size={24} />
                             {badgeOf(item) > 0 && (
                               <span className="more-sheet-unread-dot" aria-label={`${badgeOf(item)} unread`} />
                             )}
@@ -281,7 +248,7 @@ const Sidebar = ({
                       onClick={() => { setMoreOpen(false); onToggleTheme && onToggleTheme(); }}
                       role="menuitem"
                     >
-                      <span className="more-sheet-action-icon">{isDark ? '☀️' : '🌙'}</span>
+                      <span className="more-sheet-action-icon" aria-hidden><Icon name={isDark ? 'sun' : 'moon'} size={20} /></span>
                       <span>{isDark ? 'Light mode' : 'Dark mode'}</span>
                     </button>
                     <button
@@ -289,7 +256,7 @@ const Sidebar = ({
                       onClick={() => { setMoreOpen(false); handleSignOut(); }}
                       role="menuitem"
                     >
-                      <span className="more-sheet-action-icon" aria-hidden>↩</span>
+                      <span className="more-sheet-action-icon" aria-hidden><Icon name="signout" size={20} /></span>
                       <span>Sign out</span>
                     </button>
                   </div>

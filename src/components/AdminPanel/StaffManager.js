@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../shared/DropdownSelect';
+import Icon from '../shared/Icon';
 
 // List-as-dashboard pattern (Sprint 6.3): clickable stats banner drives the
 // list filter, rich rows show this-week metrics inline, Add Staff is a
@@ -823,7 +824,7 @@ const StaffManager = () => {
       {/* Filter row — search, dept chips, inactive toggle */}
       <div className="staff-mgr-filters">
         <div className="staff-mgr-search">
-          <span className="staff-mgr-search-icon" aria-hidden>⌕</span>
+          <span className="staff-mgr-search-icon" aria-hidden><Icon name="search" size="1em" /></span>
           <input
             type="search"
             placeholder="Search by name…"
@@ -915,7 +916,7 @@ const StaffManager = () => {
             title="Clear selection"
           >
             {selectedIds.size} selected
-            <span className="staff-mgr-selection-clear" aria-hidden>✕</span>
+            <span className="staff-mgr-selection-clear" aria-hidden><Icon name="close" size="1em" /></span>
           </button>
         )}
 
@@ -949,7 +950,7 @@ const StaffManager = () => {
                 className="staff-mgr-add-cancel"
                 onClick={() => { setShowAdd(false); setForm(emptyForm()); setFormError(''); }}
               >
-                ✕
+                <Icon name="close" size="1em" />
               </button>
             </div>
             <div className="add-form-grid">
@@ -1034,7 +1035,7 @@ const StaffManager = () => {
                 />
                 {form.birthday && employees.some(e => e.birthday === form.birthday && e.active !== false) && (
                   <span className="admin-field-warn">
-                    ⚠ Another staff member already has this birthday — they'll share the birthday login method
+                    <Icon name="warning" size="1em" /> Another staff member already has this birthday — they'll share the birthday login method
                     (the server will ask the staff to use a phone/ID instead at sign-in).
                   </span>
                 )}

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLang, SUPPORTED_LANGS, translate } from '../../i18n';
 import './LangCycleHeadline.css';
+import Icon from './Icon';
 
 // Sprint 16.6: replaces Sprint-16.5's LanguageSwap pill. Instead
 // of a separate picker + cycling label, the *actual* title +
@@ -85,7 +86,7 @@ const LangCycleHeadline = ({
     >
       <h1 className="lang-cycle-title">{titleStr}</h1>
       <p className="lang-cycle-sub">{subtitleStr}</p>
-      {locked && <span className="lang-cycle-check" aria-hidden>✓</span>}
+      {locked && <span className="lang-cycle-check" aria-hidden><Icon name="check" size="1em" /></span>}
     </div>
   );
 };

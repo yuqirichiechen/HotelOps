@@ -1,4 +1,5 @@
 import React from 'react';
+import Icon from '../../shared/Icon';
 
 // Sprint 10 → 11: shared department filter chips for the Calendar
 // surface. 11 added per-chip color (the dept's `color` hex from the
@@ -18,13 +19,13 @@ import React from 'react';
 
 const iconForDepartment = (name) => {
   const k = String(name || '').toLowerCase();
-  if (k.includes('front desk')) return '🛎';
-  if (k.includes('housekeeping')) return '🧹';
-  if (k.includes('maintenance')) return '🔧';
-  if (k.includes('food') || k.includes('beverage') || k.includes('restaurant') || k.includes('f&b')) return '🍽';
-  if (k.includes('management')) return '💼';
-  if (k.includes('night')) return '🌙';
-  return '👥';
+  if (k.includes('front desk')) return 'concierge';
+  if (k.includes('housekeeping')) return 'broom';
+  if (k.includes('maintenance')) return 'wrench';
+  if (k.includes('food') || k.includes('beverage') || k.includes('restaurant') || k.includes('f&b')) return 'utensils';
+  if (k.includes('management')) return 'briefcase';
+  if (k.includes('night')) return 'moon';
+  return 'users';
 };
 
 // Picks the chip's visual style based on dept color + active state.
@@ -47,7 +48,7 @@ const DepartmentChips = ({ departments = [], value, onChange, className = '' }) 
       className={`calendar-dept-chip ${value == null ? 'is-active' : ''}`}
       onClick={() => onChange(null)}
     >
-      <span className="calendar-dept-chip-icon" aria-hidden>👥</span>
+      <span className="calendar-dept-chip-icon" aria-hidden><Icon name="users" size="1em" /></span>
       All
     </button>
     {departments.map(d => {
@@ -60,7 +61,7 @@ const DepartmentChips = ({ departments = [], value, onChange, className = '' }) 
           style={chipStyle(d.color, isActive)}
           onClick={() => onChange(d.department_id)}
         >
-          <span className="calendar-dept-chip-icon" aria-hidden>{iconForDepartment(d.name)}</span>
+          <span className="calendar-dept-chip-icon" aria-hidden><Icon name={iconForDepartment(d.name)} size="1em" /></span>
           {d.name}
         </button>
       );

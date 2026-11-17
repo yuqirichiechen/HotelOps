@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
+import Icon from '../shared/Icon';
 
 // Sprint 16.7: collapsible main-category wrapper. The h3 header
 // is a button — tap to collapse / expand the sections beneath.
@@ -43,19 +44,19 @@ const VISIBILITY_OPTIONS = [
     value: 'all',
     label: 'All Departments',
     desc:  'Every employee sees the full shift board — all departments',
-    icon:  '👥',
+    icon:  'users',
   },
   {
     value: 'department',
     label: 'Own Department Only',
     desc:  'Each employee only sees shifts for their own department',
-    icon:  '🏷️',
+    icon:  'building',
   },
   {
     value: 'none',
     label: 'Hidden',
     desc:  'The Shifts board shows nothing — schedule is not visible to employees',
-    icon:  '🔒',
+    icon:  'lock',
   },
 ];
 
@@ -149,7 +150,7 @@ const StatusCodesSection = () => {
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <div className="settings-section-icon">🏷️</div>
+        <div className="settings-section-icon"><Icon name="tag" size="1em" /></div>
         <div>
           <div className="settings-section-title">Status Codes</div>
           <div className="settings-section-desc">
@@ -605,7 +606,7 @@ const AdminSettings = () => {
           {/* Shifts board section */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">📋</div>
+              <div className="settings-section-icon"><Icon name="eye" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Shifts Board Visibility</div>
                 <div className="settings-section-desc">
@@ -628,12 +629,12 @@ const AdminSettings = () => {
                     onChange={() => { setVisibility(opt.value); setSaved(false); }}
                     className="settings-radio"
                   />
-                  <span className="settings-opt-icon">{opt.icon}</span>
+                  <span className="settings-opt-icon"><Icon name={opt.icon} size="1em" /></span>
                   <div className="settings-opt-body">
                     <div className="settings-opt-label">{opt.label}</div>
                     <div className="settings-opt-desc">{opt.desc}</div>
                   </div>
-                  {visibility === opt.value && <span className="settings-check">✓</span>}
+                  {visibility === opt.value && <span className="settings-check"><Icon name="check" size="1em" /></span>}
                 </label>
               ))}
             </div>
@@ -646,7 +647,7 @@ const AdminSettings = () => {
           {/* Performance section (Sprint 6B) */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">📈</div>
+              <div className="settings-section-icon"><Icon name="trend" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Performance Thresholds</div>
                 <div className="settings-section-desc">
@@ -724,7 +725,7 @@ const AdminSettings = () => {
               workweek boundary used for OT calculations. */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">💵</div>
+              <div className="settings-section-icon"><Icon name="banknote" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Payroll</div>
                 <div className="settings-section-desc">
@@ -768,7 +769,7 @@ const AdminSettings = () => {
                   Default 120 (2h). */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">⏰</div>
+              <div className="settings-section-icon"><Icon name="bell" size="1em" /></div>
               <div>
                 <div className="settings-section-title">"Past scheduled end" alert</div>
                 <div className="settings-section-desc">
@@ -821,7 +822,7 @@ const AdminSettings = () => {
               same scheduled-end source. */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">🔚</div>
+              <div className="settings-section-icon"><Icon name="flag" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Auto clock-out (forgot-to-punch fallback)</div>
                 <div className="settings-section-desc">
@@ -880,7 +881,7 @@ const AdminSettings = () => {
               org structure grows. */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">🏷️</div>
+              <div className="settings-section-icon"><Icon name="building" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Departments</div>
                 <div className="settings-section-desc">
@@ -986,7 +987,7 @@ const AdminSettings = () => {
           {/* Sprint 8.6: Staff auto sign-out section */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">⏱️</div>
+              <div className="settings-section-icon"><Icon name="timer" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Staff auto sign-out</div>
                 <div className="settings-section-desc">
@@ -1027,7 +1028,7 @@ const AdminSettings = () => {
               them. */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">⏳</div>
+              <div className="settings-section-icon"><Icon name="hourglass" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Idle sign-out (focused action screen)</div>
                 <div className="settings-section-desc">
@@ -1061,7 +1062,7 @@ const AdminSettings = () => {
           {/* Sprint 9: which login methods staff can use */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">🔑</div>
+              <div className="settings-section-icon"><Icon name="key" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Staff login methods</div>
                 <div className="settings-section-desc">
@@ -1106,7 +1107,7 @@ const AdminSettings = () => {
               letters keyboard is just visual noise. */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">⌨️</div>
+              <div className="settings-section-icon"><Icon name="keyboard" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Hide ABC keyboard on staff login</div>
                 <div className="settings-section-desc">
@@ -1170,7 +1171,7 @@ const AdminSettings = () => {
               sense). */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">📐</div>
+              <div className="settings-section-icon"><Icon name="clipboard" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Legacy assign panel</div>
                 <div className="settings-section-desc">
@@ -1200,7 +1201,7 @@ const AdminSettings = () => {
               change detection); this is just the upper bound. */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">📊</div>
+              <div className="settings-section-icon"><Icon name="chart" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Coverage history window</div>
                 <div className="settings-section-desc">
@@ -1242,7 +1243,7 @@ const AdminSettings = () => {
 
           <div className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon">🔐</div>
+              <div className="settings-section-icon"><Icon name="shield" size="1em" /></div>
               <div>
                 <div className="settings-section-title">Account</div>
                 <div className="settings-section-desc">

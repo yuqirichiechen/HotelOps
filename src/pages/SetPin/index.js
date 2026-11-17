@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { TENANT } from '../../config/tenant';
 import '../Login/Login.css';
+import Icon from '../../components/shared/Icon';
 
 // Forced "set your PIN" screen reached when an admin reset the user's PIN
 // (pin_must_set = true). Uses the login page's visual treatment.
@@ -39,7 +40,7 @@ const SetPin = () => {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <span className="login-brand-icon">🔐</span>
+          <span className="login-brand-icon"><Icon name="shield" size="1em" /></span>
           <span className="login-brand-name">HotelOps</span>
         </div>
         <div className="login-tenant">{TENANT.name}</div>

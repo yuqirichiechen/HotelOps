@@ -25,6 +25,7 @@ import HkPrintColors from './HkPrintColors';
 import ConfirmModal from '../shared/ConfirmModal';
 import { buildWorkList, summarize, balance, warnings, reconcile, resolveAssign, toAssignments, weightOf, parseColors, buildMasterSheet, DEFAULT_SETTINGS } from './hkWork';
 import './Housekeeping.css';
+import Icon from '../shared/Icon';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const parts = (ymd) => { const d = new Date(Date.parse(ymd + 'T12:00:00Z')); return { wd: WD[d.getUTCDay()], m: MONTHS[d.getUTCMonth()], d: d.getUTCDate() }; };
@@ -119,7 +120,7 @@ const RoomCard = ({ it, group, pinned, selected, pick, justMoved, guest, dev, re
     onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(it.roomNumber, e); } }}
     onDragStart={(e) => onDragStart(e, it.roomNumber)} onDragEnd={onDragEnd}
   >
-    {pick && <span className={`hk-rc-box${selected ? ' on' : ''}`} aria-hidden="true">{selected ? '✓' : ''}</span>}
+    {pick && <span className={`hk-rc-box${selected ? ' on' : ''}`} aria-hidden="true">{selected ? <Icon name="check" size="1em" /> : ''}</span>}
     <span className="hk-rc-top"><strong>{it.tbd ? 'TBD' : it.roomNumber}</strong><span className="hk-rc-marks">{it.locked && <i className="hk-rc-lock" title="Guest asked not to be moved" aria-hidden="true">⚑</i>}{it.ip && <i className="hk-rc-iptag" title="In progress — someone is already on this room">IP</i>}{it.priority && <i className="hk-rc-star" aria-hidden="true">★</i>}</span></span>
     <small>{it.typeCode}</small>
     {dev && guest && <em className="hk-rc-guest">{guest}</em>}

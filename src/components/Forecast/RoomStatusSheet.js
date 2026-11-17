@@ -5,6 +5,7 @@ import './ForecastDaySheet.css';
 import { createPortal } from 'react-dom';
 import usePrintSheet from '../shared/usePrintSheet';
 import { buildRoomSheet, roomSheetCsv, TONE_LABEL } from './roomSheet';
+import Icon from '../shared/Icon';
 
 const fmtDate = (ymd) => {
   const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
@@ -37,8 +38,8 @@ const RoomStatusSheet = ({ payload, live, propertyName = 'Snoqualmie Inn', onClo
             <span className="fc-sheet-controls-hint">Press Esc or click outside to close</span>
           </div>
           <div className="fc-sheet-controls-right">
-            <button className="fc-sheet-btn fc-sheet-btn-primary" onClick={() => window.print()}>▤ Print</button>
-            <button className="fc-sheet-btn fc-sheet-btn-secondary" onClick={download}>⇩ Download CSV</button>
+            <button className="fc-sheet-btn fc-sheet-btn-primary" onClick={() => window.print()}><Icon name="printer" size="1em" /> Print</button>
+            <button className="fc-sheet-btn fc-sheet-btn-secondary" onClick={download}><Icon name="download" size="1em" /> Download CSV</button>
             <button className="fc-sheet-btn fc-sheet-btn-secondary" onClick={onClose}>Close</button>
           </div>
         </div>

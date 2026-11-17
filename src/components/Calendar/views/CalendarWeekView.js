@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../../auth';
+import Icon from '../../shared/Icon';
 
 // Sprint 11: combined Week view per mockup #26 — used by both staff
 // (`/calendar`) and admin (`/admin/calendar`) Calendar surfaces.
@@ -205,7 +206,7 @@ const CalendarWeekView = ({
             className={`cal-week-perm-tab ${activeTab === 'dept' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('dept')}
           >
-            <span className="cal-week-perm-tab-icon" aria-hidden>👥</span>
+            <span className="cal-week-perm-tab-icon" aria-hidden><Icon name="users" size="1em" /></span>
             {staffDept?.name || 'My Department'}
           </button>
           <button
@@ -213,12 +214,12 @@ const CalendarWeekView = ({
             className={`cal-week-perm-tab ${activeTab === 'all' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('all')}
           >
-            <span className="cal-week-perm-tab-icon" aria-hidden>🌐</span>
+            <span className="cal-week-perm-tab-icon" aria-hidden><Icon name="globe" size="1em" /></span>
             All Staff Updates
           </button>
           {activeTab === 'dept' && (
             <div className="cal-week-perm-notice">
-              <span className="cal-week-perm-notice-icon" aria-hidden>🔒</span>
+              <span className="cal-week-perm-notice-icon" aria-hidden><Icon name="lock" size="1em" /></span>
               You can view your department only plus all-staff general notes.
             </div>
           )}
@@ -230,14 +231,14 @@ const CalendarWeekView = ({
         {staffScope ? (
           <>
             <div className="cal-week-stat">
-              <span className="cal-week-stat-icon cal-week-stat-icon-shifts" aria-hidden>📋</span>
+              <span className="cal-week-stat-icon cal-week-stat-icon-shifts" aria-hidden><Icon name="clipboard" size="1em" /></span>
               <div className="cal-week-stat-text">
                 <div className="cal-week-stat-num">{myShifts}</div>
                 <div className="cal-week-stat-label">My Shifts</div>
               </div>
             </div>
             <div className="cal-week-stat">
-              <span className="cal-week-stat-icon cal-week-stat-icon-dept" aria-hidden>💬</span>
+              <span className="cal-week-stat-icon cal-week-stat-icon-dept" aria-hidden><Icon name="message" size="1em" /></span>
               <div className="cal-week-stat-text">
                 <div className="cal-week-stat-num">{deptNotes}</div>
                 <div className="cal-week-stat-label">Department Notes</div>
@@ -245,7 +246,7 @@ const CalendarWeekView = ({
               </div>
             </div>
             <div className="cal-week-stat">
-              <span className="cal-week-stat-icon cal-week-stat-icon-all" aria-hidden>👥</span>
+              <span className="cal-week-stat-icon cal-week-stat-icon-all" aria-hidden><Icon name="users" size="1em" /></span>
               <div className="cal-week-stat-text">
                 <div className="cal-week-stat-num">{allStaffNotes}</div>
                 <div className="cal-week-stat-label">All-Staff Notes</div>
@@ -256,14 +257,14 @@ const CalendarWeekView = ({
         ) : (
           <>
             <div className="cal-week-stat">
-              <span className="cal-week-stat-icon cal-week-stat-icon-shifts" aria-hidden>📋</span>
+              <span className="cal-week-stat-icon cal-week-stat-icon-shifts" aria-hidden><Icon name="clipboard" size="1em" /></span>
               <div className="cal-week-stat-text">
                 <div className="cal-week-stat-num">{totalShifts}</div>
                 <div className="cal-week-stat-label">Total Shifts</div>
               </div>
             </div>
             <div className="cal-week-stat">
-              <span className="cal-week-stat-icon cal-week-stat-icon-dept" aria-hidden>🟰</span>
+              <span className="cal-week-stat-icon cal-week-stat-icon-dept" aria-hidden><Icon name="equals" size="1em" /></span>
               <div className="cal-week-stat-text">
                 <div className="cal-week-stat-num">{openShifts}</div>
                 <div className="cal-week-stat-label">Open Shifts</div>
@@ -274,7 +275,7 @@ const CalendarWeekView = ({
                 admin Calendar hides it since notes moved to Logbook. */}
             {showNotes && (
               <div className="cal-week-stat">
-                <span className="cal-week-stat-icon cal-week-stat-icon-all" aria-hidden>💬</span>
+                <span className="cal-week-stat-icon cal-week-stat-icon-all" aria-hidden><Icon name="message" size="1em" /></span>
                 <div className="cal-week-stat-text">
                   <div className="cal-week-stat-num">{deptNotes + allStaffNotes}</div>
                   <div className="cal-week-stat-label">Handoff Notes</div>
@@ -293,7 +294,7 @@ const CalendarWeekView = ({
       {!staffScope && (
         <div className="cal-week-deptgrid-wrap">
           <header className="cal-week-deptgrid-header">
-            <span className="cal-week-deptgrid-icon" aria-hidden>📅</span>
+            <span className="cal-week-deptgrid-icon" aria-hidden><Icon name="calendar" size="1em" /></span>
             <h3 className="cal-week-deptgrid-title">Departments × Days</h3>
           </header>
           <div className="cal-week-deptgrid" role="grid">
@@ -420,7 +421,7 @@ const CalendarWeekView = ({
       {staffScope && (!staffScope || activeTab === 'dept') && visibleStaff.length > 0 && (
         <div className="cal-week-matrix-wrap">
           <header className="cal-week-matrix-header">
-            <span className="cal-week-matrix-icon" aria-hidden>👥</span>
+            <span className="cal-week-matrix-icon" aria-hidden><Icon name="users" size="1em" /></span>
             <h3 className="cal-week-matrix-title">
               {staffScope ? `${staffDept?.name || 'My Department'} Team` : 'Staff'}
             </h3>
@@ -472,7 +473,7 @@ const CalendarWeekView = ({
                               {fmtTimeShort(s.start_time)}–{fmtTimeShort(s.end_time)}
                             </span>
                             {cellNotes > 0 && (
-                              <span className="cal-week-matrix-note-badge">💬 {cellNotes}</span>
+                              <span className="cal-week-matrix-note-badge"><Icon name="message" size="1em" /> {cellNotes}</span>
                             )}
                           </>
                         ) : (
@@ -492,7 +493,7 @@ const CalendarWeekView = ({
       {showNotes && (
       <section className="cal-week-notes">
         <header className="cal-week-notes-header">
-          <span className="cal-week-notes-icon" aria-hidden>💬</span>
+          <span className="cal-week-notes-icon" aria-hidden><Icon name="message" size="1em" /></span>
           <h3 className="cal-week-notes-title">Department &amp; All-Staff Notes</h3>
           <div className="cal-week-notes-toggle">
             <button

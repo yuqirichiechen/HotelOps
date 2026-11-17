@@ -5,6 +5,7 @@ import { apiFetch, useAuth } from '../../auth';
 import ConfirmModal from '../../components/shared/ConfirmModal';
 import DropdownSelect from '../../components/shared/DropdownSelect';
 import './AdminHome.css';
+import Icon from '../../components/shared/Icon';
 
 // Manager dashboard. Stats banner cards are clickable and drive a single
 // detail panel below — clicking "On the clock" shows currently working,
@@ -682,7 +683,7 @@ const AdminHome = () => {
             aria-label="Refresh dashboard"
             title="Refresh"
           >
-            {refreshing ? '…' : '↻'}
+            {refreshing ? '…' : <Icon name="refresh" size="1.1em" />}
           </button>
         </div>
       </div>
@@ -690,7 +691,7 @@ const AdminHome = () => {
       {/* Error / warning banner */}
       {error && (
         <div className={`adm-error-banner ${error.isWarn ? 'is-warn' : ''}`}>
-          <div className="adm-error-icon">{error.isWarn ? 'ℹ' : '⚠'}</div>
+          <div className="adm-error-icon"><Icon name={error.isWarn ? 'info' : 'warning'} size="1em" /></div>
           <div className="adm-error-msg">
             <div className="adm-error-title">
               {error.isAuth

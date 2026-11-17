@@ -1,4 +1,5 @@
 import React from 'react';
+import Icon from '../../shared/Icon';
 
 // Sprint 11: Day-view full-page Today/Tomorrow toggle (mockup #25).
 // Sits above the Notes Center. Switching the toggle moves the
@@ -30,7 +31,7 @@ const DayToggle = ({ today, tomorrow, value, onChange }) => (
       className={`day-toggle-btn ${value === 'today' ? 'is-active' : ''}`}
       onClick={() => onChange('today')}
     >
-      <span className="day-toggle-icon" aria-hidden>📅</span>
+      <span className="day-toggle-icon" aria-hidden><Icon name="calendar" size="1em" /></span>
       <span className="day-toggle-text">
         <span className="day-toggle-date">{fmtBlockDate(today)}</span>
         <span className="day-toggle-label">Today</span>
@@ -43,7 +44,7 @@ const DayToggle = ({ today, tomorrow, value, onChange }) => (
       className={`day-toggle-btn ${value === 'tomorrow' ? 'is-active' : ''}`}
       onClick={() => onChange('tomorrow')}
     >
-      <span className="day-toggle-icon" aria-hidden>📅</span>
+      <span className="day-toggle-icon" aria-hidden><Icon name="calendar" size="1em" /></span>
       <span className="day-toggle-text">
         <span className="day-toggle-date">{fmtBlockDate(tomorrow)}</span>
         <span className="day-toggle-label">Tomorrow Preview</span>
