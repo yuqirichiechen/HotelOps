@@ -3,12 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import './Settings.css';
 import Icon from '../../components/shared/Icon';
+import { roleLabel } from '../../lib/departments';
 
-const ROLE_LABELS = {
-  employee:   'Employee',
-  front_desk: 'Front Desk',
-  admin:      'Admin',
-};
 
 const formatPhone = (p) =>
   p && p.length === 10
@@ -128,7 +124,7 @@ const Settings = ({ theme, onToggleTheme }) => {
             </div>
             <div className="settings-field">
               <span className="settings-field-label">Role</span>
-              <span className="settings-field-value">{ROLE_LABELS[user?.role] || user?.role || '—'}</span>
+              <span className="settings-field-value">{roleLabel(user?.role) || '—'}</span>
             </div>
             <div className="settings-field">
               <span className="settings-field-label">Department</span>

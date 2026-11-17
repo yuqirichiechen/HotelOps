@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Icon from '../shared/Icon';
+import { roleLabel } from '../../lib/departments';
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -225,7 +226,7 @@ const DashboardFace = ({ employee, entries, histLoading, loading, onClockIn, onC
           <div className="dash-emp-avatar">{employee.name.charAt(0).toUpperCase()}</div>
           <div>
             <div className="dash-emp-name">{employee.name}</div>
-            <div className="dash-emp-role">{employee.role.replace('_',' ')}</div>
+            <div className="dash-emp-role">{roleLabel(employee.role)}</div>
           </div>
         </div>
       </div>

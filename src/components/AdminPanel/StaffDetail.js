@@ -3,8 +3,9 @@ import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import HopDateTimePicker from '../shared/HopDateTimePicker';
 import Icon from '../shared/Icon';
+import { STAFF_ROLES, roleLabel, UNCATEGORIZED, departmentLabel, needsDepartment } from '../../lib/departments';
 
-const ROLES = ['employee', 'front_desk', 'admin'];
+// Sprint 28.9: roles are employee / admin only (see lib/departments.js)
 
 const fmt     = (v) => v ?? '—';
 const fmtRate = (r) => r ? `$${parseFloat(r).toFixed(2)}/hr` : '—';
@@ -447,7 +448,7 @@ const StaffDetail = ({ userId, editEntryId, mode }) => {
   );
 
   const deptName = () =>
-    departments.find(d => d.department_id === emp.department_id)?.name || emp.department || '—';
+    departments.find(d => d.department_id === emp.department_id)?.name || departmentLabel(emp);
 
   // Sprint 19.2: entries for the selected week (Mon 00:00 → next Mon
   // 00:00, bucketed by clock-in so an overnight shift stays in the week
@@ -475,7 +476,7 @@ const StaffDetail = ({ userId, editEntryId, mode }) => {
     ['Username',    fmt(emp.username)],
     ['Employee ID', fmt(emp.employee_code)],
     ['Birthday',    fmtDateShort(emp.birthday)],
-    ['Role',        emp.role.replace('_', ' '), 'is-cap'],
+    ['Role',        roleLabel(emp.role), 'is-cap'],
     ['Department',  deptName()],
     ['Hire date',   fmtDateShort(emp.hire_date)],
     ['Hourly rate', fmtRate(emp.base_hourly_rate)],
@@ -671,16 +672,18 @@ const StaffDetail = ({ userId, editEntryId, mode }) => {
             <div className="admin-field">
               <label>Role *</label>
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
+                {STAFF_ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
               </select>
             </div>
-            <div className="admin-field">
-              <label>Department</label>
-              <select value={form.departmentId} onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}>
-                <option value="">— None —</option>
-                {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
-              </select>
-            </div>
+            {needsDepartment(form.role) && (
+              <div className="admin-field">
+                <label>Department</label>
+                <select value={form.departmentId} onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}>
+                  <option value="">{UNCATEGORIZED} (Home only)</option>
+                  {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="admin-field">
               <label>Hire Date *</label>
               <input type="date" value={form.hireDate} onChange={e => setForm(f => ({ ...f, hireDate: e.target.value }))} required />

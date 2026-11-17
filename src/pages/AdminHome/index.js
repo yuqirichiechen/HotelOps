@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/shared/ConfirmModal';
 import DropdownSelect from '../../components/shared/DropdownSelect';
 import './AdminHome.css';
 import Icon from '../../components/shared/Icon';
+import { roleLabel } from '../../lib/departments';
 
 // Manager dashboard. Stats banner cards are clickable and drive a single
 // detail panel below — clicking "On the clock" shows currently working,
@@ -275,7 +276,7 @@ const AdminHome = () => {
   const workingByDept = useMemo(() => {
     const map = {};
     (data?.currentlyWorking || []).forEach(w => {
-      const key = w.department || 'Unassigned';
+      const key = w.department || 'Uncategorized';
       (map[key] = map[key] || []).push(w);
     });
     return map;
@@ -388,7 +389,7 @@ const AdminHome = () => {
                       <div className="adm-working-info">
                         <div className="adm-working-name">{w.name}</div>
                         <div className="adm-working-meta">
-                          {(w.role || '').replace('_', ' ')}
+                          {roleLabel(w.role)}
                         </div>
                       </div>
                       <div className="adm-working-since">
@@ -494,7 +495,7 @@ const AdminHome = () => {
                   >
                     <div className="adm-hours-info">
                       <div className="adm-hours-name">{s.name}</div>
-                      <div className="adm-hours-meta">{s.department || 'Unassigned'}</div>
+                      <div className="adm-hours-meta">{s.department || 'Uncategorized'}</div>
                     </div>
                     <div className="adm-hours-bar-wrap">
                       <div className="adm-hours-bar" style={{ width: `${pct}%` }} />
@@ -556,7 +557,7 @@ const AdminHome = () => {
                         >
                           <div className="adm-overdue-name">{row.name}</div>
                           <div className="adm-overdue-meta">
-                            {row.department || 'Unassigned'}
+                            {row.department || 'Uncategorized'}
                             {' · '}
                             Scheduled to end {fmtClock(row.scheduled_end)}
                             {' · '}
@@ -589,7 +590,7 @@ const AdminHome = () => {
                         >
                           <div className="adm-overdue-name">{row.name}</div>
                           <div className="adm-overdue-meta">
-                            {row.department || 'Unassigned'}
+                            {row.department || 'Uncategorized'}
                             {' · '}
                             Closed {fmtClock(row.clock_out_time)}
                             {' · '}
@@ -644,7 +645,7 @@ const AdminHome = () => {
                   <div className="adm-hours-info">
                     <div className="adm-hours-name">{s.name}</div>
                     <div className="adm-hours-meta">
-                      {s.department || 'Unassigned'} · {s.hours}h logged
+                      {s.department || 'Uncategorized'} · {s.hours}h logged
                     </div>
                   </div>
                   <div className="adm-hours-num">+{s.pending_ot_hours}h</div>

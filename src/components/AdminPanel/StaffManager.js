@@ -4,12 +4,13 @@ import { apiFetch, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import DropdownSelect from '../shared/DropdownSelect';
 import Icon from '../shared/Icon';
+import { STAFF_ROLES, roleLabel, UNCATEGORIZED, departmentLabel, needsDepartment } from '../../lib/departments';
 
 // List-as-dashboard pattern (Sprint 6.3): clickable stats banner drives the
 // list filter, rich rows show this-week metrics inline, Add Staff is a
 // low-key tile at the bottom that inline-expands the existing form.
 
-const ROLES     = ['employee', 'front_desk', 'admin'];
+// Sprint 28.9: roles are employee / admin only (see lib/departments.js); a department is chosen for employees, admins don't need one
 // Sprint 16.2: admin-assignable UI language per staff member.
 // English / Spanish / Mandarin Chinese match the seed list in the
 // i18n dict + migration 022's CHECK constraint.
@@ -31,7 +32,7 @@ const fmtHireDate = (d) => {
   return date.toLocaleDateString([], { month: 'short', year: 'numeric' });
 };
 
-const fmtRole = (r) => (r || '').replace('_', ' ');
+const fmtRole = (r) => roleLabel(r);
 
 const isoDay = (d) => {
   const pad = n => String(n).padStart(2, '0');
@@ -864,7 +865,7 @@ const StaffManager = () => {
             className={`staff-mgr-chip ${selectedDept === '__none__' ? 'is-active' : ''}`}
             onClick={() => setSelectedDept('__none__')}
           >
-            Unassigned
+            {UNCATEGORIZED}
           </button>
 
           {/* Sprint 18.12 — Include inactive moves up here, separated
@@ -930,7 +931,7 @@ const StaffManager = () => {
           onClick={() => { setShowAdd(true); setFormError(''); }}
           disabled={showAdd}
         >
-          <span className="staff-mgr-add-inline-icon" aria-hidden>＋</span>
+          <span className="staff-mgr-add-inline-icon" aria-hidden><Icon name="plus" size="1em" /></span>
           Add new staff member
         </button>
       </div>
@@ -961,16 +962,18 @@ const StaffManager = () => {
               <div className="admin-field">
                 <label>Role *</label>
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
+                  {STAFF_ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
                 </select>
               </div>
-              <div className="admin-field">
-                <label>Department</label>
-                <select value={form.departmentId} onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}>
-                  <option value="">— None —</option>
-                  {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
-                </select>
-              </div>
+              {needsDepartment(form.role) && (
+                <div className="admin-field">
+                  <label>Department</label>
+                  <select value={form.departmentId} onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}>
+                    <option value="">{UNCATEGORIZED} (Home only)</option>
+                    {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="admin-field">
                 <label>Hire Date *</label>
                 <input type="date" value={form.hireDate} onChange={e => setForm(f => ({ ...f, hireDate: e.target.value }))} required />
@@ -1109,7 +1112,7 @@ const StaffManager = () => {
                   <div className="staff-mgr-row-meta">
                     <span style={{ textTransform: 'capitalize' }}>{fmtRole(e.role)}</span>
                     <span className="staff-mgr-row-dot">·</span>
-                    <span>{e.department || 'Unassigned'}</span>
+                    <span>{departmentLabel(e)}</span>
                     <span className="staff-mgr-row-dot">·</span>
                     <span>Hired {fmtHireDate(e.hire_date)}</span>
                   </div>

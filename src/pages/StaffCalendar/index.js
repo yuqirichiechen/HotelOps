@@ -223,7 +223,7 @@ const StaffCalendar = () => {
                         {s.user_id === user?.user_id && ' (you)'}
                       </span>
                       <span className="staff-cal-day-shift-dept">
-                        {s.department_name || 'Unassigned'}
+                        {s.department_name || 'Uncategorized'}
                       </span>
                     </li>
                   ))}

@@ -12,7 +12,6 @@ const DEPT_COLORS = {
   'Housekeeping':    { bg: '#f0fff4', border: '#38a169', text: '#276749', header: '#38a169' },
   'Maintenance':     { bg: '#fffaf0', border: '#dd6b20', text: '#7b341e', header: '#dd6b20' },
   'Food & Beverage': { bg: '#faf5ff', border: '#805ad5', text: '#553c9a', header: '#805ad5' },
-  'Management':      { bg: '#f7fafc', border: '#4a5568', text: '#1a202c', header: '#718096' },
 };
 const DEFAULT_COLOR = { bg: '#f7fafc', border: '#a0aec0', text: '#2d3748', header: '#a0aec0' };
 const getDeptColor  = (name) => DEPT_COLORS[name] || DEFAULT_COLOR;

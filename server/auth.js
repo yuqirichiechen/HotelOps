@@ -93,16 +93,19 @@ const requireRole = (...allowed) => (req, res, next) => {
 };
 
 // ── Front-desk portal access (Sprint 24 / 24.1 / 24.2) ──────────────────────
-// Who may call `/api/frontdesk/*`: managers and dev, and staff who are "front desk" either by ROLE (Staff → role = front desk) or by
-// DEPARTMENT (named "Front Desk"). Both are carried in the staff token (`role`, `dept`, set at sign-in) so these routes — the live room
-// board is polled every 2 min — need no database lookup per request (memory: no DB-touching timers). A role / department change
-// therefore takes effect at the person's next sign-in (tokens last 8 h).
+// Who may call `/api/frontdesk/*`: managers and dev, and staff whose DEPARTMENT is "Front Desk". Sprint 28.9: the old `front_desk` ROLE is retired (roles are
+// only employee / admin; migration 034 moved those people to the Front Desk department), so the department is the only thing that grants this.
+// It is carried in the staff token (`dept`, set at sign-in) so these routes — the live room board is polled every 2 min — need no database lookup per request
+// (memory: no DB-touching timers). A department change therefore takes effect at the person's next sign-in (tokens last 8 h).
+// LEGACY_FRONT_DESK_ROLE: tokens signed BEFORE the migration still say role = front_desk for up to 8 h; accepting them keeps those people working until they
+// sign in again. Safe to delete this one line (and the constant) once a day has passed since 034 was applied.
 const FRONT_DESK_DEPT_RE = /^front[\s_-]*desk$/i;
 const isFrontDeskDept = (name) => typeof name === 'string' && FRONT_DESK_DEPT_RE.test(name.trim());
+const LEGACY_FRONT_DESK_ROLE = 'front_desk';
 const requireFrontDesk = (req, res, next) => {
   if (!req.auth) return res.status(401).json({ success: false, message: 'Not authenticated' });
   if (req.auth.role === 'admin' || req.auth.role === 'dev') return next();
-  if (req.auth.type === 'staff' && (req.auth.role === 'front_desk' || isFrontDeskDept(req.auth.dept))) return next();
+  if (req.auth.type === 'staff' && (req.auth.role === LEGACY_FRONT_DESK_ROLE || isFrontDeskDept(req.auth.dept))) return next();
   return res.status(403).json({ success: false, message: 'Forbidden' });
 };
 

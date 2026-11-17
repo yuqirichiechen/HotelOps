@@ -415,12 +415,12 @@ const ShiftSheet = () => {
     return byDept;
   }, [employees, visibleRows]);
 
-  // Group by department. Order: by dept name, "Unassigned" last.
+  // Group by department. Order: by dept name, "Uncategorized" last.
   // Sprint 15.1: include depts even when they have zero rows yet,
   // as long as they have addable staff — otherwise there'd be no
   // surface for the admin to add the *first* row to that dept.
-  // Unassigned only appears when it has actual rows (you can't add
-  // a "to Unassigned" row from the typeahead).
+  // Uncategorized only appears when it has actual rows (you can't add
+  // a "to Uncategorized" row from the typeahead).
   const grouped = useMemo(() => {
     const rowsByDept = new Map();
     for (const r of visibleRows) {
@@ -444,7 +444,7 @@ const ShiftSheet = () => {
     if (rowsByDept.has('__unassigned')) {
       byKey.set('__unassigned', {
         key:           '__unassigned',
-        name:          'Unassigned',
+        name:          'Uncategorized',
         color:         null,
         department_id: null,
         rows:          rowsByDept.get('__unassigned'),
@@ -453,8 +453,8 @@ const ShiftSheet = () => {
     const list = [...byKey.values()];
     list.forEach(g => g.rows.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     list.sort((a, b) => {
-      if (a.name === 'Unassigned') return  1;
-      if (b.name === 'Unassigned') return -1;
+      if (a.name === 'Uncategorized') return  1;
+      if (b.name === 'Uncategorized') return -1;
       return a.name.localeCompare(b.name);
     });
     return list;
@@ -1156,7 +1156,7 @@ const ShiftSheet = () => {
                     })}
                     {/* Sprint 15.1: per-dept "+ Add staff" affordance.
                         Sits at the end of every dept section (except
-                        Unassigned, which isn't an addable target).
+                        Uncategorized, which isn't an addable target).
                         Collapsed by default — click reveals the
                         dept-scoped typeahead inline. */}
                     {group.department_id != null && (

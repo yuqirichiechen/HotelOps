@@ -124,7 +124,7 @@ const AssignPanel = ({ open, employees, departments, templates, schedules = [], 
   const empsByDept = useMemo(() => {
     const m = new Map();
     departments.forEach(d => m.set(d.department_id, { name: d.name, list: [] }));
-    m.set('__none__', { name: 'Unassigned', list: [] });
+    m.set('__none__', { name: 'Uncategorized', list: [] });
     employees.forEach(e => {
       const key = e.department_id ?? '__none__';
       const bucket = m.get(key);

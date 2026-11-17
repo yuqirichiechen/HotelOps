@@ -12,7 +12,7 @@
 --
 -- TABLE SUMMARY:
 --   departments       — lookup table for hotel departments
---   users             — all staff (employee / front_desk / admin roles)
+--   users             — all staff (roles: employee / admin — front_desk is retired; the department decides the rest)
 --   time_entries      — clock-in / clock-out records
 --   approval_requests — manual time-edit approval workflow
 --   shifts            — shift templates (start/end time per department)
@@ -27,6 +27,8 @@
 
 -- ── ENUMS ────────────────────────────────────────────────────────────────────
 
+-- Sprint 28.9: only 'employee' and 'admin' are assigned. 'front_desk' is a RETIRED label kept because Postgres cannot drop an enum value (front-desk access now
+-- comes from the Front Desk DEPARTMENT; migration 034 moved everyone off the role and the server refuses to assign it).
 CREATE TYPE user_role    AS ENUM ('employee', 'front_desk', 'admin');
 CREATE TYPE entry_status AS ENUM ('pending', 'approved', 'rejected');
 
@@ -47,8 +49,8 @@ INSERT INTO departments (name, color) VALUES
   ('Front Desk',      '#3182ce'),
   ('Housekeeping',    '#38a169'),
   ('Maintenance',     '#dd6b20'),
-  ('Food & Beverage', '#805ad5'),
-  ('Management',      '#718096');
+  ('Food & Beverage', '#805ad5');
+-- Sprint 28.9: no 'Management' department any more (that is the admin ROLE); a person with no department is shown as "Uncategorized".
 
 
 -- ── USERS ─────────────────────────────────────────────────────────────────────

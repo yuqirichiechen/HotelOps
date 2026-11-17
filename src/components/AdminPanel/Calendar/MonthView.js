@@ -10,14 +10,12 @@ const DEPT_ABBREV = {
   'Housekeeping':    'HK',
   'Maintenance':     'MT',
   'Food & Beverage': 'F&B',
-  'Management':      'MG',
 };
 const DEPT_DOTS = {
   'Front Desk':      '#3182ce',
   'Housekeeping':    '#38a169',
   'Maintenance':     '#dd6b20',
   'Food & Beverage': '#805ad5',
-  'Management':      '#718096',
 };
 
 const abbreviate = (name) => DEPT_ABBREV[name] || (name || '').slice(0, 2).toUpperCase();
@@ -52,7 +50,7 @@ const MonthView = ({ year, month, schedules, departments, loading, onSelectDay }
   const dayDeptCounts = {};
   schedules.forEach(s => {
     const date = s.scheduled_date;
-    const dept = s.department_name || 'Unassigned';
+    const dept = s.department_name || 'Uncategorized';
     if (!dayDeptCounts[date]) dayDeptCounts[date] = {};
     dayDeptCounts[date][dept] = (dayDeptCounts[date][dept] || 0) + 1;
   });

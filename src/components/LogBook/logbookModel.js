@@ -120,5 +120,5 @@ export function formError(f, status) {
 
 /** "12 Nov, 8:15 AM"-style stamp for "posted by … · …" lines (the browser's local time = the hotel's) */
 export const stampLabel = (iso) => { const d = new Date(iso); if (Number.isNaN(d.getTime())) return ''; return `${MON3[d.getMonth()]} ${d.getDate()}, ${fmtTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`)}`; };
-/** only front-desk staff can be sent a note: role front_desk, or the department is called Front Desk */
-export const isDeskStaff = (s) => s.role === 'front_desk' || /^front[\s_-]*desk$/i.test(String(s.department || '').trim());
+/** only front-desk staff can be sent a note: the department is Front Desk (the front_desk role was retired in 28.9) */
+export const isDeskStaff = (s) => /^front[\s_-]*desk$/i.test(String(s.department || '').trim());

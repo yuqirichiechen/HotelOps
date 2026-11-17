@@ -127,7 +127,6 @@ const NotesUpdatesCard = ({ title, notes, loading, onOpenLogbook }) => {
       'Front Desk':      '#3182ce',
       'Housekeeping':    '#38a169',
       'Maintenance':     '#dd6b20',
-      'Management':      '#4a5568',
     };
     return map[deptName] || '#718096';
   };

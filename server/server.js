@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const {
   signToken, hashPin, verifyPin, findAdmin,
-  requireAuth, requireRole, requireFrontDesk,
+  requireAuth, requireRole, requireFrontDesk, isFrontDeskDept,
   devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey,
 } = require('./auth');
 
@@ -549,6 +549,13 @@ app.patch('/api/admin/departments/:id', requireAuth, requireRole('admin'), async
   }
   params.push(parseInt(id, 10));
   try {
+    // Sprint 28.9: Front Desk staff get their pages from the department NAME — renaming it would silently lock them out.
+    if (name !== undefined) {
+      const cur = await pool.query('SELECT name FROM departments WHERE department_id = $1', [parseInt(id, 10)]);
+      if (cur.rows.length && isFrontDeskDept(cur.rows[0].name) && !isFrontDeskDept(String(name))) {
+        return res.status(409).json({ success: false, message: 'Front Desk can’t be renamed — it is what gives front-desk staff their pages (Reservations, Housekeeping, Logbook).' });
+      }
+    }
     const { rows } = await pool.query(
       `UPDATE departments SET ${sets.join(', ')} WHERE department_id = $${params.length}
        RETURNING department_id, name, color`,
@@ -585,6 +592,17 @@ app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), asyn
         success: false,
         message: `${refs[0].n} staff still in this department — reassign them first.`,
       });
+    }
+    // Sprint 28.9: Front Desk is protected (its name grants access); and former (deleted) staff records and shift templates also point at a department,
+    // which used to surface as a raw foreign-key error — now a clear message.
+    const { rows: me } = await pool.query('SELECT name FROM departments WHERE department_id = $1', [parseInt(id, 10)]);
+    if (me.length && isFrontDeskDept(me[0].name)) {
+      return res.status(409).json({ success: false, message: 'Front Desk can’t be deleted — it is what gives front-desk staff their pages (Reservations, Housekeeping, Logbook).' });
+    }
+    const { rows: used } = await pool.query(
+      `SELECT (SELECT COUNT(*)::int FROM users WHERE department_id = $1) AS people, (SELECT COUNT(*)::int FROM shifts WHERE department_id = $1) AS shifts`, [parseInt(id, 10)]);
+    if ((used[0]?.people || 0) > 0 || (used[0]?.shifts || 0) > 0) {
+      return res.status(409).json({ success: false, message: `Still used by ${used[0].shifts} shift template(s) and ${used[0].people} former staff record(s), so it can’t be deleted.` });
     }
     const { rowCount } = await pool.query(
       `DELETE FROM departments WHERE department_id = $1`,
@@ -1220,10 +1238,10 @@ const lbMap = async (req, rows) => {
   return rows.map(r => lbToApi(r, viewer, read));
 };
 const lbOne = async (id) => (await pool.query(`SELECT ${LB_COLS} FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2`, [id, hkProperty()])).rows[0];
-// "send to" may only name front-desk staff (role front_desk or department Front Desk), people who still work here
+// "send to" may only name front-desk staff (department Front Desk — the front_desk role was retired in 28.9), people who still work here
 const lbRecipientsOk = async (ids) => {
   if (!ids.length) return true;
-  const { rows } = await pool.query(`SELECT u.user_id FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.user_id = ANY($1::uuid[]) AND u.deleted_at IS NULL AND u.active IS NOT FALSE AND (u.role = 'front_desk' OR d.name ~* '^front[ _-]*desk$')`, [ids]);
+  const { rows } = await pool.query(`SELECT u.user_id FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.user_id = ANY($1::uuid[]) AND u.deleted_at IS NULL AND u.active IS NOT FALSE AND d.name ~* '^front[ _-]*desk$'`, [ids]);
   return rows.length === ids.length;
 };
 const lbList = async (req, res) => {
@@ -1358,6 +1376,11 @@ app.get('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (re
   }
 });
 
+// Sprint 28.9: a person's role is only ever 'employee' or 'admin' (admin = manager access). What a staff member can open beyond Home comes from their
+// DEPARTMENT (Front Desk → Reservations, Housekeeping, Logbook). The enum still carries the retired 'front_desk' label (Postgres can't drop one) — it is refused here.
+const STAFF_ROLES = ['employee', 'admin'];
+const staffRoleOf = (role) => { const r = role === undefined || role === null || role === '' ? 'employee' : String(role); return STAFF_ROLES.includes(r) ? { ok: true, role: r } : { ok: false, message: 'role must be employee or admin' }; };
+
 app.post('/api/admin/employees', requireAuth, requireRole('admin'), async (req, res) => {
   const { name, role, hireDate, departmentId, baseHourlyRate,
           phoneNumber, username, employeeCode, birthday,
@@ -1365,6 +1388,7 @@ app.post('/api/admin/employees', requireAuth, requireRole('admin'), async (req, 
   if (!name || !hireDate) {
     return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
+  const rl = staffRoleOf(role); if (!rl.ok) return res.status(400).json({ success: false, message: rl.message });
   const v = validateIdentifiers({ phoneNumber, username, employeeCode, birthday });
   if (!v.ok) return res.status(400).json({ success: false, message: v.message });
   // Sprint 16.2: preferred_language. Default to 'en' when omitted
@@ -1378,7 +1402,7 @@ app.post('/api/admin/employees', requireAuth, requireRole('admin'), async (req, 
                           preferred_language)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode, v.normalized.birthday,
-       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, lang]
+       rl.role, hireDate, departmentId || null, baseHourlyRate || null, lang]
     );
     return res.json({ success: true, employee: rows[0] });
   } catch (err) {
@@ -1410,6 +1434,7 @@ app.put('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (re
   if (!name || !hireDate) {
     return res.status(400).json({ success: false, message: 'name and hireDate required' });
   }
+  const rl = staffRoleOf(role); if (!rl.ok) return res.status(400).json({ success: false, message: rl.message });
   const v = validateIdentifiers({ phoneNumber, username, employeeCode, birthday });
   if (!v.ok) return res.status(400).json({ success: false, message: v.message });
   // Sprint 16.2: preferred_language gates the staff i18n layer.
@@ -1424,7 +1449,7 @@ app.put('/api/admin/employees/:id', requireAuth, requireRole('admin'), async (re
                         preferred_language=COALESCE($10, preferred_language)
        WHERE user_id=$11 RETURNING *`,
       [name, v.normalized.phoneNumber, v.normalized.username, v.normalized.employeeCode, v.normalized.birthday,
-       role || 'employee', hireDate, departmentId || null, baseHourlyRate || null, lang, req.params.id]
+       rl.role, hireDate, departmentId || null, baseHourlyRate || null, lang, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: 'Employee not found' });
     return res.json({ success: true, employee: rows[0] });

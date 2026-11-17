@@ -26,7 +26,6 @@ const DEPT_COLORS = {
   'Housekeeping':    { bg: '#f0fff4', border: '#38a169', text: '#276749' },
   'Maintenance':     { bg: '#fffaf0', border: '#dd6b20', text: '#7b341e' },
   'Food & Beverage': { bg: '#faf5ff', border: '#805ad5', text: '#553c9a' },
-  'Management':      { bg: '#f7fafc', border: '#4a5568', text: '#1a202c' },
 };
 const DEFAULT_COLOR = { bg: '#f7fafc', border: '#a0aec0', text: '#2d3748' };
 
@@ -268,7 +267,7 @@ const ShiftDetailModal = ({ shift, onClose }) => {
           )}
         </h3>
         <div className="day-shift-detail-dept">
-          {shift.department_name || 'Unassigned'}
+          {shift.department_name || 'Uncategorized'}
         </div>
         <dl className="day-shift-detail-rows">
           <div><dt>Clock in</dt><dd>{inTime}</dd></div>
@@ -616,7 +615,7 @@ const ShiftCard = ({ shift, onClick, compact = false }) => {
           )}
         </span>
         <span className="day-card-meta">
-          {shift.department_name || 'Unassigned'}
+          {shift.department_name || 'Uncategorized'}
           {role && <> · {role}</>}
         </span>
         <span className="day-card-time">
@@ -839,7 +838,7 @@ const TimelineMode = ({ shifts, planned, onEdit, onShowDetail }) => {
                   {s.is_in_progress && <span className="day-shift-live-dot" aria-label="On the clock" />}
                 </div>
                 <div className="day-shift-meta">
-                  {s.department_name || 'Unassigned'} · {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5)).split(' – ')[0]} – {endLabel} · {computeShiftHours(s.start_time, s.end_time)}h
+                  {s.department_name || 'Uncategorized'} · {fmtTimeRange(s.start_time.slice(0,5), s.end_time.slice(0,5)).split(' – ')[0]} – {endLabel} · {computeShiftHours(s.start_time, s.end_time)}h
                 </div>
                 {s.notes && <div className="day-shift-notes">Note: {s.notes}</div>}
               </button>
