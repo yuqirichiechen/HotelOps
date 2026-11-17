@@ -67,3 +67,26 @@
 .dvb-prop { border-color: var(--dvb-line); color: var(--dvb-fg); }
 .dvb-prop:hover { background: var(--dvb-soft-hover); }
 .dvb-switch button:focus-visible, .dvb-prop:focus-visible { outline-color: var(--dvb-accent); }
+
+/* Sprint 28.10 — Views card (Dev → Platform) */
+.dv-input { font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface, transparent); color: inherit; min-width: 220px; }
+.dv-ok { color: var(--ia-ok, #3f9d6b); }
+.dv-switchrow { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; }
+.dv-switch { display: inline-flex; align-items: center; gap: 12px; font: inherit; font-weight: 600; background: none; border: 0; color: inherit; cursor: pointer; padding: 0; }
+.dv-switch-track { width: 42px; height: 24px; border-radius: 999px; background: rgba(128,128,128,.45); position: relative; transition: background .15s; flex: none; }
+.dv-switch-knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.dv-switch.on .dv-switch-track { background: var(--ia-gold, #c9a05a); }
+.dv-switch.on .dv-switch-knob { transform: translateX(18px); }
+.dv-switch:focus-visible { outline: 2px solid var(--ia-gold, #c9a05a); outline-offset: 3px; border-radius: 8px; }
+.dv-viewlist { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.dv-view { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.dv-view-new { border-style: dashed; }
+.dv-view-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.dv-pagechecks { display: flex; flex-wrap: wrap; gap: 8px; }
+.dv-pagecheck { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); cursor: pointer; font-size: 13px; user-select: none; }
+.dv-pagecheck input { position: absolute; opacity: 0; pointer-events: none; }
+.dv-pagecheck.on { border-color: var(--ia-gold, #c9a05a); background: rgba(201,160,90,.16); font-weight: 600; }
+.dv-pagecheck:focus-within { outline: 2px solid var(--ia-gold, #c9a05a); outline-offset: 2px; }
+.dv-view-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.dv-btn:disabled { opacity: .45; cursor: not-allowed; }

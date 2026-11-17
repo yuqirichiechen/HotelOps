@@ -63,7 +63,7 @@ const stdResponses = () => ({
     Auth.setStaffEntry('whatever'); assert.strictEqual(Auth.getStaffEntry(), 'clockin', 'unknown values fall back to clock-in');
   });
   await t('guards: signed-in staff on the login page / wrong shell are sent to THEIR door; both shells accept any non-admin, neither admits a manager', async () => {
-    localStorage.setItem('hotelops-token', 't'); localStorage.setItem('hotelops-tenant-slug', 'x'); meUser = { role: 'employee', department: 'Front Desk', name: 'Fran' };
+    localStorage.setItem('hotelops-token', 't'); localStorage.setItem('hotelops-tenant-slug', 'x'); meUser = { role: 'employee', department: 'Front Desk', pages: ['reservations', 'housekeeping', 'logbook'], name: 'Fran' };
     const page = (entry) => R(entry, [route('/x/login', React.createElement(Auth.RedirectIfAuthed, null, txt('LOGIN'))), route('/x/staff', React.createElement(Auth.RequireRole, { role: 'staff' }, txt('PORTAL'))), route('/x/clockin', React.createElement(Auth.RequireRole, { role: 'staff' }, txt('CLOCKIN'))), route('/x/admin', React.createElement(Auth.RequireRole, { role: 'admin' }, txt('ADMIN')))]);
     Auth.setStaffEntry('staff'); let h = await mount(page('/x/login')); assert(/PORTAL/.test(h.el.textContent), h.el.textContent); await h.unmount();
     Auth.setStaffEntry('clockin'); h = await mount(page('/x/login')); assert(/CLOCKIN/.test(h.el.textContent)); await h.unmount();
@@ -171,7 +171,7 @@ const stdResponses = () => ({
   });
 
   await t('SAME CREDENTIALS, different door: Clock in (numpad) → /clockin, Staff login (typed) → /staff, one request each to the existing endpoint — and the page still opens on Clock in next time', async () => {
-    const user = { user_id: 'u9', name: 'Fran', role: 'employee', department: 'Front Desk', pin_must_set: false }; staffLogin = { status: 200, body: { success: true, token: 'TOK', user } };
+    const user = { user_id: 'u9', name: 'Fran', role: 'employee', department: 'Front Desk', pages: ['reservations', 'housekeeping', 'logbook'], pin_must_set: false }; staffLogin = { status: 200, body: { success: true, token: 'TOK', user } };
     localStorage.clear(); realFetchLog.length = 0; let h = await mount(loginPage('clockin'), 120); await signIn(h); assert(/CLOCKIN SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'clockin'); await h.unmount();
     localStorage.clear(); realFetchLog.length = 0; h = await mount(loginPage(), 120); await pick(h, 'staff'); await typeStaff(h, 'fran.desk', '1234'); assert(/PORTAL SHELL/.test(h.el.textContent), h.el.textContent); assert.strictEqual(Auth.getStaffEntry(), 'staff');
     const logins = realFetchLog.filter(([u]) => /auth\/staff\/login/.test(u)); assert.strictEqual(logins.length, 1, 'one request, the existing endpoint — no new credential path'); await h.unmount();
@@ -206,9 +206,9 @@ const stdResponses = () => ({
   });
 
   // ── 3. the portal shell ──
-  mockAuth = { apiFetch: apiFetchMock, authFetch: async () => ({ ok: true, json: async () => ({ success: true }) }), useAuth: () => ({ logout: async () => {}, user: mockAuth._user }), setStaffEntry() {}, getStaffEntry: () => 'staff', homePathFor: () => '/x/staff', isFrontDesk: Auth.isFrontDesk };
+  mockAuth = { apiFetch: apiFetchMock, authFetch: async () => ({ ok: true, json: async () => ({ success: true }) }), useAuth: () => ({ logout: async () => {}, user: mockAuth._user }), setStaffEntry() {}, getStaffEntry: () => 'staff', homePathFor: () => '/x/staff', hasPage: Auth.hasPage };
   const Shell = load(ROOT + '/src/shells/StaffPortalShell.js').default; const ClockIn = load(ROOT + '/src/shells/ClockInShell.js').default; const AuthMock = mockAuth;
-  const DESK = { user_id: 'u9', name: 'Fran Desk', role: 'employee', department: 'Front Desk' }, HK = { user_id: 'u5', name: 'Hana Housekeeper', role: 'employee', department: 'Housekeeping' }, ROLE_ONLY = { user_id: 'u7', name: 'Old Role', role: 'front_desk', department: 'Housekeeping' };
+  const ALL_PAGES = ['reservations', 'housekeeping', 'logbook']; const DESK = { user_id: 'u9', name: 'Fran Desk', role: 'employee', department: 'Front Desk', pages: ALL_PAGES }, HK = { user_id: 'u5', name: 'Hana Housekeeper', role: 'employee', department: 'Housekeeping', pages: [] }, ROLE_ONLY = { user_id: 'u7', name: 'Old Role', role: 'front_desk', department: 'Housekeeping', pages: [] };
   const portal = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(Shell, { theme: 'light', onToggleTheme() {} })));
   const navLabels = (h) => [...h.el.querySelectorAll('.sidebar-nav button, .sidebar button, nav button, nav a')].map(b => b.textContent.trim()).filter(Boolean);
   const openTab = async (h, label) => { await h.click([...h.el.querySelectorAll('button, a')].find(b => b.textContent.trim() === label)); await act(async () => { await sleep(250); }); };
@@ -263,13 +263,16 @@ const stdResponses = () => ({
     assert(h.el.querySelector('.ts-this') && h.el.querySelector('.ts-total') && h.el.querySelector('.ts-chart'), 'their own hours + timesheet are there'); assert(!h.el.querySelector('.home-clock-section'));
     assert(calls.every(c => !c.p.startsWith('/frontdesk/') && !c.p.startsWith('/admin/')), calls.map(c => c.p).join(', ')); await h.unmount();
   });
-  await t('front-desk features = the DEPARTMENT "Front Desk" (28.9: the front_desk ROLE is retired and no longer grants anything): spellings count; a leftover role value, another department or no department does not', async () => {
-    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 200); assert(navLabels(h).join('|').includes('Housekeeping') && navLabels(h).join('|').includes('Reservations'), 'Front Desk department'); await openTab(h, 'Reservations'); assert(h.el.querySelector('.fd-ops'), 'tab content'); assert(calls.some(c => c.p === '/frontdesk/forecast/current')); await h.unmount();
-    AuthMock._user = ROLE_ONLY; h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Reservations') && !navLabels(h).join('|').includes('Housekeeping'), 'the old role value alone opens nothing (Housekeeping department)'); await h.unmount();
-    AuthMock._user = { ...ROLE_ONLY, department: null }; h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Reservations'), 'old role value, no department = Uncategorized: Home only'); await h.unmount();
-    for (const d of ['front desk', 'Front-Desk', ' FRONT DESK ']) { AuthMock._user = { ...HK, department: d }; h = await mount(portal(), 150); assert(navLabels(h).join('|').includes('Reservations'), d); await h.unmount(); }
-    AuthMock._user = { ...HK, department: 'Front Desk Supervisor' }; h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Reservations'), 'exact department name'); await h.unmount();
-    AuthMock._user = { ...HK, role: 'employee', department: null }; h = await mount(portal(), 150); assert(!navLabels(h).join('|').includes('Reservations'), 'plain employee, no department'); await h.unmount();
+  await t('PAGES come from the department\'s VIEW (28.10): a view with Reservations + Housekeeping + Logbook opens them all; a view with only some opens only those; no view (Uncategorized) = Home only; the department\'s NAME and a leftover role value grant nothing', async () => {
+    const labels = (h) => navLabels(h).join('|');
+    AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; let h = await mount(portal(), 200); assert(labels(h).includes('Housekeeping') && labels(h).includes('Reservations') && labels(h).includes('Logbook'), 'all three pages'); await openTab(h, 'Reservations'); assert(h.el.querySelector('.fd-ops'), 'tab content'); assert(calls.some(c => c.p === '/frontdesk/forecast/current')); await h.unmount();
+    AuthMock._user = { ...HK, pages: ['housekeeping'] }; h = await mount(portal(), 150); assert(labels(h).includes('Housekeeping') && !labels(h).includes('Reservations'), 'a Housekeeping-only view: Housekeeping yes, Reservations no'); await h.unmount();
+    AuthMock._user = { ...HK, pages: ['reservations'] }; h = await mount(portal(), 150); assert(labels(h).includes('Reservations') && !labels(h).includes('Housekeeping'), 'a Reservations-only view'); await h.unmount();
+    AuthMock._user = { ...HK, pages: [] }; h = await mount(portal(), 150); assert(!labels(h).includes('Reservations') && !labels(h).includes('Housekeeping'), 'no pages: Home only (plus the placeholder Logbook / Settings)'); await h.unmount();
+    AuthMock._user = { ...HK, department: 'Front Desk', pages: [] }; h = await mount(portal(), 150); assert(!labels(h).includes('Reservations') && !labels(h).includes('Housekeeping'), 'a department NAMED Front Desk with no view opens nothing — the name is not what grants access'); await h.unmount();
+    AuthMock._user = ROLE_ONLY; h = await mount(portal(), 150); assert(!labels(h).includes('Reservations') && !labels(h).includes('Housekeeping'), 'the old front_desk role value opens nothing'); await h.unmount();
+    AuthMock._user = { ...DESK, department: 'Reception', pages: ALL_PAGES }; h = await mount(portal(), 150); assert(labels(h).includes('Reservations'), 'a RENAMED department keeps its pages — the view, not the name, decides'); await h.unmount();
+    AuthMock._user = { ...HK, pages: undefined }; h = await mount(portal(), 150); assert(!labels(h).includes('Reservations'), 'a user object without pages = Home only'); await h.unmount();
   });
   const clockin = () => React.createElement(RR.MemoryRouter, null, React.createElement(LanguageProvider, null, React.createElement(ClockIn)));
   await t('CLOCK IN door: ONLY the clock — focused-action screen, Clock In / Out, confirmation + auto-signout countdown; no sidebar, no hours, no timesheet / calendar / settings', async () => {

@@ -1,6 +1,7 @@
 // Platform-wide settings (moved out of the old DevPanel page in Sprint 22.4): the tenant-logo dark-mode strategy and (Sprint 27.6) the Inntrio login's light / dark.
 import React, { useEffect, useState } from 'react';
 import { authFetch } from '../../auth';
+import AccessViewsCard from './DevAccessViews';
 
 const STRATEGIES = [
   { key: 'card',        label: 'White card backdrop (default)', desc: 'Wraps colored tenant logos in a small white container. Works for any logo, doesn\'t require a dark variant.' },
@@ -99,6 +100,7 @@ const DevPlatform = () => {
   if (loading) return <p className="dv-muted">Loading…</p>;
   return (
     <>
+    <AccessViewsCard />
     <LoginThemeCard />
     <section className="dv-card">
       <h2>Tenant logo — dark mode strategy</h2>

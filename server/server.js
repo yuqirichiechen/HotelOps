@@ -6,9 +6,10 @@ require('dotenv').config();
 
 const {
   signToken, hashPin, verifyPin, findAdmin,
-  requireAuth, requireRole, requireFrontDesk, isFrontDeskDept,
+  requireAuth, requireRole, requirePage,
   devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey,
 } = require('./auth');
+const accessApi = require('./access');   // Sprint 28.10: staff-portal pages + Views (server/access.js)
 
 // Sprint 17 — Front Desk forecast (Agilysys rGuest Stay).
 const { runScrape: runForecastScrape } = require('./forecast/runScrape');
@@ -270,8 +271,8 @@ app.post('/api/auth/staff/login', async (req, res) => {
                 :                          'LOWER(u.username) = LOWER($1)';
     const { rows } = await pool.query(
       `SELECT u.user_id, u.name, u.phone_number, u.username, u.employee_code, u.birthday, u.role, u.department_id,
-              u.pin_hash, u.pin_required, u.pin_must_set, u.preferred_language, d.name AS department
-       FROM users u LEFT JOIN departments d ON d.department_id = u.department_id
+              u.pin_hash, u.pin_required, u.pin_must_set, u.preferred_language, d.name AS department, COALESCE(av.pages, '{}') AS pages
+       FROM users u LEFT JOIN departments d ON d.department_id = u.department_id LEFT JOIN access_views av ON av.view_id = d.view_id
        WHERE ${where} AND u.active = true`,
       [id.value]
     );
@@ -302,8 +303,9 @@ app.post('/api/auth/staff/login', async (req, res) => {
       role: user.role,
       name: user.name,
       type: 'staff',
-      // Sprint 24.1: the department name rides in the token so the front-desk routes can check it without a DB lookup per request.
       dept: user.department || null,
+      // Sprint 28.10: the staff-portal pages the department's View switches on ride in the token, so the portal routes can check them without a DB lookup per request.
+      pages: accessApi.cleanPages(user.pages),
     });
 
     return res.json({
@@ -312,6 +314,7 @@ app.post('/api/auth/staff/login', async (req, res) => {
       user: {
         user_id:            user.user_id,
         department:         user.department || null,
+        pages:              accessApi.cleanPages(user.pages),
         name:               user.name,
         phone_number:       user.phone_number,
         username:           user.username,
@@ -415,9 +418,10 @@ app.get('/api/me', requireAuth, async (req, res) => {
               u.pin_required, u.pin_must_set,
               u.preferred_language,
               (u.pin_hash IS NOT NULL) AS has_pin,
-              d.name AS department
+              d.name AS department, COALESCE(av.pages, '{}') AS pages
        FROM users u
        LEFT JOIN departments d ON u.department_id = d.department_id
+       LEFT JOIN access_views av ON av.view_id = d.view_id
        WHERE u.user_id = $1 AND u.active = true`,
       [req.auth.sub]
     );
@@ -432,7 +436,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     const idleLogoutSeconds = Number.isInteger(n) && n >= 5 && n <= 120 ? n : 15;
     return res.json({
       success: true,
-      user: { ...rows[0], type: 'staff' },
+      user: { ...rows[0], pages: accessApi.cleanPages(rows[0].pages), type: 'staff' },
       idleLogoutSeconds,
     });
   } catch (err) {
@@ -481,12 +485,22 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
   return res.json({ success: true });
 });
 
-// ── Departments ───────────────────────────────────────────────────────────────
+// ── Departments + Views ───────────────────────────────────────────────────────
+// Sprint 28.10: a department carries a VIEW (departments.view_id → access_views): the staff-portal pages its people can open (server/access.js lists the pages).
+// No view = Home only. Admins and dev add / rename / recolour / delete departments; who may CHOOSE a department's view: dev always, admins only while the dev switch
+// `access_admin_sets_view` is on (Dev → Platform; off by default). Views themselves (their names and pages) are created and edited by dev only.
+const adminMaySetView = async () => {
+  try { const { rows } = await pool.query('SELECT value FROM app_settings WHERE key = $1', [accessApi.ADMIN_SETS_VIEW_KEY]); return !!rows.length && rows[0].value === 'true'; } catch (_e) { return false; }
+};
+const mayChooseView = async (req) => req.auth.role === 'dev' || (req.auth.role === 'admin' && await adminMaySetView());
+const viewIdOf = (v) => (v === undefined ? undefined : (v === null || v === '' ? null : (/^\d+$/.test(String(v)) ? parseInt(v, 10) : NaN)));   // undefined = not sent, null = Home only, NaN = invalid
+const VIEW_LOCKED_MSG = 'Only dev can choose a department’s view right now (admin access is switched off in Dev → Platform).';
 
 app.get('/api/admin/departments', requireAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM departments ORDER BY name');
-    return res.json({ success: true, departments: rows });
+    const { rows } = await pool.query('SELECT d.*, av.name AS view_name, COALESCE(av.pages, \'{}\') AS view_pages FROM departments d LEFT JOIN access_views av ON av.view_id = d.view_id ORDER BY d.name');
+    const isManager = req.auth.role === 'admin' || req.auth.role === 'dev';
+    return res.json({ success: true, departments: rows, canSetView: isManager && await mayChooseView(req), canManageViews: req.auth.role === 'dev' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -506,17 +520,21 @@ app.post('/api/admin/departments', requireAuth, requireRole('admin'), async (req
   if (color != null && color !== '' && !HEX_COLOR_RE.test(color)) {
     return res.status(400).json({ success: false, message: 'color must be #RRGGBB or null' });
   }
+  const vid = viewIdOf((req.body || {}).viewId);
+  if (Number.isNaN(vid)) return res.status(400).json({ success: false, message: 'viewId must be a view id or null' });
   try {
+    if (vid !== undefined && vid !== null && !(await mayChooseView(req))) return res.status(403).json({ success: false, message: VIEW_LOCKED_MSG });
     const { rows } = await pool.query(
-      `INSERT INTO departments (name, color) VALUES ($1, $2)
-       RETURNING department_id, name, color`,
-      [String(name).trim(), color || null]
+      `INSERT INTO departments (name, color, view_id) VALUES ($1, $2, $3)
+       RETURNING department_id, name, color, view_id`,
+      [String(name).trim(), color || null, vid === undefined ? null : vid]
     );
     return res.json({ success: true, department: rows[0] });
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ success: false, message: 'department name already exists' });
     }
+    if (err.code === '23503') return res.status(400).json({ success: false, message: 'unknown view' });
     console.error('[departments:POST]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
@@ -544,21 +562,18 @@ app.patch('/api/admin/departments/:id', requireAuth, requireRole('admin'), async
       return res.status(400).json({ success: false, message: 'color must be #RRGGBB or null' });
     }
   }
+  const vid = viewIdOf((req.body || {}).viewId);
+  if (Number.isNaN(vid)) return res.status(400).json({ success: false, message: 'viewId must be a view id or null' });
+  if (vid !== undefined) { params.push(vid); sets.push(`view_id = $${params.length}`); }
   if (sets.length === 0) {
     return res.status(400).json({ success: false, message: 'nothing to update' });
   }
   params.push(parseInt(id, 10));
   try {
-    // Sprint 28.9: Front Desk staff get their pages from the department NAME — renaming it would silently lock them out.
-    if (name !== undefined) {
-      const cur = await pool.query('SELECT name FROM departments WHERE department_id = $1', [parseInt(id, 10)]);
-      if (cur.rows.length && isFrontDeskDept(cur.rows[0].name) && !isFrontDeskDept(String(name))) {
-        return res.status(409).json({ success: false, message: 'Front Desk can’t be renamed — it is what gives front-desk staff their pages (Reservations, Housekeeping, Logbook).' });
-      }
-    }
+    if (vid !== undefined && !(await mayChooseView(req))) return res.status(403).json({ success: false, message: VIEW_LOCKED_MSG });
     const { rows } = await pool.query(
       `UPDATE departments SET ${sets.join(', ')} WHERE department_id = $${params.length}
-       RETURNING department_id, name, color`,
+       RETURNING department_id, name, color, view_id`,
       params
     );
     if (!rows.length) {
@@ -569,6 +584,7 @@ app.patch('/api/admin/departments/:id', requireAuth, requireRole('admin'), async
     if (err.code === '23505') {
       return res.status(409).json({ success: false, message: 'department name already exists' });
     }
+    if (err.code === '23503') return res.status(400).json({ success: false, message: 'unknown view' });
     console.error('[departments:PATCH]', err);
     return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
   }
@@ -577,12 +593,9 @@ app.patch('/api/admin/departments/:id', requireAuth, requireRole('admin'), async
 app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   try {
-    // Refuse to delete if staff or shifts reference this dept —
-    // would orphan FKs. Admin should reassign first.
+    // Refuse to delete if staff or shifts reference this dept — would orphan FKs. Admin should reassign first.
     const { rows: refs } = await pool.query(
-      // Sprint 11.1.2: don't count soft-deleted staff against
-      // dept deletion — they're gone from every other surface, so
-      // they shouldn't block dept cleanup either.
+      // Sprint 11.1.2: don't count soft-deleted staff against dept deletion — they're gone from every other surface, so they shouldn't block dept cleanup either.
       `SELECT COUNT(*)::int AS n FROM users
        WHERE department_id = $1 AND deleted_at IS NULL`,
       [parseInt(id, 10)]
@@ -593,12 +606,7 @@ app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), asyn
         message: `${refs[0].n} staff still in this department — reassign them first.`,
       });
     }
-    // Sprint 28.9: Front Desk is protected (its name grants access); and former (deleted) staff records and shift templates also point at a department,
-    // which used to surface as a raw foreign-key error — now a clear message.
-    const { rows: me } = await pool.query('SELECT name FROM departments WHERE department_id = $1', [parseInt(id, 10)]);
-    if (me.length && isFrontDeskDept(me[0].name)) {
-      return res.status(409).json({ success: false, message: 'Front Desk can’t be deleted — it is what gives front-desk staff their pages (Reservations, Housekeeping, Logbook).' });
-    }
+    // Sprint 28.9: former (deleted) staff records and shift templates also point at a department, which used to surface as a raw foreign-key error — now a clear message.
     const { rows: used } = await pool.query(
       `SELECT (SELECT COUNT(*)::int FROM users WHERE department_id = $1) AS people, (SELECT COUNT(*)::int FROM shifts WHERE department_id = $1) AS shifts`, [parseInt(id, 10)]);
     if ((used[0]?.people || 0) > 0 || (used[0]?.shifts || 0) > 0) {
@@ -612,8 +620,56 @@ app.delete('/api/admin/departments/:id', requireAuth, requireRole('admin'), asyn
     return res.json({ success: true });
   } catch (err) {
     console.error('[departments:DELETE]', err);
-    return res.status(500).json({ success: false, message: 'Server error', detail: err.message });
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
+});
+
+// ── Views (Sprint 28.10) ──────────────────────────────────────────────────────
+// A view = a name + the staff-portal pages it switches on (the pages are hardcoded in server/access.js). Anyone who manages the app can READ them (the Departments
+// screen shows each department's view); only DEV creates, edits and deletes them.
+app.get('/api/admin/access-views', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT av.view_id, av.name, av.pages, COALESCE(json_agg(json_build_object('department_id', d.department_id, 'name', d.name) ORDER BY d.name) FILTER (WHERE d.department_id IS NOT NULL), '[]') AS departments
+         FROM access_views av LEFT JOIN departments d ON d.view_id = av.view_id GROUP BY av.view_id ORDER BY av.name`);
+    let adminMaySet = false; if (req.auth.role === 'dev') adminMaySet = await adminMaySetView();
+    return res.json({ success: true, views: rows, pages: accessApi.catalog(), canManageViews: req.auth.role === 'dev', adminMaySetView: adminMaySet });
+  } catch (err) { console.error('[views:GET]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.post('/api/admin/access-views', requireAuth, requireRole('dev'), async (req, res) => {
+  const name = accessApi.cleanViewName((req.body || {}).name); if (!name) return res.status(400).json({ success: false, message: 'A view needs a name (up to 60 characters).' });
+  try {
+    const { rows } = await pool.query('INSERT INTO access_views (name, pages) VALUES ($1, $2) RETURNING view_id, name, pages', [name, accessApi.cleanPages((req.body || {}).pages)]);
+    return res.json({ success: true, view: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ success: false, message: 'A view with that name already exists.' });
+    console.error('[views:POST]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+app.patch('/api/admin/access-views/:id', requireAuth, requireRole('dev'), async (req, res) => {
+  const body = req.body || {}; const sets = [], params = [];
+  if (body.name !== undefined) { const name = accessApi.cleanViewName(body.name); if (!name) return res.status(400).json({ success: false, message: 'A view needs a name (up to 60 characters).' }); params.push(name); sets.push(`name = $${params.length}`); }
+  if (body.pages !== undefined) { params.push(accessApi.cleanPages(body.pages)); sets.push(`pages = $${params.length}`); }
+  if (!sets.length) return res.status(400).json({ success: false, message: 'nothing to update' });
+  params.push(parseInt(req.params.id, 10));
+  try {
+    const { rows } = await pool.query(`UPDATE access_views SET ${sets.join(', ')}, updated_at = NOW() WHERE view_id = $${params.length} RETURNING view_id, name, pages`, params);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'view not found' });
+    return res.json({ success: true, view: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ success: false, message: 'A view with that name already exists.' });
+    console.error('[views:PATCH]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+app.delete('/api/admin/access-views/:id', requireAuth, requireRole('dev'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const { rows: used } = await pool.query('SELECT name FROM departments WHERE view_id = $1 ORDER BY name', [id]);
+    if (used.length) return res.status(409).json({ success: false, message: `Still used by ${used.map(u => u.name).join(', ')} — move ${used.length === 1 ? 'that department' : 'those departments'} to another view first.` });
+    const { rowCount } = await pool.query('DELETE FROM access_views WHERE view_id = $1', [id]);
+    if (!rowCount) return res.status(404).json({ success: false, message: 'view not found' });
+    return res.json({ success: true });
+  } catch (err) { console.error('[views:DELETE]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
 // ── Status Codes (Sprint 15.0) ────────────────────────────────────────────────
@@ -1210,8 +1266,8 @@ const hkPutPrefs = async (req, res) => {
     return res.json({ success: true, prefs: r.prefs });
   } catch (err) { console.error('[hk:prefs:put]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 };
-// Managers/dev use /api/admin/housekeeping/*; the front-desk portal (department Front Desk) uses the same handlers under /api/frontdesk/housekeeping/*.
-for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontdesk', requireFrontDesk]]) {
+// Managers/dev use /api/admin/housekeeping/*; staff whose department's View switches Housekeeping on use the same handlers under /api/frontdesk/housekeeping/*.
+for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontdesk', requirePage('housekeeping')]]) {
   app.get(`${base}/housekeeping/plan`,         requireAuth, gate, hkGetPlan);
   app.get(`${base}/housekeeping/plans`,        requireAuth, gate, hkListPlans);
   app.get(`${base}/housekeeping/locked-rooms`, requireAuth, gate, hkLockedRooms);
@@ -1238,10 +1294,10 @@ const lbMap = async (req, rows) => {
   return rows.map(r => lbToApi(r, viewer, read));
 };
 const lbOne = async (id) => (await pool.query(`SELECT ${LB_COLS} FROM logbook_notes WHERE note_id = $1::uuid AND property_id = $2`, [id, hkProperty()])).rows[0];
-// "send to" may only name front-desk staff (department Front Desk — the front_desk role was retired in 28.9), people who still work here
+// "send to" may only name staff who can open the Logbook (their department's View switches it on — 28.10), people who still work here
 const lbRecipientsOk = async (ids) => {
   if (!ids.length) return true;
-  const { rows } = await pool.query(`SELECT u.user_id FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.user_id = ANY($1::uuid[]) AND u.deleted_at IS NULL AND u.active IS NOT FALSE AND d.name ~* '^front[ _-]*desk$'`, [ids]);
+  const { rows } = await pool.query(`SELECT u.user_id FROM users u JOIN departments d ON d.department_id = u.department_id JOIN access_views av ON av.view_id = d.view_id WHERE u.user_id = ANY($1::uuid[]) AND u.deleted_at IS NULL AND u.active IS NOT FALSE AND 'logbook' = ANY(av.pages)`, [ids]);
   return rows.length === ids.length;
 };
 const lbList = async (req, res) => {
@@ -1335,12 +1391,12 @@ const lbAudience = async (req, res) => {
   try {
     const [d, u] = await Promise.all([
       pool.query('SELECT department_id, name, color FROM departments ORDER BY name'),
-      pool.query(`SELECT u.user_id, u.name, u.role, u.department_id, d.name AS department FROM users u LEFT JOIN departments d ON d.department_id = u.department_id WHERE u.deleted_at IS NULL AND u.active IS NOT FALSE ORDER BY u.name`),
+      pool.query(`SELECT u.user_id, u.name, u.role, u.department_id, d.name AS department, COALESCE(av.pages, '{}') AS pages FROM users u LEFT JOIN departments d ON d.department_id = u.department_id LEFT JOIN access_views av ON av.view_id = d.view_id WHERE u.deleted_at IS NULL AND u.active IS NOT FALSE ORDER BY u.name`),
     ]);
     return res.json({ success: true, departments: d.rows, staff: u.rows });
   } catch (err) { return lbFail(res, 'audience', err); }
 };
-for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontdesk', requireFrontDesk]]) {
+for (const [base, gate] of [['/api/admin', requireRole('admin')], ['/api/frontdesk', requirePage('logbook')]]) {
   app.get(`${base}/logbook/notes`,                    requireAuth, gate, lbList);
   app.post(`${base}/logbook/notes`,                   requireAuth, gate, lbCreate);
   app.put(`${base}/logbook/notes/:id`,                requireAuth, gate, lbUpdate);
@@ -3982,6 +4038,8 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     hk_print_checkout_dates: v => v === 'true' || v === 'false',
     // Sprint 25.3: dev option — may managers / the front desk plan BY NAME (staff list)? Off (default) = they only plan with "No name". Dev always can. 'true' | 'false'.
     hk_plan_by_name: v => v === 'true' || v === 'false',
+    // Sprint 28.10: may admins choose which View a department uses? Dev-only switch (access_ prefix is dev-write-only), off by default; read by the Departments routes.
+    access_admin_sets_view: v => v === 'true' || v === 'false',
     // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).
     // enabled: 'true'|'false'; scale: percent of the calibrated table (25..300, 100 = as calibrated);
     // min: minimum extra rooms for a room-type group with 4+ booked arrivals (0..10).
@@ -4055,7 +4113,7 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
   // before because that signals a real bug or attack, not version drift.
   const writes = [];
   // Sprint 22.4: forecast / sync / guest-data settings live in the Dev area only.
-  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_|hk_|login_)/.test(k) || k === 'guest_detail_retention_days')) {
+  if (req.auth.role !== 'dev' && Object.keys(updates).some(k => /^(forecast_|sync_|hk_|login_|access_)/.test(k) || k === 'guest_detail_retention_days')) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   if (updates.login_dark_from !== undefined && updates.login_dark_from === updates.login_dark_to) {
@@ -4978,7 +5036,7 @@ const liveHandler = (ttlMs) => async (req, res) => {
 };
 const forecastLive = liveHandler(LIVE_TTL_MS), forecastLiveFrontDesk = liveHandler(FD_LIVE_TTL_MS);
 app.get('/api/admin/forecast/live',     requireAuth, requireRole('admin'),      forecastLive);
-app.get('/api/frontdesk/forecast/live', requireAuth, requireFrontDesk, forecastLiveFrontDesk);   // Sprint 24: room numbers + housekeeping status only, no guest data
+app.get('/api/frontdesk/forecast/live', requireAuth, requirePage('reservations', 'housekeeping'), forecastLiveFrontDesk);   // Sprint 24: room numbers + housekeeping status only, no guest data
 
 // ── Sprint 22: auto-sync engine ───────────────────────────────────────────────
 // POST /api/sync/tick is pinged every ~5 min by an EXTERNAL scheduler (cron-job.org) with the header
@@ -5065,11 +5123,11 @@ const forecastCurrent = (redact) => async (req, res) => {
 const send = (res, redact, body) => res.json(redact ? redactCurrentResponse(body) : body);
 app.get('/api/admin/forecast/current',     requireAuth, requireRole('admin'),      forecastCurrent(false));
 // Sprint 24: the front-desk portal gets the same payload with every guest identifier removed (server/frontdesk.js).
-app.get('/api/frontdesk/forecast/current', requireAuth, requireFrontDesk, forecastCurrent(true));
+app.get('/api/frontdesk/forecast/current', requireAuth, requirePage('reservations', 'housekeeping'), forecastCurrent(true));
 
 // ── Sprint 24: the rest of what the front-desk portal reads (read-only; the Housekeeping routes are registered above) ──────────────
 // Staff picker for the Housekeeping page: names + department only (the manager route also carries phone, pay rate, birthday, PIN state).
-app.get('/api/frontdesk/employees', requireAuth, requireFrontDesk, async (req, res) => {
+app.get('/api/frontdesk/employees', requireAuth, requirePage('housekeeping'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.user_id, u.name, u.active, u.department_id, d.name AS department
@@ -5079,7 +5137,7 @@ app.get('/api/frontdesk/employees', requireAuth, requireFrontDesk, async (req, r
   } catch (err) { console.error('[frontdesk:employees]', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
 });
 // Only the keys the Housekeeping + Forecast pages read — never the whole app_settings table.
-app.get('/api/frontdesk/settings', requireAuth, requireFrontDesk, async (req, res) => {
+app.get('/api/frontdesk/settings', requireAuth, requirePage(), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT key, value FROM app_settings WHERE key = ANY($1::text[])', [SETTINGS_ALLOWED]);
     return res.json({ success: true, settings: pickSettings(rows) });

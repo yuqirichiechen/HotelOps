@@ -3491,3 +3491,7 @@
 .emp-pin-reveal small { color: var(--text-muted); margin-left: 6px; }
 .emp-pin-hide { margin-left: 8px; font: inherit; font-size: 12px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); cursor: pointer; }
 .emp-pin-why { margin-top: 6px; }
+
+/* Sprint 28.10 — the View a department uses (staff pages beyond Home) */
+.settings-dept-view { min-width: 130px; max-width: 190px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border-subtle, rgba(128,128,128,.35)); background: var(--bg-raised, transparent); color: inherit; font: inherit; font-size: 13px; }
+.settings-dept-view-text { font-size: 12px; opacity: .75; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-subtle, rgba(128,128,128,.35)); white-space: nowrap; }

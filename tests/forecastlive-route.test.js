@@ -36,7 +36,7 @@ let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('
     const ok = await get(L, admin); assert.strictEqual(ok.status, 200, 'recovered immediately'); Date.now = realNow;
   });
   await t('front desk (25.5): its own 2-minute cache — pressing Refresh / reloading never makes rGuest pull more often than every 2 minutes; managers keep 20 s; both share one pull', async () => {
-    const F = '/api/frontdesk/forecast/live', desk = jwt.sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff', dept: 'Front Desk' }, process.env.JWT_SECRET);
+    const F = '/api/frontdesk/forecast/live', desk = jwt.sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff', dept: 'Front Desk', pages: ['reservations', 'housekeeping', 'logbook'] }, process.env.JWT_SECRET);
     assert.strictEqual((await get(F)).status, 401); assert.strictEqual((await get(F, staff)).status, 403);
     const realNow = Date.now; Date.now = () => realNow() + 40 * 60 * 1000; liveCalls = 0; const r0 = await get(F, desk); assert.strictEqual(r0.status, 200); assert.strictEqual(liveCalls, 1, 'first call pulls');
     Date.now = () => realNow() + 40 * 60 * 1000 + 60 * 1000; for (let i = 0; i < 5; i++) { const r = await get(F, desk); assert.strictEqual(r.body.cached, true, 'a minute later: still the same board'); } assert.strictEqual(liveCalls, 1, 'five Refresh presses = no new pull');

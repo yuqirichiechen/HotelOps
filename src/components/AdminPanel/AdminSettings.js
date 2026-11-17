@@ -380,17 +380,27 @@ const AdminSettings = () => {
   // delete. Refetches on every mutation since the dataset is tiny
   // (5-10 rows typical) and freshness > round-trip cost.
   const [depts,         setDepts]         = useState([]);
-  const [deptDraft,     setDeptDraft]     = useState({ name: '', color: '#3182ce' });
+  const [deptDraft,     setDeptDraft]     = useState({ name: '', color: '#3182ce', viewId: '' });
   const [deptBusy,      setDeptBusy]      = useState(false);
   const [deptError,     setDeptError]     = useState('');
   const [editingDeptId, setEditingDeptId] = useState(null);
   const [editingDeptDraft, setEditingDeptDraft] = useState({ name: '', color: '' });
+  // Sprint 28.10: each department uses a VIEW (the staff pages its people can open beyond Home). Dev always picks; admins only while the dev switch is on.
+  const [views,         setViews]         = useState([]);
+  const [canSetView,    setCanSetView]    = useState(false);
 
   const refreshDepts = async () => {
     const res = await authFetch('/api/admin/departments').then(r => r.json()).catch(() => null);
-    if (res?.success) setDepts(res.departments || []);
+    if (res?.success) { setDepts(res.departments || []); setCanSetView(!!res.canSetView); }
   };
-  useEffect(() => { refreshDepts(); }, []);
+  useEffect(() => { refreshDepts(); authFetch('/api/admin/access-views').then(r => r.json()).then(d => { if (d?.success) setViews(d.views || []); }).catch(() => {}); }, []);
+  const setDeptView = async (d, value) => {
+    setDeptBusy(true); setDeptError('');
+    const { ok, data } = await apiFetch(`/admin/departments/${d.department_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ viewId: value === '' ? null : Number(value) }) });
+    setDeptBusy(false);
+    if (!ok || !data?.success) { setDeptError(data?.message || 'Could not change the view.'); refreshDepts(); return; }
+    refreshDepts();
+  };
 
   const addDept = async () => {
     if (!deptDraft.name.trim()) return;
@@ -399,14 +409,14 @@ const AdminSettings = () => {
     const { ok, data } = await apiFetch('/admin/departments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: deptDraft.name.trim(), color: deptDraft.color || null }),
+      body: JSON.stringify({ name: deptDraft.name.trim(), color: deptDraft.color || null, ...(canSetView ? { viewId: deptDraft.viewId ? Number(deptDraft.viewId) : null } : {}) }),
     });
     setDeptBusy(false);
     if (!ok || !data?.success) {
       setDeptError(data?.message || 'Could not add department.');
       return;
     }
-    setDeptDraft({ name: '', color: '#3182ce' });
+    setDeptDraft({ name: '', color: '#3182ce', viewId: '' });
     refreshDepts();
   };
 
@@ -885,7 +895,8 @@ const AdminSettings = () => {
               <div>
                 <div className="settings-section-title">Departments</div>
                 <div className="settings-section-desc">
-                  Add or rename departments and pick a color. Colors drive Calendar chips + shift band tinting.
+                  Add or rename departments and pick a color. Colors drive Calendar chips + shift band tinting. Each department also uses one <b>View</b> — the staff
+                  pages its people can open beyond Home (a department with no view sees Home only).
                 </div>
               </div>
             </div>
@@ -933,6 +944,14 @@ const AdminSettings = () => {
                         aria-hidden
                       />
                       <span className="settings-dept-name-text">{d.name}</span>
+                      {canSetView ? (
+                        <select className="settings-dept-view" aria-label={`View for ${d.name}`} value={d.view_id == null ? '' : String(d.view_id)} onChange={e => setDeptView(d, e.target.value)} disabled={deptBusy}>
+                          <option value="">Home only</option>
+                          {views.map(v => <option key={v.view_id} value={v.view_id}>{v.name}</option>)}
+                        </select>
+                      ) : (
+                        <span className="settings-dept-view-text" aria-label={`View for ${d.name}`} title={(d.view_pages || []).length ? `Pages: ${d.view_pages.join(', ')}` : 'No extra pages'}>{d.view_name || 'Home only'}</span>
+                      )}
                       <button
                         type="button"
                         className="settings-dept-btn"
@@ -966,6 +985,12 @@ const AdminSettings = () => {
                 placeholder="New department name…"
                 onChange={e => setDeptDraft(s => ({ ...s, name: e.target.value }))}
               />
+              {canSetView && (
+                <select className="settings-dept-view" aria-label="View for the new department" value={deptDraft.viewId} onChange={e => setDeptDraft(s => ({ ...s, viewId: e.target.value }))}>
+                  <option value="">Home only</option>
+                  {views.map(v => <option key={v.view_id} value={v.view_id}>{v.name}</option>)}
+                </select>
+              )}
               <button
                 type="button"
                 className="settings-dept-btn settings-dept-btn-save"
@@ -974,6 +999,9 @@ const AdminSettings = () => {
               >Add</button>
             </div>
 
+            {!canSetView && (
+              <div className="settings-perf-help" data-testid="view-locked">New departments start as Home only. Only dev can choose a department’s view right now.</div>
+            )}
             {deptError && (
               <div className="settings-perf-help" style={{ color: 'var(--danger-text)' }}>
                 {deptError}

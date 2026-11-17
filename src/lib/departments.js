@@ -9,5 +9,3 @@ export const UNCATEGORIZED = 'Uncategorized';
 export const needsDepartment = (role) => role !== 'admin' && role !== 'dev';
 /** The department to show for a person: their department, "—" for an admin without one (admins don't need a department), otherwise Uncategorized. */
 export const departmentLabel = (person) => (person && person.department) || (needsDepartment(person && person.role) ? UNCATEGORIZED : '—');
-export const FRONT_DESK_RE = /^front[\s_-]*desk$/i;
-export const isFrontDeskDepartment = (name) => typeof name === 'string' && FRONT_DESK_RE.test(name.trim());

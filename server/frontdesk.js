@@ -1,4 +1,4 @@
-// Sprint 24 — what the front-desk portal (`/api/frontdesk/*`, role `front_desk`) is allowed to read.
+// Sprint 24 — what the front-desk portal (`/api/frontdesk/*`, department Front Desk) is allowed to read.
 //
 // The portal's Home shows counts only (tiles + "sellable vs arriving") and its Housekeeping page shares rooms out, so it never
 // needs a guest's name, confirmation number or profile id. The room/reservation payload that powers the manager pages carries

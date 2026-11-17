@@ -93,9 +93,9 @@ export const getStaffEntry = () => {
 export const setStaffEntry = (entry) => {
   try { localStorage.setItem(STAFF_ENTRY_KEY, entry === 'staff' ? 'staff' : 'clockin'); } catch { /* storage unavailable */ }
 };
-/** Sprint 24.1 / 24.2 / 28.9: the front-desk features (forecast tiles on Home, Housekeeping) belong to staff whose DEPARTMENT is "Front Desk" (the server checks the
- *  same thing from the token; the old front_desk ROLE was retired). Managers/dev use the admin shell instead. */
-export const isFrontDesk = (user) => !!user && typeof user.department === 'string' && /^front[\s_-]*desk$/i.test(user.department.trim());
+/** Sprint 28.10: the staff-portal pages beyond Home (Reservations, Housekeeping, Logbook …) are switched on by the VIEW of the person's department (`user.pages`,
+ *  from /me; the server checks the same list from the token). No view = Home only. Access never depends on a department's name. Managers/dev use the admin shell. */
+export const hasPage = (user, key) => !!user && Array.isArray(user.pages) && user.pages.includes(key);
 /** Where a signed-in (non-dev) user belongs for this property. */
 export const homePathFor = (user, slug) =>
   (user && user.role === 'admin') ? `/${slug}/admin` : `/${slug}/${getStaffEntry() === 'staff' ? 'staff' : 'clockin'}`;
