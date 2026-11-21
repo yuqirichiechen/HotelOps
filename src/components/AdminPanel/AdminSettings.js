@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth, authFetch } from '../../auth';
 import { useView } from '../../shells/ViewContext';
 import Icon from '../shared/Icon';
+import ChangePasswordCard from '../shared/ChangePasswordCard';
 
 // Sprint 16.7: collapsible main-category wrapper. The h3 header
 // is a button — tap to collapse / expand the sections beneath.
@@ -1282,6 +1283,7 @@ const AdminSettings = () => {
             <button className="settings-signout-btn" onClick={handleSignOut}>
               Sign Out
             </button>
+            <ChangePasswordCard who={user?.role === 'dev' ? 'Your dev sign-in' : 'Your manager sign-in'} />
           </div>
           </SettingsCategory>
 

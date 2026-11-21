@@ -1,0 +1,133 @@
+// Sprint 29.1 — manager (admin) + dev passwords: server/accounts.js on a real throwaway Postgres (migration 036), and the HTTP routes on top of it.
+//   node tests/accounts.test.js "$PWD"
+const ROOT = process.argv[2]; const SRV = ROOT + '/server'; const assert = require('assert'); const { execSync } = require('child_process'); const fs = require('fs');
+process.env.PORT = '3996'; process.env.JWT_SECRET = 'x'.repeat(40); process.env.DATABASE_URL = 'postgres://u:p@127.0.0.1:1/none'; process.env.PIN_VIEW_KEY = 'unit-test-vault-key-0123456789';
+process.env.DEV_USERNAME = 'devuser'; const bcrypt = require(SRV + '/node_modules/bcryptjs'); process.env.DEV_PASSWORD_HASH = bcrypt.hashSync('env-dev-pass-1', 4);
+const pg = require(SRV + '/node_modules/pg'); const jwt = require(SRV + '/node_modules/jsonwebtoken'); const vault = require(SRV + '/pinvault'); const { createAccounts, passwordProblem, createLimiter } = require(SRV + '/accounts');
+const sleep = (ms) => new Promise(r => setTimeout(r, ms)); let pass = 0; const t = async (n, f) => { try { await f(); pass++; console.log('  ok  ', n); } catch (e) { console.log('  FAIL', n, '\n      ', e.stack.split('\n').slice(0, 4).join(' | ')); process.exitCode = 1; } };
+const MIG = ROOT + '/database/migrations/036_sprint29_1_login_accounts.sql', RB = ROOT + '/database/migrations/036_sprint29_1_login_accounts_ROLLBACK.sql';
+const PGBIN = '/opt/homebrew/opt/postgresql@14/bin', DIR = '/tmp/hopdb_acct', PORT = 5441; const sh = (c) => execSync(c, { stdio: 'pipe' }).toString();
+const V = { configured: vault.configured, encrypt: vault.encryptPin, decrypt: vault.decryptPin }; const NOVAULT = { configured: () => false, encrypt: () => null, decrypt: () => null };
+
+(async () => {
+  try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* not running */ } sh(`rm -rf ${DIR}`); sh(`${PGBIN}/initdb -D ${DIR} -A trust -U postgres`);
+  sh(`${PGBIN}/pg_ctl -D ${DIR} -o "-p ${PORT} -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" -l /tmp/hopdb_acct.log -w start`);
+  const psql = (db, a) => sh(`${PGBIN}/psql -h 127.0.0.1 -p ${PORT} -U postgres -d ${db} ${a} 2>&1`); const client = async (db) => { const c = new pg.Client({ host: '127.0.0.1', port: PORT, user: 'postgres', database: db }); await c.connect(); return c; };
+  try {
+    psql('postgres', '-c "CREATE DATABASE a1"'); psql('postgres', '-c "CREATE DATABASE a2"'); psql('postgres', '-c "CREATE DATABASE a3"');
+    psql('a1', `-v ON_ERROR_STOP=1 -q -c "CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE TABLE audit_logs (log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor_id UUID, action VARCHAR(100) NOT NULL, table_name VARCHAR(100), record_id UUID, old_data JSONB, new_data JSONB, ip_address INET, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"`);
+    psql('a1', `-v ON_ERROR_STOP=1 -q -f "${MIG}"`); psql('a1', `-v ON_ERROR_STOP=1 -q -f "${MIG}"`);   // twice
+    const c1 = await client('a1'); const pool1 = { query: (s, p) => c1.query(s, p) }; let LEGACY = [{ username: 'admin', password: 'legacy-pass-1', name: 'Admin' }]; const devEnv = { calls: 0 };
+    const mk = (pool, vlt) => createAccounts({ pool, legacyAdmins: () => LEGACY, vault: vlt || V, verifyEnvDev: async (u, p) => { devEnv.calls += 1; return u === 'devuser' && p === 'env-dev-pass-1' ? { username: 'devuser' } : null; }, envDevConfigured: () => true });
+    const A = mk(pool1);
+
+    await t('MIGRATION 036: applies twice cleanly; usernames are validated and unique ignoring case; only ONE dev row can exist; nothing is copied in by the migration', async () => {
+      assert.strictEqual((await c1.query('SELECT count(*)::int n FROM login_accounts')).rows[0].n, 0);
+      await c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('admin', 'Boss', 'x')"); await c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('admin', 'a', 'x')"); await c1.query("DELETE FROM login_accounts WHERE username = 'a'");   // a 1-character legacy name is importable
+       await assert.rejects(c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('admin', 'BOSS', 'x')"), /uq_login_accounts_username/);
+      await assert.rejects(c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('admin', 'a b', 'x')"), /username_format/); await assert.rejects(c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('boss', 'abcd', 'x')"), /check/i);
+      await c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('dev', 'dev1', 'x')"); await assert.rejects(c1.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('dev', 'dev2', 'x')"), /uq_login_accounts_one_dev/); await c1.query('DELETE FROM login_accounts');
+    });
+    await t('PASSWORD RULES: 8–128 characters, no leading / trailing spaces, not the username; usernames 3–40 of letters, numbers . _ -', () => {
+      for (const [pw, ok] of [['short', false], ['1234567', false], ['12345678', true], ['a'.repeat(128), true], ['a'.repeat(129), false], [' spaced pass', false], ['spaced pass ', false], ['in the middle ok', true], ['', false], [undefined, false], [12345678, false]]) assert.strictEqual(passwordProblem(pw, 'bob') === null, ok, String(pw).slice(0, 12));
+      assert(passwordProblem('Bobby-Admin', 'bobby-admin'), 'same as the username'); const { cleanUsername } = require(SRV + '/accounts'); assert.deepStrictEqual(['ab', 'abc', 'a b', 'ok.user_1-x', 'x'.repeat(41), ' pad '].map(cleanUsername), [null, 'abc', null, 'ok.user_1-x', null, 'pad']);
+      const L = createLimiter(3, 1000); for (let i = 0; i < 3; i++) L.fail('k', 0); assert.strictEqual(L.check('k', 500).allowed, false); assert.strictEqual(L.check('k', 1500).allowed, true, 'the window slides'); L.fail('z', 0); L.clear('z'); assert(L.check('z', 1).allowed);
+    });
+    await t('ADMIN SIGN-IN, first use: the admins.json admin signs in with the file password and is COPIED into the table (bcrypt hash + encrypted copy, never the plain text); wrong password / unknown name refused', async () => {
+      assert.strictEqual(await A.verifyAdmin('admin', 'wrong'), null); assert.strictEqual(await A.verifyAdmin('nobody', 'legacy-pass-1'), null); assert.strictEqual((await c1.query('SELECT count(*)::int n FROM login_accounts')).rows[0].n, 0, 'a wrong attempt imports nothing');
+      const ok = await A.verifyAdmin('Admin', 'legacy-pass-1'); assert.deepStrictEqual(ok, { username: 'admin', name: 'Admin' }, 'case-insensitive username'); const row = (await c1.query("SELECT * FROM login_accounts WHERE kind = 'admin'")).rows[0];
+      assert(/^\$2[aby]\$/.test(row.password_hash) && row.password_hash !== 'legacy-pass-1' && row.password_enc && !row.password_enc.includes('legacy-pass-1') && row.created_by === 'admins.json'); assert.strictEqual(vault.decryptPin(row.password_enc), 'legacy-pass-1', 'the vault copy decrypts for dev');
+      assert.deepStrictEqual(await A.verifyAdmin('admin', 'legacy-pass-1'), { username: 'admin', name: 'Admin' }, 'second sign-in comes from the database');
+    });
+    await t('CHANGE PASSWORD (admin): needs the current one; weak / same / wrong are refused with the reason; success makes the OLD password (database AND the file) stop working and the new one work; the encrypted copy follows', async () => {
+      let r = await A.changePassword({ kind: 'admin', username: 'admin', current: 'legacy-pass-1', next: 'short' }); assert.deepStrictEqual([r.error, /at least 8/.test(r.message)], ['invalid', true]);
+      r = await A.changePassword({ kind: 'admin', username: 'admin', current: 'legacy-pass-1', next: 'legacy-pass-1' }); assert.strictEqual(r.error, 'same'); r = await A.changePassword({ kind: 'admin', username: 'admin', current: 'nope-nope-1', next: 'brand-new-pass-2' }); assert.deepStrictEqual([r.error, /not right/.test(r.message)], ['wrong_current', true]);
+      assert.deepStrictEqual(await A.changePassword({ kind: 'admin', username: 'admin', current: 'legacy-pass-1', next: 'brand-new-pass-2' }), { ok: true });
+      assert.strictEqual(await A.verifyAdmin('admin', 'legacy-pass-1'), null, 'the old password — even though it is still in admins.json — no longer works'); assert((await A.verifyAdmin('admin', 'brand-new-pass-2')).username === 'admin');
+      const row = (await c1.query("SELECT * FROM login_accounts WHERE username = 'admin'")).rows[0]; assert(row.password_changed_at); assert.strictEqual(vault.decryptPin(row.password_enc), 'brand-new-pass-2'); assert.strictEqual((await A.revealAdmin(row.account_id)).password, 'brand-new-pass-2');
+    });
+    await t('WRONG-CURRENT GUESSING IS LIMITED: 5 wrong attempts in 15 minutes lock changes for that account (with a retry time); a right password afterwards still needs the lock to expire; other accounts are unaffected', async () => {
+      const B = mk(pool1); await B.createAdmin({ username: 'rate-me', name: 'R', password: 'rate-me-pass-1', by: 'dev' }); await B.createAdmin({ username: 'other', name: 'O', password: 'other-pass-1', by: 'dev' });
+      for (let i = 0; i < 5; i++) assert.strictEqual((await B.changePassword({ kind: 'admin', username: 'rate-me', current: 'guess-' + i + '-xx', next: 'whatever-new-1' })).error, 'wrong_current');
+      const r = await B.changePassword({ kind: 'admin', username: 'rate-me', current: 'rate-me-pass-1', next: 'whatever-new-1' }); assert.strictEqual(r.error, 'rate'); assert(r.retryAfterSec > 0 && r.retryAfterSec <= 900);
+      assert.deepStrictEqual(await B.changePassword({ kind: 'admin', username: 'other', current: 'other-pass-1', next: 'other-new-pass-2' }), { ok: true });
+    });
+    await t('DEV: signs in with the ENVIRONMENT password until dev changes it; the first change creates the row, after which ONLY the new password works (the environment one is ignored); the dev password is never stored reversibly', async () => {
+      assert.deepStrictEqual(await A.verifyDev('devuser', 'env-dev-pass-1'), { username: 'devuser' }); assert.strictEqual(await A.verifyDev('devuser', 'x'), null); assert.strictEqual(await A.devAvailable(), true);
+      assert.strictEqual((await A.changePassword({ kind: 'dev', username: 'devuser', current: 'wrong-wrong-1', next: 'dev-new-pass-77' })).error, 'wrong_current');
+      assert.deepStrictEqual(await A.changePassword({ kind: 'dev', username: 'devuser', current: 'env-dev-pass-1', next: 'dev-new-pass-77' }), { ok: true });
+      const row = (await c1.query("SELECT * FROM login_accounts WHERE kind = 'dev'")).rows[0]; assert.deepStrictEqual([row.username, row.password_enc], ['devuser', null], 'no vault copy for dev'); assert(/^\$2[aby]\$/.test(row.password_hash));
+      assert.strictEqual(await A.verifyDev('devuser', 'env-dev-pass-1'), null, 'the environment password stops working'); assert.deepStrictEqual(await A.verifyDev('devuser', 'dev-new-pass-77'), { username: 'devuser' }); assert.strictEqual(await A.verifyDev('someone', 'dev-new-pass-77'), null, 'username still has to match');
+      assert.deepStrictEqual(await A.changePassword({ kind: 'dev', username: 'devuser', current: 'dev-new-pass-77', next: 'dev-newer-pass-88' }), { ok: true }); assert.strictEqual((await c1.query("SELECT count(*)::int n FROM login_accounts WHERE kind = 'dev'")).rows[0].n, 1, 'still one dev row'); assert((await A.verifyDev('devuser', 'dev-newer-pass-88')));
+      await c1.query("DELETE FROM login_accounts WHERE kind = 'dev'"); assert((await A.verifyDev('devuser', 'env-dev-pass-1')), 'recovery: deleting the row brings the environment password back');
+    });
+    await t('DEV MANAGES ADMINS: the list shows the file admin(s) + new ones (never a password); add validates and refuses duplicates ignoring case; reset sets a new password (old stops); switch off blocks sign-in, on restores it; rename; reveal returns the current password', async () => {
+      LEGACY = [{ username: 'admin', password: 'legacy-pass-1', name: 'Admin' }, { username: 'second', password: 'second-pass-1', name: 'Second Boss' }]; const list = await A.listAdmins(); assert(list.some(a => a.username === 'second' && a.created_by === 'admins.json'), 'a newly listed file admin is copied in'); assert(!JSON.stringify(list).match(/pass-1|password_hash|password_enc/), 'the list never carries a password or hash');
+      assert.deepStrictEqual(await A.createAdmin({ username: 'ab', name: 'x', password: 'long-enough-1' }), { error: 'invalid', message: 'The username needs 3–40 letters, numbers, dots, dashes or underscores.' }); assert.strictEqual((await A.createAdmin({ username: 'newboss', name: 'New', password: 'short' })).error, 'invalid');
+      const made = await A.createAdmin({ username: 'NewBoss', name: '  New   Boss ', password: 'newboss-pass-1', by: 'devuser' }); assert(made.ok && made.account.name === 'New Boss' && made.account.has_password_copy && made.account.active); assert.strictEqual((await A.createAdmin({ username: 'newboss', name: 'x', password: 'newboss-pass-2' })).error, 'taken');
+      const id = made.account.account_id; assert.strictEqual((await A.verifyAdmin('newboss', 'newboss-pass-1')).name, 'New Boss'); assert.strictEqual((await A.revealAdmin(id)).password, 'newboss-pass-1');
+      assert.deepStrictEqual((await A.resetAdminPassword(id, 'reset-by-dev-9')).ok, true); assert.strictEqual(await A.verifyAdmin('newboss', 'newboss-pass-1'), null); assert((await A.verifyAdmin('newboss', 'reset-by-dev-9'))); assert.strictEqual((await A.revealAdmin(id)).password, 'reset-by-dev-9'); assert.strictEqual((await A.resetAdminPassword(id, 'bad')).error, 'invalid');
+      assert((await A.updateAdmin(id, { active: false })).account.active === false); assert.strictEqual(await A.verifyAdmin('newboss', 'reset-by-dev-9'), null, 'switched off'); assert((await A.updateAdmin(id, { active: true })).ok); assert((await A.verifyAdmin('newboss', 'reset-by-dev-9')));
+      assert.strictEqual((await A.updateAdmin(id, { name: 'Renamed' })).account.name, 'Renamed'); assert.strictEqual((await A.updateAdmin(id, { name: '  ' })).error, 'invalid'); assert.strictEqual((await A.updateAdmin(id, { active: 'no' })).error, 'invalid'); assert.strictEqual((await A.updateAdmin(id, {})).error, 'invalid');
+      for (const bad of ['nope', '00000000-0000-4000-8000-000000000000']) { assert.strictEqual((await A.revealAdmin(bad)).error, 'not_found'); assert.strictEqual((await A.resetAdminPassword(bad, 'long-enough-1')).error, 'not_found'); }
+    });
+    await t('REVEAL without a vault: when no PIN_VIEW_KEY is configured nothing reversible is stored (reveal says why, dev can still reset); a damaged / missing copy says "not stored"', async () => {
+      const N = mk(pool1, NOVAULT); const r = await N.createAdmin({ username: 'novault', name: 'N', password: 'novault-pass-1', by: 'dev' }); assert.strictEqual(r.account.has_password_copy, false); assert.deepStrictEqual(await N.revealAdmin(r.account.account_id), { ok: true, password: null, reason: 'not_configured', username: 'novault' });
+      assert.deepStrictEqual(await A.revealAdmin(r.account.account_id), { ok: true, password: null, reason: 'not_stored', username: 'novault' }, 'vault on, but this one has no copy'); await c1.query("UPDATE login_accounts SET password_enc = 'v1.garbage' WHERE username = 'novault'"); assert.strictEqual((await A.revealAdmin(r.account.account_id)).reason, 'not_stored');
+      assert((await N.verifyAdmin('novault', 'novault-pass-1')), 'sign-in does not depend on the vault');
+    });
+    await t('BEFORE MIGRATION 036 nothing breaks: admins sign in from admins.json, dev from the environment; changing a password says it is not available yet (no half-state)', async () => {
+      const c3 = await client('a3'); const M = mk({ query: (s, p) => c3.query(s, p) }); assert.deepStrictEqual(await M.verifyAdmin('admin', 'legacy-pass-1'), { username: 'admin', name: 'Admin' }); assert.strictEqual(await M.verifyAdmin('admin', 'x'), null); assert.deepStrictEqual(await M.verifyDev('devuser', 'env-dev-pass-1'), { username: 'devuser' });
+      const r = await M.changePassword({ kind: 'admin', username: 'admin', current: 'legacy-pass-1', next: 'brand-new-pass-2' }); assert.strictEqual(r.error, 'unavailable'); assert.strictEqual((await M.changePassword({ kind: 'dev', username: 'devuser', current: 'env-dev-pass-1', next: 'dev-new-pass-77' })).error, 'unavailable'); await assert.rejects(M.listAdmins(), (e) => e.code === '42P01'); await c3.end();
+    });
+    await t('ROLLBACK drops only login_accounts; the migration is additive, in one transaction, and holds no password', async () => {
+      const c2 = await client('a2'); psql('a2', `-v ON_ERROR_STOP=1 -q -f "${MIG}"`); await c2.query("INSERT INTO login_accounts (kind, username, password_hash) VALUES ('admin', 'tmpuser', 'x')"); psql('a2', `-v ON_ERROR_STOP=1 -q -f "${RB}"`); assert.strictEqual((await c2.query("SELECT to_regclass('login_accounts') AS t")).rows[0].t, null); await c2.end();
+      const sql = fs.readFileSync(MIG, 'utf8').replace(/--.*$/gm, ''); assert(/^\s*BEGIN;/.test(sql) && /COMMIT;\s*$/.test(sql) && !/\bDROP\b|TRUNCATE|DELETE FROM|UPDATE \w+ SET|INSERT INTO/i.test(sql));
+    });
+
+    // ── HTTP routes over the same real database ───────────────────────────────────────────────────────────────────────────────────────────
+    pg.Pool.prototype.query = async function (sql, params) { return c1.query(sql, params); }; pg.Pool.prototype.connect = async function () { return { query: (s, p) => c1.query(s, p), release() {} }; };
+    await c1.query('DELETE FROM login_accounts'); await c1.query('DELETE FROM audit_logs');
+    require(SRV + '/server.js'); await sleep(600);
+    const sign = (o) => jwt.sign(o, process.env.JWT_SECRET); const http = (p, o = {}) => fetch('http://127.0.0.1:3996' + p, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json', ...(o.token ? { Authorization: 'Bearer ' + o.token } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }).then(async r => ({ status: r.status, headers: r.headers, body: await r.json().catch(() => null) }));
+    const devLogin = (u, p) => http('/api/auth/dev/login', { method: 'POST', body: { username: u, password: p } }); const adminLogin = (u, p) => http('/api/auth/admin/login', { method: 'POST', body: { username: u, password: p } });
+    let DEV, ADM; const pw = (token, body) => http('/api/account/password', { method: 'POST', token, body });
+
+    await t('ROUTES: dev signs in with the environment password; the admin list / add are DEV ONLY (admin 403, staff 403, anonymous 401) and never carry a password; everything is no-store', async () => {
+      const d = await devLogin('devuser', 'env-dev-pass-1'); assert.strictEqual(d.status, 200); DEV = d.body.token; assert.strictEqual((await devLogin('devuser', 'nope')).status, 401);
+      const adminTok = sign({ sub: 'someadmin', role: 'admin', type: 'admin', name: 'A' }), staffTok = sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff', pages: ['logbook'] });
+      for (const [m, p, b] of [['GET', '/api/dev/admin-accounts'], ['POST', '/api/dev/admin-accounts', { username: 'abc', password: 'long-enough-1' }], ['PATCH', '/api/dev/admin-accounts/00000000-0000-4000-8000-000000000000', { active: false }], ['POST', '/api/dev/admin-accounts/00000000-0000-4000-8000-000000000000/password', { password: 'long-enough-1' }], ['POST', '/api/dev/admin-accounts/00000000-0000-4000-8000-000000000000/reveal']]) {
+        assert.strictEqual((await http(p, { method: m, body: b })).status, 401, 'anon ' + m + p); assert.strictEqual((await http(p, { method: m, body: b, token: adminTok })).status, 403, 'admin ' + m + p); assert.strictEqual((await http(p, { method: m, body: b, token: staffTok })).status, 403, 'staff ' + m + p);
+      }
+      const l = await http('/api/dev/admin-accounts', { token: DEV }); assert.strictEqual(l.status, 200); assert.strictEqual(l.body.vaultConfigured, true); assert(/no-store/.test(l.headers.get('cache-control'))); assert(!/password_hash|password_enc|"password"/.test(JSON.stringify(l.body)));
+    });
+    await t('ROUTES: dev adds an admin (validated, duplicate → 409); that admin can sign in; dev reveals / resets / switches off / renames — each audited WITHOUT the password; a switched-off admin cannot sign in', async () => {
+      const bad = await http('/api/dev/admin-accounts', { method: 'POST', token: DEV, body: { username: 'ab', name: 'x', password: 'long-enough-1' } }); assert.strictEqual(bad.status, 400); assert.strictEqual((await http('/api/dev/admin-accounts', { method: 'POST', token: DEV, body: { username: 'frontboss', name: 'x', password: 'short' } })).status, 400);
+      const c = await http('/api/dev/admin-accounts', { method: 'POST', token: DEV, body: { username: 'frontboss', name: 'Front Boss', password: 'frontboss-pass-1' } }); assert.strictEqual(c.status, 200); const id = c.body.account.account_id; assert(!JSON.stringify(c.body).includes('frontboss-pass-1'));
+      assert.strictEqual((await http('/api/dev/admin-accounts', { method: 'POST', token: DEV, body: { username: 'FRONTBOSS', name: 'x', password: 'frontboss-pass-2' } })).status, 409);
+      const li = await adminLogin('frontboss', 'frontboss-pass-1'); assert.strictEqual(li.status, 200); ADM = li.body.token; assert.deepStrictEqual([li.body.user.role, li.body.user.name], ['admin', 'Front Boss']); assert.strictEqual((await adminLogin('frontboss', 'wrong-pass-123')).status, 401);
+      const rv = await http(`/api/dev/admin-accounts/${id}/reveal`, { method: 'POST', token: DEV }); assert.deepStrictEqual([rv.status, rv.body.password], [200, 'frontboss-pass-1']); assert(/no-store/.test(rv.headers.get('cache-control')));
+      assert.strictEqual((await http(`/api/dev/admin-accounts/${id}/password`, { method: 'POST', token: DEV, body: { password: 'reset-pass-12' } })).status, 200); assert.strictEqual((await adminLogin('frontboss', 'frontboss-pass-1')).status, 401); assert.strictEqual((await adminLogin('frontboss', 'reset-pass-12')).status, 200);
+      assert.strictEqual((await http(`/api/dev/admin-accounts/${id}/password`, { method: 'POST', token: DEV, body: { password: 'x' } })).status, 400); assert.strictEqual((await http(`/api/dev/admin-accounts/${id}`, { method: 'PATCH', token: DEV, body: { active: false } })).status, 200); assert.strictEqual((await adminLogin('frontboss', 'reset-pass-12')).status, 401, 'switched off'); await http(`/api/dev/admin-accounts/${id}`, { method: 'PATCH', token: DEV, body: { active: true, name: 'Front Boss 2' } });
+      assert.strictEqual((await http('/api/dev/admin-accounts/00000000-0000-4000-8000-000000000000/reveal', { method: 'POST', token: DEV })).status, 404);
+      const audit = (await c1.query("SELECT action, new_data FROM audit_logs WHERE table_name = 'login_accounts' ORDER BY created_at")).rows; const acts = audit.map(a => a.action); for (const a of ['dev_admin_created', 'dev_admin_password_reveal', 'dev_admin_password_reset', 'dev_admin_disabled', 'dev_admin_enabled']) assert(acts.includes(a), a + ' in ' + acts.join(','));
+      assert(!JSON.stringify(audit).match(/frontboss-pass|reset-pass|legacy-pass|env-dev-pass/), 'no password ever reaches the audit log'); assert(audit.find(a => a.action === 'dev_admin_password_reveal').new_data.dev === 'devuser', 'who revealed it is recorded');
+    });
+    await t('ROUTES: an ADMIN changes their own password (current required); a wrong current password is a plain 400 — NEVER 401, so the app does not sign them out; weak / same refused; the old password stops working; staff are refused', async () => {
+      assert.strictEqual((await pw(undefined, { currentPassword: 'a', newPassword: 'b' })).status, 401); assert.strictEqual((await pw(sign({ sub: '11111111-1111-4111-8111-111111111111', role: 'employee', type: 'staff' }), { currentPassword: 'x', newPassword: 'long-enough-1' })).status, 403);
+      assert.strictEqual((await pw(ADM, { newPassword: 'long-enough-1' })).status, 400); const wrong = await pw(ADM, { currentPassword: 'not-my-password', newPassword: 'my-new-pass-55' }); assert.deepStrictEqual([wrong.status, wrong.body.code], [400, 'wrong_current']);
+      assert.strictEqual((await pw(ADM, { currentPassword: 'reset-pass-12', newPassword: 'tiny' })).body.code, 'invalid'); assert.strictEqual((await pw(ADM, { currentPassword: 'reset-pass-12', newPassword: 'reset-pass-12' })).body.code, 'same');
+      const ok = await pw(ADM, { currentPassword: 'reset-pass-12', newPassword: 'my-new-pass-55' }); assert.deepStrictEqual([ok.status, ok.body.success], [200, true]); assert(/no-store/.test(ok.headers.get('cache-control')));
+      assert.strictEqual((await adminLogin('frontboss', 'reset-pass-12')).status, 401); assert.strictEqual((await adminLogin('frontboss', 'my-new-pass-55')).status, 200); const id = (await c1.query("SELECT account_id FROM login_accounts WHERE username = 'frontboss'")).rows[0].account_id;
+      assert.strictEqual((await http(`/api/dev/admin-accounts/${id}/reveal`, { method: 'POST', token: DEV })).body.password, 'my-new-pass-55', 'dev sees the password the admin chose');
+      for (let i = 0; i < 5; i++) await pw(ADM, { currentPassword: 'guess' + i + 'xxxx', newPassword: 'another-new-1' }); const locked = await pw(ADM, { currentPassword: 'my-new-pass-55', newPassword: 'another-new-1' }); assert.strictEqual(locked.status, 429); assert(Number(locked.headers.get('retry-after')) > 0);
+      assert(!JSON.stringify(((await c1.query("SELECT new_data FROM audit_logs WHERE action = 'password_changed'")).rows)).match(/my-new-pass|reset-pass/), 'audited without the password');
+    });
+    await t('ROUTES: DEV changes their own password the same way: the environment password stops working, the new one signs in; wrong current → 400 (not 401)', async () => {
+      assert.deepStrictEqual((await pw(DEV, { currentPassword: 'wrong-wrong-1', newPassword: 'dev-brand-new-9' })).body.code, 'wrong_current'); assert.strictEqual((await pw(DEV, { currentPassword: 'env-dev-pass-1', newPassword: 'dev-brand-new-9' })).status, 200);
+      assert.strictEqual((await devLogin('devuser', 'env-dev-pass-1')).status, 401, 'environment password ignored now'); const again = await devLogin('devuser', 'dev-brand-new-9'); assert.strictEqual(again.status, 200); assert.strictEqual(again.body.user.role, 'dev');
+      assert.strictEqual((await c1.query("SELECT password_enc FROM login_accounts WHERE kind = 'dev'")).rows[0].password_enc, null, 'dev password has no reversible copy');
+    });
+  } finally { try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* */ } }
+  console.log(`${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
+})();

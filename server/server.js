@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const {
-  signToken, hashPin, verifyPin, findAdmin,
+  signToken, hashPin, verifyPin, findAdmin, legacyAdmins,
   requireAuth, requireRole, requirePage,
   devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey,
 } = require('./auth');
@@ -68,6 +68,14 @@ const pool = new Pool({
   ssl:                { rejectUnauthorized: false },
   max:                5,
   idleTimeoutMillis:  10_000,
+});
+
+// Sprint 29.1: admin + dev sign-in accounts (database, migration 036; falls back to admins.json / DEV_PASSWORD_HASH until a person has a row) — server/accounts.js
+const _vault = require('./pinvault');
+const accounts = require('./accounts').createAccounts({
+  pool, legacyAdmins,
+  vault: { configured: _vault.configured, encrypt: _vault.encryptPin, decrypt: _vault.decryptPin },
+  verifyEnvDev: verifyDevCredentials, envDevConfigured: devConfigured,
 });
 
 pool.query('SELECT NOW()').then(() => {
@@ -335,12 +343,14 @@ app.post('/api/auth/staff/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/admin/login', (req, res) => {
+app.post('/api/auth/admin/login', async (req, res) => {
   const { username, password } = req.body || {};
-  if (!username || !password) {
+  if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ success: false, message: 'Username and password required' });
   }
-  const admin = findAdmin(username, password);
+  let admin = null;
+  try { admin = await accounts.verifyAdmin(username, password); }
+  catch (err) { console.error('[auth] admin sign-in:', err && err.message); return res.status(500).json({ success: false, message: 'Server error' }); }
   if (!admin) return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
   const token = signToken({
@@ -365,16 +375,85 @@ app.post('/api/auth/admin/login', (req, res) => {
 // POST /api/auth/dev/login — Sprint 22.4: server-verified dev sign-in (replaces the client-side dev/dev gate).
 // 503 until DEV_PASSWORD_HASH is set; 5 failures per client / 30 overall per 15 minutes → 429; a failure never says which field was wrong.
 app.post('/api/auth/dev/login', async (req, res) => {
-  if (!devConfigured()) return res.status(503).json({ success: false, message: 'Dev sign-in is not configured on the server.' });
+  if (!(await accounts.devAvailable().catch(() => devConfigured()))) return res.status(503).json({ success: false, message: 'Dev sign-in is not configured on the server.' });
   const key = devClientKey(req), gate = devLoginAllowed(key);
   if (!gate.allowed) { res.set('Retry-After', String(gate.retryAfterSec)); return res.status(429).json({ success: false, message: 'Too many attempts. Try again later.' }); }
   const { username, password } = req.body || {};
   if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) return res.status(400).json({ success: false, message: 'Username and password required' });
-  const dev = await verifyDevCredentials(username, password);
+  const dev = await accounts.verifyDev(username, password).catch((err) => { console.error('[auth] dev sign-in:', err && err.message); return null; });
   if (!dev) { recordDevFailure(key); console.warn('[auth] dev sign-in failed'); return res.status(401).json({ success: false, message: 'Invalid credentials' }); }
   clearDevFailures(key); console.info('[auth] dev sign-in ok');
   const token = signToken({ sub: dev.username, role: 'dev', name: 'Dev', type: 'dev' });
   return res.json({ success: true, token, user: { username: dev.username, name: 'Dev', role: 'dev', type: 'dev' } });
+});
+
+// ── Sprint 29.1: passwords for manager (admin) and dev sign-in ───────────────────────────────────────────────────────────────────────────────
+// Change YOUR OWN password (manager or dev session; staff sign in with a PIN, not here). Needs the current password; failures are rate-limited per account. Errors use 400/403/429/503
+// — never 401, because the client treats a 401 as "session expired" and signs the person out. Other sessions of the same account stay valid until their token expires (8 h).
+const pwAudit = (action, recordId, data) => pool.query(
+  `INSERT INTO audit_logs (actor_id, action, table_name, record_id, old_data, new_data) VALUES (NULL, $1, 'login_accounts', $2, NULL, $3)`, [action, recordId || null, JSON.stringify(data)]).catch(() => { /* the audit row must never block the change */ });
+const accountsFail = (res, tag, err) => {
+  if (err && err.code === '42P01') return res.status(503).json({ success: false, code: 'unavailable', message: 'Not available yet — apply migration 036 first.' });
+  console.error(`[${tag}]`, err && err.message); return res.status(500).json({ success: false, message: 'Server error' });
+};
+const ACCOUNT_STATUS = { invalid: 400, same: 400, wrong_current: 400, rate: 429, unavailable: 503, taken: 409, not_found: 404 };
+const sendResult = (res, r, okBody) => {
+  if (r.ok) return res.json({ success: true, ...(okBody ? okBody(r) : {}) });
+  if (r.error === 'rate' && r.retryAfterSec) res.set('Retry-After', String(r.retryAfterSec));
+  return res.status(ACCOUNT_STATUS[r.error] || 400).json({ success: false, code: r.error, message: r.message });
+};
+app.post('/api/account/password', requireAuth, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const kind = req.auth.type === 'dev' ? 'dev' : req.auth.type === 'admin' ? 'admin' : null;
+  if (!kind) return res.status(403).json({ success: false, message: 'Only manager and dev accounts have a password here — staff sign in with their PIN.' });
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword) return res.status(400).json({ success: false, code: 'invalid', message: 'Enter your current password and a new one.' });
+  try {
+    const r = await accounts.changePassword({ kind, username: req.auth.sub, current: currentPassword, next: newPassword });
+    if (r.ok) pwAudit('password_changed', null, { kind, username: req.auth.sub });
+    return sendResult(res, r);
+  } catch (err) { return accountsFail(res, 'account:password', err); }
+});
+
+// DEV ONLY — manager accounts. List (+ the admins.json admin(s) are copied into the table the first time), add, rename / switch off, reset a password, and REVEAL one
+// (decrypted from the vault copy — see server/pinvault.js; POST so it is never cached; every reveal / reset / add is written to audit_logs, never the password itself).
+const devOnlyJson = (res) => res.set('Cache-Control', 'no-store');
+app.get('/api/dev/admin-accounts', requireAuth, requireRole('dev'), async (req, res) => {
+  devOnlyJson(res);
+  try { return res.json({ success: true, accounts: await accounts.listAdmins(), vaultConfigured: _vault.configured() }); } catch (err) { return accountsFail(res, 'admins:list', err); }
+});
+app.post('/api/dev/admin-accounts', requireAuth, requireRole('dev'), async (req, res) => {
+  devOnlyJson(res); const b = req.body || {};
+  try {
+    const r = await accounts.createAdmin({ username: b.username, name: b.name, password: b.password, by: req.auth.sub });
+    if (r.ok) pwAudit('dev_admin_created', r.account.account_id, { dev: req.auth.sub, username: r.account.username });
+    return sendResult(res, r, (x) => ({ account: x.account }));
+  } catch (err) { return accountsFail(res, 'admins:create', err); }
+});
+app.patch('/api/dev/admin-accounts/:id', requireAuth, requireRole('dev'), async (req, res) => {
+  devOnlyJson(res); const b = req.body || {};
+  try {
+    const r = await accounts.updateAdmin(req.params.id, { name: b.name, active: b.active });
+    if (r.ok) pwAudit(b.active === undefined ? 'dev_admin_renamed' : (b.active ? 'dev_admin_enabled' : 'dev_admin_disabled'), r.account.account_id, { dev: req.auth.sub, username: r.account.username });
+    return sendResult(res, r, (x) => ({ account: x.account }));
+  } catch (err) { return accountsFail(res, 'admins:update', err); }
+});
+app.post('/api/dev/admin-accounts/:id/password', requireAuth, requireRole('dev'), async (req, res) => {
+  devOnlyJson(res);
+  try {
+    const r = await accounts.resetAdminPassword(req.params.id, (req.body || {}).password);
+    if (r.ok) pwAudit('dev_admin_password_reset', r.account.account_id, { dev: req.auth.sub, username: r.account.username });
+    return sendResult(res, r, (x) => ({ account: x.account }));
+  } catch (err) { return accountsFail(res, 'admins:reset', err); }
+});
+app.post('/api/dev/admin-accounts/:id/reveal', requireAuth, requireRole('dev'), async (req, res) => {
+  devOnlyJson(res);
+  try {
+    const r = await accounts.revealAdmin(req.params.id);
+    if (r.error) return sendResult(res, r);
+    if (r.password) pwAudit('dev_admin_password_reveal', req.params.id, { dev: req.auth.sub, username: r.username });
+    return res.json({ success: true, password: r.password, reason: r.reason || null });
+  } catch (err) { return accountsFail(res, 'admins:reveal', err); }
 });
 
 app.post('/api/auth/staff/set-pin', requireAuth, async (req, res) => {

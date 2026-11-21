@@ -15,7 +15,7 @@ import Forecasting from '../components/Forecasting'; // Sprint 17.3 — reservat
 import Forecast    from '../components/Forecast';    // Sprint 17.11 — room-type availability forecast
 import Housekeeping from '../components/Housekeeping'; // Sprint 23 — assign housekeepers to rooms
 import StaffPortalShell from './StaffPortalShell';       // Sprint 24.3 — dev "View as → Front desk"
-import { DevSync, DevForecastSettings, DevLogsView, DevPlatformView } from '../pages/Dev/DevViews';
+import { DevSync, DevForecastSettings, DevLogsView, DevPlatformView, DevAdminsView } from '../pages/Dev/DevViews';
 import '../pages/Dev/DevPages.css';
 // Sprint 12.1: NotesPage no longer reachable from the admin shell —
 // handoff notes moved to the Logbook surface (AdminReports). Staff
@@ -59,6 +59,7 @@ const DEV_NAV = [
   { view: 'devlogs',     label: 'Logs',              icon: 'terminal' },
   { view: 'devsettings', label: 'Forecast settings', icon: 'sliders' },
   { view: 'devplatform', label: 'Platform',          icon: 'layers' },
+  { view: 'devadmins',   label: 'Admins',            icon: 'key' },   // Sprint 29.1: manager accounts + the dev password
 ];
 
 const VIEWS = {
@@ -75,7 +76,7 @@ const VIEWS = {
   settings:    AdminSettings,
 };
 const DEV_VIEWS = {
-  devsync: DevSync, devlogs: DevLogsView, devsettings: DevForecastSettings, devplatform: DevPlatformView,
+  devsync: DevSync, devlogs: DevLogsView, devsettings: DevForecastSettings, devplatform: DevPlatformView, devadmins: DevAdminsView,
 };
 
 const ACTIVE_PARENT = {

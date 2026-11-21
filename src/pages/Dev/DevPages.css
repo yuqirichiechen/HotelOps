@@ -90,3 +90,19 @@
 .dv-view-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 
 .dv-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Sprint 29.1 — Dev → Admins */
+.dva-list { list-style: none; margin: 14px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.dva-row { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.dva-row.off { opacity: .72; }
+.dva-main { display: flex; flex-direction: column; gap: 2px; }
+.dva-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dva-user { opacity: .65; font-size: 13px; }
+.dva-pill { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); }
+.dva-pill.on { color: var(--ia-ok, #3f9d6b); border-color: currentColor; }
+.dva-pill.off { color: var(--danger-text, #e5736b); border-color: currentColor; }
+.dva-actions, .dva-reset, .dva-shown, .dva-edit, .dva-addactions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dva-shown code { font-size: 16px; padding: 6px 12px; border-radius: 8px; background: rgba(201,160,90,.16); letter-spacing: .04em; user-select: all; }
+.dva-add { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 10px; }
+.dva-add h3 { margin: 0; font-size: 15px; }
+.dva-addgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; align-items: center; }

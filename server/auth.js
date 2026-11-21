@@ -50,6 +50,8 @@ try {
 
 const findAdmin = (username, password) =>
   admins.find(a => a.username === username && a.password === password) || null;
+// Sprint 29.1: the file's admins are only the FIRST-USE source now — server/accounts.js copies each into the database (login_accounts) the first time they sign in.
+const legacyAdmins = () => admins.slice();
 
 // ── JWT helpers ─────────────────────────────────────────────────────────────
 
@@ -154,7 +156,7 @@ module.exports = {
   verifyToken,
   hashPin,
   verifyPin,
-  findAdmin,
+  findAdmin, legacyAdmins,
   requireAuth,
   requireRole, requirePage,
   devConfigured, verifyDevCredentials, devLoginAllowed, recordDevFailure, clearDevFailures, devClientKey, _resetDevLimiter,
