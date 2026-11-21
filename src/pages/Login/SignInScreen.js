@@ -24,8 +24,9 @@ export const Field = ({ id, label, optional, icon, secret, value, onChange, righ
 
 // Sprint 29.2: the same screen also hosts the sign-in screens' "Change password" step — `subtitle`, `heading`, `submitText` / `busyText` and `backText` override the wording, `notice` shows
 // a success line (after a password change), and `aside` is a small link row under the fields ("Change password").
-const SignInScreen = ({ tenant, onChangeProperty, onBack, title, desc, icon, error, notice, aside, subtitle, heading = 'Welcome back', submitText, busyText = 'Signing in…', backText = 'Back to access options', canSubmit, loading, onSubmit, children }) => (
-  <AuthFrame step="signin">
+// Sprint 29.4: `step` names the screen for CSS (`in-step-<step>`); the Change password step passes "change", which gets a wider two-column card that fits the screen without scrolling.
+const SignInScreen = ({ tenant, onChangeProperty, onBack, title, desc, icon, error, notice, aside, subtitle, heading = 'Welcome back', submitText, busyText = 'Signing in…', backText = 'Back to access options', step = 'signin', canSubmit, loading, onSubmit, children }) => (
+  <AuthFrame step={step}>
     <PropertyBar tenant={tenant} onChange={onChangeProperty} />
     <h1 className="in-h1">{title}</h1>
     <p className="in-subtitle">{subtitle || `Sign in securely to continue at ${tenant.name}.`}</p>

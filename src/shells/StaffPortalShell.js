@@ -17,7 +17,7 @@ import { PortalPreviewContext, usePortalPreview } from './PortalPreview';
 //
 //   Home          — the person's own hours: greeting, this-week hours, recent shifts and (Sprint 24.3) the timesheet underneath. No clocking
 //                   (that is the Clock in door), no separate Timesheet page, no CSV export.
-//   Reservations  — only when the department's View switches it on (Front Desk's does): today's five tiles + sellable-vs-arriving (no chart)
+//   Forecast      — (was "Reservations" until 29.4; page key `reservations`) only when the department's View switches it on (Front Desk's does): today's top cards + rooms to sell; dev chooses the cards
 //   Housekeeping  — only when the View switches it on: plan who cleans which rooms, simplified; same functions as the manager page
 //   Logbook       — Sprint 26: the Log Book. People whose View switches it on get the full page (same as managers for now); every other employee sees "under
 //                   construction" until the staff side (what they may read / acknowledge) is built. It took the place of the old staff Calendar tab.
@@ -27,7 +27,7 @@ import { PortalPreviewContext, usePortalPreview } from './PortalPreview';
 // `preview` (dev only, from the AdminShell's "View as → Front desk"): the dev sees exactly this portal as a front-desk employee would (every page on).
 const NAV = [
   { view: 'home',         label: 'Home',         icon: 'home',      live: true, mobilePrimary: true },
-  { view: 'reservations', label: 'Reservations', icon: 'ticket',    live: true, mobilePrimary: true, page: 'reservations' },
+  { view: 'reservations', label: 'Forecast',     icon: 'trend',     live: true, mobilePrimary: true, page: 'reservations' },   // 29.4: shown as "Forecast" (the view / page key stays `reservations`)
   { view: 'housekeeping', label: 'Housekeeping', icon: 'bed',       live: true, mobilePrimary: true, page: 'housekeeping' },
   { view: 'logbook',      label: 'Logbook',      icon: 'notebook',  live: true, mobilePrimary: true },
   { view: 'settings',     label: 'Settings',     icon: 'gear',      hideInPreview: true },   // a dev has no staff profile to edit

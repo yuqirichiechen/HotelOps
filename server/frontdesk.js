@@ -45,7 +45,16 @@ const SETTINGS_ALLOWED = [
   'forecast_allowance_enabled',
   'forecast_allowance_scale_pct',
   'forecast_allowance_min_extra',
+  'forecast_fd_cards',   // Sprint 29.4 (which cards the front desk's Forecast page shows)
 ];
+
+// Sprint 29.4 — the cards the front desk's Forecast page can show (kept in step with src/components/FrontDesk/fdCards.js by a test). The setting is a JSON list of these keys; dev only.
+const FD_CARD_KEYS = ['arrivals', 'inhouse', 'departures', 'leftToSell', 'dirty', 'roomsToSell', 'sellable'];
+/** valid = a JSON list of 1..7 DISTINCT known keys */
+const validFdCards = (value) => {
+  let list; try { list = JSON.parse(value); } catch { return false; }
+  return Array.isArray(list) && list.length >= 1 && list.length <= FD_CARD_KEYS.length && list.every(k => typeof k === 'string' && FD_CARD_KEYS.includes(k)) && new Set(list).size === list.length;
+};
 
 /** @param {{key:string,value:string}[]} rows */
 function pickSettings(rows) {
@@ -54,4 +63,4 @@ function pickSettings(rows) {
   return out;
 }
 
-module.exports = { redactPayload, redactCurrentResponse, pickSettings, SETTINGS_ALLOWED, GUEST_FIELDS };
+module.exports = { redactPayload, redactCurrentResponse, pickSettings, SETTINGS_ALLOWED, GUEST_FIELDS, FD_CARD_KEYS, validFdCards };

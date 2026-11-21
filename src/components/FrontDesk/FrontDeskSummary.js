@@ -1,5 +1,6 @@
-// Sprint 24 / 24.3 — the front-desk portal's Reservations tab (was a block on Home): the five Reservations tiles (arrivals left · in-house · check-outs left ·
-// left to sell · dirty rooms) and the Forecast's "Sellable vs arriving" card, for TODAY only. Both are the existing components
+// Sprint 24 / 24.3 / 29.4 — the front-desk portal's FORECAST tab (called Reservations until 29.4; it was a block on Home): the five top cards (arrivals left · in-house · check-outs left ·
+// left to sell · dirty rooms), "Rooms to sell today" and — only when dev switches it on — the Forecast's "Sellable vs arriving" card, for TODAY only. Which cards are drawn is a dev setting
+// (`forecast_fd_cards`, Dev → Platform; keys in ./fdCards.js); a card that is off is simply not drawn, its code is still here. Both are the existing components
 // (KpiCard / ForecastSummaryCard) fed by the same models, so the numbers match what managers see; the data comes from the
 // `/api/frontdesk/*` routes, which strip every guest identifier server-side.
 //
@@ -12,6 +13,7 @@ import { ForecastSummaryCard, SimpleRoomTable, roomsByTypeOf } from '../Forecast
 import { buildRoomCondition, fraction } from '../Forecasting/roomCondition';
 import { buildDayModel, DEFAULT_ALLOWANCE } from '../Forecast/forecastModel';
 import SyncBadge from '../shared/SyncBadge';
+import { FD_CARDS_DEFAULT, parseFdCards } from './fdCards';
 import './FrontDesk.css';
 
 const LIVE_EVERY_MS = 120 * 1000;
@@ -32,6 +34,14 @@ const FrontDeskSummary = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Sprint 29.4: which cards dev has switched on (until the setting arrives — or if it never does — the default set is drawn)
+  const [cards, setCards] = useState(() => new Set(FD_CARDS_DEFAULT));
+  useEffect(() => {
+    let alive = true;
+    apiFetch('/frontdesk/settings').then(({ ok, data }) => { if (alive && ok && data && data.success && data.settings) setCards(new Set(parseFdCards(data.settings.forecast_fd_cards))); }).catch(() => { /* keep the default set */ });
+    return () => { alive = false; };
+  }, []);
+  const show = (key) => cards.has(key);
 
   const loadCurrent = useCallback(async () => {
     const { ok, data } = await apiFetch('/frontdesk/forecast/current');
@@ -85,11 +95,12 @@ const FrontDeskSummary = () => {
   const arrTotal = kpis.arrivals ?? 0, arrLeft = kpis.remainingArrivals ?? 0, arrived = Math.max(0, arrTotal - arrLeft);
   const depTotal = kpis.departures ?? 0, depLeft = kpis.remainingDepartures ?? 0, checkedOut = Math.max(0, depTotal - depLeft);
   const cc = condition ? condition.counts : null;
+  const tileCount = ['arrivals', 'inhouse', 'departures'].filter(show).length + (cc ? ['leftToSell', 'dirty'].filter(show).length : 0);
 
   return (
     <section className="fd-ops" aria-label="Front desk today">
       <header className="fd-ops-head">
-        <h2>Reservations <span>today</span></h2>
+        <h2>Forecast <span>today</span></h2>
         <div className="fd-ops-actions">
           <SyncBadge source={source} syncedAt={snapshot ? snapshot.scraped_at : null} health={health} label="" />
           <button type="button" className="fd-refresh" onClick={refresh} disabled={refreshing} title="Re-read the latest synced numbers" aria-label="Refresh the numbers">
@@ -103,29 +114,29 @@ const FrontDeskSummary = () => {
 
       {payload && (
         <>
-          <div className="fc-kpis fc-kpis-5 fd-tiles" aria-label="Today at a glance">
-            <KpiCard accent="arrivals" icon={<IconBriefcase />} label="Arrivals left" primary={arrLeft}
+          <div className={`fc-kpis fd-tiles ${tileCount === 5 ? 'fc-kpis-5' : 'fd-tiles-auto'}`} aria-label="Today at a glance" hidden={tileCount === 0}>
+            {show('arrivals') && <KpiCard accent="arrivals" icon={<IconBriefcase />} label="Arrivals left" primary={arrLeft}
               sublabel={`${arrived} arrived of ${arrTotal} today`}
-              ring={fraction(arrived, arrTotal)} ringColor="#6b46c1" ringLabel={`${arrived} of ${arrTotal} arrived`} />
-            <KpiCard accent="inhouse" icon={<IconBed />} label="In-house" primary={kpis.inHouse ?? 0} sublabel="guests currently staying"
+              ring={fraction(arrived, arrTotal)} ringColor="#6b46c1" ringLabel={`${arrived} of ${arrTotal} arrived`} />}
+            {show('inhouse') && <KpiCard accent="inhouse" icon={<IconBed />} label="In-house" primary={kpis.inHouse ?? 0} sublabel="guests currently staying"
               ring={fraction(kpis.inHouse ?? 0, condition ? condition.sellable : 0)} ringColor="#2b6cb0"
-              ringLabel={condition ? `${kpis.inHouse ?? 0} of ${condition.sellable} rooms occupied` : undefined} />
-            <KpiCard accent="departures" icon={<IconExit />} label="Check-outs left" primary={depLeft}
+              ringLabel={condition ? `${kpis.inHouse ?? 0} of ${condition.sellable} rooms occupied` : undefined} />}
+            {show('departures') && <KpiCard accent="departures" icon={<IconExit />} label="Check-outs left" primary={depLeft}
               sublabel={`${checkedOut} checked out of ${depTotal} today`}
-              ring={fraction(checkedOut, depTotal)} ringColor="#dd6b20" ringLabel={`${checkedOut} of ${depTotal} checked out`} />
-            {cc && (
+              ring={fraction(checkedOut, depTotal)} ringColor="#dd6b20" ringLabel={`${checkedOut} of ${depTotal} checked out`} />}
+            {cc && show('leftToSell') && (
               <KpiCard accent="staying" icon={<IconSparkle />} label="Left to sell" primary={cc.leftToSell}
                 sublabel={`${cc.vi} inspected · ${cc.pu} pickup`}
                 ring={fraction(cc.leftToSell, condition.sellable)} ringColor="#2f855a" ringLabel={`${cc.leftToSell} of ${condition.sellable} rooms left to sell`} />
             )}
-            {cc && (
+            {cc && show('dirty') && (
               <KpiCard accent="dirty" icon={<IconBroom />} label="Dirty rooms" primary={cc.dirtyTotal}
                 sublabel={`${cc.dirty} dirty · ${cc.inProgress} in progress · ${cc.occupiedClean} occupied clean`}
                 ring={fraction(cc.dirtyTotal, condition.total)} ringColor="#c53030" ringLabel={`${cc.dirtyTotal} of ${condition.total} rooms need cleaning`} />
             )}
           </div>
-          {model && <div className="fd-sellable"><ForecastSummaryCard model={model} showChart={false} /></div>}
-          {model && <div className="fd-sellable fd-rts"><SimpleRoomTable model={model} roomsByType={roomsByType} dayLabel="" /></div>}
+          {model && show('sellable') && <div className="fd-sellable"><ForecastSummaryCard model={model} showChart={false} /></div>}
+          {model && show('roomsToSell') && <div className="fd-sellable fd-rts"><SimpleRoomTable model={model} roomsByType={roomsByType} dayLabel="" /></div>}
         </>
       )}
 

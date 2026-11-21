@@ -59,6 +59,22 @@ const reset = () => { calls = []; changeResult = { success: true }; loginResult 
       await type(f('cp-current'), 'other-pass-12'); assert(!$('.in-error', host), 'typing clears the message'); calls.length = 0; await click($('.in-back', host)); assert.deepStrictEqual(calls, [], 'back does nothing on the server'); assert(/Welcome back/.test(host.textContent) && !$('.in-notice', host), 'no success line when nothing changed'); assert.strictEqual($$('input', host)[0].value, 'bossman', 'what was typed as the username stays');
     });
   }
+  for (const [kind, Comp, label] of [['admin', Admin, 'MANAGER'], ['dev', Dev, 'DEVELOPER']]) {
+    await t(`${label} CHANGE SCREEN FITS THE SCREEN (29.4): a wide card with the four boxes in a two-column grid (Username | Current, New | Confirm) and ONE message row of fixed height — the hint, replaced (not added to) by the server's refusal; the sign-in itself keeps its own layout`, async () => {
+      reset(); let host = await mount(Comp); assert($('main.in-step-signin', host) && !$('.in-cp-grid', host), 'the sign-in screen is unchanged'); await click($('.in-link', host)); host = document.body;
+      assert($('main.in-layout.in-step-change'), 'the change screen carries its own layout class'); assert(!$('main.in-step-signin'), 'and not the sign-in one'); const grid = $('.in-login-card .in-cp-grid'); assert(grid, 'the grid'); assert.deepStrictEqual($$('.in-cp-cell label.in-field-label', grid).map(l => l.textContent), ['Username', 'Current password', 'New password', 'Confirm new password'], 'row 1: username | current; row 2: new | confirm');
+      assert.strictEqual($$('.in-cp-cell', grid).length, 4); assert.strictEqual($$('.in-cp-msg', grid).length, 1, 'one message row'); assert(grid.lastElementChild.classList.contains('in-cp-msg'), 'it closes the grid'); assert(/in-hint/.test(grid.lastElementChild.className) && !$('.in-error'), 'a hint at first');
+      const f = (id) => $('#' + id); await type(f('cp-username'), 'bossman'); await type(f('cp-current'), 'wrong-pass-12'); await type(f('cp-new'), 'brand-new-pass-1'); await type(f('cp-confirm'), 'brand-new-pass-1'); changeResult = { success: false, message: 'The username or current password is not right.' }; await submit(document.body);
+      assert.strictEqual($$('.in-cp-msg', grid).length, 1, 'the refusal REPLACES the hint — the row count never changes'); assert(grid.lastElementChild.classList.contains('in-error') && grid.lastElementChild.getAttribute('role') === 'alert' && /not right/.test(grid.lastElementChild.textContent)); assert.strictEqual($$('.in-error').length, 1, 'no second red box below the card');
+      await type(f('cp-current'), 'other-pass-12'); assert(/in-hint/.test(grid.lastElementChild.className) && !$('.in-error'), 'typing brings the hint back in the same row'); assert(kind === 'admin' ? /Manager password/.test($('h1.in-h1').textContent) : /Developer password/.test($('h1.in-h1').textContent));
+    });
+  }
+  await t('FIT-THE-SCREEN STYLES (29.4): the change step\'s card is wide (860 px), two columns on a computer, ONE column on a phone (where the page may scroll); the message row has a fixed height; a short window drops the property bar (then the sub-title) instead of scrolling', () => {
+    const css = fs.readFileSync(ROOT + '/src/pages/Login/Inntrio.css', 'utf8'); const tail = css.slice(css.indexOf('Sprint 29.4: the Change password step fits the screen'));
+    assert(/\.in-step-change \.in-login-card \{ width: min\(860px, 100%\)/.test(tail), 'wide card'); assert(/\.in-cp-grid \{ display: grid; grid-template-columns: 1fr 1fr;/.test(tail), 'two columns'); assert(/\.in-cp-msg \{[^}]*min-height: 46px/.test(tail), 'fixed message row');
+    assert(/@media \(max-width: 760px\) \{[^@]*\.in-cp-grid \{ grid-template-columns: 1fr; \}/.test(tail), 'phones: one column'); assert(/@media \(min-width: 761px\) and \(max-height: 720px\) \{ \.in-step-change \.in-selected-bar \{ display: none; \}/.test(tail), 'short windows drop the property bar'); assert(/@media \(min-width: 761px\) and \(max-height: 600px\)/.test(tail), 'very short windows tighten further');
+    assert(!/overflow-y: ?(scroll|auto)/.test(tail), 'nothing here makes the page scroll');
+  });
   await t('the staff sign-in is untouched (staff use a PIN, not a password) — no Change password link there', () => {
     const src = fs.readFileSync(ROOT + '/src/pages/Login/StaffLogin.js', 'utf8'); assert(!/Change password|ChangePasswordScreen|in-link/.test(src));
   });

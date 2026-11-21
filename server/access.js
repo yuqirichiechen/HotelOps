@@ -2,7 +2,7 @@
 // The pages a staff member can open beyond Home are HARDCODED here (adding a page = code); a VIEW is just a named set of these keys that dev composes in the app,
 // attached to a DEPARTMENT (departments.view_id) — everyone in the department inherits it. No view = Home only. Role (employee / admin) is separate: it is the access LEVEL.
 const PAGES = {
-  reservations: { label: 'Reservations', note: 'Today’s room forecast tiles on Home and the Reservations page (guest identifiers removed)' },
+  reservations: { label: 'Forecast', note: 'The Forecast page: today’s top cards and rooms to sell (guest identifiers removed; dev chooses the cards). Page key stays `reservations`.' },
   housekeeping: { label: 'Housekeeping', note: 'The room board, planning and printing the housekeepers’ sheets' },
   logbook:      { label: 'Logbook',      note: 'Read and write the Log Book, and be sent notes' },
 };

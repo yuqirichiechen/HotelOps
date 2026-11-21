@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { authFetch } from '../../auth';
 import AccessViewsCard from './DevAccessViews';
+import FrontDeskCardsCard from './DevFrontDeskCards';
 
 const STRATEGIES = [
   { key: 'card',        label: 'White card backdrop (default)', desc: 'Wraps colored tenant logos in a small white container. Works for any logo, doesn\'t require a dark variant.' },
@@ -101,6 +102,7 @@ const DevPlatform = () => {
   return (
     <>
     <AccessViewsCard />
+    <FrontDeskCardsCard />
     <LoginThemeCard />
     <section className="dv-card">
       <h2>Tenant logo — dark mode strategy</h2>

@@ -24,3 +24,6 @@
 }
 .fd-sellable .fb-card { margin: 0; }
 .fd-rts { margin-top: 16px; }
+
+/* Sprint 29.4 — when dev shows fewer / more than the usual five top cards they fill the row evenly */
+.fd-tiles.fd-tiles-auto { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }

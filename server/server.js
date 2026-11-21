@@ -1304,7 +1304,7 @@ app.get('/api/admin/employees', requireAuth, requireRole('admin'), async (req, r
 // Read on page open, written only on Save/Print — no timers (Neon bills awake time). Managers and dev.
 const { sanitizePlan, sanitizePrefs, parsePrefs } = require('./housekeeping');
 const pinVault = require('./pinvault');   // Sprint 24.4: encrypted PIN copy, revealed by dev only
-const { redactCurrentResponse, pickSettings, SETTINGS_ALLOWED } = require('./frontdesk');   // Sprint 24: what the front-desk portal may read
+const { redactCurrentResponse, pickSettings, SETTINGS_ALLOWED, validFdCards } = require('./frontdesk');   // Sprint 24: what the front-desk portal may read
 const hkProperty = () => process.env.SYNC_PROPERTY_KEY || 'default';
 const hkGetPlan = async (req, res) => {
   const date = String(req.query.date || '');
@@ -4143,6 +4143,8 @@ app.put('/api/admin/settings', requireAuth, requireRole('admin'), async (req, re
     hk_plan_by_name: v => v === 'true' || v === 'false',
     // Sprint 28.10: may admins choose which View a department uses? Dev-only switch (access_ prefix is dev-write-only), off by default; read by the Departments routes.
     access_admin_sets_view: v => v === 'true' || v === 'false',
+    // Sprint 29.4: which cards the front desk's Forecast page shows — a JSON list of card keys (server/frontdesk.js). Dev-only (forecast_ prefix).
+    forecast_fd_cards: v => typeof v === 'string' && validFdCards(v),
     // Sprint 21.4: late-booking allowance for the Room Forecast's cleaning priority (days 2–14).
     // enabled: 'true'|'false'; scale: percent of the calibrated table (25..300, 100 = as calibrated);
     // min: minimum extra rooms for a room-type group with 4+ booked arrivals (0..10).

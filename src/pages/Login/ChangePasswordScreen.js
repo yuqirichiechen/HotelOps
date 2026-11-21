@@ -1,6 +1,8 @@
 // Sprint 29.2 — "Change password" on the manager and developer SIGN-IN screens (before signing in). Same card, fields, gold button and back link as the sign-in itself
 // (SignInScreen). It asks for the username, the current password and the new one twice, changes it on the server and sends the person back to sign in — it never signs
 // them in. The same change is also available inside the app (Settings → Account).
+// Sprint 29.4: laid out to FIT THE SCREEN on a computer — a wide card with the four boxes in two columns (username | current, new | confirm) and ONE fixed-height row for the hint / error, so
+// nothing grows and the page does not scroll. On a phone the boxes stack and the page scrolls as usual.
 import React, { useState } from 'react';
 import { changeLoginPassword } from '../../auth';
 import { newPasswordProblem, MIN_PASSWORD } from '../../components/shared/ChangePasswordCard';
@@ -30,12 +32,17 @@ const ChangePasswordScreen = ({ kind, tenant, initialUsername = '', onBack, onCh
   return (
     <SignInScreen tenant={tenant} onBack={() => onBack(username.trim())} onChangeProperty={onChangeProperty} title={dev ? 'Developer password' : 'Manager password'} icon="lock"
       subtitle={`Change your sign-in password for ${tenant.name}.`} heading="Change your password" desc="Enter your current password, then choose a new one."
-      error={err} canSubmit={canSubmit} loading={busy} onSubmit={submit} submitText="Change password" busyText="Saving…" backText="Back to sign in">
-      <Field id="cp-username" label="Username" icon="user" value={username} onChange={edit(setUsername)} placeholder="Enter your username" autoComplete="username" autoFocus required />
-      <Field id="cp-current" label="Current password" icon="lock" secret value={current} onChange={edit(setCurrent)} placeholder="Enter your current password" autoComplete="current-password" required />
-      <Field id="cp-new" label="New password" icon="lock" secret value={next} onChange={edit(setNext)} placeholder={`At least ${MIN_PASSWORD} characters`} autoComplete="new-password" required />
-      <Field id="cp-confirm" label="Confirm new password" icon="lock" secret value={confirm} onChange={edit(setConfirm)} placeholder="Type the new password again" autoComplete="new-password" required />
-      <p className={`in-hint${problem ? ' bad' : next ? ' good' : ''}`} aria-live="polite">{problem || (next ? 'Looks good.' : 'Choose something you don’t use anywhere else.')}</p>
+      step="change" canSubmit={canSubmit} loading={busy} onSubmit={submit} submitText="Change password" busyText="Saving…" backText="Back to sign in">
+      <div className="in-cp-grid">
+        <div className="in-cp-cell"><Field id="cp-username" label="Username" icon="user" value={username} onChange={edit(setUsername)} placeholder="Enter your username" autoComplete="username" autoFocus required /></div>
+        <div className="in-cp-cell"><Field id="cp-current" label="Current password" icon="lock" secret value={current} onChange={edit(setCurrent)} placeholder="Enter your current password" autoComplete="current-password" required /></div>
+        <div className="in-cp-cell"><Field id="cp-new" label="New password" icon="lock" secret value={next} onChange={edit(setNext)} placeholder={`At least ${MIN_PASSWORD} characters`} autoComplete="new-password" required /></div>
+        <div className="in-cp-cell"><Field id="cp-confirm" label="Confirm new password" icon="lock" secret value={confirm} onChange={edit(setConfirm)} placeholder="Type the new password again" autoComplete="new-password" required /></div>
+        {/* one row, always the same height: the server's refusal replaces the hint instead of adding a box below */}
+        {err
+          ? <div className="in-error in-cp-msg" role="alert">{err}</div>
+          : <p className={`in-hint in-cp-msg${problem ? ' bad' : next ? ' good' : ''}`} aria-live="polite">{problem || (next ? 'Looks good.' : 'Choose something you don’t use anywhere else.')}</p>}
+      </div>
     </SignInScreen>
   );
 };
