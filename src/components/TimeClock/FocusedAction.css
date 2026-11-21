@@ -11,7 +11,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-base);
+  /* Sprint 29.3: the SAME themed scene as the shell behind it (gold curves over navy / rice; the tokens come from .clockin-shell) instead of a flat panel. It stays opaque on purpose: it has to hide the
+     Home page underneath, and a fixed background lines up exactly with the shell's, so there is no visible edge. */
+  background: var(--ia-curves) center / cover no-repeat fixed, var(--ia-page, var(--bg-base));
   animation: focused-fade-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
   padding: 24px;
 }
@@ -33,15 +35,34 @@
   flex-direction: column;
   align-items: center;
   gap: 28px;
-  max-width: 420px;
+  max-width: 440px;
   width: 100%;
+  /* Sprint 29.3: the content sits on the same glass card as the sign-in / app cards, with the gold hairline on top */
+  position: relative;
+  padding: 36px 30px 40px;
+  border-radius: 28px;
+  background: var(--ia-card);
+  border: 1px solid var(--ia-card-border);
+  box-shadow: var(--ia-card-shadow);
 }
+.focused-action-inner::before { content: ""; position: absolute; top: 0; left: 12%; right: 12%; height: 1px; background: linear-gradient(90deg, transparent, var(--ia-gold), transparent); opacity: .65; }
+
+/* Sprint 29.3: brand + property header (same as the sign-in's top bar) */
+.fa-top { position: absolute; top: 0; left: 0; right: 0; height: 74px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--ia-side-border); }
+.fa-brand { background: none; border: 0; padding: 4px 6px; margin-left: -6px; border-radius: 12px; cursor: pointer; transition: transform .2s, filter .2s; }
+.fa-brand:hover { transform: scale(1.03); filter: brightness(1.1); } .fa-brand:active { transform: scale(.98); }
+.fa-brand img { width: 150px; height: auto; display: block; }
+.fa-prop { display: flex; align-items: center; gap: 10px; color: var(--ia-text-2); font-family: 'TiemposText', Georgia, serif; font-size: 14px; font-weight: 600; min-width: 0; }
+.fa-prop-plate { background: #fff; border-radius: 9px; padding: 3px 7px; display: inline-flex; box-shadow: var(--ia-plate-shadow); }
+.fa-prop-plate img { height: 24px; width: auto; display: block; }
+.fa-prop-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) { .fa-top { height: 62px; padding: 0 16px; } .fa-brand img { width: 118px; } .fa-prop-name { display: none; } .focused-action-inner { padding: 28px 20px 32px; } }
 
 .focused-action-greeting {
   font-family: 'TiemposHeadline', Georgia, serif;
   font-size: 30px;
   font-weight: 700;
-  color: var(--brand-text);
+  color: var(--ia-text);
   text-align: center;
   letter-spacing: -0.01em;
   line-height: 1.2;
@@ -49,7 +70,7 @@
 .focused-action-subline {
   font-family: 'TiemposText', Georgia, serif;
   font-size: 15px;
-  color: var(--text-secondary);
+  color: var(--ia-text-2);
   text-align: center;
   margin-top: -16px;
 }
@@ -71,7 +92,7 @@
   font-size: 44px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
+  color: var(--ia-gold);
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -79,7 +100,7 @@
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--ia-muted);
   letter-spacing: 0.02em;
 }
 @media (max-width: 520px) {
@@ -105,7 +126,8 @@
   justify-content: center;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  --ring: rgba(72, 187, 120, .16); --ring-line: rgba(72, 187, 120, .5);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24), 0 0 0 9px var(--ring), 0 0 0 10px var(--ring-line);
   animation: focused-breathe 2.4s ease-in-out infinite;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
@@ -115,6 +137,7 @@
 }
 .focused-action-btn.is-out {
   background: linear-gradient(140deg, #f56565, #c53030);
+  --ring: rgba(245, 101, 101, .16); --ring-line: rgba(245, 101, 101, .5);
 }
 .focused-action-btn:hover:not(:disabled) {
   transform: scale(1.02);
@@ -137,8 +160,8 @@
   opacity: 0.85;
 }
 @keyframes focused-breathe {
-  0%, 100% { transform: scale(1);    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24); }
-  50%      { transform: scale(1.03); box-shadow: 0 22px 56px rgba(0, 0, 0, 0.28); }
+  0%, 100% { transform: scale(1);    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24), 0 0 0 9px var(--ring), 0 0 0 10px var(--ring-line); }
+  50%      { transform: scale(1.03); box-shadow: 0 22px 56px rgba(0, 0, 0, 0.28), 0 0 0 11px var(--ring), 0 0 0 12px var(--ring-line); }
 }
 @keyframes focused-confirm {
   0%   { transform: scale(0.97); }
@@ -187,8 +210,9 @@
    the whole screen feeling like a timer. */
 .focused-action-countdown {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: 88px;   /* Sprint 29.3: below the brand header */
+  left: 50%;
+  translate: -50% 0;
   font-family: 'TiemposText', Georgia, serif;
   font-size: 12px;
   font-weight: 700;

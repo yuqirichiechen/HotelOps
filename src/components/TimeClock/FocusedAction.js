@@ -1,7 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../../i18n';
 import './FocusedAction.css';
 import Icon from '../shared/Icon';
+import { resolveTenant, TENANT } from '../../config/tenant';
+import { useLoginTheme } from '../../pages/Login/loginTheme';
+
+// Sprint 29.3: the same Inntrio wordmarks as the sign-in screens (white + gold on dark, navy + gold on light)
+const LOGO_DARK = '/inntrio/Inntrio-logo-dark.svg', LOGO_LIGHT = '/inntrio/inntrio-logo-light.svg';
 
 // Sprint 16.1: the focused-action screen the GM asked for. Staff
 // who log in to clock in/out land here first — one giant button
@@ -108,6 +114,14 @@ const FocusedAction = ({
   // the giant button (clock action) or letting the idle timer
   // fire (logout).
 
+  // Sprint 29.3: brand + property header, like the sign-in screens; the logo is the same light / dark switch it is on the keypad
+  const { light, toggle } = useLoginTheme({ fetchConfig: false });
+  const tenant = (() => { try { return resolveTenant(localStorage.getItem('hotelops-tenant-slug')) || TENANT; } catch { return TENANT; } })();
+  // Sprint 29.3: render the screen at the top level of the clock shell. The Home page it is mounted in keeps a transform from its fade-in animation, and a transformed parent makes
+  // `position: fixed` mean "inside that 720 px column" — so the overlay was never really full-screen and its panel never matched the page around it.
+  const anchorRef = useRef(null);
+  const [host, setHost] = useState(null);
+  useLayoutEffect(() => { setHost((anchorRef.current && anchorRef.current.closest('.clockin-shell')) || document.body); }, []);
   const showCountdown = remaining <= 5;
   const isIn = mode === 'in';
   const label   = isIn ? t('focused.clock_in') : t('focused.clock_out');
@@ -115,8 +129,14 @@ const FocusedAction = ({
   const greetingStr = greetingKey ? t(greetingKey) : '';
   const firstName   = staffName ? staffName.split(' ')[0] : '';
 
-  return (
+  const screen = (
     <div className="focused-action">
+      <header className="fa-top">
+        <button type="button" className="fa-brand" onClick={toggle} aria-label={light ? 'Inntrio — switch to dark mode' : 'Inntrio — switch to light mode'}>
+          <img src={light ? LOGO_LIGHT : LOGO_DARK} alt="Inntrio" />
+        </button>
+        <div className="fa-prop">{tenant.logoUrl && <span className="fa-prop-plate"><img src={tenant.logoUrl} alt="" /></span>}<span className="fa-prop-name">{tenant.name}</span></div>
+      </header>
       {showCountdown && (
         <div className="focused-action-countdown" role="status" aria-live="polite">
           {t('focused.countdown', { n: Math.ceil(remaining) })}
@@ -157,6 +177,7 @@ const FocusedAction = ({
       </div>
     </div>
   );
+  return (<><span ref={anchorRef} hidden />{host && createPortal(screen, host)}</>);
 };
 
 export default FocusedAction;

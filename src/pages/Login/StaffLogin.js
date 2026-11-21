@@ -6,6 +6,7 @@ import { useT } from '../../i18n';
 import LangCycleHeadline from '../../components/shared/LangCycleHeadline';
 import AuthFrame, { usePTClock } from './InntrioFrame';
 import Icon from './InntrioIcons';
+import { useKioskLock, useHoldToExit, HOLD_EXIT_MS } from '../../lib/kioskLock';
 
 // Sprint 11.3: small media-query hook used twice below — once for
 // touch detection (governs whether to lock the numeric input against
@@ -68,18 +69,18 @@ const ROW_2 = ['a','s','d','f','g','h','j','k','l'];
 const ROW_3 = ['z','x','c','v','b','n','m'];
 
 // Sprint 27.1: Inntrio keypad — 1-9, Clear, 0, ⌫ (the design's 3×4 pad). The ABC / 123 switch sits under it when usernames are allowed.
-const KeypadNumbers = ({ onKey }) => (
+const KeypadNumbers = ({ onKey, hold }) => (
   <div className="in-keypad-grid">
     {['1','2','3','4','5','6','7','8','9'].map(n => (
       <button key={n} type="button" className="in-key" aria-label={n} onClick={() => onKey(n)}>{n}</button>
     ))}
-    <button type="button" className="in-key special" onClick={() => onKey('clear')}>Clear</button>
+    <button type="button" className="in-key special" onClick={() => onKey('clear')} {...hold}>Clear</button>
     <button type="button" className="in-key" aria-label="0" onClick={() => onKey('0')}>0</button>
     <button type="button" className="in-key special" aria-label="Backspace" onClick={() => onKey('back')}><Icon name="backspace" size={24} /></button>
   </div>
 );
 
-const KeyboardLetters = ({ onKey, caps, onCaps }) => {
+const KeyboardLetters = ({ onKey, caps, onCaps, hold }) => {
   const xform = (l) => (caps ? l.toUpperCase() : l);
   const letter = (l) => <button key={l} type="button" className="in-key" onClick={() => onKey(xform(l))}>{xform(l)}</button>;
   return (
@@ -93,7 +94,7 @@ const KeyboardLetters = ({ onKey, caps, onCaps }) => {
       </div>
       {/* Clear + the three legal punctuation chars usernames may contain (._- per the regex) */}
       <div className="in-letters-row in-letters-row-4">
-        <button type="button" className="in-key special" onClick={() => onKey('clear')}>Clear</button>
+        <button type="button" className="in-key special" onClick={() => onKey('clear')} {...hold}>Clear</button>
         {['_', '-', '.'].map(c => <button key={c} type="button" className="in-key" onClick={() => onKey(c)}>{c}</button>)}
       </div>
     </div>
@@ -102,7 +103,11 @@ const KeyboardLetters = ({ onKey, caps, onCaps }) => {
 
 // Sprint 24.1: this numpad screen is the CLOCK IN door only (kiosk: clock in / out on a pad, then sign out). Staff who want their
 // timesheet / calendar / settings (and the front desk's forecast + housekeeping) use "Staff login" — the PC form, StaffPortalLogin.
-const StaffLogin = ({ onBack }) => {
+// Sprint 29.3: there is NO "Back to access options" button any more (it sat right under Continue on a tablet and was easy to hit by accident). The only way back to the access options is
+// to HOLD the Clear key for 10 seconds — silent and invisible by design. The browser's Back / swipe-back is switched off here too (useKioskLock). `exitHoldMs` exists for tests.
+const StaffLogin = ({ onBack, exitHoldMs = HOLD_EXIT_MS }) => {
+  useKioskLock();
+  const hold = useHoldToExit(onBack, exitHoldMs);
   const { loginStaff } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
@@ -270,7 +275,7 @@ const StaffLogin = ({ onBack }) => {
 
   return (
     <AuthFrame step="clock">
-      <h1 className="in-h1">Clock in / out</h1>
+      <h1 className="in-h1">Clock in &amp; out</h1>
       <p className="in-subtitle">A fast, familiar time clock for your shift.</p>
       <div className="in-gap-md" />
       {/* the whole card is the form (Enter submits); every keypad key is type="button" */}
@@ -334,7 +339,7 @@ const StaffLogin = ({ onBack }) => {
         </div>
 
         <div className="in-keypad-panel">
-          {showLetters ? <KeyboardLetters onKey={onKey} caps={caps} onCaps={() => setCaps(c => !c)} /> : <KeypadNumbers onKey={onKey} />}
+          {showLetters ? <KeyboardLetters onKey={onKey} caps={caps} onCaps={() => setCaps(c => !c)} hold={hold} /> : <KeypadNumbers onKey={onKey} hold={hold} />}
           {lettersAvailable && activeField === 'id' && (
             <button type="button" className="in-key special in-kb-switch" onClick={() => setKbMode(showLetters ? 'numbers' : 'letters')}>{showLetters ? '123' : 'ABC'}</button>
           )}
@@ -346,7 +351,6 @@ const StaffLogin = ({ onBack }) => {
           </button>
         </div>
       </form>
-      <button className="in-back" type="button" onClick={onBack}><Icon name="left" size={16} /> Back to access options</button>
     </AuthFrame>
   );
 };

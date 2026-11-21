@@ -111,6 +111,11 @@ export const homePathFor = (user, slug) =>
 
 const AuthContext = createContext(null);
 
+// Sprint 29.3: how long to wait before asking /me again when the server could not be reached / answered with a 5xx while the page loads (a sleeping database waking up, a Wi-Fi blip).
+// Exported (mutable) so tests can shorten it.
+export const AUTH_RETRY_DELAYS = [900, 1800];
+const pause = (ms) => new Promise(r => setTimeout(r, ms));
+
 export const AuthProvider = ({ children }) => {
   const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
@@ -122,11 +127,15 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
       return;
     }
-    const { ok, data } = await apiFetch('/me');
+    // Sprint 29.3: a hiccup is NOT a sign-out. A network failure (status 0) or a server error (5xx) is retried twice, and even if it still fails the saved session is KEPT (only a
+    // real "no" — 401 / 403 / 404 — removes it), so a tablet that reloads while the server is busy waking up is not thrown back to the sign-in.
+    let res = await apiFetch('/me');
+    for (let i = 0; i < AUTH_RETRY_DELAYS.length && !res.ok && (res.status === 0 || res.status >= 500); i += 1) { await pause(AUTH_RETRY_DELAYS[i]); res = await apiFetch('/me'); }
+    const { ok, status, data } = res;
     if (ok && data?.success) {
       setUser(data.user);
     } else {
-      localStorage.removeItem(TOKEN_KEY);
+      if (status === 401 || status === 403 || status === 404 || (ok && !data?.success)) localStorage.removeItem(TOKEN_KEY);
       setUser(null);
     }
     setLoading(false);
@@ -255,6 +264,13 @@ export const RequireRole = ({ role = 'any', children }) => {
   if (loading) return null;
 
   if (!user) {
+    // Sprint 29.3: on the Clock in & out door a lost session (expired token, server restarted, …) goes straight back to the KEYPAD — not to the property picker, which looked like
+    // "it went back to the previous page" on the tablet. Only the clock-in screen itself; every other page still goes to `/`.
+    const kioskSlug = typeof window !== 'undefined' ? localStorage.getItem('hotelops-tenant-slug') : null;
+    if (role === 'staff' && kioskSlug && /\/clockin\/?$/.test(location.pathname) && getStaffEntry() === 'clockin') {
+      return <Navigate to={`/${kioskSlug}/login?mode=clockin`} replace state={{ from: location }} />;
+    }
+
     // Sprint 11.2: both roles funnel to `/` (the picker). After the
     // user picks a property + signs in, the per-tenant login page
     // routes them to the right post-auth destination, and the

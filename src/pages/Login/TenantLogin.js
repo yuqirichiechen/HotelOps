@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import StaffLogin from './StaffLogin';
@@ -13,13 +13,14 @@ import { withTransition } from './viewTransition';
 //   'access'  — "How would you like to continue?": Clock in / out · Staff sign-in · Manager sign-in · Developer sign-in
 //   'clockin' — the numpad (clock in / out door)        'staff' — Staff sign-in (PC form → staff portal)
 //   'admin'   — Manager sign-in                         'dev'   — Developer sign-in
-// The mode is internal state, so the URL stays put while moving between the screens (as before, Sprint 11.2.1). The page opens on the access
-// chooser; `?mode=clockin|staff|admin|dev` opens a screen directly — the clock-in door uses it to bring the kiosk straight back to the keypad
-// after a session ends (Sprint 27.1). Nothing is remembered between visits. The credentials/redirect logic lives in the four screens, unchanged.
+// Sprint 29.3: the screen is read FROM THE ADDRESS (`?mode=clockin|staff|admin|dev`; no mode = the access chooser) instead of living only in memory. Moving between the screens
+// REPLACES the address (no history entries), so nothing about Back changes — but a reload, a tablet restoring its tab, or a restart now comes back to the SAME screen. Before this, a
+// reload on the keypad silently dropped the tablet back to the access chooser ("it keeps going back to the previous page"). The clock-in door also uses `?mode=clockin` to bring the
+// kiosk straight back to the keypad after a session ends (Sprint 27.1). The credentials/redirect logic lives in the four screens, unchanged.
 export const MODES = ['clockin', 'staff', 'admin', 'dev'];
 
 export const CHOICES = [
-  { mode: 'clockin', title: 'Clock in / out',    desc: 'Use the familiar keypad to record your shift.', icon: 'clock' },
+  { mode: 'clockin', title: 'Clock in & out',    desc: 'Use the familiar keypad to record your shift.', icon: 'clock' },
   { mode: 'staff',   title: 'Staff sign-in',     desc: 'Schedules, hours, and team updates.',            icon: 'users' },
   { mode: 'admin',   title: 'Manager sign-in',   desc: 'Staff management and hotel operations.',         icon: 'shield' },
   { mode: 'dev',     title: 'Developer sign-in', desc: 'Authorized developer tools and integrations.',   icon: 'code' },
@@ -49,8 +50,9 @@ const TenantLogin = () => {
   const nav = useNavigate();
   const { tenant: slug } = useParams();
   const tenant = resolveTenant(slug) || TENANT;
-  const [params] = useSearchParams();
-  const [mode, setMode] = useState(() => (MODES.includes(params.get('mode')) ? params.get('mode') : 'access'));
+  const [params, setParams] = useSearchParams();
+  const mode = MODES.includes(params.get('mode')) ? params.get('mode') : 'access';
+  const setMode = (m) => setParams(m === 'access' ? {} : { mode: m }, { replace: true });
   // Sprint 27.3: every move is a directional transition — into a screen slides forward, back out of it slides back
   const toAccess = () => withTransition(() => setMode('access'), 'back');
   const toProperty = () => withTransition(() => nav('/'), 'back');

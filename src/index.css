@@ -103,3 +103,6 @@ input, select, textarea {
 
 /* Sprint 28.8 — shared icons (src/components/shared/Icon.js): never shrink in a flex row, sit on the text baseline when used inline, inherit the text colour */
 .ic { flex: none; vertical-align: -0.16em; }
+
+/* Sprint 29.3 — kiosk screens (src/lib/kioskLock.js): no pull-to-refresh / edge-swipe navigation while the keypad or the clock screen is open */
+html.kiosk-lock, html.kiosk-lock body { overscroll-behavior: none; }

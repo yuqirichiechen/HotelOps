@@ -3,6 +3,8 @@ import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, useAuth } from '../auth';
 import Home from '../pages/Home';
+import { useLoginTheme } from '../pages/Login/loginTheme';
+import { useKioskLock } from '../lib/kioskLock';
 
 // Sprint 24.1: the CLOCK IN door (`/:tenant/clockin`) — what the numpad sign-in opens. It is only the clock: no sidebar, no timesheet /
 // calendar / settings (those moved to the staff portal, `/:tenant/staff`, which every employee reaches with "Staff login"). The old
@@ -82,6 +84,16 @@ const useShellIdleLogout = () => {
 
 const ClockInShell = () => {
   useShellIdleLogout();
+  // Sprint 29.3: a shared tablet — the browser's Back / swipe-back does nothing on this screen (see lib/kioskLock.js).
+  useKioskLock();
+  // Sprint 29.3: the clock screens use the SAME light / dark as the keypad before them (time of day set by the property, or the logo switch) instead of the device's / app's own theme, so
+  // the keypad → big button → week summary never change look half-way. The page's data-theme is put back when the person leaves.
+  const { light } = useLoginTheme({ fetchConfig: false });
+  useEffect(() => {
+    const root = document.documentElement, prev = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', light ? 'light' : 'dark');
+    return () => { if (prev === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', prev); };
+  }, [light]);
   return (
     <div className="clockin-shell">
       <main className="clockin-main">
