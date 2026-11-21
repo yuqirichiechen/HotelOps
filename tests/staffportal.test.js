@@ -29,6 +29,9 @@ const mount = async (el_, wait = 60) => { const el = document.getElementById('ro
 
 // ── fixtures: a real payload from the real model, then run through the server's redaction (what the front desk receives) ──
 const TODAY = '2026-11-02';
+// "this week" for the Home hours widget = the Monday of the REAL current week (local day, same maths as src/pages/Home getMondayISO) — a fixed date made these tests rot as the calendar moved; the old UTC formatting returned a TUESDAY after ~4 pm Pacific (fixed in 29.5)
+const mondayISO = (d = new Date()) => { const x = new Date(d); const dow = x.getDay(); x.setDate(x.getDate() + (dow === 0 ? -6 : 1 - dow)); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const THIS_WEEK = mondayISO(); const PREV_WEEK = mondayISO(new Date(new Date(THIS_WEEK + 'T12:00:00').getTime() - 7 * 86400000));
 const resn = (id, arr, dep, status = 'RES', room) => ({ id, status, roomType: 'rt1', roomId: room ? 'r' + room : undefined, roomNumber: room, arrivalDateLocalDate: arr, departureDateLocalDate: dep, arrivalDate: arr + 'T07:00:00Z', departureDate: dep + 'T07:00:00Z', confirmationId: 'C' + id, ratePlanCode: 'BAR', primaryGuestInfo: { firstName: 'Secret', lastName: 'Guest' + id } });
 const room = (n, hk, occ = 'VAC') => ({ id: 'r' + n, roomNumber: n, roomTypeId: 'rt1', floorId: '01', status: true, currentOccupancyStatus: occ, housekeepingRoomStatus: hk });
 const payload = computeForecast({ rooms: [room('101', 'VI'), room('102', 'PU'), room('103', 'D'), room('104', 'IP'), room('105', 'OC', 'OCC')], roomTypes: [{ id: 'rt1', typeCode: 'NQRR', name: 'Double Queen' }],
@@ -37,9 +40,9 @@ const deskCurrent = redactCurrentResponse({ success: true, source: 'mirror', syn
 const ok = (data) => ({ ok: true, status: 200, data: { success: true, ...data } });
 const stdResponses = () => ({
   'GET /frontdesk/forecast/current': { ok: true, status: 200, data: deskCurrent }, 'GET /frontdesk/forecast/live': { ok: false, status: 502, data: { success: false } },
-  'GET /me/hours': (p) => { const ws = (p.match(/weekStart=([0-9-]+)/) || [])[1] || '2026-11-02'; const d0 = new Date(ws + 'T00:00:00Z'); const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(d0.getTime() + i * 864e5); return { date: d.toISOString().slice(0, 10), dayName: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i] }; });
-    return ok({ weekStart: ws, days, entries: [], scheduledHours: 0, totalHours: ws === '2026-11-02' ? 12.5 : 3, currentlyClockedIn: false, idleLogoutSeconds: 15, autoSignoutSeconds: 5,
-      recentShifts: ws === '2026-11-02' ? [{ entry_id: 'e1', clock_in_time: '2026-11-02T16:00:00Z', clock_out_time: '2026-11-03T00:00:00Z', hours: 8 }, { entry_id: 'e2', clock_in_time: '2026-10-31T16:00:00Z', clock_out_time: null, hours: 0 }] : [] }); },
+  'GET /me/hours': (p) => { const ws = (p.match(/weekStart=([0-9-]+)/) || [])[1] || THIS_WEEK; const d0 = new Date(ws + 'T00:00:00Z'); const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(d0.getTime() + i * 864e5); return { date: d.toISOString().slice(0, 10), dayName: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i] }; });
+    return ok({ weekStart: ws, days, entries: [], scheduledHours: 0, totalHours: ws === THIS_WEEK ? 12.5 : 3, currentlyClockedIn: false, idleLogoutSeconds: 15, autoSignoutSeconds: 5,
+      recentShifts: ws === THIS_WEEK ? [{ entry_id: 'e1', clock_in_time: '2026-11-02T16:00:00Z', clock_out_time: '2026-11-03T00:00:00Z', hours: 8 }, { entry_id: 'e2', clock_in_time: '2026-10-31T16:00:00Z', clock_out_time: null, hours: 0 }] : [] }); },
   'GET /frontdesk/employees': ok({ employees: [{ user_id: 'u1', name: 'Bryan', active: true, department: 'Housekeeping' }, { user_id: 'u2', name: 'Berta Rangel', active: true, department: 'Housekeeping' }] }),
   'GET /frontdesk/settings': ok({ settings: { hk_plan_by_name: 'true' } }), 'GET /frontdesk/logbook/notes': ok({ notes: [] }), 'GET /frontdesk/logbook/audience': ok({ departments: [], staff: [] }), 'GET /frontdesk/housekeeping/plans': ok({ plans: [] }), 'GET /frontdesk/housekeeping/locked-rooms': ok({ rooms: [] }),
   'GET /frontdesk/housekeeping/plan': ok({ plan: null }), 'PUT /frontdesk/housekeeping/plan': ok({ updatedAt: new Date().toISOString() }),
@@ -237,8 +240,8 @@ const stdResponses = () => ({
   await t('HOME: browsing to an earlier week changes Total worked + the timeline but NOT This week / Recent (always the current week)', async () => {
     AuthMock._user = DESK; responses = stdResponses(); calls.length = 0; const h = await mount(portal(), 300); const el = h.el; const big = (i) => el.querySelectorAll('.ts-top > .ts-card')[i].querySelector('.ts-big').textContent;
     await h.click(el.querySelector('[aria-label="Previous week"]')); await act(async () => { await sleep(100); });
-    assert(calls.some(c => /weekStart=2026-10-26/.test(c.p)), 'fetched the earlier week'); assert.strictEqual(big(0), '12.5h', 'This week unchanged'); assert(el.querySelectorAll('.ts-recent-list li').length === 2, 'Recent unchanged'); assert(/Oct 26/.test(el.querySelector('.ts-week').textContent), 'timeline label moved');
-    assert.strictEqual(calls.filter(c => /weekStart=2026-11-02/.test(c.p)).length, 1, 'the current week was not fetched twice'); await h.unmount();
+    assert(calls.some(c => new RegExp('weekStart=' + PREV_WEEK).test(c.p)), 'fetched the earlier week'); assert.strictEqual(big(0), '12.5h', 'This week unchanged'); assert(el.querySelectorAll('.ts-recent-list li').length === 2, 'Recent unchanged'); assert(new RegExp(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+PREV_WEEK.slice(5, 7) - 1] + ' ' + +PREV_WEEK.slice(8, 10)).test(el.querySelector('.ts-week').textContent), 'timeline label moved to ' + PREV_WEEK);
+    assert.strictEqual(calls.filter(c => new RegExp('weekStart=' + THIS_WEEK).test(c.p)).length, 1, 'the current week was not fetched twice'); await h.unmount();
   });
   await t('Forecast "Sellable vs arriving" (switched ON by dev) shows x/y: VI-only left to sell / VI+PU left to sell (fixture: 1 inspected + 1 pickup, 1 arriving → 0/1, total 0/1 rooms)', async () => {
     AuthMock._user = DESK; responses = stdResponses(); responses['GET /frontdesk/settings'] = ok({ settings: { forecast_fd_cards: JSON.stringify(['arrivals', 'inhouse', 'departures', 'leftToSell', 'dirty', 'roomsToSell', 'sellable']) } }); const h = await mount(portal(), 200); await openTab(h, 'Forecast');

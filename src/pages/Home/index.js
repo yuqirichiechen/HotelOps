@@ -46,7 +46,8 @@ const getMondayISO = (d = new Date()) => {
   const dow  = date.getDay();
   const off  = dow === 0 ? -6 : 1 - dow;
   date.setDate(date.getDate() + off);
-  return date.toISOString().split('T')[0];
+  // the LOCAL calendar day (like the Timesheet page) — toISOString() converts to UTC, so after ~4 pm Pacific it returned the next day (a Tuesday) and "This week" missed Monday
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
 // Sprint 24.1 / 24.4: this page is the CLOCK IN door only — greeting + the clock (focused-action overlay, Clock In / Out) + a confirmation with the
