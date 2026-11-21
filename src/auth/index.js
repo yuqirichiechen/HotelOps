@@ -93,6 +93,13 @@ export const getStaffEntry = () => {
 export const setStaffEntry = (entry) => {
   try { localStorage.setItem(STAFF_ENTRY_KEY, entry === 'staff' ? 'staff' : 'clockin'); } catch { /* storage unavailable */ }
 };
+/** Sprint 29.2: change a manager's / dev's password from the SIGN-IN screen (no session yet). Returns { success, status, code, message }; it never signs anyone in. */
+export const changeLoginPassword = async (kind, { username, currentPassword, newPassword }) => {
+  const { ok, status, data } = await apiFetch(`/auth/${kind === 'dev' ? 'dev' : 'admin'}/change-password`, { method: 'POST', body: JSON.stringify({ username, currentPassword, newPassword }) });
+  if (ok && data && data.success) return { success: true };
+  return { success: false, status, code: data && data.code, message: (data && data.message) || (status === 429 ? 'Too many attempts. Wait a few minutes and try again.' : 'Could not change the password.') };
+};
+
 /** Sprint 28.10: the staff-portal pages beyond Home (Reservations, Housekeeping, Logbook …) are switched on by the VIEW of the person's department (`user.pages`,
  *  from /me; the server checks the same list from the token). No view = Home only. Access never depends on a department's name. Managers/dev use the admin shell. */
 export const hasPage = (user, key) => !!user && Array.isArray(user.pages) && user.pages.includes(key);

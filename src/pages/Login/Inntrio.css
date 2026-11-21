@@ -279,3 +279,14 @@ html[data-vt="theme"]::view-transition-old(root) { z-index: 1; }
   .in-step-clock .in-action-row { margin-top: 0; }
   .in-step-clock .in-back { margin-top: 12px; }
 }
+
+/* ── Sprint 29.2: "Change password" on the manager / developer sign-ins — the link under the password, the success line, the live hint ─────────────────────── */
+.in-aside { display: flex; justify-content: flex-end; margin-top: 11px; }
+.in-link { border: 0; background: none; padding: 2px 0; color: var(--in-gold); font-size: 12px; font-weight: 600; letter-spacing: .02em; cursor: pointer; text-decoration: underline; text-decoration-color: rgba(223, 193, 132, .4); text-underline-offset: 3px; }
+.in-link:hover { color: var(--in-gold-light); text-decoration-color: currentColor; }
+.in-notice { margin: 16px 0 0; padding: 10px 13px; border-radius: 10px; border: 1px solid rgba(74, 222, 128, .38); background: rgba(20, 83, 45, .3); color: #bbf7d0; font-size: 13px; }
+.in-hint { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: #a9bdd3; }
+.in-hint.bad { color: #fca5a5; } .in-hint.good { color: #86efac; }
+.in-light .in-link { color: #9a6f2a; text-decoration-color: rgba(154, 111, 42, .4); } .in-light .in-link:hover { color: #7d5a1c; }
+.in-light .in-notice { background: #ecfdf3; border-color: #a6e3bd; color: #14532d; }
+.in-light .in-hint { color: #51627a; } .in-light .in-hint.bad { color: #9b1c1c; } .in-light .in-hint.good { color: #166534; }

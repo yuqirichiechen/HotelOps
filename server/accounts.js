@@ -34,7 +34,10 @@ const createLimiter = (max, windowMs) => {
   const prune = (k, now) => { const l = (hits.get(k) || []).filter(t => now - t < windowMs); hits.set(k, l); return l; };
   return {
     check: (k, now = Date.now()) => { const l = prune(k, now); return l.length >= max ? { allowed: false, retryAfterSec: Math.ceil((windowMs - (now - l[0])) / 1000) } : { allowed: true }; },
-    fail: (k, now = Date.now()) => { prune(k, now).push(now); },
+    fail: (k, now = Date.now()) => {
+      prune(k, now).push(now);
+      if (hits.size > 2000) for (const [key, l] of hits) if (!l.some(t => now - t < windowMs)) hits.delete(key);   // sign-in-screen attempts can name any username — keep the map from growing
+    },
     clear: (k) => hits.delete(k),
   };
 };

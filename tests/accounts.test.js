@@ -128,6 +128,35 @@ const V = { configured: vault.configured, encrypt: vault.encryptPin, decrypt: va
       assert.strictEqual((await devLogin('devuser', 'env-dev-pass-1')).status, 401, 'environment password ignored now'); const again = await devLogin('devuser', 'dev-brand-new-9'); assert.strictEqual(again.status, 200); assert.strictEqual(again.body.user.role, 'dev');
       assert.strictEqual((await c1.query("SELECT password_enc FROM login_accounts WHERE kind = 'dev'")).rows[0].password_enc, null, 'dev password has no reversible copy');
     });
+    // ── Sprint 29.2: the same change from the SIGN-IN screens (no session) ─────────────────────────────────────────────────────────────────
+    const screen = (kind, body) => http(`/api/auth/${kind}/change-password`, { method: 'POST', body });
+    await t('SIGN-IN SCREEN (manager): username + current + new changes the password without a session; it does NOT sign anyone in; the old password dies, the new one signs in, dev sees the new one; audited as "sign_in_screen" without the password; no-store', async () => {
+      await http('/api/dev/admin-accounts', { method: 'POST', token: DEV, body: { username: 'screenboss', name: 'Screen Boss', password: 'screenboss-pass-1' } });
+      const r = await screen('admin', { username: 'ScreenBoss ', currentPassword: 'screenboss-pass-1', newPassword: 'screen-new-pass-2' }); assert.deepStrictEqual([r.status, r.body.success], [200, true]); assert(!r.body.token && !r.body.user, 'no sign-in is granted'); assert(/no-store/.test(r.headers.get('cache-control')));
+      assert.strictEqual((await adminLogin('screenboss', 'screenboss-pass-1')).status, 401); assert.strictEqual((await adminLogin('screenboss', 'screen-new-pass-2')).status, 200);
+      const id = (await c1.query("SELECT account_id FROM login_accounts WHERE username = 'screenboss'")).rows[0].account_id; assert.strictEqual((await http(`/api/dev/admin-accounts/${id}/reveal`, { method: 'POST', token: DEV })).body.password, 'screen-new-pass-2');
+      const row = (await c1.query("SELECT new_data FROM audit_logs WHERE action = 'password_changed' AND new_data->>'via' = 'sign_in_screen'")).rows; assert.strictEqual(row.length, 1); assert.deepStrictEqual([row[0].new_data.kind, row[0].new_data.username], ['admin', 'ScreenBoss']); assert(!JSON.stringify(row).match(/screen-new-pass|screenboss-pass/));
+    });
+    await t('SIGN-IN SCREEN: every wrong answer is the SAME 400 message — wrong password, unknown username, a switched-off manager — so it never reveals whether a name exists; bad input is a specific 400; never 401 / 403', async () => {
+      const id = (await c1.query("SELECT account_id FROM login_accounts WHERE username = 'screenboss'")).rows[0].account_id; const GENERIC = 'The username or current password is not right.';
+      const bads = [{ username: 'screenboss', currentPassword: 'wrong-wrong-12', newPassword: 'whatever-new-9' }, { username: 'nosuchperson', currentPassword: 'screen-new-pass-2', newPassword: 'whatever-new-9' }];
+      await http(`/api/dev/admin-accounts/${id}`, { method: 'PATCH', token: DEV, body: { active: false } }); bads.push({ username: 'screenboss', currentPassword: 'screen-new-pass-2', newPassword: 'whatever-new-9' });
+      for (const b of bads) { const r = await screen('admin', b); assert.deepStrictEqual([r.status, r.body.code, r.body.message], [400, 'wrong_current', GENERIC], JSON.stringify(b.username)); }
+      await http(`/api/dev/admin-accounts/${id}`, { method: 'PATCH', token: DEV, body: { active: true } });
+      for (const [b, code] of [[{ username: 'screenboss', currentPassword: 'screen-new-pass-2', newPassword: 'tiny' }, 'invalid'], [{ username: 'screenboss', currentPassword: 'screen-new-pass-2', newPassword: 'screen-new-pass-2' }, 'same'], [{ username: '', currentPassword: 'x', newPassword: 'long-enough-1' }, 'invalid'], [{ username: 'screenboss', newPassword: 'long-enough-1' }, 'invalid'], [{ username: 'screenboss', currentPassword: 5, newPassword: 'long-enough-1' }, 'invalid']]) { const r = await screen('admin', b); assert.deepStrictEqual([r.status, r.body.code], [400, code], JSON.stringify(b)); }
+      assert.strictEqual((await adminLogin('screenboss', 'screen-new-pass-2')).status, 200, 'nothing changed');
+    });
+    await t('SIGN-IN SCREEN (dev): the dev password changes the same way; the old one stops working; the new one signs in; a wrong answer is the generic message', async () => {
+      assert.deepStrictEqual([(await screen('dev', { username: 'devuser', currentPassword: 'not-it-at-all', newPassword: 'dev-screen-new-5' })).body.message], ['The username or current password is not right.']);
+      const ok = await screen('dev', { username: 'devuser', currentPassword: 'dev-brand-new-9', newPassword: 'dev-screen-new-5' }); assert.deepStrictEqual([ok.status, ok.body.success], [200, true]); assert(!ok.body.token);
+      assert.strictEqual((await devLogin('devuser', 'dev-brand-new-9')).status, 401); assert.strictEqual((await devLogin('devuser', 'dev-screen-new-5')).status, 200);
+      assert((await c1.query("SELECT 1 FROM audit_logs WHERE action = 'password_changed' AND new_data->>'via' = 'sign_in_screen' AND new_data->>'kind' = 'dev'")).rows.length === 1);
+    });
+    await t('SIGN-IN SCREEN is rate-limited: dev wrong answers share the DEV sign-in limiter (5 per address → 429 on both the change and the sign-in); a manager address gets 10 wrong guesses (counted across attempts) then 429 with Retry-After', async () => {
+      for (let i = 0; i < 4; i++) assert.strictEqual((await screen('dev', { username: 'devuser', currentPassword: 'guess-' + i + '-xxxx', newPassword: 'whatever-new-9' })).status, 400);   // +1 earlier success cleared the count
+      assert.strictEqual((await screen('dev', { username: 'devuser', currentPassword: 'guess-5-xxxx', newPassword: 'whatever-new-9' })).status, 400); const locked = await screen('dev', { username: 'devuser', currentPassword: 'dev-screen-new-5', newPassword: 'dev-final-pass-3' }); assert.strictEqual(locked.status, 429); assert(Number(locked.headers.get('retry-after')) > 0); assert.strictEqual((await devLogin('devuser', 'dev-screen-new-5')).status, 429, 'the dev sign-in is locked by the same wrong guesses');
+      const seen = []; for (let i = 0; i < 9; i++) seen.push((await screen('admin', { username: 'ghost' + i, currentPassword: 'guess-' + i + '-xxxx', newPassword: 'whatever-new-9' })).status); assert.deepStrictEqual(seen, [400, 400, 400, 400, 400, 400, 400, 429, 429], 'the 3 wrong answers from the earlier test count too: 10 wrong guesses in all, then locked'); const lim = await screen('admin', { username: 'screenboss', currentPassword: 'screen-new-pass-2', newPassword: 'screen-final-pass-3' }); assert.strictEqual(lim.status, 429); assert(Number(lim.headers.get('retry-after')) > 0);
+    });
   } finally { try { sh(`${PGBIN}/pg_ctl -D ${DIR} stop -m fast`); } catch { /* */ } }
   console.log(`${pass} passed${process.exitCode ? ', SOME FAILED' : ''}`); process.exit(process.exitCode || 0);
 })();

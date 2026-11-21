@@ -22,23 +22,27 @@ export const Field = ({ id, label, optional, icon, secret, value, onChange, righ
   );
 };
 
-const SignInScreen = ({ tenant, onChangeProperty, onBack, title, desc, icon, error, canSubmit, loading, onSubmit, children }) => (
+// Sprint 29.2: the same screen also hosts the sign-in screens' "Change password" step — `subtitle`, `heading`, `submitText` / `busyText` and `backText` override the wording, `notice` shows
+// a success line (after a password change), and `aside` is a small link row under the fields ("Change password").
+const SignInScreen = ({ tenant, onChangeProperty, onBack, title, desc, icon, error, notice, aside, subtitle, heading = 'Welcome back', submitText, busyText = 'Signing in…', backText = 'Back to access options', canSubmit, loading, onSubmit, children }) => (
   <AuthFrame step="signin">
     <PropertyBar tenant={tenant} onChange={onChangeProperty} />
     <h1 className="in-h1">{title}</h1>
-    <p className="in-subtitle">Sign in securely to continue at {tenant.name}.</p>
+    <p className="in-subtitle">{subtitle || `Sign in securely to continue at ${tenant.name}.`}</p>
     <div className="in-gap-md" />
     <form className="in-surface in-login-card" onSubmit={onSubmit}>
       <div className="in-login-header">
         <div className="in-tile-ico"><Icon name={icon} size={25} /></div>
-        <div><h2>Welcome back</h2><p>{desc}</p></div>
+        <div><h2>{heading}</h2><p>{desc}</p></div>
       </div>
+      {notice && <div className="in-notice" role="status">{notice}</div>}
       {children}
+      {aside && <div className="in-aside">{aside}</div>}
       {error && <div className="in-error" role="alert">{error}</div>}
       <div className="in-submit-gap" />
-      <button className="in-primary" type="submit" disabled={!canSubmit || loading}>{loading ? 'Signing in…' : <>Sign in <Icon name="arrow" size={19} /></>}</button>
+      <button className="in-primary" type="submit" disabled={!canSubmit || loading}>{loading ? busyText : <>{submitText || 'Sign in'} <Icon name="arrow" size={19} /></>}</button>
     </form>
-    <button className="in-back" type="button" onClick={onBack}><Icon name="left" size={16} /> Back to access options</button>
+    <button className="in-back" type="button" onClick={onBack}><Icon name="left" size={16} /> {backText}</button>
   </AuthFrame>
 );
 

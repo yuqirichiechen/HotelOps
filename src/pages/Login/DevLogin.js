@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import SignInScreen, { Field } from './SignInScreen';
+import ChangePasswordScreen from './ChangePasswordScreen';
 
 // Sprint 22.4: server-verified dev sign-in. The old client-side dev/dev gate is gone — the server checks DEV_USERNAME / DEV_PASSWORD_HASH
 // (Koyeb environment), rate-limits failures, and issues a `dev` role token. With no hash configured, sign-in is disabled (no default password).
@@ -18,6 +19,8 @@ const DevLogin = ({ onBack, onChangeProperty }) => {
   const [password, setPassword] = useState('');
   const [err, setErr]           = useState('');
   const [busy, setBusy]         = useState(false);
+  const [mode, setMode]         = useState('signin');   // Sprint 29.2: 'signin' | 'change'
+  const [notice, setNotice]     = useState('');
 
   const submit = async (e) => {
     e.preventDefault();
@@ -34,8 +37,14 @@ const DevLogin = ({ onBack, onChangeProperty }) => {
       : 'Invalid credentials.');
   };
 
+  if (mode === 'change') {
+    return <ChangePasswordScreen kind="dev" tenant={tenant} initialUsername={username} onChangeProperty={onChangeProperty || (() => nav('/'))} onBack={(u) => { if (u) setUsername(u); setMode('signin'); }}
+      onDone={(u) => { setUsername(u); setPassword(''); setErr(''); setNotice('Password changed. Sign in with your new password.'); setMode('signin'); }} />;
+  }
+
   return (
     <SignInScreen tenant={tenant} onBack={onBack || (() => nav('/'))} onChangeProperty={onChangeProperty || (() => nav('/'))} title="Developer sign-in" icon="code"
+      notice={notice} aside={<button type="button" className="in-link" onClick={() => { setMode('change'); setErr(''); setNotice(''); }}>Change password</button>}
       desc="Authorized developer tools and integrations." error={err} canSubmit={!!username && !!password} loading={busy} onSubmit={submit}>
       <Field id="dev-username" label="Username" icon="user" value={username} onChange={e => setUsername(e.target.value)}
         placeholder="Enter your username" autoComplete="username" autoFocus required />

@@ -402,6 +402,30 @@ const sendResult = (res, r, okBody) => {
   if (r.error === 'rate' && r.retryAfterSec) res.set('Retry-After', String(r.retryAfterSec));
   return res.status(ACCOUNT_STATUS[r.error] || 400).json({ success: false, code: r.error, message: r.message });
 };
+// Sprint 29.2 — the same change from the SIGN-IN screens (no session yet): username + current password + new password. Per-address limit (10 wrong guesses / 15 min; dev
+// also shares the dev sign-in limiter) on top of the per-account one; every wrong answer is the same generic message, so it never says whether a username exists; it does NOT
+// sign anyone in — the screen sends them back to sign in with the new password.
+const pwIpLimiter = require('./accounts').createLimiter(10, 15 * 60 * 1000);
+const changeFromSignIn = (kind) => async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const { username, currentPassword, newPassword } = req.body || {};
+  if (typeof username !== 'string' || typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !username.trim() || !currentPassword) {
+    return res.status(400).json({ success: false, code: 'invalid', message: 'Enter your username, your current password and a new one.' });
+  }
+  const ip = devClientKey(req), ipKey = `${kind}:${ip}`;
+  const gate = pwIpLimiter.check(ipKey);
+  const devGate = kind === 'dev' ? devLoginAllowed(ip) : { allowed: true };
+  if (!gate.allowed || !devGate.allowed) { res.set('Retry-After', String(gate.retryAfterSec || devGate.retryAfterSec || 900)); return res.status(429).json({ success: false, code: 'rate', message: 'Too many attempts. Wait a few minutes and try again.' }); }
+  try {
+    let r = await accounts.changePassword({ kind, username: username.trim(), current: currentPassword, next: newPassword });
+    if (r.error === 'wrong_current') { pwIpLimiter.fail(ipKey); if (kind === 'dev') recordDevFailure(ip); r = { ...r, message: 'The username or current password is not right.' }; }
+    if (r.ok) { if (kind === 'dev') clearDevFailures(ip); pwAudit('password_changed', null, { kind, username: username.trim(), via: 'sign_in_screen' }); }
+    return sendResult(res, r);
+  } catch (err) { return accountsFail(res, `auth:${kind}:change-password`, err); }
+};
+app.post('/api/auth/admin/change-password', changeFromSignIn('admin'));
+app.post('/api/auth/dev/change-password', changeFromSignIn('dev'));
+
 app.post('/api/account/password', requireAuth, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const kind = req.auth.type === 'dev' ? 'dev' : req.auth.type === 'admin' ? 'admin' : null;

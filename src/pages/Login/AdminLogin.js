@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { resolveTenant, TENANT } from '../../config/tenant';
 import SignInScreen, { Field } from './SignInScreen';
+import ChangePasswordScreen from './ChangePasswordScreen';
 
 // Manager sign-in (username + password → the manager shell). Sprint 27.1: new Inntrio look; the logic is unchanged.
 const AdminLogin = ({ onBack, onChangeProperty }) => {
@@ -15,6 +16,8 @@ const AdminLogin = ({ onBack, onChangeProperty }) => {
   const [password, setPassword] = useState('');
   const [err, setErr]           = useState('');
   const [loading, setLoading]   = useState(false);
+  const [mode, setMode]         = useState('signin');   // Sprint 29.2: 'signin' | 'change' (the Change password step of this same screen)
+  const [notice, setNotice]     = useState('');
 
   const submit = async (e) => {
     e.preventDefault();
@@ -31,8 +34,14 @@ const AdminLogin = ({ onBack, onChangeProperty }) => {
     setErr(res.message || 'Sign-in failed');
   };
 
+  if (mode === 'change') {
+    return <ChangePasswordScreen kind="admin" tenant={tenant} initialUsername={username} onChangeProperty={onChangeProperty} onBack={(u) => { if (u) setUsername(u); setMode('signin'); }}
+      onDone={(u) => { setUsername(u); setPassword(''); setErr(''); setNotice('Password changed. Sign in with your new password.'); setMode('signin'); }} />;
+  }
+
   return (
     <SignInScreen tenant={tenant} onBack={onBack} onChangeProperty={onChangeProperty} title="Manager sign-in" icon="shield"
+      notice={notice} aside={<button type="button" className="in-link" onClick={() => { setMode('change'); setErr(''); setNotice(''); }}>Change password</button>}
       desc="Manage staff, scheduling, and operations." error={err} canSubmit={!!username && !!password} loading={loading} onSubmit={submit}>
       <Field id="username" label="Username" icon="user" value={username} onChange={e => setUsername(e.target.value)}
         placeholder="Enter your username" autoComplete="username" autoFocus required />
